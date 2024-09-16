@@ -16,9 +16,19 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "webextension-polyfill": "^0.12.0",
+    "@coinmasters/pioneer-db": "^4.7.62",
+    "@coinmasters/pioneer-sdk": "^4.7.63",
+    "@coinmasters/types": "^4.7.63",
+    "@coinmasters/wallet-keepkey": "^13.0.63",
     "@extension/shared": "workspace:*",
-    "@extension/storage": "workspace:*"
+    "@extension/storage": "workspace:*",
+    "@pioneer-platform/helpers": "^4.0.12",
+    "@pioneer-platform/pioneer-caip": "^9.2.32",
+    "@pioneer-platform/pioneer-coins": "^9.2.23",
+    "axios": "^1.7.7",
+    "ethers": "^6.13.2",
+    "uuid": "^10.0.0",
+    "webextension-polyfill": "^0.12.0"
   },
   "devDependencies": {
     "@extension/dev-utils": "workspace:*",
@@ -27,9 +37,9 @@
     "@extension/vite-config": "workspace:*",
     "@laynezh/vite-plugin-lib-assets": "^0.5.23",
     "@types/ws": "^8.5.12",
-    "magic-string": "^0.30.10",
-    "ts-loader": "^9.5.1",
+    "cross-env": "^7.0.3",
     "deepmerge": "^4.3.1",
-    "cross-env": "^7.0.3"
+    "magic-string": "^0.30.10",
+    "ts-loader": "^9.5.1"
   }
 }

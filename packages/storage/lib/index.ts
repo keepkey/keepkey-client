@@ -1,7 +1,24 @@
-import { createStorage } from './base';
-import { exampleThemeStorage } from './exampleThemeStorage';
-import { SessionAccessLevelEnum, StorageEnum } from './enums';
-import type { BaseStorage } from './types';
+import { createStorage, StorageType, type BaseStorage, SessionAccessLevel } from './base';
+import {
+  keepKeyApiKeyStorage,
+  pioneerKeyStorage,
+  requestStorage,
+  approvalStorage,
+  completedStorage,
+  assetContextStorage,
+} from './customStorage';
+import { chainIdStorage } from './providerStorage';
 
-export { exampleThemeStorage, createStorage, StorageEnum, SessionAccessLevelEnum };
+export {
+  chainIdStorage,
+  pioneerKeyStorage,
+  keepKeyApiKeyStorage,
+  requestStorage,
+  approvalStorage,
+  completedStorage,
+  createStorage,
+  StorageType,
+  SessionAccessLevel,
+  assetContextStorage,
+};
 export type { BaseStorage };
