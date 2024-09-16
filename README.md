@@ -155,7 +155,7 @@ Some shared packages:
 
 ## Community <a name="community"></a>
 
-Join the [KeepKey Discord](https://discord.gg/4ERQ6jgV9a) to connect with other developers and share your experiences, suggest features, or get support.
+Join the [KeepKey Discord](https://discord.gg/FDQEbB79N2) to connect with other developers and share your experiences, suggest features, or get support.
 
 ## Reference <a name="reference"></a>
 
