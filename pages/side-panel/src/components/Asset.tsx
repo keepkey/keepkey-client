@@ -9,6 +9,7 @@ export function Asset() {
   const [balances, setBalances] = useState<any[]>([]);
   const [pubkeys, setPubkeys] = useState<any[]>([]);
   const [paths, setPaths] = useState<any[]>([]);
+  const [asset, setAsset] = useState<any>(null); // Define asset state
 
   const clearAssetContext = () => {
     app.setAssetContext(null);
@@ -16,10 +17,18 @@ export function Asset() {
   };
 
   useEffect(() => {
-    if (asset) {
-      fetchBalancesAndPubkeys();
-    }
-  }, [asset]);
+    // Fetch asset context from the background script
+    chrome.runtime.sendMessage({ type: 'GET_ASSET_CONTEXT' }, response => {
+      if (chrome.runtime.lastError) {
+        console.error('Error fetching asset context:', chrome.runtime.lastError.message);
+        return;
+      }
+      if (response && response.assets) {
+        setAsset(response.assets); // Set asset state
+        fetchBalancesAndPubkeys();
+      }
+    });
+  }, []);
 
   const fetchBalancesAndPubkeys = () => {
     setLoading(true);

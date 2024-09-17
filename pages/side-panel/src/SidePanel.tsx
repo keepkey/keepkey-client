@@ -50,9 +50,6 @@ const SidePanel = () => {
         return <Loading setIsConnecting={setIsConnecting} keepkeyState={keepkeyState} />;
 
       case 2: // connected
-        if (isConnecting || loading) {
-          return <Loading setIsConnecting={setIsConnecting} keepkeyState={keepkeyState} />;
-        }
         if (transactionContext) {
           return <Transaction transactionContext={transactionContext} />;
         }
