@@ -6,6 +6,7 @@ import { listenForApproval } from './approvals';
 import { JsonRpcProvider } from 'ethers';
 import { Chain } from '@coinmasters/types';
 import { exampleSidebarStorage } from '@extension/storage'; // Re-import the storage
+import { EIP155_CHAINS } from './chains';
 
 const TAG = ' | background/index.js | ';
 console.log('Background script loaded');
@@ -32,74 +33,6 @@ function updateIcon() {
 }
 updateIcon();
 console.log('Background loaded');
-
-// Define the supported chains and RPC URLs
-const EIP155_CHAINS = {
-  'eip155:1': {
-    chainId: 1,
-    name: 'Ethereum',
-    logo: '/chain-logos/eip155-1.png',
-    rgb: '99, 125, 234',
-    rpc: 'https://1rpc.io/eth',
-    namespace: 'eip155',
-  },
-  'eip155:43114': {
-    chainId: 43114,
-    name: 'Avalanche C-Chain',
-    logo: '/chain-logos/eip155-43113.png',
-    rgb: '232, 65, 66',
-    rpc: 'https://api.avax.network/ext/bc/C/rpc',
-    namespace: 'eip155',
-  },
-  'eip155:137': {
-    chainId: 137,
-    name: 'Polygon',
-    logo: '/chain-logos/eip155-137.png',
-    rgb: '130, 71, 229',
-    rpc: 'https://polygon-rpc.com/',
-    namespace: 'eip155',
-  },
-  'eip155:10': {
-    chainId: 10,
-    name: 'Optimism',
-    logo: '/chain-logos/eip155-10.png',
-    rgb: '235, 0, 25',
-    rpc: 'https://mainnet.optimism.io',
-    namespace: 'eip155',
-  },
-  'eip155:324': {
-    chainId: 324,
-    name: 'zkSync Era',
-    logo: '/chain-logos/eip155-324.svg',
-    rgb: '242, 242, 242',
-    rpc: 'https://mainnet.era.zksync.io/',
-    namespace: 'eip155',
-  },
-  'eip155:8453': {
-    chainId: 8453,
-    name: 'Base',
-    logo: '/chain-logos/base.png',
-    rgb: '242, 242, 242',
-    rpc: 'https://mainnet.base.org',
-    namespace: 'eip155',
-  },
-  'eip155:42161': {
-    chainId: 8453,
-    name: 'Arbitrum',
-    logo: '/chain-logos/arbitrum.png',
-    rgb: '4, 100, 214',
-    rpc: 'https://api.zan.top/node/v1/arb/one/public',
-    namespace: 'eip155',
-  },
-  'eip155:100': {
-    chainId: 100,
-    name: 'Gnosis',
-    logo: '/chain-logos/gnosis.png',
-    rgb: '33, 186, 69',
-    rpc: 'https://api.zan.top/node/v1/arb/one/public',
-    namespace: 'eip155',
-  },
-};
 
 const provider = new JsonRpcProvider(EIP155_CHAINS['eip155:1'].rpc);
 
