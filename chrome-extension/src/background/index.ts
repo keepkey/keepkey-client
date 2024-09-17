@@ -38,7 +38,7 @@ const provider = new JsonRpcProvider(EIP155_CHAINS['eip155:1'].rpc);
 
 // KeepKey Initialization
 let ADDRESS = '';
-let KEEPKEY_WALLET: any = '';
+let APP:any = null;
 
 const onStart = async function () {
   const tag = TAG + ' | onStart | ';
@@ -58,15 +58,18 @@ const onStart = async function () {
     // Set addresses
     ADDRESS = address;
     console.log(tag, '**** keepkey: ', app);
-    KEEPKEY_WALLET = app;
-    console.log(tag, 'KEEPKEY_WALLET: ', KEEPKEY_WALLET);
+    APP = app;
+    console.log(tag, 'APP: ', APP);
 
     // Start listening for approval events
-    listenForApproval(KEEPKEY_WALLET, ADDRESS);
+    listenForApproval(APP, ADDRESS);
 
     // Sync with KeepKey
-    await app.getPubkeys();
-    await app.getBalances();
+    await APP.getPubkeys();
+    await APP.getBalances();
+
+    //
+
   } catch (e) {
     KEEPKEY_STATE = 4; // errored
     updateIcon();
@@ -95,7 +98,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
     console.log(tag, 'params:', params);
 
     if (method) {
-      handleWalletRequest(requestInfo, chain, method, params, provider, KEEPKEY_WALLET, ADDRESS)
+      handleWalletRequest(requestInfo, chain, method, params, provider, APP, ADDRESS)
         .then(result => {
           sendResponse({ result });
         })
@@ -121,6 +124,44 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
       sendResponse({ state: KEEPKEY_STATE });
     }, 15000); // 15 seconds delay
     return true;
+  }
+
+  if (message.type === 'GET_APP') {
+    sendResponse({ app: APP });
+    return true
+  }
+
+  if (message.type === 'GET_APP_ASSET_CONTEXT') {
+    return APP.assetContext
+  }
+
+  if (message.type === 'GET_APP_PATHS') {
+    return APP.paths
+  }
+
+  if (message.type === 'GET_APP_PUBKEYS') {
+    return APP.pubkeys
+  }
+
+  if (message.type === 'GET_ASSETS') {
+    if (APP) {
+      sendResponse({ assets: APP.assets });
+      return true; // Async response
+    } else {
+      sendResponse({ error: 'APP not initialized' });
+    }
+  }
+
+  return false;
+});
+
+  if (message.type === 'GET_APP_BALANCES') {
+    if (APP) {
+      sendResponse({ balances: APP.balances });
+      return true; // Async response
+    } else {
+      sendResponse({ error: 'APP not initialized' });
+    }
   }
 
   return false;
