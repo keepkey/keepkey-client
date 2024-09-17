@@ -33,7 +33,6 @@ const Balances = () => {
           setLoading(false);
           return;
         }
-        console.log('GET_ASSETS response:', response);
         if (response && response.assets) {
           setAssets(response.assets);
         } else {
@@ -48,7 +47,6 @@ const Balances = () => {
           setLoading(false);
           return;
         }
-        console.log('GET_APP_BALANCES response:', response);
         if (response && response.balances) {
           setBalances(response.balances);
         } else {
@@ -64,7 +62,6 @@ const Balances = () => {
           console.error('Error fetching asset context:', chrome.runtime.lastError.message);
           return;
         }
-        console.log('GET_ASSET_CONTEXT response:', response);
         if (response && response.assetContext) {
           setAssetContext(response.assetContext);
         }
@@ -79,21 +76,37 @@ const Balances = () => {
     console.log('Asset selected:', asset);
   };
 
+  const sortedAssets = [...assets]
+    .filter(asset => balances.find(balance => balance.caip === asset.caip)) // Only display assets with balances
+    .sort((a: any, b: any) => {
+      const balanceA = balances.find(balance => balance.caip === a.caip);
+      const balanceB = balances.find(balance => balance.caip === b.caip);
+      const valueUsdA = balanceA ? parseFloat(balanceA.valueUsd) : 0;
+      const valueUsdB = balanceB ? parseFloat(balanceB.valueUsd) : 0;
+      return valueUsdB - valueUsdA; // Sort in descending order by value in USD
+    });
+
   return (
     <Flex flex="1" overflowY="auto" width="100%">
       <Stack width="100%">
-        {assetContext ? (
+        {loading ? (
+          <Flex justifyContent="center" alignItems="center" width="100%">
+            <Spinner size="xl" />
+            Loading....
+          </Flex>
+        ) : assetContext ? (
           <Asset usePioneer={app.usePioneer} onClose={() => setAssetContext(null)} asset={app?.assetContext} />
         ) : (
           <>
-            {!assets || assets.length === 0 ? (
+            {sortedAssets.length === 0 ? (
               <Flex justifyContent="center" alignItems="center" width="100%">
-                <Spinner size="xl" />
-                Loading....
+                <Text>No assets found</Text>
               </Flex>
             ) : (
-              <>
-                {assets.map((asset: any, index: any) => (
+              sortedAssets.map((asset: any, index: any) => {
+                const balance = balances.find(b => b.caip === asset.caip);
+                const { integer, largePart, smallPart } = formatBalance(balance?.balance || '0.00');
+                return (
                   <Card key={index} borderRadius="md" p={4} mb={1} width="100%">
                     <Flex align="center" width="100%">
                       <Avatar src={asset.icon} />
@@ -101,39 +114,30 @@ const Balances = () => {
                         <Text fontWeight="bold" isTruncated>
                           {asset.name}
                         </Text>
-                        {balances
-                          .filter((balance: any) => balance.caip === asset.caip)
-                          .map((balance: any, index: any) => {
-                            const { integer, largePart, smallPart } = formatBalance(balance.balance);
-                            return (
-                              <Text key={index}>
-                                {integer}.
-                                <Text as="span" fontSize="lg">
-                                  {largePart}
-                                </Text>
-                                {largePart === '0000' && (
-                                  <Text as="span" fontSize="sm">
-                                    {smallPart}
-                                  </Text>
-                                )}
-                                <Badge ml={2} colorScheme="teal">
-                                  {asset.symbol}
-                                </Badge>
-                                <br />
-                                <Badge colorScheme="green">USD {formatUsd(balance.valueUsd)}</Badge>
-                              </Text>
-                            );
-                          }).length === 0 ? (
-                          <Spinner size="sm" />
-                        ) : null}
+                        <Text>
+                          {integer}.
+                          <Text as="span" fontSize="lg">
+                            {largePart}
+                          </Text>
+                          {largePart === '0000' && (
+                            <Text as="span" fontSize="sm">
+                              {smallPart}
+                            </Text>
+                          )}
+                          <Badge ml={2} colorScheme="teal">
+                            {asset.symbol}
+                          </Badge>
+                          <br />
+                          <Badge colorScheme="green">USD {formatUsd(balance?.valueUsd || '0.00')}</Badge>
+                        </Text>
                       </Box>
                       <Button ml="auto" onClick={() => onSelect(asset)} size="md">
                         Select
                       </Button>
                     </Flex>
                   </Card>
-                ))}
-              </>
+                );
+              })
             )}
           </>
         )}
