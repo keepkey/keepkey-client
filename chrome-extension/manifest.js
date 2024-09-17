@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import deepmerge from 'deepmerge';
 
 const packageJson = JSON.parse(fs.readFileSync('../package.json', 'utf8'));
-
 const isFirefox = process.env.__FIREFOX__ === 'true';
 
 const sidePanelConfig = {
@@ -20,22 +19,18 @@ const manifest = deepmerge(
   {
     manifest_version: 3,
     default_locale: 'en',
-    /**
-     * if you want to support multiple languages, you can use the following reference
-     * https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Internationalization
-     */
     name: '__MSG_extensionName__',
     version: packageJson.version,
     description: '__MSG_extensionDescription__',
     host_permissions: ['<all_urls>'],
-    permissions: ['storage', 'scripting', 'tabs', 'notifications'],
+    permissions: ['storage', 'scripting', 'tabs', 'notifications', 'commands'],
     options_page: 'options/index.html',
     background: {
       service_worker: 'background.iife.js',
       type: 'module',
     },
     action: {
-      default_popup: 'popup/index.html',
+      default_popup: '', // Removed popup by default to control it dynamically
       default_icon: 'icon-34.png',
     },
     icons: {
@@ -52,7 +47,7 @@ const manifest = deepmerge(
       },
       {
         matches: ['http://*/*', 'https://*/*', '<all_urls>'],
-        css: ['content.css'], // public folder
+        css: ['content.css'],
       },
     ],
     devtools_page: 'devtools/index.html',

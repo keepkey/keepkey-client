@@ -8,6 +8,7 @@ import {
   assetContextStorage,
 } from './customStorage';
 import { chainIdStorage } from './providerStorage';
+import { exampleThemeStorage, exampleSidebarStorage } from './exampleThemeStorage';
 
 export {
   chainIdStorage,
@@ -20,5 +21,8 @@ export {
   StorageType,
   SessionAccessLevel,
   assetContextStorage,
+  exampleThemeStorage,
+  exampleSidebarStorage,
 };
+
 export type { BaseStorage };

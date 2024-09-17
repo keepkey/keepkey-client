@@ -5,6 +5,7 @@ import { handleWalletRequest } from './methods';
 import { listenForApproval } from './approvals';
 import { JsonRpcProvider } from 'ethers';
 import { Chain } from '@coinmasters/types';
+import { exampleSidebarStorage } from '@extension/storage'; // Re-import the storage
 
 const TAG = ' | background/index.js | ';
 console.log('Background script loaded');
@@ -191,3 +192,31 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
 
   return false;
 });
+
+// Example usage of exampleSidebarStorage to get the user's preference
+exampleSidebarStorage
+  .get()
+  .then(openSidebar => {
+    console.log('openSidebar:', openSidebar);
+    // Update the click handler for the extension icon
+    chrome.action.onClicked.addListener((tab: any) => {
+      // Check the user's preference for opening the side panel or popup
+      if (openSidebar === true) {
+        // If true, open the side panel
+        chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+          chrome.sidePanel.open({ tabId: tab.id }, () => {
+            if (chrome.runtime.lastError) {
+              console.error('Error opening side panel:', chrome.runtime.lastError);
+            }
+          });
+        });
+      } else {
+        // Otherwise, fallback to popup
+        chrome.action.setPopup({ popup: 'popup/index.html' });
+        chrome.action.openPopup();
+      }
+    });
+  })
+  .catch(error => {
+    console.error('Error fetching sidebar storage:', error);
+  });

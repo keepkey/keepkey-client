@@ -1,21 +1,44 @@
 import { BaseStorage, createStorage, StorageType } from './base';
 
 type Theme = 'light' | 'dark';
+type SidebarPreference = boolean;
 
 type ThemeStorage = BaseStorage<Theme> & {
-  toggle: () => Promise<void>;
+  toggleTheme: () => Promise<void>;
 };
 
-const storage = createStorage<Theme>('theme-storage-key', 'dark', {
+type SidebarStorage = BaseStorage<SidebarPreference> & {
+  toggleSidebar: () => Promise<void>;
+};
+
+// Storage for theme preference
+const themeStorage = createStorage<Theme>('theme-storage-key', 'dark', {
   storageType: StorageType.Local,
   liveUpdate: true,
 });
 
+// Storage for sidebar preference
+const sidebarStorage = createStorage<SidebarPreference>('sidebar-storage-key', true, {
+  storageType: StorageType.Local,
+  liveUpdate: true,
+});
+
+// Example theme storage with a toggle function
 export const exampleThemeStorage: ThemeStorage = {
-  ...storage,
-  toggle: async () => {
-    await storage.set(currentTheme => {
-      return currentTheme === 'dark' ? 'dark' : 'dark';
+  ...themeStorage,
+  toggleTheme: async () => {
+    await themeStorage.set(currentTheme => {
+      return currentTheme === 'dark' ? 'light' : 'dark';
+    });
+  },
+};
+
+// Example sidebar storage with a toggle function
+export const exampleSidebarStorage: SidebarStorage = {
+  ...sidebarStorage,
+  toggleSidebar: async () => {
+    await sidebarStorage.set(currentSidebar => {
+      return currentSidebar === true ? false : true;
     });
   },
 };
