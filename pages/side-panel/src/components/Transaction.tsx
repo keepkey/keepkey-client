@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Button, Card, Flex, Heading, Text } from '@chakra-ui/react';
-import { requestStorage, approvalStorage } from '@chrome-extension-boilerplate/storage';
+import { requestStorage, approvalStorage } from '@extension/storage';
 
 const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => void }) => {
   const { gas, value, from, to, data } = event;

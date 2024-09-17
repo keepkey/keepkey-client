@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Flex, Text, Box } from '@chakra-ui/react';
 import { withErrorBoundary, withSuspense } from '@extension/shared';
-import axios from 'axios';
 
 import Connect from './components/Connect';
 import Loading from './components/Loading';
 import Balances from './components/Balances';
+import Asset from './components/Asset';
+import Transaction from './components/Transaction'; // Assuming you have this component
 
 const stateNames: { [key: number]: string } = {
   0: 'unknown',
@@ -19,14 +20,20 @@ const SidePanel = () => {
   const [balances, setBalances] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [keepkeyState, setKeepkeyState] = useState<number | null>(null);
-  const [signRequest, setSignRequest] = useState<any>(null);
+  const [assetContext, setAssetContext] = useState<any>(null); // Added asset context
+  const [transactionContext, setTransactionContext] = useState<any>(null); // Added transaction context
   const [isConnecting, setIsConnecting] = useState(false);
-  const [currentProvider, setCurrentProvider] = useState<any>(null);
 
   useEffect(() => {
     const messageListener = (message: any) => {
       if (message.type === 'KEEPKEY_STATE_CHANGED' && message.state !== undefined) {
         setKeepkeyState(message.state);
+      }
+      if (message.type === 'ASSET_CONTEXT_UPDATED' && message.assetContext) {
+        setAssetContext(message.assetContext); // Update asset context
+      }
+      if (message.type === 'TRANSACTION_CONTEXT_UPDATED' && message.transactionContext) {
+        setTransactionContext(message.transactionContext);
       }
     };
 
@@ -37,18 +44,29 @@ const SidePanel = () => {
   }, []);
 
   const renderContent = () => {
-    if (isConnecting) return <Loading setIsConnecting={setIsConnecting} keepkeyState={keepkeyState} />;
-
     switch (keepkeyState) {
-      case 0:
-      case 1:
+      case 0: // unknown
+      case 1: // disconnected
         return <Loading setIsConnecting={setIsConnecting} keepkeyState={keepkeyState} />;
-      case 2:
+
+      case 2: // connected
+        if (isConnecting || loading) {
+          return <Loading setIsConnecting={setIsConnecting} keepkeyState={keepkeyState} />;
+        }
+        if (transactionContext) {
+          return <Transaction transactionContext={transactionContext} />;
+        }
+        if (assetContext) {
+          return <Asset asset={assetContext} onClose={() => setAssetContext(null)} />;
+        }
         return <Balances balances={balances} loading={loading} />;
-      case 3:
+
+      case 3: // busy
         return <Loading setIsConnecting={setIsConnecting} keepkeyState={keepkeyState} />;
-      case 4:
+
+      case 4: // errored
         return <Connect setIsConnecting={setIsConnecting} />;
+
       default:
         return <Text>Device not connected.</Text>;
     }
@@ -62,6 +80,7 @@ const SidePanel = () => {
           {keepkeyState !== null ? stateNames[keepkeyState] : 'unknown'}
         </Text>
       </Box>
+      {keepkeyState === null && <Text>Device not connected or detected. Please connect your KeepKey device.</Text>}
       {renderContent()}
     </Flex>
   );

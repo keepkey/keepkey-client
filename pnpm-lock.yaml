@@ -447,6 +447,9 @@ importers:
 
   pages/side-panel:
     dependencies:
+      '@chakra-ui/icons':
+        specifier: ^2.1.1
+        version: 2.1.1(@chakra-ui/system@2.6.2)(react@18.3.1)
       '@chakra-ui/react':
         specifier: ^2.8.2
         version: 2.8.2(@emotion/react@11.13.3)(@emotion/styled@11.13.0)(@types/react@18.3.6)(framer-motion@11.5.4)(react-dom@18.3.1)(react@18.3.1)
@@ -462,9 +465,15 @@ importers:
       '@extension/storage':
         specifier: workspace:*
         version: link:../../packages/storage
+      '@pioneer-platform/helpers':
+        specifier: ^4.0.12
+        version: 4.0.12
       axios:
         specifier: ^1.7.7
         version: 1.7.7
+      canvas-confetti:
+        specifier: ^1.9.3
+        version: 1.9.3
       framer-motion:
         specifier: ^11.5.4
         version: 11.5.4(react-dom@18.3.1)(react@18.3.1)
@@ -889,6 +898,17 @@ packages:
       react: '>=18'
     dependencies:
       '@chakra-ui/shared-utils': 2.0.5
+      '@chakra-ui/system': 2.6.2(@emotion/react@11.13.3)(@emotion/styled@11.13.0)(react@18.3.1)
+      react: 18.3.1
+    dev: false
+
+  /@chakra-ui/icons@2.1.1(@chakra-ui/system@2.6.2)(react@18.3.1):
+    resolution: {integrity: sha512-3p30hdo4LlRZTT5CwoAJq3G9fHI0wDc0pBaMHj4SUn0yomO+RcDRlzhdXqdr5cVnzax44sqXJVnf3oQG0eI+4g==}
+    peerDependencies:
+      '@chakra-ui/system': '>=2.0.0'
+      react: '>=18'
+    dependencies:
+      '@chakra-ui/icon': 3.2.0(@chakra-ui/system@2.6.2)(react@18.3.1)
       '@chakra-ui/system': 2.6.2(@emotion/react@11.13.3)(@emotion/styled@11.13.0)(react@18.3.1)
       react: 18.3.1
     dev: false
@@ -3569,6 +3589,7 @@ packages:
 
   /@swagger-api/apidom-ns-json-schema-draft-4@1.0.0-alpha.9:
     resolution: {integrity: sha512-OfX4UBb08C0xD5+F80dQAM2yt5lXxcURWkVEeCwxz7i23BB3nNEbnZXNV91Qo9eaJflPh8dO9iiHQxvfw5IgSg==}
+    requiresBuild: true
     dependencies:
       '@babel/runtime-corejs3': 7.25.6
       '@swagger-api/apidom-ast': 1.0.0-alpha.9
@@ -5401,6 +5422,10 @@ packages:
   /caniuse-lite@1.0.30001660:
     resolution: {integrity: sha512-GacvNTTuATm26qC74pt+ad1fW15mlQ/zuTzzY1ZoIzECTP8HURDfF43kNxPgf7H1jmelCBQTTbBNxdSXOA7Bqg==}
     dev: true
+
+  /canvas-confetti@1.9.3:
+    resolution: {integrity: sha512-rFfTURMvmVEX1gyXFgn5QMn81bYk70qa0HLzcIOSVEyl57n6o9ItHeBtUSWdvKAPY0xlvBHno4/v3QPrT83q9g==}
+    dev: false
 
   /cashaddrjs@0.4.4:
     resolution: {integrity: sha512-xZkuWdNOh0uq/mxJIng6vYWfTowZLd9F4GMAlp2DwFHlcCqCm91NtuAc47RuV4L7r4PYcY5p6Cr2OKNb4hnkWA==}

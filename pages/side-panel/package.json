@@ -19,12 +19,15 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@chakra-ui/icons": "^2.1.1",
     "@chakra-ui/react": "^2.8.2",
     "@emotion/react": "^11.13.3",
     "@emotion/styled": "^11.13.0",
     "@extension/shared": "workspace:*",
     "@extension/storage": "workspace:*",
+    "@pioneer-platform/helpers": "^4.0.12",
     "axios": "^1.7.7",
+    "canvas-confetti": "^1.9.3",
     "framer-motion": "^11.5.4"
   },
   "devDependencies": {

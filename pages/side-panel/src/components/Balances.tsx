@@ -6,7 +6,6 @@ const Balances = () => {
   const [assets, setAssets] = useState<any[]>([]);
   const [assetContext, setAssetContext] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
-  const [app, setApp] = useState<any>({});
 
   // Function to format the balance
   const formatBalance = (balance: string) => {
@@ -74,6 +73,27 @@ const Balances = () => {
 
   const onSelect = (asset: any) => {
     console.log('Asset selected:', asset);
+    try {
+      chrome.runtime.sendMessage(
+        {
+          type: 'SET_ASSET_CONTEXT',
+          asset,
+        },
+        response => {
+          if (chrome.runtime.lastError) {
+            console.error('Error sending message:', chrome.runtime.lastError);
+          }
+          console.log('SET_ASSET_CONTEXT response: ', response);
+          if (response && response.error) {
+            console.error('Error setting asset context:', response.error);
+          } else {
+            console.log('Asset context set successfully:', response);
+          }
+        },
+      );
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const sortedAssets = [...assets]
@@ -95,7 +115,7 @@ const Balances = () => {
             Loading....
           </Flex>
         ) : assetContext ? (
-          <Asset usePioneer={app.usePioneer} onClose={() => setAssetContext(null)} asset={app?.assetContext} />
+          <Asset />
         ) : (
           <>
             {sortedAssets.length === 0 ? (

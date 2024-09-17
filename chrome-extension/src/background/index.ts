@@ -143,6 +143,31 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
     }
   }
 
+  if (message.type === 'SET_ASSET_CONTEXT') {
+    if (APP) {
+      console.log('SET_ASSET_CONTEXT: message: ', message);
+      if (message.asset && message.asset.caip) {
+        APP.setAssetContext(message.asset)
+          .then(response => {
+            console.log('Asset context set:', response);
+            chrome.runtime.sendMessage({
+              type: 'ASSET_CONTEXT_UPDATED',
+              assetContext: response, // Notify frontend about the change
+            });
+            sendResponse(response);
+          })
+          .catch(error => {
+            console.error('Error setting asset context:', error);
+            sendResponse({ error: 'Failed to fetch assets' });
+          });
+      }
+      return true;
+    } else {
+      console.error('APP not initialized');
+      sendResponse({ error: 'APP not initialized' });
+    }
+  }
+
   if (message.type === 'GET_ASSETS') {
     if (APP) {
       APP.getAssets()
@@ -155,6 +180,15 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           sendResponse({ error: 'Failed to fetch assets' });
         });
       return true; // Indicates the response will be sent asynchronously
+    } else {
+      sendResponse({ error: 'APP not initialized' });
+    }
+  }
+
+  if (message.type === 'GET_APP_PUBKEYS') {
+    if (APP) {
+      sendResponse({ balances: APP.pubkeys });
+      return true;
     } else {
       sendResponse({ error: 'APP not initialized' });
     }
