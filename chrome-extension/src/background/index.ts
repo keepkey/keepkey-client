@@ -7,6 +7,7 @@ import { JsonRpcProvider } from 'ethers';
 import { Chain } from '@coinmasters/types';
 import { exampleSidebarStorage } from '@extension/storage'; // Re-import the storage
 import { EIP155_CHAINS } from './chains';
+import axios from 'axios';
 
 const TAG = ' | background/index.js | ';
 console.log('Background script loaded');
@@ -16,7 +17,7 @@ const KEEPKEY_STATES = {
   0: 'unknown',
   1: 'disconnected',
   2: 'connected',
-  3: 'busy', // multi-user-action signing cannot be interrupted
+  3: 'busy',
   4: 'errored',
 };
 let KEEPKEY_STATE = 0;
@@ -31,48 +32,65 @@ function updateIcon() {
     }
   });
 }
+
+function pushStateChangeEvent() {
+  chrome.runtime.sendMessage({
+    type: 'KEEPKEY_STATE_CHANGED',
+    state: KEEPKEY_STATE,
+  });
+}
+
+async function checkKeepKey() {
+  try {
+    const response = await axios.get('http://localhost:1646/docs');
+    if (response.status === 200) {
+      KEEPKEY_STATE = 2; // Set state to connected
+      updateIcon();
+      pushStateChangeEvent();
+    }
+  } catch (error) {
+    console.error('KeepKey endpoint not found:', error);
+    KEEPKEY_STATE = 4; // Set state to errored
+    updateIcon();
+    pushStateChangeEvent();
+  }
+}
+
+// Call checkKeepKey every 5 seconds
+setInterval(checkKeepKey, 5000);
+
 updateIcon();
 console.log('Background loaded');
 
 const provider = new JsonRpcProvider(EIP155_CHAINS['eip155:1'].rpc);
 
-// KeepKey Initialization
 let ADDRESS = '';
-let APP:any = null;
+let APP: any = null;
 
 const onStart = async function () {
   const tag = TAG + ' | onStart | ';
   try {
     console.log(tag, 'Starting...');
-    // Connect to KeepKey
     const app = await onStartKeepkey();
-    console.log(tag, 'app: ', app);
     const address = await app.swapKit.getAddress(Chain.Ethereum);
-    console.log(tag, 'address: ', address);
     if (address) {
       KEEPKEY_STATE = 2;
       updateIcon();
+      pushStateChangeEvent();
     }
-    console.log(tag, 'address: ', address);
 
-    // Set addresses
     ADDRESS = address;
-    console.log(tag, '**** keepkey: ', app);
     APP = app;
-    console.log(tag, 'APP: ', APP);
 
-    // Start listening for approval events
     listenForApproval(APP, ADDRESS);
 
-    // Sync with KeepKey
+    await APP.getAssets();
     await APP.getPubkeys();
     await APP.getBalances();
-
-    //
-
   } catch (e) {
     KEEPKEY_STATE = 4; // errored
     updateIcon();
+    pushStateChangeEvent();
     console.error(tag, 'Error:', e);
   }
 };
@@ -84,33 +102,18 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
   console.log(tag, 'Received message:', message);
 
   if (message.type === 'WALLET_REQUEST') {
-    console.log(tag, 'Handling WALLET_REQUEST:', message);
-
-    // Extract requestInfo from the message
     const { requestInfo } = message;
-
-    // Now, extract method, params, and chain from requestInfo
     const { method, params, chain } = requestInfo;
-
-    console.log(tag, 'id:', requestInfo.id);
-    console.log(tag, 'chain:', chain);
-    console.log(tag, 'method:', method);
-    console.log(tag, 'params:', params);
 
     if (method) {
       handleWalletRequest(requestInfo, chain, method, params, provider, APP, ADDRESS)
-        .then(result => {
-          sendResponse({ result });
-        })
-        .catch(error => {
-          sendResponse({ error: error.message });
-        });
+        .then(result => sendResponse({ result }))
+        .catch(error => sendResponse({ error: error.message }));
     } else {
-      console.log(tag, 'Invalid WALLET_REQUEST: Missing method');
       sendResponse({ error: 'Invalid request: missing method' });
     }
 
-    return true; // Indicates that the response will be sent asynchronously
+    return true;
   }
 
   if (message.type === 'GET_KEEPKEY_STATE') {
@@ -122,43 +125,45 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
     onStart();
     setTimeout(() => {
       sendResponse({ state: KEEPKEY_STATE });
-    }, 15000); // 15 seconds delay
+    }, 15000);
     return true;
   }
 
   if (message.type === 'GET_APP') {
     sendResponse({ app: APP });
-    return true
+    return true;
   }
 
-  if (message.type === 'GET_APP_ASSET_CONTEXT') {
-    return APP.assetContext
-  }
-
-  if (message.type === 'GET_APP_PATHS') {
-    return APP.paths
-  }
-
-  if (message.type === 'GET_APP_PUBKEYS') {
-    return APP.pubkeys
+  if (message.type === 'GET_ASSET_CONTEXT') {
+    if (APP) {
+      sendResponse({ assets: APP.assetContext });
+      return true;
+    } else {
+      sendResponse({ error: 'APP not initialized' });
+    }
   }
 
   if (message.type === 'GET_ASSETS') {
     if (APP) {
-      sendResponse({ assets: APP.assets });
-      return true; // Async response
+      APP.getAssets()
+        .then(assets => {
+          console.log('Assets fetched:', assets);
+          sendResponse({ assets: assets });
+        })
+        .catch(error => {
+          console.error('Error fetching assets:', error);
+          sendResponse({ error: 'Failed to fetch assets' });
+        });
+      return true; // Indicates the response will be sent asynchronously
     } else {
       sendResponse({ error: 'APP not initialized' });
     }
   }
-
-  return false;
-});
 
   if (message.type === 'GET_APP_BALANCES') {
     if (APP) {
       sendResponse({ balances: APP.balances });
-      return true; // Async response
+      return true;
     } else {
       sendResponse({ error: 'APP not initialized' });
     }
@@ -167,16 +172,11 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
   return false;
 });
 
-// Example usage of exampleSidebarStorage to get the user's preference
 exampleSidebarStorage
   .get()
   .then(openSidebar => {
-    console.log('openSidebar:', openSidebar);
-    // Update the click handler for the extension icon
     chrome.action.onClicked.addListener((tab: any) => {
-      // Check the user's preference for opening the side panel or popup
       if (openSidebar === true) {
-        // If true, open the side panel
         chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
           chrome.sidePanel.open({ tabId: tab.id }, () => {
             if (chrome.runtime.lastError) {
@@ -185,7 +185,6 @@ exampleSidebarStorage
           });
         });
       } else {
-        // Otherwise, fallback to popup
         chrome.action.setPopup({ popup: 'popup/index.html' });
         chrome.action.openPopup();
       }

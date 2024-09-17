@@ -24,6 +24,7 @@
     "@emotion/styled": "^11.13.0",
     "@extension/shared": "workspace:*",
     "@extension/storage": "workspace:*",
+    "axios": "^1.7.7",
     "framer-motion": "^11.5.4"
   },
   "devDependencies": {
