@@ -419,6 +419,18 @@ importers:
 
   pages/popup:
     dependencies:
+      '@chakra-ui/icons':
+        specifier: ^2.1.1
+        version: 2.1.1(@chakra-ui/system@2.6.2)(react@18.3.1)
+      '@chakra-ui/react':
+        specifier: ^2.8.2
+        version: 2.8.2(@emotion/react@11.13.3)(@emotion/styled@11.13.0)(@types/react@18.3.6)(framer-motion@11.5.4)(react-dom@18.3.1)(react@18.3.1)
+      '@emotion/react':
+        specifier: ^11.13.3
+        version: 11.13.3(@types/react@18.3.6)(react@18.3.1)
+      '@emotion/styled':
+        specifier: ^11.13.0
+        version: 11.13.0(@emotion/react@11.13.3)(@types/react@18.3.6)(react@18.3.1)
       '@extension/content-runtime-script':
         specifier: workspace:*
         version: link:../content-runtime
@@ -428,6 +440,9 @@ importers:
       '@extension/storage':
         specifier: workspace:*
         version: link:../../packages/storage
+      framer-motion:
+        specifier: ^11.5.4
+        version: 11.5.4(react-dom@18.3.1)(react@18.3.1)
     devDependencies:
       '@extension/tailwindcss-config':
         specifier: workspace:*
