@@ -87,11 +87,11 @@ const openPopup = function () {
   }
 };
 
-const requireApproval = async function (requestInfo: any, chain: any, method: string, params: any) {
+const requireApproval = async function (requestInfo, chain, method, params) {
   const tag = TAG + ' | requireApproval | ';
   try {
     isPopupOpen = true;
-    const event: Event = {
+    const event = {
       id: uuidv4(),
       type: method,
       request: params,
@@ -101,14 +101,29 @@ const requireApproval = async function (requestInfo: any, chain: any, method: st
     console.log(tag, 'Requesting approval for event:', event);
     const eventSaved = await requestStorage.addEvent(event);
     if (eventSaved) {
-      console.log(tag, 'eventSaved:', eventSaved);
       console.log(tag, 'Event saved:', event);
     } else {
       throw new Error('Event not saved');
     }
-    // openPopup();
+    openPopup();
+
+    // Wait for user's decision and return the result
+    return new Promise(resolve => {
+      const listener = (message, sender, sendResponse) => {
+        if (message.action === 'eth_sign_response' && message.response.eventId === event.id) {
+          chrome.runtime.onMessage.removeListener(listener);
+          if (message.response.decision === 'accept') {
+            resolve({ success: true });
+          } else {
+            resolve({ success: false });
+          }
+        }
+      };
+      chrome.runtime.onMessage.addListener(listener);
+    });
   } catch (e) {
     console.error(tag, e);
+    return { success: false }; // Return failure in case of error
   }
 };
 

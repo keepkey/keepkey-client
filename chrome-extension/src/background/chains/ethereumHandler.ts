@@ -231,10 +231,15 @@ export const handleEthereumRequest = async (
     case 'eth_signTypedData_v3':
     case 'eth_signTypedData_v4': {
       // Require user approval
-      await requireApproval(requestInfo, 'ethereum', method, params[0]);
-      // Process the approved event
-      const approvalResponse = await processApprovedEvent(method, params, CURRENT_PROVIDER, KEEPKEY_WALLET, ADDRESS);
-      return approvalResponse;
+      const result = await requireApproval(requestInfo, 'ethereum', method, params[0]);
+      console.log(tag, 'result:', result);
+
+      if (result.success) {
+        const approvalResponse = await processApprovedEvent(method, params, CURRENT_PROVIDER, KEEPKEY_WALLET, ADDRESS);
+        return approvalResponse;
+      } else {
+        throw createProviderRpcError(4200, 'User denied transaction');
+      }
     }
     case 'eth_getEncryptionPublicKey': {
       throw createProviderRpcError(4200, 'Method eth_getEncryptionPublicKey not supported');
