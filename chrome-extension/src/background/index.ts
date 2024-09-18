@@ -78,7 +78,7 @@ const onStart = async function () {
       updateIcon();
       pushStateChangeEvent();
     }
-
+    console.log(tag, 'address:', address);
     ADDRESS = address;
     APP = app;
 
