@@ -116,7 +116,7 @@ const requireUnlock = async function () {
   const tag = TAG + ' | requireUnlock | ';
   try {
     console.log(tag, 'requireUnlock for domain');
-    openPopup();
+    // openPopup();
   } catch (e) {
     console.error(e);
     isPopupOpen = false;
@@ -140,10 +140,10 @@ export const handleWalletRequest = async (
     if (!chain) throw Error('Chain not provided!');
     if (!requestInfo) throw Error('Cannot validate request! Refusing to proceed.');
 
-    if (!ADDRESS || !ADDRESS.length) {
-      console.log('Device is not paired!');
-      await requireUnlock();
-    }
+    // if (!ADDRESS || !ADDRESS.length) {
+    //   console.log('Device is not paired!');
+    //   await requireUnlock();
+    // }
 
     switch (chain) {
       case 'ethereum': {
