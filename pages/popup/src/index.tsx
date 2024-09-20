@@ -1,6 +1,5 @@
 import { createRoot } from 'react-dom/client';
 import { useEffect } from 'react';
-import '@src/index.css';
 import { ChakraProvider, useColorMode } from '@chakra-ui/react';
 import { theme } from '@src/styles/theme';
 import Popup from '@src/Popup';

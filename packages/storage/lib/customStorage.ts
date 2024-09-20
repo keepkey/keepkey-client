@@ -128,7 +128,7 @@ const createEventStorage = (key: string): EventStorage => {
 
   return {
     ...storage,
-    addEvent: async (event: Event): Promise<boolean> => {
+    addEvent: async (event: any): Promise<boolean> => {
       const tag = TAG + ' | addEvent | ';
       try {
         const eventWithId = { ...event, timestamp: new Date().toISOString() };

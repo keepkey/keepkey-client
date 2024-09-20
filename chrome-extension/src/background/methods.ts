@@ -1,6 +1,8 @@
 import { JsonRpcProvider } from 'ethers';
 import { requestStorage } from '@extension/storage';
 // import axios from 'axios';
+import { caipToNetworkId, shortListNameToCaip } from '@pioneer-platform/pioneer-caip';
+
 //@ts-ignore
 import { v4 as uuidv4 } from 'uuid';
 import { handleEthereumRequest } from './chains/ethereumHandler';
@@ -87,12 +89,51 @@ const openPopup = function () {
   }
 };
 
+/*
+  "requestInfo": {
+    "chain": "ethereum",
+    "href": "http://localhost:5173/",
+    "id": 1,
+    "language": "en-US",
+    "method": "personal_sign",
+    "params": [
+      "Hello, World!",
+      null
+    ],
+    "platform": "MacIntel",
+    "referrer": "",
+    "requestTime": "2024-09-19T20:33:37.020Z",
+    "scriptSource": "KeepKey Extension",
+    "siteUrl": "http://localhost:5173/",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+    "version": "1.0.7"
+  },
+
+
+ */
+
 const requireApproval = async function (requestInfo, chain, method, params) {
   const tag = TAG + ' | requireApproval | ';
   try {
     isPopupOpen = true;
+    //chain to networkId
+    const networkId = caipToNetworkId(shortListNameToCaip[chain]);
+    if (!networkId) throw Error('unhandled chain ' + chain);
+    console.log(tag, 'NetworkId:', networkId);
     const event = {
       id: uuidv4(),
+      networkId,
+      chain,
+      href: requestInfo.href,
+      language: requestInfo.language,
+      platform: requestInfo.platform,
+      referrer: requestInfo.referrer,
+      requestTime: requestInfo.requestTime,
+      scriptSource: requestInfo.scriptSource,
+      siteUrl: requestInfo.siteUrl,
+      userAgent: requestInfo.userAgent,
+      injectScriptVersion: requestInfo.version,
+      requestInfo,
       type: method,
       request: params,
       status: 'request',

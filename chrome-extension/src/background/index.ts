@@ -2,7 +2,7 @@ import 'webextension-polyfill';
 import packageJson from '../../package.json'; // Adjust the path as needed
 import { onStartKeepkey } from './keepkey';
 import { handleWalletRequest } from './methods';
-import { listenForApproval } from './approvals';
+// import { listenForApproval } from './approvals';
 import { JsonRpcProvider } from 'ethers';
 import { Chain } from '@coinmasters/types';
 import { exampleSidebarStorage } from '@extension/storage'; // Re-import the storage
@@ -82,7 +82,7 @@ const onStart = async function () {
     ADDRESS = address;
     APP = app;
 
-    listenForApproval(APP, ADDRESS);
+    // listenForApproval(APP, ADDRESS);
 
     await APP.getAssets();
     await APP.getPubkeys();

@@ -1,6 +1,6 @@
 {
   "name": "@extension/popup",
-  "version": "0.3.2",
+  "version": "0.3.5",
   "description": "chrome extension - popup",
   "private": true,
   "sideEffects": true,
@@ -26,7 +26,8 @@
     "@extension/content-runtime-script": "workspace:*",
     "@extension/shared": "workspace:*",
     "@extension/storage": "workspace:*",
-    "framer-motion": "^11.5.4"
+    "framer-motion": "^11.5.4",
+    "react-code-blocks": "^0.1.6"
   },
   "devDependencies": {
     "@extension/tailwindcss-config": "workspace:*",

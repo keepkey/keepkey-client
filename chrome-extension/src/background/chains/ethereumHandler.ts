@@ -230,6 +230,8 @@ export const handleEthereumRequest = async (
     case 'eth_signTypedData':
     case 'eth_signTypedData_v3':
     case 'eth_signTypedData_v4': {
+      console.log(tag, 'method:', method);
+      console.log(tag, 'params:', params);
       // Require user approval
       const result = await requireApproval(requestInfo, 'ethereum', method, params[0]);
       console.log(tag, 'result:', result);
@@ -291,25 +293,72 @@ const processApprovedEvent = async (
   }
 };
 
-const signMessage = async (message: any, KEEPKEY_WALLET: any, ADDRESS: string) => {
+const signMessage = async (message, KEEPKEY_WALLET, ADDRESS) => {
+  const tag = TAG + ' [signMessage] ';
   try {
-    console.log('signMessage: ', message);
-    const messageFormatted = `0x${Buffer.from(
-      Uint8Array.from(typeof message === 'string' ? new TextEncoder().encode(message) : message),
-    ).toString('hex')}`;
+    console.log(tag, 'signMessage: ', message);
 
-    let wallet = await KEEPKEY_WALLET.swapKit.getWallet(Chain.Ethereum);
-    const signedMessage = await wallet.ethSign({
-      addressNList: [2147483692, 2147483708, 2147483648, 0, 0],
-      message: messageFormatted,
-      address: ADDRESS,
-    });
-    return signedMessage.signature;
+    let messageFormatted;
+
+    // Check if the message is a hex string starting with '0x'
+    if (typeof message === 'string' && message.startsWith('0x')) {
+      // Message is already a hex string, use it directly
+      messageFormatted = message;
+    } else if (typeof message === 'string') {
+      // Message is a string, encode it to bytes and convert to hex
+      const encoder = new TextEncoder();
+      const messageBytes = encoder.encode(message);
+
+      const messageHex = Array.from(messageBytes)
+        .map(byte => byte.toString(16).padStart(2, '0'))
+        .join('');
+
+      messageFormatted = `0x${messageHex}`;
+    } else if (message instanceof Uint8Array || Array.isArray(message)) {
+      // Message is a byte array, convert to hex string
+      const messageHex = Array.from(message)
+        .map(byte => byte.toString(16).padStart(2, '0'))
+        .join('');
+
+      messageFormatted = `0x${messageHex}`;
+    } else {
+      throw new Error('Invalid message format');
+    }
+
+    console.log('messageFormatted:', messageFormatted);
+
+    // Proceed with signing
+    const wallet = await KEEPKEY_WALLET.swapKit.getWallet(Chain.Ethereum);
+    console.log('wallet:', wallet);
+
+    const signedMessage = await wallet.signMessage(messageFormatted);
+    console.log(tag, 'signedMessage:', signedMessage);
+    return signedMessage;
   } catch (e) {
     console.error(e);
     throw createProviderRpcError(4000, 'Error signing message', e);
   }
 };
+
+// const signMessage = async (message: any, KEEPKEY_WALLET: any, ADDRESS: string) => {
+//   try {
+//     console.log('signMessage: ', message);
+//     const messageFormatted = `0x${Buffer.from(
+//       Uint8Array.from(typeof message === 'string' ? new TextEncoder().encode(message) : message),
+//     ).toString('hex')}`;
+//
+//     const wallet = await KEEPKEY_WALLET.swapKit.getWallet(Chain.Ethereum);
+//     const signedMessage = await wallet.signMessage({
+//       addressNList: [2147483692, 2147483708, 2147483648, 0, 0],
+//       message: messageFormatted,
+//       address: ADDRESS,
+//     });
+//     return signedMessage.signature;
+//   } catch (e) {
+//     console.error(e);
+//     throw createProviderRpcError(4000, 'Error signing message', e);
+//   }
+// };
 
 const signTransaction = async (transaction: any, provider: JsonRpcProvider, KEEPKEY_WALLET: any) => {
   const tag = ' | signTransaction | ';
