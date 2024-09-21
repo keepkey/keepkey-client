@@ -26,8 +26,8 @@ import Connect from './components/Connect';
 import Loading from './components/Loading';
 import Balances from './components/Balances';
 import Asset from './components/Asset';
-import Transaction from './components/Transaction';
-import Context from './components/Context';
+// import Transaction from './components/Transaction';
+// import Context from './components/Context';
 
 const stateNames: { [key: number]: string } = {
   0: 'unknown',
@@ -72,9 +72,6 @@ const SidePanel = () => {
       case 1:
         return <Loading setIsConnecting={setIsConnecting} keepkeyState={keepkeyState} />;
       case 2:
-        if (transactionContext) {
-          return <Transaction transactionContext={transactionContext} />;
-        }
         if (assetContext) {
           return <Asset asset={assetContext} onClose={() => setAssetContext(null)} />;
         }
@@ -101,7 +98,7 @@ const SidePanel = () => {
           ) : (
             <IconButton icon={<SettingsIcon />} aria-label="Settings" onClick={onSettingsOpen} />
           )}
-          <Context setAssetContext={setAssetContext} />
+          {/*<Context setAssetContext={setAssetContext} />*/}
           <IconButton
             icon={<RepeatIcon />}
             aria-label="Refresh"

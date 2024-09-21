@@ -94,14 +94,12 @@ const onStart = async function () {
     console.log(tag, 'balances:', balances);
     console.log(tag, 'balances:', balances.length);
 
-    const pubkeysEth = KEEPKEY_WALLET.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.Ethereum]));
+    const pubkeysEth = APP.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.Ethereum]));
     if (pubkeysEth.length > 0) {
       console.log(tag, 'pubkeys:', pubkeysEth);
       const address = pubkeysEth[0].address;
       if (address) {
         ADDRESS = address;
-        APP = app;
-
         KEEPKEY_STATE = 2;
         updateIcon();
         pushStateChangeEvent();
