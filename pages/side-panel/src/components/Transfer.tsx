@@ -39,6 +39,7 @@ export function Transfer({}: any): JSX.Element {
   const [sendAmount, setSendAmount] = useState<any | undefined>();
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [memo, setMemo] = useState('');
+  const [assetContext, setAssetContext] = useState({});
   const [recipient, setRecipient] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
   const [priceUsd, setPriceUsd] = useState<number | null>(null);
@@ -54,11 +55,14 @@ export function Transfer({}: any): JSX.Element {
   useEffect(() => {
     // Request asset context and set initial state
     chrome.runtime.sendMessage({ type: 'GET_ASSET_CONTEXT' }, response => {
-      if (response?.assetContext?.icon) {
-        setAvatarUrl(response.assetContext.icon);
+      console.log('response:', response);
+      console.log('response:', response.assets.icon);
+      setAssetContext(response.assets);
+      if (response?.assets.icon) {
+        setAvatarUrl(response.assets.icon);
       }
-      if (response?.assetContext?.priceUsd) {
-        setPriceUsd(response.assetContext.priceUsd);
+      if (response?.assets.priceUsd) {
+        setPriceUsd(response.assets.priceUsd);
       }
     });
   }, []);
@@ -195,13 +199,13 @@ export function Transfer({}: any): JSX.Element {
           <Avatar size="xl" src={avatarUrl} />
           <Box>
             <Text mb={2}>
-              Asset: <Badge colorScheme="green">Crypto Asset</Badge>
+              Asset: <Badge colorScheme="green">{assetContext?.name}</Badge>
             </Text>
             <Text mb={2}>
-              Chain: <Badge colorScheme="green">Chain</Badge>
+              Chain: <Badge colorScheme="green">{assetContext?.networkId}</Badge>
             </Text>
             <Text mb={4}>
-              Symbol: <Badge colorScheme="green">Symbol</Badge>
+              Symbol: <Badge colorScheme="green">{assetContext?.symbol}</Badge>
             </Text>
             <Text mb={4}>Max Spendable: {maxSpendable} Symbol</Text>
             <Badge colorScheme="teal" fontSize="sm">
