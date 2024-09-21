@@ -67,27 +67,28 @@ export function Transfer({}: any): JSX.Element {
     let tag = TAG + ' | onStart Transfer | ';
     console.log(tag, 'Starting Transfer process');
 
-    chrome.runtime.sendMessage({ type: 'GET_ASSETS' }, response => {
-      const assets = response.assets;
-      const selectedAsset = assets.find((asset: any) => asset.selected);
-
-      if (selectedAsset && selectedAsset.priceUsd) {
-        setPriceUsd(selectedAsset.priceUsd);
-
-        chrome.runtime.sendMessage(
-          {
-            type: 'GET_MAX_SPENDABLE',
-            assetCaip: selectedAsset.caip,
-          },
-          maxSpendableResponse => {
-            if (maxSpendableResponse) {
-              setMaxSpendable(maxSpendableResponse.maxSpendable);
-              setLoadingMaxSpendable(false);
-            }
-          },
-        );
-      }
-    });
+    chrome.runtime.sendMessage(
+      {
+        type: 'GET_MAX_SPENDABLE',
+      },
+      maxSpendableResponse => {
+        console.log('maxSpendableResponse:', maxSpendableResponse);
+        if (maxSpendableResponse && maxSpendableResponse.maxSpendable) {
+          setMaxSpendable(maxSpendableResponse.maxSpendable);
+          setLoadingMaxSpendable(false);
+        } else {
+          console.error('Error fetching max spendable amount:', maxSpendableResponse?.error || 'Unknown error');
+          toast({
+            title: 'Error',
+            description: 'Failed to fetch max spendable amount.',
+            status: 'error',
+            duration: 5000,
+            isClosable: true,
+          });
+          setLoadingMaxSpendable(false);
+        }
+      },
+    );
   };
 
   useEffect(() => {

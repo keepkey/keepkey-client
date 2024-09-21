@@ -119,113 +119,299 @@ const onStart = async function () {
 onStart();
 
 chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: any) => {
-  const tag = TAG + ' | chrome.runtime.onMessage | ';
-  console.log(tag, 'Received message:', message);
+  (async () => {
+    const tag = TAG + ' | chrome.runtime.onMessage | ';
+    console.log(tag, 'Received message:', message);
 
-  if (message.type === 'WALLET_REQUEST') {
-    const { requestInfo } = message;
-    const { method, params, chain } = requestInfo;
+    try {
+      switch (message.type) {
+        case 'WALLET_REQUEST': {
+          const { requestInfo } = message;
+          const { method, params, chain } = requestInfo;
 
-    if (method) {
-      handleWalletRequest(requestInfo, chain, method, params, provider, APP, ADDRESS)
-        .then(result => sendResponse({ result }))
-        .catch(error => sendResponse({ error: error.message }));
-    } else {
-      sendResponse({ error: 'Invalid request: missing method' });
-    }
+          if (method) {
+            try {
+              const result = await handleWalletRequest(requestInfo, chain, method, params, provider, APP, ADDRESS);
+              sendResponse({ result });
+            } catch (error) {
+              sendResponse({ error: error.message });
+            }
+          } else {
+            sendResponse({ error: 'Invalid request: missing method' });
+          }
+          break;
+        }
 
-    return true;
-  }
+        case 'GET_KEEPKEY_STATE': {
+          sendResponse({ state: KEEPKEY_STATE });
+          break;
+        }
 
-  if (message.type === 'GET_KEEPKEY_STATE') {
-    sendResponse({ state: KEEPKEY_STATE });
-    return true;
-  }
+        case 'ON_START': {
+          onStart();
+          setTimeout(() => {
+            sendResponse({ state: KEEPKEY_STATE });
+          }, 15000);
+          break;
+        }
 
-  if (message.type === 'ON_START') {
-    onStart();
-    setTimeout(() => {
-      sendResponse({ state: KEEPKEY_STATE });
-    }, 15000);
-    return true;
-  }
+        case 'GET_APP': {
+          sendResponse({ app: APP });
+          break;
+        }
 
-  if (message.type === 'GET_APP') {
-    sendResponse({ app: APP });
-    return true;
-  }
+        case 'GET_ASSET_CONTEXT': {
+          if (APP) {
+            sendResponse({ assets: APP.assetContext });
+          } else {
+            sendResponse({ error: 'APP not initialized' });
+          }
+          break;
+        }
 
-  if (message.type === 'GET_ASSET_CONTEXT') {
-    if (APP) {
-      sendResponse({ assets: APP.assetContext });
-      return true;
-    } else {
-      sendResponse({ error: 'APP not initialized' });
-    }
-  }
+        case 'GET_MAX_SPENDABLE': {
+          if (APP) {
+            console.log(tag, 'GET_MAX_SPENDABLE');
+            const assetContext = APP.assetContext;
+            if (!assetContext) throw new Error('Invalid asset context. Missing assetContext.');
 
-  if (message.type === 'SET_ASSET_CONTEXT') {
-    if (APP) {
-      console.log('SET_ASSET_CONTEXT: message: ', message);
-      if (message.asset && message.asset.caip) {
-        APP.setAssetContext(message.asset)
-          .then(response => {
-            console.log('Asset context set:', response);
-            chrome.runtime.sendMessage({
-              type: 'ASSET_CONTEXT_UPDATED',
-              assetContext: response, // Notify frontend about the change
+            let pubkeys = await APP.pubkeys;
+            pubkeys = pubkeys.filter((pubkey: any) => pubkey.networks.includes(assetContext.networkId));
+            console.log('onStart Transfer pubkeys', pubkeys);
+
+            if (!assetContext.caip) throw new Error('Invalid asset context. Missing caip.');
+
+            const estimatePayload: any = {
+              feeRate: 10,
+              caip: assetContext.caip,
+              pubkeys,
+              memo: '',
+              recipient: '',
+            };
+
+            const maxSpendableAmount = await APP.swapKit.estimateMaxSendableAmount({
+              chain: assetContext.chain,
+              params: estimatePayload,
             });
-            sendResponse(response);
-          })
-          .catch(error => {
-            console.error('Error setting asset context:', error);
-            sendResponse({ error: 'Failed to fetch assets' });
-          });
+
+            console.log('maxSpendableAmount', maxSpendableAmount);
+            console.log('maxSpendableAmount string value', maxSpendableAmount.getValue('string'));
+
+            sendResponse({ maxSpendable: maxSpendableAmount.getValue('string') });
+          } else {
+            sendResponse({ error: 'APP not initialized' });
+          }
+          break;
+        }
+
+        case 'SET_ASSET_CONTEXT': {
+          if (APP) {
+            const { asset } = message;
+            if (asset && asset.caip) {
+              try {
+                const response = await APP.setAssetContext(asset);
+                console.log('Asset context set:', response);
+                chrome.runtime.sendMessage({
+                  type: 'ASSET_CONTEXT_UPDATED',
+                  assetContext: response, // Notify frontend about the change
+                });
+                sendResponse(response);
+              } catch (error) {
+                console.error('Error setting asset context:', error);
+                sendResponse({ error: 'Failed to fetch assets' });
+              }
+            }
+          } else {
+            sendResponse({ error: 'APP not initialized' });
+          }
+          break;
+        }
+
+        case 'GET_ASSETS': {
+          if (APP) {
+            try {
+              const assets = await APP.getAssets();
+              console.log('Assets fetched:', assets);
+              sendResponse({ assets });
+            } catch (error) {
+              console.error('Error fetching assets:', error);
+              sendResponse({ error: 'Failed to fetch assets' });
+            }
+          } else {
+            sendResponse({ error: 'APP not initialized' });
+          }
+          break;
+        }
+
+        case 'GET_APP_PUBKEYS': {
+          if (APP) {
+            sendResponse({ balances: APP.pubkeys });
+          } else {
+            sendResponse({ error: 'APP not initialized' });
+          }
+          break;
+        }
+
+        case 'GET_APP_BALANCES': {
+          if (APP) {
+            sendResponse({ balances: APP.balances });
+          } else {
+            sendResponse({ error: 'APP not initialized' });
+          }
+          break;
+        }
+
+        default:
+          sendResponse({ error: 'Unknown message type' });
       }
-      return true;
-    } else {
-      console.error('APP not initialized');
-      sendResponse({ error: 'APP not initialized' });
+    } catch (error) {
+      console.error('Error handling message:', error);
+      sendResponse({ error: error.message });
     }
-  }
+  })();
 
-  if (message.type === 'GET_ASSETS') {
-    if (APP) {
-      APP.getAssets()
-        .then(assets => {
-          console.log('Assets fetched:', assets);
-          sendResponse({ assets: assets });
-        })
-        .catch(error => {
-          console.error('Error fetching assets:', error);
-          sendResponse({ error: 'Failed to fetch assets' });
-        });
-      return true; // Indicates the response will be sent asynchronously
-    } else {
-      sendResponse({ error: 'APP not initialized' });
-    }
-  }
-
-  if (message.type === 'GET_APP_PUBKEYS') {
-    if (APP) {
-      sendResponse({ balances: APP.pubkeys });
-      return true;
-    } else {
-      sendResponse({ error: 'APP not initialized' });
-    }
-  }
-
-  if (message.type === 'GET_APP_BALANCES') {
-    if (APP) {
-      sendResponse({ balances: APP.balances });
-      return true;
-    } else {
-      sendResponse({ error: 'APP not initialized' });
-    }
-  }
-
-  return false;
+  // Return true to indicate that the response will be sent asynchronously
+  return true;
 });
+
+// chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: any) => {
+//   const tag = TAG + ' | chrome.runtime.onMessage | ';
+//   console.log(tag, 'Received message:', message);
+//
+//   if (message.type === 'WALLET_REQUEST') {
+//     const { requestInfo } = message;
+//     const { method, params, chain } = requestInfo;
+//
+//     if (method) {
+//       handleWalletRequest(requestInfo, chain, method, params, provider, APP, ADDRESS)
+//         .then(result => sendResponse({ result }))
+//         .catch(error => sendResponse({ error: error.message }));
+//     } else {
+//       sendResponse({ error: 'Invalid request: missing method' });
+//     }
+//
+//     return true;
+//   }
+//
+//   if (message.type === 'GET_KEEPKEY_STATE') {
+//     sendResponse({ state: KEEPKEY_STATE });
+//     return true;
+//   }
+//
+//   if (message.type === 'ON_START') {
+//     onStart();
+//     setTimeout(() => {
+//       sendResponse({ state: KEEPKEY_STATE });
+//     }, 15000);
+//     return true;
+//   }
+//
+//   if (message.type === 'GET_APP') {
+//     sendResponse({ app: APP });
+//     return true;
+//   }
+//
+//   if (message.type === 'GET_ASSET_CONTEXT') {
+//     if (APP) {
+//       sendResponse({ assets: APP.assetContext });
+//       return true;
+//     } else {
+//       sendResponse({ error: 'APP not initialized' });
+//     }
+//   }
+//
+//   if (message.type === 'GET_MAX_SPENDABLE') {
+//     if (APP) {
+//       console.log(tag,'GET_MAX_SPENDABLE')
+//       const assetContext = APP.assetContext
+//       if(!assetContext) throw Error('Invalid asset context. Missing assetContext.');
+//
+//       let pubkeys = await APP.pubkeys;
+//       pubkeys = pubkeys.filter((pubkey: any) => pubkey.networks.includes(assetContext.networkId));
+//       console.log("onStart Transfer pubkeys", pubkeys);
+//
+//       if (!assetContext.caip) throw Error('Invalid asset context. Missing caip.');
+//       const estimatePayload: any = {
+//         feeRate: 10,
+//         caip: assetContext.caip,
+//         pubkeys,
+//         memo:'',
+//         recipient:'',
+//       };
+//       const maxSpendableAmount = await APP.swapKit.estimateMaxSendableAmount({ chain: assetContext.chain, params: estimatePayload });
+//       console.log("maxSpendableAmount", maxSpendableAmount);
+//       console.log("maxSpendableAmount", maxSpendableAmount.getValue('string'));
+//       console.log("onStart Transfer pubkeys", pubkeys);
+//       return maxSpendableAmount;
+//     } else {
+//       console.error('APP not initialized');
+//       sendResponse({ error: 'APP not initialized' });
+//     }
+//   }
+//
+//
+//   if (message.type === 'SET_ASSET_CONTEXT') {
+//     if (APP) {
+//       console.log('SET_ASSET_CONTEXT: message: ', message);
+//       if (message.asset && message.asset.caip) {
+//         APP.setAssetContext(message.asset)
+//           .then(response => {
+//             console.log('Asset context set:', response);
+//             chrome.runtime.sendMessage({
+//               type: 'ASSET_CONTEXT_UPDATED',
+//               assetContext: response, // Notify frontend about the change
+//             });
+//             sendResponse(response);
+//           })
+//           .catch(error => {
+//             console.error('Error setting asset context:', error);
+//             sendResponse({ error: 'Failed to fetch assets' });
+//           });
+//       }
+//       return true;
+//     } else {
+//       console.error('APP not initialized');
+//       sendResponse({ error: 'APP not initialized' });
+//     }
+//   }
+//
+//   if (message.type === 'GET_ASSETS') {
+//     if (APP) {
+//       APP.getAssets()
+//         .then(assets => {
+//           console.log('Assets fetched:', assets);
+//           sendResponse({ assets: assets });
+//         })
+//         .catch(error => {
+//           console.error('Error fetching assets:', error);
+//           sendResponse({ error: 'Failed to fetch assets' });
+//         });
+//       return true; // Indicates the response will be sent asynchronously
+//     } else {
+//       sendResponse({ error: 'APP not initialized' });
+//     }
+//   }
+//
+//   if (message.type === 'GET_APP_PUBKEYS') {
+//     if (APP) {
+//       sendResponse({ balances: APP.pubkeys });
+//       return true;
+//     } else {
+//       sendResponse({ error: 'APP not initialized' });
+//     }
+//   }
+//
+//   if (message.type === 'GET_APP_BALANCES') {
+//     if (APP) {
+//       sendResponse({ balances: APP.balances });
+//       return true;
+//     } else {
+//       sendResponse({ error: 'APP not initialized' });
+//     }
+//   }
+//
+//   return false;
+// });
 
 exampleSidebarStorage
   .get()
