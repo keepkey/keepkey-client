@@ -4,6 +4,7 @@ import { onStartKeepkey } from './keepkey';
 import { handleWalletRequest } from './methods';
 // import { listenForApproval } from './approvals';
 import { JsonRpcProvider } from 'ethers';
+import { ChainToNetworkId } from '@pioneer-platform/pioneer-caip';
 import { Chain } from '@coinmasters/types';
 import { exampleSidebarStorage } from '@extension/storage'; // Re-import the storage
 import { EIP155_CHAINS } from './chains';
@@ -71,22 +72,44 @@ const onStart = async function () {
   const tag = TAG + ' | onStart | ';
   try {
     console.log(tag, 'Starting...');
-    const app = await onStartKeepkey();
-    const address = await app.swapKit.getAddress(Chain.Ethereum);
-    if (address) {
-      KEEPKEY_STATE = 2;
-      updateIcon();
-      pushStateChangeEvent();
-    }
-
-    ADDRESS = address;
-    APP = app;
+    APP = await onStartKeepkey();
+    console.log(tag, 'APP:', APP);
 
     // listenForApproval(APP, ADDRESS);
 
     await APP.getAssets();
+
+    const assetsMap = APP.assetsMap;
+    console.log(tag, 'assetsMap:', assetsMap);
+
     await APP.getPubkeys();
+
+    const pubkeys = APP.pubkeys;
+    console.log(tag, 'pubkeys:', pubkeys);
+    console.log(tag, 'pubkeys:', pubkeys.length);
+
     await APP.getBalances();
+
+    const balances = APP.balances;
+    console.log(tag, 'balances:', balances);
+    console.log(tag, 'balances:', balances.length);
+
+    const pubkeysEth = KEEPKEY_WALLET.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.Ethereum]));
+    if (pubkeysEth.length > 0) {
+      console.log(tag, 'pubkeys:', pubkeysEth);
+      const address = pubkeysEth[0].address;
+      if (address) {
+        ADDRESS = address;
+        APP = app;
+
+        KEEPKEY_STATE = 2;
+        updateIcon();
+        pushStateChangeEvent();
+      }
+    } else {
+      console.error(tag, 'FAILED TO INIT, No Ethereum address found');
+      //TODO retry?
+    }
   } catch (e) {
     KEEPKEY_STATE = 4; // errored
     updateIcon();
