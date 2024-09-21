@@ -55,44 +55,29 @@ export function Transfer({}: any): JSX.Element {
   useEffect(() => {
     // Request asset context and set initial state
     chrome.runtime.sendMessage({ type: 'GET_ASSET_CONTEXT' }, response => {
-      console.log('response:', response);
-      console.log('response:', response.assets.icon);
       setAssetContext(response.assets);
-      if (response?.assets.icon) {
-        setAvatarUrl(response.assets.icon);
-      }
-      if (response?.assets.priceUsd) {
-        setPriceUsd(response.assets.priceUsd);
-      }
+      if (response?.assets.icon) setAvatarUrl(response.assets.icon);
+      if (response?.assets.priceUsd) setPriceUsd(response.assets.priceUsd);
     });
   }, []);
 
   const onStart = async function () {
     let tag = TAG + ' | onStart Transfer | ';
-    console.log(tag, 'Starting Transfer process');
-
-    chrome.runtime.sendMessage(
-      {
-        type: 'GET_MAX_SPENDABLE',
-      },
-      maxSpendableResponse => {
-        console.log('maxSpendableResponse:', maxSpendableResponse);
-        if (maxSpendableResponse && maxSpendableResponse.maxSpendable) {
-          setMaxSpendable(maxSpendableResponse.maxSpendable);
-          setLoadingMaxSpendable(false);
-        } else {
-          console.error('Error fetching max spendable amount:', maxSpendableResponse?.error || 'Unknown error');
-          toast({
-            title: 'Error',
-            description: 'Failed to fetch max spendable amount.',
-            status: 'error',
-            duration: 5000,
-            isClosable: true,
-          });
-          setLoadingMaxSpendable(false);
-        }
-      },
-    );
+    chrome.runtime.sendMessage({ type: 'GET_MAX_SPENDABLE' }, maxSpendableResponse => {
+      if (maxSpendableResponse && maxSpendableResponse.maxSpendable) {
+        setMaxSpendable(maxSpendableResponse.maxSpendable);
+        setLoadingMaxSpendable(false);
+      } else {
+        toast({
+          title: 'Error',
+          description: 'Failed to fetch max spendable amount.',
+          status: 'error',
+          duration: 5000,
+          isClosable: true,
+        });
+        setLoadingMaxSpendable(false);
+      }
+    });
   };
 
   useEffect(() => {
@@ -128,7 +113,6 @@ export function Transfer({}: any): JSX.Element {
         isMax: false,
       };
 
-      // Send transfer request to background
       chrome.runtime.sendMessage(
         {
           type: 'TRANSFER',
@@ -136,7 +120,7 @@ export function Transfer({}: any): JSX.Element {
         },
         response => {
           if (response.txHash) {
-            confetti(); // Trigger confetti on success
+            confetti();
             toast({
               title: 'Transaction Successful',
               description: `Transaction ID: ${response.txHash}`,
@@ -156,7 +140,6 @@ export function Transfer({}: any): JSX.Element {
         },
       );
     } catch (error) {
-      console.error('Error while sending transaction:', error);
       toast({
         title: 'Error',
         description: error.toString(),
@@ -166,13 +149,14 @@ export function Transfer({}: any): JSX.Element {
       });
     } finally {
       setIsSubmitting(false);
-      onClose(); // Close the confirmation modal after the transaction
+      onClose();
     }
   }, [inputAmount, recipient, memo, toast]);
 
   const setMaxAmount = () => {
-    setInputAmount(maxSpendable);
-    setInputAmountUsd((parseFloat(maxSpendable) * (priceUsd || 1)).toFixed(2));
+    const maxAmount = maxSpendable;
+    setInputAmount(maxAmount);
+    setInputAmountUsd((parseFloat(maxAmount) * (priceUsd || 1)).toFixed(2));
   };
 
   if (loadingMaxSpendable) {
@@ -228,6 +212,9 @@ export function Transfer({}: any): JSX.Element {
                 value={useUsdInput ? inputAmountUsd : inputAmount}
               />
               <Text ml={2}>{useUsdInput ? 'USD' : 'Symbol'}</Text>
+              <Button ml={4} onClick={setMaxAmount}>
+                Max
+              </Button>
             </Flex>
           </FormControl>
         </Grid>
