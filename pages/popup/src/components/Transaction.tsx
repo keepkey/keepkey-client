@@ -1,8 +1,28 @@
 import React, { useEffect, useState } from 'react';
 import EvmTransaction from './evm';
+import { approvalStorage, requestStorage } from '@extension/storage/dist/lib';
 
 const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => void }) => {
   const [transactionType, setTransactionType] = useState<string | null>(null);
+
+  const handleResponse = async (decision: 'accept' | 'reject') => {
+    try {
+      if (decision === 'reject') {
+        // Delete event
+        await requestStorage.removeEventById(transaction.id);
+      } else {
+        // Move event to approval storage
+        const updatedEvent = { ...transaction, status: 'approval' };
+        await requestStorage.removeEventById(transaction.id);
+        await approvalStorage.addEvent(updatedEvent);
+        console.log('Moved event to approval storage:', updatedEvent);
+      }
+      chrome.runtime.sendMessage({ action: 'eth_sign_response', response: { decision, eventId: transaction.id } });
+      reloadEvents();
+    } catch (error) {
+      console.error('Error handling response:', error);
+    }
+  };
 
   useEffect(() => {
     console.log('event', event);
@@ -21,7 +41,7 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
   const renderTransaction = () => {
     switch (transactionType) {
       case 'evm':
-        return <EvmTransaction transaction={event} reloadEvents={reloadEvents} />;
+        return <EvmTransaction transaction={event} reloadEvents={reloadEvents} handleResponse={handleResponse} />;
       case 'utxo':
         return <div>TODO UTXO</div>;
       default:

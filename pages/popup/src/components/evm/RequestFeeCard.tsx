@@ -13,7 +13,7 @@ import {
   Input,
 } from '@chakra-ui/react';
 
-const RequestFeeCard = ({ data, updateFeeData, chainId }: any) => {
+const RequestFeeCard = ({ data, chainId }: any) => {
   const [selectedFee, setSelectedFee] = useState('');
   const [customFee, setCustomFee] = useState('');
   const [dappProvidedFee, setDappProvidedFee] = useState(false);
@@ -24,6 +24,22 @@ const RequestFeeCard = ({ data, updateFeeData, chainId }: any) => {
     dappSuggested: '',
     networkRecommended: '',
   });
+
+  const updateFeeData = (feeData: any, isEIP1559: boolean) => {
+    console.log('updateFeeData: ', feeData);
+    setFeeData(feeData);
+    console.log('transaction: ', transaction);
+    if (!isEIP1559) {
+      transaction.gasPrice = feeData.gasPrice;
+      transaction.maxFeePerGas = null;
+      transaction.maxPriorityFeePerGas = null;
+    } else {
+      transaction.gasPrice = null;
+      transaction.maxFeePerGas = feeData.maxFeePerGas;
+      transaction.maxPriorityFeePerGas = feeData.maxPriorityFeePerGas;
+    }
+    //TODO update the transaction with the new fee data in events storage
+  };
 
   const getFee = async () => {
     try {

@@ -1,7 +1,7 @@
 import { useMemo, useEffect } from 'react';
 // import { useSnapshot } from 'valtio';
 // import SettingsStore from '@/store/SettingsStore';
-import { Icon, Box, Avatar, Link, Text, VStack, HStack, Stack } from '@chakra-ui/react';
+import { Icon, Box, Avatar, Link, Text, VStack, HStack, Stack, Badge } from '@chakra-ui/react';
 // import { SignClientTypes } from '@walletconnect/types';
 import { MdReport, MdReportProblem, MdNewReleases } from 'react-icons/md';
 
@@ -33,7 +33,9 @@ export default function ProjectInfoCard({ transaction }: any) {
       <Stack align="center">
         <Text fontSize="2xl" data-testid="session-info-card-text">
           <span>{url}</span> <br />
-          <Text fontSize="xl">wants to connect</Text>
+          <Text fontSize="xl">
+            wants to <Badge>{transaction.type}</Badge>
+          </Text>
         </Text>
       </Stack>
       <Stack align="center">
