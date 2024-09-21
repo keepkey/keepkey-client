@@ -27,7 +27,7 @@ import { approvalStorage, requestStorage } from '@extension/storage/dist/lib';
 
 let SAMPLE_DATA = [];
 
-export function EvmTransaction({ transaction }: any) {
+export function EvmTransaction({ transaction, reloadEvents }: any) {
   const [isPairing, setIsPairing] = useState(false);
   const [isApproved, setIsApproved] = useState(false);
   const [feeData, setFeeData] = useState({});
