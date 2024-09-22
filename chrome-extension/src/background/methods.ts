@@ -120,6 +120,13 @@ const requireApproval = async function (requestInfo, chain, method, params) {
     const networkId = caipToNetworkId(shortListNameToCaip[chain]);
     if (!networkId) throw Error('unhandled chain ' + chain);
     console.log(tag, 'NetworkId:', networkId);
+
+    //if evm set from address
+
+    //if token transfer, set assetContext to token
+
+    //set assetContext
+
     const event = {
       id: uuidv4(),
       networkId,

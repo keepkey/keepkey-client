@@ -232,6 +232,10 @@ export const handleEthereumRequest = async (
     case 'eth_signTypedData_v4': {
       console.log(tag, 'method:', method);
       console.log(tag, 'params:', params);
+
+      //set context to the chain
+      await KEEPKEY_WALLET.setAssetContext();
+
       // Require user approval
       const result = await requireApproval(requestInfo, 'ethereum', method, params[0]);
       console.log(tag, 'result:', result);
@@ -430,7 +434,7 @@ const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string) 
     };
     console.log(tag, '**** payload: ', payload);
 
-    let wallet = await KEEPKEY_WALLET.swapKit.getWallet(Chain.Ethereum);
+    const wallet = await KEEPKEY_WALLET.swapKit.getWallet(Chain.Ethereum);
     console.log('wallet: ', wallet);
     const signedMessage = await wallet.signTypedData(payload);
     console.log(tag, '**** signedMessage: ', signedMessage);

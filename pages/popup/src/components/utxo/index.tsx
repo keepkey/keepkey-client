@@ -14,10 +14,10 @@ import {
   Divider,
 } from '@chakra-ui/react';
 import React, { useEffect, useState } from 'react';
-import RequestFeeCard from './RequestFeeCard';
+// import RequestFeeCard from './RequestFeeCard';
 import RequestDataCard from './RequestDataCard';
-import RequestDetailsCard from './RequestDetailsCard';
-import ContractDetailsCard from './ContractDetailsCard';
+// import RequestDetailsCard from './RequestDetailsCard';
+// import ContractDetailsCard from './ContractDetailsCard';
 import RequestMethodCard from './RequestMethodCard';
 import ProjectInfoCard from './ProjectInfoCard';
 
@@ -31,31 +31,21 @@ export function EvmTransaction({ transaction, reloadEvents, handleResponse }: an
       <Divider />
       <Tabs>
         <TabList>
-          <Tab>Contract</Tab>
           <Tab>Base</Tab>
+          <Tab>utxos</Tab>
           <Tab>Fees</Tab>
           <Tab>Raw</Tab>
         </TabList>
 
         <TabPanels>
           {/* Contract Tab */}
-          <TabPanel>
-            <ContractDetailsCard transaction={transaction} />
-          </TabPanel>
+          <TabPanel></TabPanel>
 
           {/* Review Tab */}
-          <TabPanel>
-            <RequestDetailsCard transaction={transaction} />
-          </TabPanel>
+          <TabPanel></TabPanel>
 
           {/* Fees Tab */}
-          <TabPanel>
-            {transaction.type !== 'personal_sign' && (
-              <>
-                <RequestFeeCard data={transaction} />
-              </>
-            )}
-          </TabPanel>
+          <TabPanel></TabPanel>
 
           {/* Raw Data Tab */}
           <TabPanel>

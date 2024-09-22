@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Box, Divider, Flex, Table, Tbody, Tr, Td, Badge, Switch, Text, HStack } from '@chakra-ui/react';
+import { Box, Divider, Flex, Table, Tbody, Tr, Td, Badge, Switch, Text, HStack, Textarea } from '@chakra-ui/react';
 import React, { Fragment } from 'react';
 
 // Function to request asset context from background script
@@ -78,7 +78,18 @@ export default function RequestDetailsCard({ transaction }: any) {
                 <Td>
                   <Badge>data:</Badge>
                 </Td>
-                <Td>{transaction?.request?.data}</Td>
+                <Td>
+                  {/* Display a non-editable Textarea for large data payloads */}
+                  <Textarea
+                    value={transaction?.request?.data || 'No data provided'}
+                    isReadOnly
+                    size="sm"
+                    resize="vertical"
+                    minHeight="100px"
+                    cursor="default" // Prevent cursor from appearing
+                    _focus={{ boxShadow: 'none' }} // Remove focus styles
+                  />
+                </Td>
               </Tr>
             </Tbody>
           </Table>
