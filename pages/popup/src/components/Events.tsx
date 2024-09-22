@@ -1,22 +1,43 @@
-import React, { useEffect, useState } from 'react';
-import { Box, Button, Flex } from '@chakra-ui/react';
-import { requestStorage, approvalStorage, completedStorage, assetContextStorage } from '@extension/storage';
+import React, { useEffect, useState, useCallback } from 'react';
+import { Box, Button, Flex, Text } from '@chakra-ui/react';
+import { requestStorage } from '@extension/storage';
 import Transaction from './Transaction';
 
 const EventsViewer = () => {
   const [events, setEvents] = useState<any[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [currentProvider, setCurrentProvider] = useState<any>(null);
 
-  const fetchEvents = async () => {
-    const storedEvents = await requestStorage.getEvents();
-    console.log('storedEvents: ', storedEvents);
-    setEvents(storedEvents || []);
+  // Function to calculate the age of the event in minutes
+  const getEventAgeInMinutes = (timestamp: string) => {
+    const eventTime = new Date(timestamp).getTime();
+    const currentTime = Date.now();
+    const ageInMinutes = (currentTime - eventTime) / 60000; // Convert milliseconds to minutes
+    return ageInMinutes;
   };
+
+  // Optimized event fetching to prevent endless loops
+  const fetchEvents = useCallback(async () => {
+    const storedEvents = await requestStorage.getEvents();
+    const validEvents = [];
+
+    for (const event of storedEvents) {
+      console.log('event: ', event);
+      const ageInMinutes = getEventAgeInMinutes(event.timestamp);
+      console.log('ageInMinutes: ', ageInMinutes);
+      if (ageInMinutes <= 10) {
+        validEvents.push(event); // Keep events that are within 10 minutes
+      } else {
+        console.log('removing event: ', event.id);
+        await requestStorage.removeEventById(event.id); // Remove events older than 10 minutes
+      }
+    }
+
+    // Set the valid events and reverse them to show latest first
+    setEvents(validEvents);
+  }, []);
 
   useEffect(() => {
     fetchEvents();
-    // fetchAssetContext();
   }, []);
 
   const nextEvent = () => {
@@ -37,21 +58,34 @@ const EventsViewer = () => {
     setCurrentIndex(0);
   };
 
-  const clearApprovalEvents = async () => {
-    await approvalStorage.clearEvents();
-  };
-
-  const clearCompletedEvents = async () => {
-    await completedStorage.clearEvents();
-  };
-
   return (
     <Box>
+      {/* Show event count at the top */}
+      <Text fontSize="lg" fontWeight="bold">
+        Event Count: {events.length}
+      </Text>
       {events.length > 0 ? (
-        <Transaction event={events[currentIndex]} reloadEvents={fetchEvents} />
+        <Box>
+          {/* Show the age of the current event */}
+          <Text fontSize="md" fontWeight="medium">
+            chain: {events[currentIndex].chain}
+            <br />
+            Event Age: {Math.floor(getEventAgeInMinutes(events[currentIndex].timestamp))} minutes
+          </Text>
+          <Transaction event={events[currentIndex]} reloadEvents={fetchEvents} />
+        </Box>
       ) : (
         <div>No events</div>
       )}
+      Only one navigation
+      <Flex mt={4} justify="space-between">
+        <Button onClick={previousEvent} disabled={currentIndex === 0}>
+          Previous
+        </Button>
+        <Button onClick={nextEvent} disabled={currentIndex === events.length - 1}>
+          Next
+        </Button>
+      </Flex>
     </Box>
   );
 };

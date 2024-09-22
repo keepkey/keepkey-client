@@ -21,7 +21,7 @@ import RequestDataCard from './RequestDataCard';
 import RequestMethodCard from './RequestMethodCard';
 import ProjectInfoCard from './ProjectInfoCard';
 
-export function EvmTransaction({ transaction, reloadEvents, handleResponse }: any) {
+export function UtxoTransaction({ transaction, reloadEvents, handleResponse }: any) {
   return (
     <Stack>
       <ProjectInfoCard transaction={transaction} />
@@ -68,4 +68,4 @@ export function EvmTransaction({ transaction, reloadEvents, handleResponse }: an
   );
 }
 
-export default EvmTransaction;
+export default UtxoTransaction;
