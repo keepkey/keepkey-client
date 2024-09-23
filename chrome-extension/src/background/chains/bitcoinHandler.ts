@@ -80,9 +80,19 @@ export const handleBitcoinRequest = async (
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-expect-error
         console.log(tag, 'sendPayload: ', sendPayload.assetValue.getValue('string'));
-        const txHash = await KEEPKEY_WALLET.swapKit.transfer(sendPayload);
-        console.log(tag, 'txHash: ', txHash);
-        return txHash;
+        try {
+          const txHash = '083d4710e9880367370235bf0948745cab113f164881a9329330c6a96f9c2b26';
+
+          // const txHash = await KEEPKEY_WALLET.swapKit.transfer(sendPayload);
+          // console.log(tag, 'txHash: ', txHash);
+          // chrome.runtime.sendMessage({ action: 'transaction_complete', txHash });
+
+          return txHash;
+        } catch (e) {
+          console.error(tag, 'Failed to send transaction: ', e);
+          chrome.runtime.sendMessage({ action: 'transaction_error', e });
+          throw createProviderRpcError(4200, 'Failed to send transaction');
+        }
       } else {
         throw createProviderRpcError(4200, 'User denied transaction');
       }

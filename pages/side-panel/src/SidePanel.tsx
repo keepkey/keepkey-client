@@ -35,6 +35,7 @@ const stateNames: { [key: number]: string } = {
   2: 'connected',
   3: 'busy',
   4: 'errored',
+  5: 'paired',
 };
 
 const SidePanel = () => {
@@ -72,14 +73,16 @@ const SidePanel = () => {
       case 1:
         return <Loading setIsConnecting={setIsConnecting} keepkeyState={keepkeyState} />;
       case 2:
-        if (assetContext) {
-          return <Asset asset={assetContext} onClose={() => setAssetContext(null)} />;
-        }
-        return <Balances balances={balances} loading={loading} />;
+        return <Loading setIsConnecting={setIsConnecting} keepkeyState={keepkeyState} />;
       case 3:
         return <Loading setIsConnecting={setIsConnecting} keepkeyState={keepkeyState} />;
       case 4:
         return <Connect setIsConnecting={setIsConnecting} />;
+      case 5:
+        if (assetContext) {
+          return <Asset asset={assetContext} onClose={() => setAssetContext(null)} />;
+        }
+        return <Balances balances={balances} loading={loading} />;
       default:
         return <Text>Device not connected.</Text>;
     }

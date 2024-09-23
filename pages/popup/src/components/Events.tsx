@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Box, Button, Flex, Text } from '@chakra-ui/react';
+import { Box, Button, Flex, Text, Spinner } from '@chakra-ui/react';
 import { requestStorage } from '@extension/storage';
 import Transaction from './Transaction';
 
 const EventsViewer = () => {
   const [events, setEvents] = useState<any[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [loading, setLoading] = useState<boolean>(true);
 
   // Function to calculate the age of the event in minutes
   const getEventAgeInMinutes = (timestamp: string) => {
@@ -17,6 +18,7 @@ const EventsViewer = () => {
 
   // Optimized event fetching to prevent endless loops
   const fetchEvents = useCallback(async () => {
+    setLoading(true); // Show spinner while fetching events
     const storedEvents = await requestStorage.getEvents();
     const validEvents = [];
 
@@ -30,7 +32,8 @@ const EventsViewer = () => {
     }
 
     // Set the valid events and reverse them to show latest first
-    setEvents(validEvents);
+    setEvents(validEvents.reverse());
+    setLoading(false); // Stop spinner after events are loaded
 
     // If no events are found, close the window
     if (validEvents.length === 0) {
@@ -45,12 +48,14 @@ const EventsViewer = () => {
   const nextEvent = () => {
     if (currentIndex < events.length - 1) {
       setCurrentIndex(currentIndex + 1);
+      resetTransactionState();
     }
   };
 
   const previousEvent = () => {
     if (currentIndex > 0) {
       setCurrentIndex(currentIndex - 1);
+      resetTransactionState();
     }
   };
 
@@ -60,27 +65,40 @@ const EventsViewer = () => {
     setCurrentIndex(0);
   };
 
+  // Reset transaction state when switching between events
+  const resetTransactionState = () => {
+    // Here you can reset any transaction-related state
+    setLoading(false);
+  };
+
   return (
     <Box>
+      {/* Show spinner if events are being fetched */}
+      {loading && <Spinner />}
+
       {/* Show event count at the top */}
       <Text fontSize="lg" fontWeight="bold">
         Event Count: {events.length}
       </Text>
-      {events.length > 0 ? (
+
+      {/* Only show event details if events are loaded */}
+      {events.length > 0 && !loading ? (
         <Box>
           {/* Show the age of the current event */}
           <Text fontSize="md" fontWeight="medium">
-            chain: {events[currentIndex].chain}
+            Chain: {events[currentIndex].chain}
             <br />
             Event Age: {Math.floor(getEventAgeInMinutes(events[currentIndex].timestamp))} minutes
           </Text>
+
+          {/* Pass the current event to the Transaction component */}
           <Transaction event={events[currentIndex]} reloadEvents={fetchEvents} />
         </Box>
       ) : (
         <div>No events</div>
       )}
 
-      {/* Only one navigation */}
+      {/* Navigation buttons */}
       <Flex mt={4} justify="space-between">
         <Button onClick={previousEvent} disabled={currentIndex === 0}>
           Previous
@@ -88,6 +106,7 @@ const EventsViewer = () => {
         <Button onClick={nextEvent} disabled={currentIndex === events.length - 1}>
           Next
         </Button>
+        <Button onClick={clearRequestEvents}>Clear Events</Button>
       </Flex>
     </Box>
   );
