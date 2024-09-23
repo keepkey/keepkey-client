@@ -2,7 +2,7 @@ const TAG = ' | thorchainHandler | ';
 import { JsonRpcProvider } from 'ethers';
 import { Chain } from '@coinmasters/types';
 import { AssetValue } from '@pioneer-platform/helpers';
-import { EIP155_CHAINS } from '../chains';
+
 // @ts-ignore
 import { ChainToNetworkId, shortListSymbolToCaip } from '@pioneer-platform/pioneer-caip';
 

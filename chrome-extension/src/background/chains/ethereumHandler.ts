@@ -425,20 +425,13 @@ const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string) 
   const tag = ' | signTypedData | ';
   try {
     console.log(tag, '**** params: ', params);
-    if (typeof params === 'string') params = JSON.parse(params);
-
-    const payload = {
-      address: ADDRESS,
-      addressNList: [2147483692, 2147483708, 2147483648, 0, 0], // Adjust the path as needed
-      typedData: params[1], // Assuming the typed data is the second parameter
-    };
-    console.log(tag, '**** payload: ', payload);
-
     const wallet = await KEEPKEY_WALLET.swapKit.getWallet(Chain.Ethereum);
     console.log('wallet: ', wallet);
-    const signedMessage = await wallet.signTypedData(payload);
+    let typedData = params[1];
+    if (typedData && typeof typedData === 'string') typedData = JSON.parse(typedData);
+    const signedMessage = await wallet.signTypedData(typedData);
     console.log(tag, '**** signedMessage: ', signedMessage);
-    return signedMessage.signature;
+    return signedMessage;
   } catch (e) {
     console.error(`${tag} Error: `, e);
     throw createProviderRpcError(4000, 'Error signing typed data', e);
