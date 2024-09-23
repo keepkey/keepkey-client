@@ -1,4 +1,20 @@
-import { Avatar, Box, Button, Flex, Text, Badge, Table, Tbody, Tr, Td, Select, Spinner } from '@chakra-ui/react';
+import {
+  Avatar,
+  Box,
+  Button,
+  Flex,
+  Text,
+  Badge,
+  Table,
+  Tbody,
+  Tr,
+  Td,
+  Select,
+  Spinner,
+  VStack,
+  HStack,
+  useToast,
+} from '@chakra-ui/react';
 import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode'; // Import the QRCode library
 
@@ -10,6 +26,7 @@ export function Receive({ onClose }: { onClose: () => void }) {
   const [loading, setLoading] = useState(true);
   const [hasCopied, setHasCopied] = useState(false);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null); // State for QR code image
+  const toast = useToast();
 
   // Fetch asset context and pubkeys from the backend (extension)
   useEffect(() => {
@@ -49,6 +66,12 @@ export function Receive({ onClose }: { onClose: () => void }) {
     if (selectedAddress) {
       navigator.clipboard.writeText(selectedAddress).then(() => {
         setHasCopied(true);
+        toast({
+          title: 'Address copied!',
+          status: 'success',
+          duration: 2000,
+          isClosable: true,
+        });
         setTimeout(() => setHasCopied(false), 2000); // Reset the copied status after 2 seconds
       });
     }
@@ -82,25 +105,28 @@ export function Receive({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div>
-      <Flex align="center" justify="center" mb={4}>
-        <Avatar size="xl" src={assetContext?.icon} />
-      </Flex>
-
+    <VStack spacing={6} align="center">
+      {/* Avatar and Title */}
+      <Avatar size="xl" src={assetContext?.icon} />
       <Text fontSize="xl" fontWeight="bold" textAlign="center">
         Receive {assetContext?.name}
       </Text>
 
-      <Table variant="simple" mt={4}>
+      {/* Chain and Address Selector */}
+      <Table variant="simple">
         <Tbody>
           <Tr>
-            <Td>Chain</Td>
+            <Td>
+              <Text fontWeight="bold">Chain</Text>
+            </Td>
             <Td>
               <Badge>{assetContext?.chain}</Badge>
             </Td>
           </Tr>
           <Tr>
-            <Td>Address</Td>
+            <Td>
+              <Text fontWeight="bold">Address</Text>
+            </Td>
             <Td>
               <Select value={selectedAddress} onChange={handleAddressChange}>
                 {pubkeys.map((pubkey, index) => (
@@ -114,23 +140,29 @@ export function Receive({ onClose }: { onClose: () => void }) {
         </Tbody>
       </Table>
 
+      {/* Address Display Box */}
       {selectedAddress && (
         <>
-          <Box my={4} textAlign="center">
+          <Box p={4} borderRadius="md" border="1px solid" borderColor="gray.300" width="full" textAlign="center">
             <Text wordBreak="break-all" fontSize="sm">
               {selectedAddress}
             </Text>
-            <Box mt={2}>{qrCodeDataUrl ? <img src={qrCodeDataUrl} alt="QR Code" /> : <Spinner />}</Box>
           </Box>
 
-          <Flex align="center" justify="center" my={4}>
-            <Button onClick={copyToClipboard} mx={2}>
+          {/* QR Code */}
+          <Box mt={4}>
+            {qrCodeDataUrl ? <img src={qrCodeDataUrl} alt="QR Code" style={{ margin: 'auto' }} /> : <Spinner />}
+          </Box>
+
+          {/* Copy Button */}
+          <HStack spacing={4} mt={4}>
+            <Button colorScheme="blue" onClick={copyToClipboard}>
               {hasCopied ? 'Copied' : 'Copy Address'}
             </Button>
-          </Flex>
+          </HStack>
         </>
       )}
-    </div>
+    </VStack>
   );
 }
 
