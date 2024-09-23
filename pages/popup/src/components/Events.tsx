@@ -21,24 +21,26 @@ const EventsViewer = () => {
     const validEvents = [];
 
     for (const event of storedEvents) {
-      console.log('event: ', event);
       const ageInMinutes = getEventAgeInMinutes(event.timestamp);
-      console.log('ageInMinutes: ', ageInMinutes);
       if (ageInMinutes <= 10) {
         validEvents.push(event); // Keep events that are within 10 minutes
       } else {
-        console.log('removing event: ', event.id);
         await requestStorage.removeEventById(event.id); // Remove events older than 10 minutes
       }
     }
 
     // Set the valid events and reverse them to show latest first
     setEvents(validEvents);
+
+    // If no events are found, close the window
+    if (validEvents.length === 0) {
+      window.close();
+    }
   }, []);
 
   useEffect(() => {
     fetchEvents();
-  }, []);
+  }, [fetchEvents]);
 
   const nextEvent = () => {
     if (currentIndex < events.length - 1) {
@@ -77,7 +79,8 @@ const EventsViewer = () => {
       ) : (
         <div>No events</div>
       )}
-      Only one navigation
+
+      {/* Only one navigation */}
       <Flex mt={4} justify="space-between">
         <Button onClick={previousEvent} disabled={currentIndex === 0}>
           Previous

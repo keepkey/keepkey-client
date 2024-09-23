@@ -159,6 +159,7 @@ const requireApproval = async function (requestInfo, chain, method, params) {
     return new Promise(resolve => {
       const listener = (message, sender, sendResponse) => {
         if (message.action === 'eth_sign_response' && message.response.eventId === event.id) {
+          console.log(tag, 'Received eth_sign_response for event:', message.response.eventId);
           chrome.runtime.onMessage.removeListener(listener);
           if (message.response.decision === 'accept') {
             resolve({ success: true });

@@ -9,17 +9,20 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
   const handleResponse = async (decision: 'accept' | 'reject') => {
     try {
       console.log('handleResponse:', decision);
+      chrome.runtime.sendMessage({ action: 'eth_sign_response', response: { decision, eventId: event.id } });
       if (decision === 'reject') {
         // Delete event
         await requestStorage.removeEventById(event.id);
       } else {
+        //move to submit
+
         // Move event to approval storage
-        const updatedEvent = { ...transaction, status: 'approval' };
+        const updatedEvent = { ...event, status: 'approval' };
         await requestStorage.removeEventById(event.id);
         await approvalStorage.addEvent(updatedEvent);
         console.log('Moved event to approval storage:', updatedEvent);
       }
-      chrome.runtime.sendMessage({ action: 'eth_sign_response', response: { decision, eventId: event.id } });
+
       reloadEvents();
     } catch (error) {
       console.error('Error handling response:', error);
