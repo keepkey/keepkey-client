@@ -421,6 +421,16 @@ const signTransaction = async (transaction: any, provider: JsonRpcProvider, KEEP
   }
 };
 
+// function getSignTypedDataParamsData(params: string[]) {
+//   const data = params.filter(p => !isAddress(p))[0]
+//
+//   if (typeof data === 'string') {
+//     return JSON.parse(data)
+//   }
+//
+//   return data
+// }
+
 const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string) => {
   const tag = ' | signTypedData | ';
   try {
@@ -429,7 +439,8 @@ const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string) 
     console.log('wallet: ', wallet);
     let typedData = params[1];
     if (typedData && typeof typedData === 'string') typedData = JSON.parse(typedData);
-    const signedMessage = await wallet.signTypedData(typedData);
+    const { domain, types, message, primaryType } = typedData;
+    const signedMessage = await wallet.signTypedData({ domain, types, message, primaryType });
     console.log(tag, '**** signedMessage: ', signedMessage);
     return signedMessage;
   } catch (e) {
