@@ -37,7 +37,7 @@ const getMethodInfo = (txType: string, hasSmartContractExecution: boolean) => {
         title: 'Typed Data Transaction',
         description: 'This transaction has smart contract execution, requires extended validation',
         icon: <InfoIcon boxSize={8} />,
-        color: 'gray.500',
+        color: 'yellow.400',
       };
 
     default:
@@ -45,7 +45,7 @@ const getMethodInfo = (txType: string, hasSmartContractExecution: boolean) => {
         title: 'Unknown Method',
         description: 'Verify before proceeding',
         icon: <QuestionIcon boxSize={8} />,
-        color: 'gray.500',
+        color: 'red.500',
       };
   }
 };

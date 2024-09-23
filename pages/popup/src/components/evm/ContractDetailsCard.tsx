@@ -42,62 +42,62 @@ export default function ContractDetailsCard({ transaction }: ContractDetailsCard
   const [apiResponse, setApiResponse] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const harpieLogoUrl =
-    'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTWg0ouWVCbQHXGmOxH2pMnL9B0S8DA9pnapogVb3JxicS1sni0pwLWQO0M5UO4hiVjr9c&usqp=CAU';
-
-  useEffect(() => {
-    const fetchApiResponse = async () => {
-      try {
-        if (!transaction) {
-          throw new Error('Transaction data is missing.');
-        }
-
-        // Ensure transaction.request is used as per your requirement
-        const tx = { ...transaction.request };
-        tx.from = '0x141D9959cAe3853b035000490C03991eB70Fc4aC';
-        console.log('tx: ', tx);
-
-        const response = await axios.post(
-          'http://127.0.0.1:9001/api/v1/checkTx',
-          { tx },
-          {
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer keepkey-client-v1`,
-            },
-            validateStatus: status => status < 500, // Resolve only if the status code is less than 500
-          },
-        );
-
-        console.log('response: ', response);
-
-        if (response.status === 204) {
-          // No Content
-          setApiResponse(null);
-        } else {
-          const data = response.data;
-          console.log('data: ', data);
-          setApiResponse(data);
-        }
-      } catch (error: any) {
-        console.error('Error fetching API response:', error);
-
-        let errorMessage = 'Failed to fetch API response.';
-        if (error.response) {
-          errorMessage = `API error: ${error.response.status} ${error.response.statusText}`;
-        } else if (error.request) {
-          errorMessage = 'No response received from the server.';
-        } else if (error.message) {
-          errorMessage = error.message;
-        }
-
-        setApiResponse({ error: errorMessage });
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchApiResponse();
-  }, [transaction]);
+  // const harpieLogoUrl =
+  //   'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTWg0ouWVCbQHXGmOxH2pMnL9B0S8DA9pnapogVb3JxicS1sni0pwLWQO0M5UO4hiVjr9c&usqp=CAU';
+  //
+  // useEffect(() => {
+  //   const fetchApiResponse = async () => {
+  //     try {
+  //       if (!transaction) {
+  //         throw new Error('Transaction data is missing.');
+  //       }
+  //
+  //       // Ensure transaction.request is used as per your requirement
+  //       const tx = { ...transaction.request };
+  //       tx.from = '0x141D9959cAe3853b035000490C03991eB70Fc4aC';
+  //       console.log('tx: ', tx);
+  //
+  //       const response = await axios.post(
+  //         'http://127.0.0.1:9001/api/v1/checkTx',
+  //         { tx },
+  //         {
+  //           headers: {
+  //             'Content-Type': 'application/json',
+  //             Authorization: `Bearer keepkey-client-v1`,
+  //           },
+  //           validateStatus: status => status < 500, // Resolve only if the status code is less than 500
+  //         },
+  //       );
+  //
+  //       console.log('response: ', response);
+  //
+  //       if (response.status === 204) {
+  //         // No Content
+  //         setApiResponse(null);
+  //       } else {
+  //         const data = response.data;
+  //         console.log('data: ', data);
+  //         setApiResponse(data);
+  //       }
+  //     } catch (error: any) {
+  //       console.error('Error fetching API response:', error);
+  //
+  //       let errorMessage = 'Failed to fetch API response.';
+  //       if (error.response) {
+  //         errorMessage = `API error: ${error.response.status} ${error.response.statusText}`;
+  //       } else if (error.request) {
+  //         errorMessage = 'No response received from the server.';
+  //       } else if (error.message) {
+  //         errorMessage = error.message;
+  //       }
+  //
+  //       setApiResponse({ error: errorMessage });
+  //     } finally {
+  //       setIsLoading(false);
+  //     }
+  //   };
+  //   fetchApiResponse();
+  // }, [transaction]);
 
   // Determine if there are any alert flags
   const flags = apiResponse?.addressDetails?.tags || {};

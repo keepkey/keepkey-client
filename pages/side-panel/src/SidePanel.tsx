@@ -48,6 +48,21 @@ const SidePanel = () => {
 
   const { isOpen: isSettingsOpen, onOpen: onSettingsOpen, onClose: onSettingsClose } = useDisclosure();
 
+  const refreshBalances = async () => {
+    try {
+      setKeepkeyState(null);
+      chrome.runtime.sendMessage({ type: 'ON_START' }, response => {
+        if (response?.success) {
+          console.log('Sidebar opened successfully');
+        } else {
+          console.error('Failed to open sidebar:', response?.error);
+        }
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   useEffect(() => {
     const messageListener = (message: any) => {
       if (message.type === 'KEEPKEY_STATE_CHANGED' && message.state !== undefined) {
@@ -102,12 +117,7 @@ const SidePanel = () => {
             <IconButton icon={<SettingsIcon />} aria-label="Settings" onClick={onSettingsOpen} />
           )}
           {/*<Context setAssetContext={setAssetContext} />*/}
-          <IconButton
-            icon={<RepeatIcon />}
-            aria-label="Refresh"
-            onClick={() => console.log('Refresh logic here')}
-            ml="auto"
-          />
+          <IconButton icon={<RepeatIcon />} aria-label="Refresh" onClick={() => refreshBalances()} ml="auto" />
         </Flex>
       </Box>
       {keepkeyState === null && <Text>Device not connected or detected. Please connect your KeepKey device.</Text>}

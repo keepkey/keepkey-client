@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Box, Divider, Flex, Table, Tbody, Tr, Td, Badge, Switch, Text, HStack, Textarea } from '@chakra-ui/react';
 import React, { Fragment } from 'react';
+import LegacyTx from './txTypes/legacy';
+import Eip712Tx from './txTypes/eip712';
 
 // Function to request asset context from background script
 const requestAssetContext = () => {
@@ -39,67 +41,19 @@ export default function RequestDetailsCard({ transaction }: any) {
     setIsNative(!isNative);
   };
 
-  const ethValue = transaction.request.value; // Assume this is in hex
+  const ethValue = transaction?.request?.value; // Assume this is in hex
   const nativeValue = parseFloat(parseInt(ethValue, 16).toString()) / 1e18; // Convert from wei to ETH
 
-  return (
-    <Fragment>
-      <Flex direction="column" mb={4}>
-        <Box mb={2}>
-          <Table variant="simple" size="sm">
-            <Tbody>
-              <Tr>
-                <Td>
-                  <Badge>from:</Badge>
-                </Td>
-                <Td>{transaction?.request?.from}</Td>
-              </Tr>
-              <Tr>
-                <Td>
-                  <Badge>to:</Badge>
-                </Td>
-                <Td>{transaction?.request?.to}</Td>
-              </Tr>
-              <Tr>
-                <Td>
-                  <Badge>value:</Badge>
-                </Td>
-                <Td>
-                  {isNative ? `${nativeValue} ETH` : `${transaction?.request?.value} (Hex)`}
+  const renderTx = () => {
+    switch (transaction?.type) {
+      case 'eth_signTypedData_v4':
+      case 'eth_signTypedData_v3':
+      case 'eth_signTypedData':
+        return <Eip712Tx transaction={transaction} />;
+      default:
+        return <LegacyTx transaction={transaction} />;
+    }
+  };
 
-                  {price && isNative && (
-                    <Text fontSize="sm" color="gray.500">
-                      ≈ ${formatUsd(nativeValue.toString(), price)} USD
-                    </Text>
-                  )}
-                </Td>
-              </Tr>
-              <Tr>
-                <Td>
-                  <Badge>data:</Badge>
-                </Td>
-                <Td>
-                  {/* Display a non-editable Textarea for large data payloads */}
-                  <Textarea
-                    value={transaction?.request?.data || 'No data provided'}
-                    isReadOnly
-                    size="sm"
-                    resize="vertical"
-                    minHeight="100px"
-                    cursor="default" // Prevent cursor from appearing
-                    _focus={{ boxShadow: 'none' }} // Remove focus styles
-                  />
-                </Td>
-              </Tr>
-            </Tbody>
-          </Table>
-          <HStack mt={4}>
-            <Text>Show as Hex</Text>
-            <Switch onChange={toggleHexNative} isChecked={!isNative} />
-          </HStack>
-        </Box>
-        <Divider my={2} />
-      </Flex>
-    </Fragment>
-  );
+  return <Fragment>{renderTx()}</Fragment>;
 }

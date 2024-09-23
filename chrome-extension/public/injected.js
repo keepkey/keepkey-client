@@ -224,6 +224,20 @@
       solana: createWalletObject('solana'),
     };
 
+    const keepkey = {
+      binance: createWalletObject('binance'),
+      bitcoin: createWalletObject('bitcoin'),
+      bitcoincash: createWalletObject('bitcoincash'),
+      dogecoin: createWalletObject('dogecoin'),
+      dash: createWalletObject('dash'),
+      ethereum: ethereum,
+      cosmos: createWalletObject('cosmos'),
+      litecoin: createWalletObject('litecoin'),
+      thorchain: createWalletObject('thorchain'),
+      mayachain: createWalletObject('mayachain'),
+      solana: createWalletObject('solana'),
+    };
+
     const handler = {
       get: function (target, prop, receiver) {
         console.log(tag, `Proxy get handler: ${prop}`);
@@ -237,6 +251,7 @@
 
     const proxyEthereum = new Proxy(ethereum, handler);
     const proxyXfi = new Proxy(xfi, handler);
+    const proxyKeepKey = new Proxy(keepkey, handler);
 
     Object.defineProperty(window, 'ethereum', {
       value: proxyEthereum,
@@ -249,6 +264,14 @@
       writable: false,
       configurable: true,
     });
+
+    Object.defineProperty(window, 'keepkey', {
+      value: proxyKeepKey,
+      writable: false,
+      configurable: true,
+    });
+
+    //TODO keplr object
 
     console.log(tag, 'window.ethereum and window.xfi have been mounted');
 

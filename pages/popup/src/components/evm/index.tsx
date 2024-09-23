@@ -29,19 +29,17 @@ export function EvmTransaction({ transaction, reloadEvents, handleResponse }: an
       <Divider />
       <RequestMethodCard transaction={transaction} />
       <Divider />
-      <Tabs>
+      <Tabs defaultIndex={1}>
         <TabList>
-          <Tab>Contract</Tab>
-          <Tab>Base</Tab>
+          <Tab>Insight</Tab>
+          <Tab>Details</Tab>
           <Tab>Fees</Tab>
           <Tab>Raw</Tab>
         </TabList>
 
         <TabPanels>
           {/* Contract Tab */}
-          <TabPanel>
-            <ContractDetailsCard transaction={transaction} />
-          </TabPanel>
+          <TabPanel>{/*<ContractDetailsCard transaction={transaction} />*/}</TabPanel>
 
           {/* Review Tab */}
           <TabPanel>

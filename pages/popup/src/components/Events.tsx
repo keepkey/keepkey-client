@@ -65,6 +65,17 @@ const EventsViewer = () => {
     setCurrentIndex(0);
   };
 
+  const openSidebar = () => {
+    // Send a message to open the sidebar
+    chrome.runtime.sendMessage({ type: 'OPEN_SIDEBAR' }, response => {
+      if (response?.success) {
+        console.log('Sidebar opened successfully');
+      } else {
+        console.error('Failed to open sidebar:', response?.error);
+      }
+    });
+  };
+
   // Reset transaction state when switching between events
   const resetTransactionState = () => {
     // Here you can reset any transaction-related state
@@ -107,6 +118,11 @@ const EventsViewer = () => {
           Next
         </Button>
         <Button onClick={clearRequestEvents}>Clear Events</Button>
+      </Flex>
+
+      {/* Open Sidebar button */}
+      <Flex mt={4} justify="center">
+        <Button onClick={openSidebar}>Open Sidebar</Button>
       </Flex>
     </Box>
   );
