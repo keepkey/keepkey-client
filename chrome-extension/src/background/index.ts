@@ -173,6 +173,28 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           break;
         }
 
+        case 'GET_TX_INSIGHT': {
+          if (APP) {
+            //get chainid
+            const assetContext = APP.assetContext;
+            if (!assetContext) throw new Error('Invalid asset context. Missing assetContext.');
+            const { tx, source } = message;
+            tx.chainId = assetContext.networkId.replace('eip155:', '');
+            console.log(tag, 'chainId: ', tx.chainId);
+            console.log(tag, 'GET_TX_INSIGHT', tx, source);
+            if (!tx) throw new Error('Invalid request: missing tx');
+            if (!source) throw new Error('Invalid request: missing source');
+
+            //result
+            const result = await APP.pioneer.Insight({ tx, source });
+            console.log(tag, 'GET_TX_INSIGHT', result);
+            sendResponse(result.data);
+          } else {
+            sendResponse({ error: 'APP not initialized' });
+          }
+          break;
+        }
+
         case 'GET_MAX_SPENDABLE': {
           if (APP) {
             console.log(tag, 'GET_MAX_SPENDABLE');

@@ -39,7 +39,9 @@ export function EvmTransaction({ transaction, reloadEvents, handleResponse }: an
 
         <TabPanels>
           {/* Contract Tab */}
-          <TabPanel>{/*<ContractDetailsCard transaction={transaction} />*/}</TabPanel>
+          <TabPanel>
+            <ContractDetailsCard transaction={transaction} />
+          </TabPanel>
 
           {/* Review Tab */}
           <TabPanel>

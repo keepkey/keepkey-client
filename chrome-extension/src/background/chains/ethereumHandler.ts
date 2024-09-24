@@ -232,9 +232,12 @@ export const handleEthereumRequest = async (
     case 'eth_signTypedData_v4': {
       console.log(tag, 'method:', method);
       console.log(tag, 'params:', params);
+      if (!KEEPKEY_WALLET.assetContext) {
+        //set context to the chain
 
-      //set context to the chain
-      await KEEPKEY_WALLET.setAssetContext();
+        //defaults to eth
+        await KEEPKEY_WALLET.setAssetContext({ caip: CURRENT_PROVIDER.caip });
+      }
 
       // Require user approval
       const result = await requireApproval(requestInfo, 'ethereum', method, params[0]);
@@ -297,45 +300,16 @@ const processApprovedEvent = async (
   }
 };
 
-const signMessage = async (message, KEEPKEY_WALLET, ADDRESS) => {
+const signMessage = async (message, KEEPKEY_WALLET) => {
   const tag = TAG + ' [signMessage] ';
   try {
     console.log(tag, 'signMessage: ', message);
-
-    let messageFormatted;
-
-    // Check if the message is a hex string starting with '0x'
-    if (typeof message === 'string' && message.startsWith('0x')) {
-      // Message is already a hex string, use it directly
-      messageFormatted = message;
-    } else if (typeof message === 'string') {
-      // Message is a string, encode it to bytes and convert to hex
-      const encoder = new TextEncoder();
-      const messageBytes = encoder.encode(message);
-
-      const messageHex = Array.from(messageBytes)
-        .map(byte => byte.toString(16).padStart(2, '0'))
-        .join('');
-
-      messageFormatted = `0x${messageHex}`;
-    } else if (message instanceof Uint8Array || Array.isArray(message)) {
-      // Message is a byte array, convert to hex string
-      const messageHex = Array.from(message)
-        .map(byte => byte.toString(16).padStart(2, '0'))
-        .join('');
-
-      messageFormatted = `0x${messageHex}`;
-    } else {
-      throw new Error('Invalid message format');
-    }
-
-    console.log('messageFormatted:', messageFormatted);
 
     // Proceed with signing
     const wallet = await KEEPKEY_WALLET.swapKit.getWallet(Chain.Ethereum);
     console.log('wallet:', wallet);
 
-    const signedMessage = await wallet.signMessage(messageFormatted);
+    const signedMessage = await wallet.signMessage(message);
     console.log(tag, 'signedMessage:', signedMessage);
     return signedMessage;
   } catch (e) {
@@ -452,6 +426,7 @@ const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string) 
 const broadcastTransaction = async (signedTx: string, provider: JsonRpcProvider) => {
   let tag = TAG + ' | broadcastTransaction | ';
   try {
+    console.log(tag, 'provider: ', provider);
     console.log(tag, 'Broadcasting transaction: ', signedTx);
     //@ts-ignore
     const txResponse = await provider.sendTransaction(signedTx);
@@ -480,12 +455,12 @@ const sendTransaction = async (
     const chainId = CURRENT_PROVIDER.chainId;
     transaction.chainId = chainId;
     transaction.from = ADDRESS;
-    const signedTx = await signTransaction(transaction, provider, KEEPKEY_WALLET);
-    console.log(tag, 'signedTx:', signedTx);
+    const txid = await signTransaction(transaction, provider, KEEPKEY_WALLET);
+    console.log(tag, 'txid:', txid);
 
-    const result = await broadcastTransaction(signedTx, provider);
-    console.log(tag, 'result:', result);
-    return result;
+    // const result = await broadcastTransaction(signedTx, CURRENT_PROVIDER.provider);
+    // console.log(tag, 'result:', result);
+    return txid;
   } catch (e) {
     console.error(e);
     throw createProviderRpcError(4000, 'Error sending transaction', e);
