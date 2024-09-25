@@ -211,112 +211,31 @@ export const handleWalletRequest = async (
 
     switch (chain) {
       case 'ethereum': {
-        return await handleEthereumRequest(
-          method,
-          params,
-          provider,
-          CURRENT_PROVIDER,
-          requestInfo,
-          ADDRESS,
-          KEEPKEY_WALLET,
-          requireApproval,
-        );
+        return await handleEthereumRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
       }
       case 'bitcoin': {
-        return await handleBitcoinRequest(
-          method,
-          params,
-          provider,
-          CURRENT_PROVIDER,
-          requestInfo,
-          ADDRESS,
-          KEEPKEY_WALLET,
-          requireApproval,
-        );
+        return await handleBitcoinRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
       }
       case 'bitcoincash': {
-        return await handleBitcoinCashRequest(
-          method,
-          params,
-          provider,
-          CURRENT_PROVIDER,
-          requestInfo,
-          ADDRESS,
-          KEEPKEY_WALLET,
-          requireApproval,
-        );
+        return await handleBitcoinCashRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
       }
       case 'dogecoin': {
-        return await handleDogecoinRequest(
-          method,
-          params,
-          provider,
-          CURRENT_PROVIDER,
-          requestInfo,
-          ADDRESS,
-          KEEPKEY_WALLET,
-          requireApproval,
-        );
+        return await handleDogecoinRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
       }
       case 'litecoin': {
-        return await handleLitecoinRequest(
-          method,
-          params,
-          provider,
-          CURRENT_PROVIDER,
-          requestInfo,
-          ADDRESS,
-          KEEPKEY_WALLET,
-          requireApproval,
-        );
+        return await handleLitecoinRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
       }
       case 'dash': {
-        return await handleDashRequest(
-          method,
-          params,
-          provider,
-          CURRENT_PROVIDER,
-          requestInfo,
-          ADDRESS,
-          KEEPKEY_WALLET,
-          requireApproval,
-        );
+        return await handleDashRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
       }
       case 'thorchain': {
-        return await handleThorchainRequest(
-          method,
-          params,
-          provider,
-          CURRENT_PROVIDER,
-          requestInfo,
-          ADDRESS,
-          KEEPKEY_WALLET,
-          requireApproval,
-        );
+        return await handleThorchainRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
       }
       case 'cosmos': {
-        return await handleCosmosRequest(
-          method,
-          params,
-          provider,
-          CURRENT_PROVIDER,
-          requestInfo,
-          ADDRESS,
-          KEEPKEY_WALLET,
-          requireApproval,
-        );
+        return await handleCosmosRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
       }
       case 'mayachain': {
-        return await handleMayaRequest(
-          method,
-          params,
-          provider,
-          CURRENT_PROVIDER,
-          requestInfo,
-          ADDRESS,
-          KEEPKEY_WALLET,
-          requireApproval,
-        );
+        return await handleMayaRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
       }
       default: {
         console.log(tag, `Chain ${chain} not supported`);

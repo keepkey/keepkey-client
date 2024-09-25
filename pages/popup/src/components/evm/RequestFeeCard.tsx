@@ -11,9 +11,25 @@ import {
   Switch,
   Heading,
   Input,
+  Spinner,
+  Badge,
 } from '@chakra-ui/react';
 
-const RequestFeeCard = ({ data, chainId }: any) => {
+const requestFeeData = () => {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({ type: 'GET_GAS_ESTIMATE' }, response => {
+      if (chrome.runtime.lastError) {
+        return reject(chrome.runtime.lastError);
+      }
+      resolve(response);
+    });
+  });
+};
+
+// Sample ETH price in USD for calculation
+const ETH_PRICE_IN_USD = 1800;
+
+const RequestFeeCard = ({ transaction }: any) => {
   const [selectedFee, setSelectedFee] = useState('');
   const [customFee, setCustomFee] = useState('');
   const [dappProvidedFee, setDappProvidedFee] = useState(false);
@@ -24,11 +40,18 @@ const RequestFeeCard = ({ data, chainId }: any) => {
     dappSuggested: '',
     networkRecommended: '',
   });
+  const [loading, setLoading] = useState(false); // Track if data is being fetched
+  const [usdFee, setUsdFee] = useState(''); // USD value of the selected fee
 
-  const updateFeeData = (feeData: any, isEIP1559: boolean) => {
+  const calculateUsdValue = (gweiFee: string) => {
+    const ethFee = parseFloat(gweiFee) / 1e9; // Convert Gwei to ETH
+    return (ethFee * ETH_PRICE_IN_USD).toFixed(2); // Convert ETH to USD and format
+  };
+
+  const updateFeeData = (feeData: any) => {
     console.log('updateFeeData: ', feeData);
-    setFeeData(feeData);
     console.log('transaction: ', transaction);
+
     if (!isEIP1559) {
       transaction.gasPrice = feeData.gasPrice;
       transaction.maxFeePerGas = null;
@@ -38,60 +61,80 @@ const RequestFeeCard = ({ data, chainId }: any) => {
       transaction.maxFeePerGas = feeData.maxFeePerGas;
       transaction.maxPriorityFeePerGas = feeData.maxPriorityFeePerGas;
     }
-    //TODO update the transaction with the new fee data in events storage
   };
 
   const getFee = async () => {
+    setLoading(true);
     try {
-      // const network = chainId;
-      // const rpcUrl = EIP155_CHAINS[network].rpc;
-      // const provider = new JsonRpcProvider(rpcUrl);
-      // const feeData = await provider.getFeeData();
-      //
-      // const networkRecommendedFee = feeData.gasPrice
-      //   ? (BigInt(feeData.gasPrice.toString()) / BigInt(1e9)).toString()
-      //   : '';
-      //
-      // setFees((prevFees: any) => ({
-      //   ...prevFees,
-      //   networkRecommended: networkRecommendedFee,
-      // }));
+      const feeData = await requestFeeData();
+      console.log('feeData fetched: ', feeData);
+
+      const networkRecommendedFee = feeData.gasPrice
+        ? (BigInt(feeData.gasPrice.toString()) / BigInt(1e9)).toString()
+        : '';
+      console.log('networkRecommendedFee calculated: ', networkRecommendedFee);
+
+      setFees((prevFees: any) => ({
+        ...prevFees,
+        networkRecommended: networkRecommendedFee,
+      }));
 
       setFeeWarning(false);
     } catch (e) {
       console.error('Error fetching fee data:', e);
+    } finally {
+      setLoading(false); // Ensure the spinner stops after fetching
     }
   };
 
   useEffect(() => {
-    // if (!data.maxPriorityFeePerGas && !data.maxFeePerGas && !data.gasPrice) {
-    //   getFee();
-    //   setDappProvidedFee(false);
-    //   setSelectedFee('networkRecommended');
-    // } else {
-    //   const dappFee = data.gasPrice
-    //     ? (BigInt(data.gasPrice.toString()) / BigInt(1e9)).toString()
-    //     : '';
-    //   const networkFee = fees.networkRecommended;
-    //
-    //   setDappProvidedFee(true);
-    //   setFees((prevFees: any) => ({
-    //     ...prevFees,
-    //     dappSuggested: dappFee,
-    //   }));
-    //   if (networkFee && BigInt(dappFee) < BigInt(networkFee)) {
-    //     setFeeWarning(true);
-    //   }
-    //   setSelectedFee('dappSuggested');
-    // }
-  }, [data, fees.networkRecommended]);
+    if (
+      !transaction.request.maxPriorityFeePerGas &&
+      !transaction.request.maxFeePerGas &&
+      !transaction.request.gasPrice
+    ) {
+      console.log('DApp did not provide fee data');
+      getFee();
+      setDappProvidedFee(false);
+      setSelectedFee('networkRecommended');
+    } else {
+      console.log('DApp provided fee data');
+      const dappFee = transaction.request.gasPrice
+        ? (BigInt(transaction.request.gasPrice.toString()) / BigInt(1e9)).toString()
+        : '';
+      const networkFee = fees.networkRecommended;
+      console.log('networkFee: ', networkFee);
+
+      setDappProvidedFee(true);
+      setFees((prevFees: any) => ({
+        ...prevFees,
+        dappSuggested: dappFee,
+      }));
+
+      if (networkFee && BigInt(dappFee) < BigInt(networkFee)) {
+        setFeeWarning(true);
+      }
+      setSelectedFee('dappSuggested');
+    }
+  }, [transaction, fees.networkRecommended]);
 
   useEffect(() => {
+    console.log('Selected fee updated: ', selectedFee);
+    console.log('Fees object: ', fees);
+
     if (selectedFee === 'custom') {
       setDisplayFee(customFee + ' Gwei');
     } else {
-      setDisplayFee(fees[selectedFee] + ' Gwei');
+      setDisplayFee(fees[selectedFee] ? fees[selectedFee] + ' Gwei' : '');
     }
+
+    if (fees[selectedFee]) {
+      const feeInUsd = calculateUsdValue(fees[selectedFee]);
+      setUsdFee(feeInUsd);
+    }
+
+    console.log('Display fee updated: ', displayFee);
+    console.log('USD Fee: ', usdFee);
   }, [selectedFee, customFee, fees]);
 
   const handleFeeChange = (event: any) => {
@@ -103,6 +146,7 @@ const RequestFeeCard = ({ data, chainId }: any) => {
   };
 
   const handleSubmit = () => {
+    console.log('handleSubmit called');
     let selectedFeeData;
     const feeInGwei = selectedFee === 'custom' ? customFee : fees[selectedFee];
 
@@ -112,7 +156,7 @@ const RequestFeeCard = ({ data, chainId }: any) => {
       const maxFeeInWei = baseFeeInWei + priorityFeeInWei;
 
       selectedFeeData = {
-        gasPrice: baseFeeInWei.toString(),
+        gasPrice: null,
         maxFeePerGas: maxFeeInWei.toString(),
         maxPriorityFeePerGas: priorityFeeInWei.toString(),
       };
@@ -120,23 +164,29 @@ const RequestFeeCard = ({ data, chainId }: any) => {
       const gasPriceInWei = BigInt(feeInGwei) * BigInt(1e9);
       selectedFeeData = {
         gasPrice: gasPriceInWei.toString(),
-        maxFeePerGas: gasPriceInWei.toString(),
-        maxPriorityFeePerGas: gasPriceInWei.toString(),
+        maxFeePerGas: null,
+        maxPriorityFeePerGas: null,
       };
     }
 
     const feeDataHex = {
-      gasPrice: `0x${BigInt(selectedFeeData.gasPrice).toString(16)}`,
-      maxFeePerGas: `0x${BigInt(selectedFeeData.maxFeePerGas).toString(16)}`,
-      maxPriorityFeePerGas: `0x${BigInt(selectedFeeData.maxPriorityFeePerGas).toString(16)}`,
+      gasPrice: selectedFeeData.gasPrice ? `0x${BigInt(selectedFeeData.gasPrice).toString(16)}` : null,
+      maxFeePerGas: selectedFeeData.maxFeePerGas ? `0x${BigInt(selectedFeeData.maxFeePerGas).toString(16)}` : null,
+      maxPriorityFeePerGas: selectedFeeData.maxPriorityFeePerGas
+        ? `0x${BigInt(selectedFeeData.maxPriorityFeePerGas).toString(16)}`
+        : null,
     };
 
+    console.log('feeDataHex after submit: ', feeDataHex);
     updateFeeData(feeDataHex);
   };
 
   return (
     <Fragment>
-      {!dappProvidedFee && (
+      {/* Show spinner while loading fee data */}
+      {loading && <Spinner size="xl" color="blue.500" />}
+
+      {!loading && !dappProvidedFee && (
         <Text fontSize="sm" fontStyle="italic" mt={2}>
           Please select a fee option below:
         </Text>
@@ -145,35 +195,59 @@ const RequestFeeCard = ({ data, chainId }: any) => {
       {feeWarning && (
         <Alert status="warning" borderRadius="md" mb={2}>
           <AlertTitle>Warning</AlertTitle>
-          Dapp suggested fee is lower than the network recommended fee.
+          DApp suggested fee is lower than the network recommended fee.
         </Alert>
       )}
 
-      <FormControl as="fieldset">
-        <RadioGroup name="fee" value={selectedFee} onChange={handleFeeChange}>
-          {dappProvidedFee && <Radio value="dappSuggested">DApp Suggested Fee ({fees.dappSuggested} Gwei)</Radio>}
-          {fees.networkRecommended && (
-            <Radio value="networkRecommended">Network Recommended Fee ({fees.networkRecommended} Gwei)</Radio>
+      {!loading && (
+        <FormControl as="fieldset">
+          <RadioGroup name="fee" value={selectedFee} onChange={handleFeeChange}>
+            {dappProvidedFee && fees.dappSuggested && (
+              <Radio value="dappSuggested">
+                DApp Suggested Fee ({fees.dappSuggested} Gwei){' '}
+                <Badge colorScheme="green">${calculateUsdValue(fees.dappSuggested)} USD</Badge>
+              </Radio>
+            )}
+            {/*{fees.networkRecommended && (*/}
+            {/*    <Radio value="networkRecommended">*/}
+            {/*      Network Recommended Fee ({fees.networkRecommended} Gwei) <Badge colorScheme="green">${calculateUsdValue(fees.networkRecommended)} USD</Badge>*/}
+            {/*    </Radio>*/}
+            {/*)}*/}
+
+            <Radio value="networkRecommended">
+              Network Recommended Fee ({fees.networkRecommended} Gwei){' '}
+              <Badge colorScheme="green">${calculateUsdValue(fees.networkRecommended)} USD</Badge>
+            </Radio>
+
+            <Radio value="custom">Custom Fee</Radio>
+          </RadioGroup>
+          {selectedFee === 'custom' && (
+            <Input
+              variant="outline"
+              value={customFee}
+              onChange={handleCustomFeeChange}
+              margin="normal"
+              type="number"
+              bg="white"
+              color="black"
+              mt={2}
+            />
           )}
-          <Radio value="custom">Custom Fee</Radio>
-        </RadioGroup>
-        {selectedFee === 'custom' && (
-          <Input
-            variant="outline"
-            value={customFee}
-            onChange={handleCustomFeeChange}
-            // fullWidth
-            margin="normal"
-            type="number"
-            bg="white"
-            color="black"
-            mt={2}
-          />
-        )}
-      </FormControl>
-      <Heading as="h6" size="sm" mt={4}>
-        Current Fee: {displayFee}
-      </Heading>
+        </FormControl>
+      )}
+
+      {!loading && (
+        <Heading as="h6" size="sm" mt={4}>
+          Current Fee: {displayFee || 'No fee selected'}
+        </Heading>
+      )}
+
+      {usdFee && (
+        <Text fontSize="sm" color="green.500" mt={2}>
+          Estimated fee in USD: ${usdFee}
+        </Text>
+      )}
+
       <Box display="flex" alignItems="center" mt={4} justifyContent="space-between">
         <Button colorScheme="green" onClick={handleSubmit}>
           Submit Fee

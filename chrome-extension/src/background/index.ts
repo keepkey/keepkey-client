@@ -6,7 +6,7 @@ import { handleWalletRequest } from './methods';
 import { JsonRpcProvider } from 'ethers';
 import { ChainToNetworkId } from '@pioneer-platform/pioneer-caip';
 import { Chain } from '@coinmasters/types';
-import { exampleSidebarStorage } from '@extension/storage'; // Re-import the storage
+import { exampleSidebarStorage, web3ProviderStorage } from '@extension/storage'; // Re-import the storage
 import { EIP155_CHAINS } from './chains';
 import axios from 'axios';
 
@@ -108,6 +108,22 @@ const onStart = async function () {
         updateIcon();
         pushStateChangeEvent();
       }
+
+      const defaultProvider: any = {
+        chainId: '0x1',
+        caip: 'eip155:1/slip44:60',
+        blockExplorerUrls: ['https://etherscan.io'],
+        name: 'Ethereum',
+        providerUrl: 'https://eth.llamarpc.com',
+        fallbacks: [],
+      };
+      //get current provider
+      const currentProvider = await web3ProviderStorage.getWeb3Provider();
+      if (!currentProvider) {
+        console.log(tag, 'No provider set, setting default provider');
+        await web3ProviderStorage.saveWeb3Provider(defaultProvider);
+      }
+      //if not set, set it to eth mainnet
     } else {
       console.error(tag, 'FAILED TO INIT, No Ethereum address found');
       //TODO retry?
@@ -197,20 +213,12 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
 
         case 'GET_GAS_ESTIMATE': {
           if (APP) {
-            //get chainid
-            const assetContext = APP.assetContext;
-            if (!assetContext) throw new Error('Invalid asset context. Missing assetContext.');
-            const { tx, source } = message;
-            tx.chainId = assetContext.networkId.replace('eip155:', '');
-            console.log(tag, 'chainId: ', tx.chainId);
-            console.log(tag, 'GET_TX_INSIGHT', tx, source);
-            if (!tx) throw new Error('Invalid request: missing tx');
-            if (!source) throw new Error('Invalid request: missing source');
+            const providerInfo = await web3ProviderStorage.getWeb3Provider();
+            if (!providerInfo) throw Error('Failed to get provider info');
 
-            //result
-            const result = await APP.pioneer.Insight({ tx, source });
-            console.log(tag, 'GET_TX_INSIGHT', result);
-            sendResponse(result.data);
+            const provider = new JsonRpcProvider(providerInfo.providerUrl);
+            const feeData = await provider.getFeeData();
+            sendResponse(feeData);
           } else {
             sendResponse({ error: 'APP not initialized' });
           }

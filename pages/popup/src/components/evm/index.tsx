@@ -29,7 +29,7 @@ export function EvmTransaction({ transaction, reloadEvents, handleResponse }: an
       <Divider />
       <RequestMethodCard transaction={transaction} />
       <Divider />
-      <Tabs defaultIndex={1}>
+      <Tabs defaultIndex={2}>
         <TabList>
           <Tab>Insight</Tab>
           <Tab>Details</Tab>
@@ -52,7 +52,7 @@ export function EvmTransaction({ transaction, reloadEvents, handleResponse }: an
           <TabPanel>
             {transaction.type !== 'personal_sign' && (
               <>
-                <RequestFeeCard data={transaction} />
+                <RequestFeeCard transaction={transaction} />
               </>
             )}
           </TabPanel>

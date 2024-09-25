@@ -21,8 +21,6 @@ export const createProviderRpcError = (code: number, message: string, data?: unk
 export const handleBitcoinRequest = async (
   method: string,
   params: any[],
-  provider: JsonRpcProvider,
-  CURRENT_PROVIDER: any,
   requestInfo: any,
   ADDRESS: string,
   KEEPKEY_WALLET: any,
