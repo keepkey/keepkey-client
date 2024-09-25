@@ -383,7 +383,7 @@ const signTransaction = async (transaction: any, provider: JsonRpcProvider, KEEP
     };
 
     console.log(`${tag} Final input: `, input);
-    let wallet = await KEEPKEY_WALLET.swapKit.getWallet(Chain.Ethereum);
+    const wallet = await KEEPKEY_WALLET.swapKit.getWallet(Chain.Ethereum);
     console.log('wallet: ', wallet);
     const output = await wallet.sendTransaction(input);
     console.log(`${tag} Transaction output: `, output);
