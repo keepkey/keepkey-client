@@ -41,24 +41,24 @@ export const theme = extendTheme({
     body: 'Plus Jakarta Sans, sans-serif',
   },
   components: {
-    Button: {
-      baseStyle: {
-        fontWeight: 'bold',
-      },
-      variants: {
-        solid: (props: any) => ({
-          bg: props.colorMode === 'dark' ? 'keepKeyGold.500' : 'keepKeyGold.400',
-          color: 'white',
-          _hover: {
-            bg: 'keepKeyGold.600',
-          },
-        }),
-      },
-      defaultProps: {
-        size: 'md',
-        variant: 'solid',
-      },
-    },
+    // Button: {
+    //   baseStyle: {
+    //     fontWeight: 'bold',
+    //   },
+    //   variants: {
+    //     solid: (props: any) => ({
+    //       bg: props.colorMode === 'dark' ? 'keepKeyGold.500' : 'keepKeyGold.400',
+    //       color: 'white',
+    //       _hover: {
+    //         bg: 'keepKeyGold.600',
+    //       },
+    //     }),
+    //   },
+    //   defaultProps: {
+    //     size: 'md',
+    //     variant: 'solid',
+    //   },
+    // },
     // You can extend other components here in a similar fashion
   },
   config,

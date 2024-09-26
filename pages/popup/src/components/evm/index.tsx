@@ -29,19 +29,19 @@ export function EvmTransaction({ transaction, reloadEvents, handleResponse }: an
       <Divider />
       <RequestMethodCard transaction={transaction} />
       <Divider />
-      <Tabs defaultIndex={2}>
+      <Tabs defaultIndex={0}>
         <TabList>
-          <Tab>Insight</Tab>
+          {/*<Tab>Insight</Tab>*/}
           <Tab>Details</Tab>
           <Tab>Fees</Tab>
-          <Tab>Raw</Tab>
+          {/*<Tab>Raw</Tab>*/}
         </TabList>
 
         <TabPanels>
           {/* Contract Tab */}
-          <TabPanel>
-            <ContractDetailsCard transaction={transaction} />
-          </TabPanel>
+          {/*<TabPanel>*/}
+          {/*  <ContractDetailsCard transaction={transaction} />*/}
+          {/*</TabPanel>*/}
 
           {/* Review Tab */}
           <TabPanel>
@@ -58,15 +58,15 @@ export function EvmTransaction({ transaction, reloadEvents, handleResponse }: an
           </TabPanel>
 
           {/* Raw Data Tab */}
-          <TabPanel>
-            <RequestDataCard transaction={transaction} />
-          </TabPanel>
+          {/*<TabPanel>*/}
+          {/*  <RequestDataCard transaction={transaction} />*/}
+          {/*</TabPanel>*/}
         </TabPanels>
       </Tabs>
 
       <Divider />
 
-      <Flex>
+      <Flex justifyContent="center" alignItems="center">
         <Button colorScheme="green" onClick={() => handleResponse('accept')} mr={2}>
           Approve
         </Button>

@@ -3,7 +3,8 @@ import EvmTransaction from './evm';
 import UtxoTransaction from './utxo';
 import { approvalStorage, requestStorage } from '@extension/storage/dist/lib';
 import Confetti from 'react-confetti';
-import { Spinner, Button, Icon, Alert, AlertIcon } from '@chakra-ui/react';
+// eslint-disable-next-line import/named
+import { Flex, Card, CardBody, Image, Spinner, Heading, Button, Icon, Alert, AlertIcon } from '@chakra-ui/react';
 import { WarningIcon } from '@chakra-ui/icons'; // Import the WarningIcon from Chakra UI
 
 const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => void }) => {
@@ -14,6 +15,28 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
   const [transactionInProgress, setTransactionInProgress] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  const openSidebar = () => {
+    // Send a message to open the sidebar
+    chrome.runtime.sendMessage({ type: 'OPEN_SIDEBAR' }, response => {
+      if (response?.success) {
+        console.log('Sidebar opened successfully');
+      } else {
+        console.error('Failed to open sidebar:', response?.error);
+      }
+    });
+  };
+
+  const cancelRequest = () => {
+    // Send a message to open the sidebar
+    chrome.runtime.sendMessage({ type: 'RESET_APP' }, response => {
+      if (response?.success) {
+        console.log('Sidebar opened successfully');
+      } else {
+        console.error('Failed to open sidebar:', response?.error);
+      }
+    });
+  };
+
   const handleResponse = async (decision: 'accept' | 'reject') => {
     try {
       console.log('handleResponse:', decision);
@@ -23,6 +46,7 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
         await requestStorage.removeEventById(event.id);
         reloadEvents();
       } else if (decision === 'accept') {
+        openSidebar();
         setAwaitingDeviceApproval(true);
       }
     } catch (error) {
@@ -79,7 +103,7 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
   };
 
   const handleCancel = () => {
-    chrome.runtime.sendMessage({ action: 'restart_backend' });
+    cancelRequest();
     setAwaitingDeviceApproval(false);
     setTransactionInProgress(false);
     reloadEvents();
@@ -117,11 +141,33 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
       {!awaitingDeviceApproval && renderTransaction()}
 
       {awaitingDeviceApproval && (
-        <div>
-          <img src="https://pioneers.dev/coins/hold-and-release.svg" alt="Approve on device" />
-          <h3>Please approve the transaction on your KeepKey</h3>
-          <button onClick={handleCancel}>Cancel</button>
-        </div>
+        <Flex justify="center" align="center" height="100vh">
+          <Card width="400px" boxShadow="lg" borderRadius="lg" overflow="hidden">
+            <CardBody>
+              <Flex direction="column" align="center">
+                <Heading as="h2" size="md" mb={4} textAlign="center">
+                  Device Signing Request
+                </Heading>
+                <Image
+                  src="https://pioneers.dev/coins/hold-and-release.svg"
+                  alt="Approve on device"
+                  boxSize="150px"
+                  mb={4}
+                />
+                <Heading as="h3" size="md" mb={4} textAlign="center">
+                  Please approve the transaction on your KeepKey
+                </Heading>
+                <br />
+                or....
+                <br />
+                <br />
+                <Button colorScheme="yellow" onClick={handleCancel}>
+                  Abort Signing
+                </Button>
+              </Flex>
+            </CardBody>
+          </Card>
+        </Flex>
       )}
 
       {txHash && (

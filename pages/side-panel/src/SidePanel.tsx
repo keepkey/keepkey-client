@@ -62,16 +62,16 @@ const SidePanel = () => {
   };
 
   // Timer to check if keepkeyState is not 5, and if so, call refreshBalances
-  useEffect(() => {
-    const timer = setInterval(() => {
-      if (keepkeyState !== 5) {
-        console.log('KeepKey state is not paired (5). Retrying...');
-        refreshBalances();
-      }
-    }, 5000); // 5-second timer
-
-    return () => clearInterval(timer); // Cleanup timer on component unmount
-  }, [keepkeyState]); // Dependency on keepkeyState
+  // useEffect(() => {
+  //   const timer = setInterval(() => {
+  //     if (keepkeyState !== 5) {
+  //       console.log('KeepKey state is not paired (5). Retrying...');
+  //       refreshBalances();
+  //     }
+  //   }, 5000); // 5-second timer
+  //
+  //   return () => clearInterval(timer); // Cleanup timer on component unmount
+  // }, [keepkeyState]); // Dependency on keepkeyState
 
   useEffect(() => {
     const messageListener = (message: any) => {

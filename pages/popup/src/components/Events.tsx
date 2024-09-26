@@ -65,17 +65,6 @@ const EventsViewer = () => {
     setCurrentIndex(0);
   };
 
-  const openSidebar = () => {
-    // Send a message to open the sidebar
-    chrome.runtime.sendMessage({ type: 'OPEN_SIDEBAR' }, response => {
-      if (response?.success) {
-        console.log('Sidebar opened successfully');
-      } else {
-        console.error('Failed to open sidebar:', response?.error);
-      }
-    });
-  };
-
   // Reset transaction state when switching between events
   const resetTransactionState = () => {
     // Here you can reset any transaction-related state
@@ -87,20 +76,15 @@ const EventsViewer = () => {
       {/* Show spinner if events are being fetched */}
       {loading && <Spinner />}
 
-      {/* Show event count at the top */}
-      <Text fontSize="lg" fontWeight="bold">
-        Event Count: {events.length}
-      </Text>
-
       {/* Only show event details if events are loaded */}
       {events.length > 0 && !loading ? (
         <Box>
           {/* Show the age of the current event */}
-          <Text fontSize="md" fontWeight="medium">
-            Chain: {events[currentIndex].chain}
-            <br />
-            Event Age: {Math.floor(getEventAgeInMinutes(events[currentIndex].timestamp))} minutes
-          </Text>
+          {/*<Text fontSize="md" fontWeight="medium">*/}
+          {/*  Chain: {events[currentIndex].chain}*/}
+          {/*  <br />*/}
+          {/*  Event Age: {Math.floor(getEventAgeInMinutes(events[currentIndex].timestamp))} minutes*/}
+          {/*</Text>*/}
 
           {/* Pass the current event to the Transaction component */}
           <Transaction event={events[currentIndex]} reloadEvents={fetchEvents} />
@@ -110,20 +94,25 @@ const EventsViewer = () => {
       )}
 
       {/* Navigation buttons */}
-      <Flex mt={4} justify="space-between">
-        <Button onClick={previousEvent} disabled={currentIndex === 0}>
-          Previous
-        </Button>
-        <Button onClick={nextEvent} disabled={currentIndex === events.length - 1}>
-          Next
-        </Button>
-        <Button onClick={clearRequestEvents}>Clear Events</Button>
-      </Flex>
+      {/*<Flex mt={4} justify="space-between">*/}
+      {/*  <Button onClick={previousEvent} disabled={currentIndex === 0}>*/}
+      {/*    Previous*/}
+      {/*  </Button>*/}
+      {/*  <Button onClick={nextEvent} disabled={currentIndex === events.length - 1}>*/}
+      {/*    Next*/}
+      {/*  </Button>*/}
+      {/*  <Button onClick={clearRequestEvents}>Clear Events</Button>*/}
+      {/*</Flex>*/}
 
       {/* Open Sidebar button */}
-      <Flex mt={4} justify="center">
-        <Button onClick={openSidebar}>Open Sidebar</Button>
-      </Flex>
+      {/*<Flex mt={4} justify="center">*/}
+      {/*  <Button onClick={openSidebar}>Open Sidebar</Button>*/}
+      {/*</Flex>*/}
+
+      {/* Show event count at the top */}
+      {/*<Text fontSize="lg" fontWeight="bold">*/}
+      {/*  Event Count: {events.length}*/}
+      {/*</Text>*/}
     </Box>
   );
 };

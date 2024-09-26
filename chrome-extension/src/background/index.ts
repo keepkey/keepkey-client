@@ -203,6 +203,13 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           break;
         }
 
+        case 'RESET_APP': {
+          console.log(tag, 'Resetting app...');
+          chrome.runtime.reload();
+          sendResponse({ result: true });
+          break;
+        }
+
         case 'GET_APP': {
           sendResponse({ app: APP });
           break;
