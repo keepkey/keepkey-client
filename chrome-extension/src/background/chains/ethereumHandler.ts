@@ -255,8 +255,8 @@ export const handleEthereumRequest = async (
       console.log(tag, 'params:', params);
       if (!KEEPKEY_WALLET.assetContext) {
         // Set context to the chain, defaults to ETH
-        const currentProvider = await web3ProviderStorage.getWeb3Provider();
-        await KEEPKEY_WALLET.setAssetContext({ caip: currentProvider.caip });
+        // const currentProvider = await web3ProviderStorage.getWeb3Provider();
+        // await KEEPKEY_WALLET.setAssetContext({ caip: currentProvider.caip });
       }
 
       // Require user approval
