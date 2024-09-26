@@ -118,7 +118,7 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
 
       {awaitingDeviceApproval && (
         <div>
-          <img src="/path-to-your-image.png" alt="Approve on device" />
+          <img src="https://pioneers.dev/coins/hold-and-release.svg" alt="Approve on device" />
           <h3>Please approve the transaction on your KeepKey</h3>
           <button onClick={handleCancel}>Cancel</button>
         </div>

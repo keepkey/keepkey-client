@@ -326,15 +326,13 @@ const processApprovedEvent = async (method: string, params: any, KEEPKEY_WALLET:
 const signMessage = async (message, KEEPKEY_WALLET, ADDRESS: string) => {
   const tag = TAG + ' [signMessage] ';
   try {
-    console.log(tag, 'signMessage: ', message);
+    console.log(tag, '**** message: ', message);
+    console.log(tag, '**** ADDRESS: ', ADDRESS);
 
-    // Proceed with signing
-    const wallet = await KEEPKEY_WALLET.swapKit.getWallet(Chain.Ethereum);
-    console.log('wallet:', wallet);
+    const output = await KEEPKEY_WALLET.keepKeySdk.eth.ethSign({ address: ADDRESS, message: message });
+    console.log(`${tag} Transaction output: `, output);
 
-    const signedMessage = await wallet.signMessage(message);
-    console.log(tag, 'signedMessage:', signedMessage);
-    return signedMessage;
+    return output;
   } catch (e) {
     console.error(e);
     throw createProviderRpcError(4000, 'Error signing message', e);
