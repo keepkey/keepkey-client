@@ -76,27 +76,9 @@ const onStart = async function () {
   try {
     console.log(tag, 'Starting...');
     APP = await onStartKeepkey();
-    console.log(tag, 'APP:', APP);
-
-    // listenForApproval(APP, ADDRESS);
-
     await APP.getAssets();
-
-    const assetsMap = APP.assetsMap;
-    console.log(tag, 'assetsMap:', assetsMap);
-
     await APP.getPubkeys();
-
-    const pubkeys = APP.pubkeys;
-    console.log(tag, 'pubkeys:', pubkeys);
-    console.log(tag, 'pubkeys:', pubkeys.length);
-
     await APP.getBalances();
-
-    const balances = APP.balances;
-    console.log(tag, 'balances:', balances);
-    console.log(tag, 'balances:', balances.length);
-
     const pubkeysEth = APP.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.Ethereum]));
     if (pubkeysEth.length > 0) {
       console.log(tag, 'pubkeys:', pubkeysEth);
@@ -127,6 +109,9 @@ const onStart = async function () {
     } else {
       console.error(tag, 'FAILED TO INIT, No Ethereum address found');
       //TODO retry?
+      // setTimeout(() => {
+      //   onStart();
+      // }, 5000);
     }
   } catch (e) {
     KEEPKEY_STATE = 4; // errored
@@ -136,7 +121,9 @@ const onStart = async function () {
   }
 };
 
-onStart();
+setTimeout(() => {
+  onStart();
+}, 5000);
 
 chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: any) => {
   (async () => {

@@ -19,15 +19,13 @@ import {
   Link,
   Image,
 } from '@chakra-ui/react';
-import { ChevronLeftIcon, RepeatIcon, AddIcon, SettingsIcon } from '@chakra-ui/icons';
+import { ChevronLeftIcon, RepeatIcon, SettingsIcon } from '@chakra-ui/icons';
 import { withErrorBoundary, withSuspense } from '@extension/shared';
 
 import Connect from './components/Connect';
 import Loading from './components/Loading';
 import Balances from './components/Balances';
 import Asset from './components/Asset';
-// import Transaction from './components/Transaction';
-// import Context from './components/Context';
 
 const stateNames: { [key: number]: string } = {
   0: 'unknown',
@@ -62,6 +60,18 @@ const SidePanel = () => {
       console.error(e);
     }
   };
+
+  // Timer to check if keepkeyState is not 5, and if so, call refreshBalances
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (keepkeyState !== 5) {
+        console.log('KeepKey state is not paired (5). Retrying...');
+        refreshBalances();
+      }
+    }, 5000); // 5-second timer
+
+    return () => clearInterval(timer); // Cleanup timer on component unmount
+  }, [keepkeyState]); // Dependency on keepkeyState
 
   useEffect(() => {
     const messageListener = (message: any) => {
@@ -116,7 +126,6 @@ const SidePanel = () => {
           ) : (
             <IconButton icon={<SettingsIcon />} aria-label="Settings" onClick={onSettingsOpen} />
           )}
-          {/*<Context setAssetContext={setAssetContext} />*/}
           <IconButton icon={<RepeatIcon />} aria-label="Refresh" onClick={() => refreshBalances()} ml="auto" />
         </Flex>
       </Box>
