@@ -1,19 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  VStack,
-  Avatar,
-  Box,
-  Stack,
-  Flex,
-  Text,
-  Button,
-  Spinner,
-  Badge,
-  Card,
-  CardBody,
-  Select,
-  Input,
-} from '@chakra-ui/react';
+import { VStack, Avatar, Box, Stack, Flex, Text, Button, Spinner, Badge, Card, CardBody } from '@chakra-ui/react';
 import { Transfer } from './Transfer';
 import { Receive } from './Receive';
 
@@ -22,51 +8,100 @@ export function Asset() {
   const [loading, setLoading] = useState(true);
   const [balances, setBalances] = useState<any[]>([]);
   const [pubkeys, setPubkeys] = useState<any[]>([]);
-  const [paths, setPaths] = useState<any[]>([]);
   const [asset, setAsset] = useState<any>(null); // Define asset state
-  const [selectedProvider, setSelectedProvider] = useState<number | 'custom'>(0); // Handle selected provider
-  const [customProvider, setCustomProvider] = useState<string>(''); // For custom provider
 
-  // Fetch asset context and balances initially
+  // Fetch asset context on initial load
   useEffect(() => {
     fetchAssetContext();
-    fetchBalancesAndPubkeys();
   }, []);
 
-  // Subscribe to events and handle updates
+  // Subscribe to asset context updates
   useEffect(() => {
     const messageListener = (message: any) => {
       if (message.type === 'ASSET_CONTEXT_UPDATED' && message.assetContext) {
         console.log('ASSET_CONTEXT_UPDATED:', message.assetContext);
-        setAsset(message.assetContext); // Update the asset state
-        fetchBalancesAndPubkeys(); // Reload balances when asset context changes
+        setAsset(message.assetContext); // Update asset state
       }
     };
 
-    // Add event listener for messages from the background script
     chrome.runtime.onMessage.addListener(messageListener);
-
     return () => {
-      // Cleanup the listener when the component unmounts
       chrome.runtime.onMessage.removeListener(messageListener);
     };
   }, []);
 
+  // Fetch balances and pubkeys when asset changes
+  useEffect(() => {
+    if (asset) {
+      fetchBalancesAndPubkeys(asset);
+    }
+  }, [asset]);
+
   const fetchAssetContext = () => {
+    setLoading(true); // Start loading when fetching asset context
     chrome.runtime.sendMessage({ type: 'GET_ASSET_CONTEXT' }, response => {
       if (chrome.runtime.lastError) {
         console.error('Error fetching asset context:', chrome.runtime.lastError.message);
+        setLoading(false); // Stop loading on error
         return;
       }
       if (response && response.assets) {
+        console.log('response.assets:', response.assets);
         setAsset(response.assets); // Set asset state
+      } else {
+        setLoading(false); // Stop loading if no asset is returned
       }
     });
   };
 
-  const fetchBalancesAndPubkeys = () => {
-    setLoading(true);
-    // Fetch balances
+  const fetchBalancesAndPubkeys = (assetLoaded: any) => {
+    // If the asset is an eip155 chain, fetch the balance manually
+    if (assetLoaded.caip.includes('eip155')) {
+      fetchEthereumBalance(assetLoaded);
+    } else {
+      // For other chains, fetch balances via GET_APP_BALANCES and filter by asset
+      fetchAppBalances(assetLoaded);
+    }
+  };
+
+  const fetchEthereumBalance = (assetLoaded: any) => {
+    setLoading(true); // Start loading
+    const addressEth = assetLoaded.pubkeys[0]?.address;
+    if (!addressEth) {
+      console.error('No Ethereum address found');
+      setLoading(false);
+      return;
+    }
+
+    chrome.runtime.sendMessage(
+      {
+        type: 'WALLET_REQUEST',
+        requestInfo: {
+          chain: 'ethereum',
+          method: 'eth_getBalance',
+          params: [addressEth, 'latest'],
+        },
+      },
+      response => {
+        if (chrome.runtime.lastError) {
+          console.error('Error fetching balance:', chrome.runtime.lastError.message);
+          setLoading(false);
+          return;
+        }
+        if (response && response.result) {
+          const balanceWei = BigInt(response.result); // Fetching balance as BigInt
+          const balanceEth = Number(balanceWei) / 1e18; // Convert from Wei to Ether
+          setBalances([{ balance: balanceEth, symbol: assetLoaded.symbol }]);
+        } else {
+          console.error('Invalid response for balance:', response);
+        }
+        setLoading(false); // Stop loading after fetching balance
+      },
+    );
+  };
+
+  const fetchAppBalances = (assetLoaded: any) => {
+    setLoading(true); // Start loading
     chrome.runtime.sendMessage({ type: 'GET_APP_BALANCES' }, response => {
       if (chrome.runtime.lastError) {
         console.error('Error fetching balances:', chrome.runtime.lastError.message);
@@ -74,43 +109,14 @@ export function Asset() {
         return;
       }
       if (response && response.balances) {
-        setBalances(response.balances);
+        // Filter balances by selected asset
+        const filteredBalances = response.balances.filter((balance: any) => balance.caip === assetLoaded.caip);
+        setBalances(filteredBalances);
+      } else {
+        console.error('Invalid response for balances:', response);
       }
+      setLoading(false); // Stop loading after fetching balances
     });
-
-    // Fetch pubkeys
-    chrome.runtime.sendMessage({ type: 'GET_PUBKEYS' }, response => {
-      if (chrome.runtime.lastError) {
-        console.error('Error fetching pubkeys:', chrome.runtime.lastError.message);
-        setLoading(false);
-        return;
-      }
-      if (response && response.pubkeys) {
-        setPubkeys(response.pubkeys);
-      }
-    });
-
-    // Fetch paths
-    chrome.runtime.sendMessage({ type: 'GET_PATHS' }, response => {
-      if (chrome.runtime.lastError) {
-        console.error('Error fetching paths:', chrome.runtime.lastError.message);
-        setLoading(false);
-        return;
-      }
-      if (response && response.paths) {
-        setPaths(response.paths);
-      }
-      setLoading(false);
-    });
-  };
-
-  const handleProviderChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const value = e.target.value;
-    if (value === 'custom') {
-      setSelectedProvider('custom');
-    } else {
-      setSelectedProvider(Number(value));
-    }
   };
 
   const formatBalance = (balance: string) => {
@@ -139,27 +145,6 @@ export function Asset() {
                 <Badge>caip: {asset.caip}</Badge>
               </Box>
 
-              {/* Select Dropdown for Providers */}
-              <Box my={4}>
-                <Text>Select Provider:</Text>
-                <Select value={selectedProvider} onChange={handleProviderChange} placeholder="Select provider">
-                  {asset.providers?.map((provider: any, index: number) => (
-                    <option key={index} value={index}>
-                      {provider}
-                    </option>
-                  ))}
-                  <option value="custom">Add your own provider</option>
-                </Select>
-                {selectedProvider === 'custom' && (
-                  <Input
-                    mt={2}
-                    placeholder="Enter custom provider URL"
-                    value={customProvider}
-                    onChange={e => setCustomProvider(e.target.value)}
-                  />
-                )}
-              </Box>
-
               <Flex align="center" justifyContent="space-between" mb={4}>
                 <Avatar size="xl" src={asset.icon} />
                 <Box ml={3} flex="1">
@@ -171,26 +156,28 @@ export function Asset() {
                   </Text>
                 </Box>
                 <Box>
-                  {balances
-                    .filter((balance: any) => balance.caip === asset.caip)
-                    .map((balance: any, index: any) => {
-                      const { integer, largePart, smallPart } = formatBalance(balance.balance);
+                  {balances.length > 0 ? (
+                    balances.map((balance: any, index: any) => {
+                      const formatted = formatBalance(balance.balance.toString());
                       return (
                         <Text key={index}>
                           <Text as="span" fontSize="lg">
-                            {integer}.{largePart}
+                            {formatted.integer}.{formatted.largePart}
                           </Text>
                           <Text as="span" fontSize="xs">
-                            {smallPart}
+                            {formatted.smallPart}
                           </Text>
                           <Box ml={3} flex="1">
                             <Badge ml={2} colorScheme="teal">
-                              ({asset.symbol})
+                              ({balance.symbol || asset.symbol})
                             </Badge>
                           </Box>
                         </Text>
                       );
-                    })}
+                    })
+                  ) : (
+                    <Text>No balance available</Text>
+                  )}
                 </Box>
               </Flex>
               <Flex direction="column" align="center" mb={4} width="100%">
@@ -200,6 +187,7 @@ export function Asset() {
                 <Button my={2} size="md" variant="outline" width="100%" onClick={() => setActiveTab('receive')}>
                   Receive {asset.name}
                 </Button>
+                {/* Transaction History Buttons */}
                 {pubkeys
                   .filter((pubkey: any) => {
                     if (asset?.networkId?.startsWith('eip155')) {
