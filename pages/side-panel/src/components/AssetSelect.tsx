@@ -135,7 +135,7 @@ export function AssetSelect({ onSelect, modalSelected }: any) {
 
   const handleAddEvmChain = () => {
     console.log('Add EVM Chain button clicked');
-    modalSelected('BLOCKCHAIN_WIZZARD');
+    window.open('https://chainlist.org/', '_blank');
   };
 
   return (

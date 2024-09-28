@@ -16,10 +16,10 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@coinmasters/pioneer-db": "^4.7.62",
-    "@coinmasters/pioneer-sdk": "^4.7.64",
-    "@coinmasters/types": "^4.7.63",
-    "@coinmasters/wallet-keepkey": "^13.0.64",
+    "@coinmasters/pioneer-db": "^4.7.65",
+    "@coinmasters/pioneer-sdk": "^4.7.66",
+    "@coinmasters/types": "^4.7.66",
+    "@coinmasters/wallet-keepkey": "^13.0.66",
     "@extension/shared": "workspace:*",
     "@extension/storage": "workspace:*",
     "@pioneer-platform/helpers": "^4.0.12",
@@ -35,11 +35,11 @@
     "@extension/hmr": "workspace:*",
     "@extension/tsconfig": "workspace:*",
     "@extension/vite-config": "workspace:*",
-    "@laynezh/vite-plugin-lib-assets": "^0.5.23",
+    "@laynezh/vite-plugin-lib-assets": "^0.5.24",
     "@types/ws": "^8.5.12",
     "cross-env": "^7.0.3",
     "deepmerge": "^4.3.1",
-    "magic-string": "^0.30.10",
+    "magic-string": "^0.30.11",
     "ts-loader": "^9.5.1"
   }
 }

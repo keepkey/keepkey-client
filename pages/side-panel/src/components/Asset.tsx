@@ -11,7 +11,32 @@ export function Asset() {
   const [paths, setPaths] = useState<any[]>([]);
   const [asset, setAsset] = useState<any>(null); // Define asset state
 
+  // Fetch asset context and balances initially
   useEffect(() => {
+    fetchAssetContext();
+    fetchBalancesAndPubkeys();
+  }, []);
+
+  // Subscribe to events and handle updates
+  useEffect(() => {
+    const messageListener = (message: any) => {
+      if (message.type === 'ASSET_CONTEXT_UPDATED' && message.assetContext) {
+        console.log('ASSET_CONTEXT_UPDATED:', message.assetContext);
+        setAsset(message.assetContext); // Update the asset state
+        fetchBalancesAndPubkeys(); // Reload balances when asset context changes
+      }
+    };
+
+    // Add event listener for messages from the background script
+    chrome.runtime.onMessage.addListener(messageListener);
+
+    return () => {
+      // Cleanup the listener when the component unmounts
+      chrome.runtime.onMessage.removeListener(messageListener);
+    };
+  }, []);
+
+  const fetchAssetContext = () => {
     // Fetch asset context from the background script
     chrome.runtime.sendMessage({ type: 'GET_ASSET_CONTEXT' }, response => {
       if (chrome.runtime.lastError) {
@@ -20,10 +45,9 @@ export function Asset() {
       }
       if (response && response.assets) {
         setAsset(response.assets); // Set asset state
-        fetchBalancesAndPubkeys();
       }
     });
-  }, []);
+  };
 
   const fetchBalancesAndPubkeys = () => {
     setLoading(true);
@@ -77,102 +101,102 @@ export function Asset() {
   };
 
   return (
-    <Stack spacing={4} width="100%">
-      <Card>
-        <CardBody>
-          {loading ? (
-            <Flex justifyContent="center" p={5}>
-              <Spinner size="xl" />
-              <Text ml={3}>Loading...</Text>
-            </Flex>
-          ) : activeTab === null && asset ? (
-            <>
-              <Box textAlign="center">
-                <Badge>caip: {asset.caip}</Badge>
-              </Box>
-              <Flex align="center" justifyContent="space-between" mb={4}>
-                <Avatar size="xl" src={asset.icon} />
-                <Box ml={3} flex="1">
-                  <Text fontSize="lg" fontWeight="bold">
-                    {asset.name}
-                  </Text>
-                  <Text fontSize="md" color="gray.500">
-                    {asset.symbol}
-                  </Text>
-                </Box>
-                <Box>
-                  {balances
-                    .filter((balance: any) => balance.caip === asset.caip)
-                    .map((balance: any, index: any) => {
-                      const { integer, largePart, smallPart } = formatBalance(balance.balance);
-                      return (
-                        <Text key={index}>
-                          <Text as="span" fontSize="lg">
-                            {integer}.{largePart}
-                          </Text>
-                          <Text as="span" fontSize="xs">
-                            {smallPart}
-                          </Text>
-                          <Box ml={3} flex="1">
-                            <Badge ml={2} colorScheme="teal">
-                              ({asset.symbol})
-                            </Badge>
-                          </Box>
-                        </Text>
-                      );
-                    })}
-                </Box>
-              </Flex>
-              <Flex direction="column" align="center" mb={4} width="100%">
-                <Button my={2} size="md" variant="outline" width="100%" onClick={() => setActiveTab('send')}>
-                  Send {asset.name}
-                </Button>
-                <Button my={2} size="md" variant="outline" width="100%" onClick={() => setActiveTab('receive')}>
-                  Receive {asset.name}
-                </Button>
-                {pubkeys
-                  .filter((pubkey: any) => {
-                    if (asset?.networkId?.startsWith('eip155')) {
-                      return pubkey.networks.some((networkId: any) => networkId.startsWith('eip155'));
-                    }
-                    return pubkey.networks.includes(asset.networkId);
-                  })
-                  .map((pubkey: any, index: any) => (
-                    <Button
-                      key={index}
-                      my={2}
-                      size="md"
-                      variant="outline"
-                      width="100%"
-                      onClick={() =>
-                        openUrl(
-                          pubkey.type === 'address'
-                            ? asset.explorerAddressLink + '/' + pubkey.address
-                            : asset.explorerXpubLink + '/' + pubkey.pubkey,
-                        )
-                      }>
-                      <Box>
-                        <Text>View Transaction History</Text>
-                        <Badge>
-                          <Text size="sm">({pubkey.note})</Text>
-                        </Badge>
-                      </Box>
+      <Stack spacing={4} width="100%">
+        <Card>
+          <CardBody>
+            {loading ? (
+                <Flex justifyContent="center" p={5}>
+                  <Spinner size="xl" />
+                  <Text ml={3}>Loading...</Text>
+                </Flex>
+            ) : activeTab === null && asset ? (
+                <>
+                  <Box textAlign="center">
+                    <Badge>caip: {asset.caip}</Badge>
+                  </Box>
+                  <Flex align="center" justifyContent="space-between" mb={4}>
+                    <Avatar size="xl" src={asset.icon} />
+                    <Box ml={3} flex="1">
+                      <Text fontSize="lg" fontWeight="bold">
+                        {asset.name}
+                      </Text>
+                      <Text fontSize="md" color="gray.500">
+                        {asset.symbol}
+                      </Text>
+                    </Box>
+                    <Box>
+                      {balances
+                          .filter((balance: any) => balance.caip === asset.caip)
+                          .map((balance: any, index: any) => {
+                            const { integer, largePart, smallPart } = formatBalance(balance.balance);
+                            return (
+                                <Text key={index}>
+                                  <Text as="span" fontSize="lg">
+                                    {integer}.{largePart}
+                                  </Text>
+                                  <Text as="span" fontSize="xs">
+                                    {smallPart}
+                                  </Text>
+                                  <Box ml={3} flex="1">
+                                    <Badge ml={2} colorScheme="teal">
+                                      ({asset.symbol})
+                                    </Badge>
+                                  </Box>
+                                </Text>
+                            );
+                          })}
+                    </Box>
+                  </Flex>
+                  <Flex direction="column" align="center" mb={4} width="100%">
+                    <Button my={2} size="md" variant="outline" width="100%" onClick={() => setActiveTab('send')}>
+                      Send {asset.name}
                     </Button>
-                  ))}
-              </Flex>
-            </>
-          ) : activeTab === 'send' ? (
-            <Transfer onClose={() => setActiveTab(null)} />
-          ) : activeTab === 'receive' ? (
-            <Receive onClose={() => setActiveTab(null)} />
-          ) : (
-            <Flex justifyContent="center" p={5}>
-              <Text>No asset selected</Text>
-            </Flex>
-          )}
-        </CardBody>
-      </Card>
-    </Stack>
+                    <Button my={2} size="md" variant="outline" width="100%" onClick={() => setActiveTab('receive')}>
+                      Receive {asset.name}
+                    </Button>
+                    {pubkeys
+                        .filter((pubkey: any) => {
+                          if (asset?.networkId?.startsWith('eip155')) {
+                            return pubkey.networks.some((networkId: any) => networkId.startsWith('eip155'));
+                          }
+                          return pubkey.networks.includes(asset.networkId);
+                        })
+                        .map((pubkey: any, index: any) => (
+                            <Button
+                                key={index}
+                                my={2}
+                                size="md"
+                                variant="outline"
+                                width="100%"
+                                onClick={() =>
+                                    openUrl(
+                                        pubkey.type === 'address'
+                                            ? asset.explorerAddressLink + '/' + pubkey.address
+                                            : asset.explorerXpubLink + '/' + pubkey.pubkey,
+                                    )
+                                }>
+                              <Box>
+                                <Text>View Transaction History</Text>
+                                <Badge>
+                                  <Text size="sm">({pubkey.note})</Text>
+                                </Badge>
+                              </Box>
+                            </Button>
+                        ))}
+                  </Flex>
+                </>
+            ) : activeTab === 'send' ? (
+                <Transfer onClose={() => setActiveTab(null)} />
+            ) : activeTab === 'receive' ? (
+                <Receive onClose={() => setActiveTab(null)} />
+            ) : (
+                <Flex justifyContent="center" p={5}>
+                  <Text>No asset selected</Text>
+                </Flex>
+            )}
+          </CardBody>
+        </Card>
+      </Stack>
   );
 }
 

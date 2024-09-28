@@ -195,13 +195,22 @@ export const handleEthereumRequest = async (
 
       if (params && params[0] && params[0].rpcUrls && params[0].rpcUrls[0]) {
         currentProvider = {
-          blockExplorerUrls: params[0].blockExplorerUrls,
+          explorer: params[0].blockExplorerUrls[0],
+          explorerAddressLink: params[0].blockExplorerUrls[0]+ "/address/",
+          explorerTxLink: params[0].blockExplorerUrls[0]+ "/tx/",
+          networkId: `eip155:${parseInt(params[0].chainId, 16)}`
           chainId: sanitizeChainId(params[0].chainId),
           caip: `eip155:${parseInt(params[0].chainId, 16)}/slip44:60`,
           name: params[0].chainName,
+          type;'evm',
+          identifier: params[0].chainName,
           nativeCurrency: params[0].nativeCurrency,
+          symbol: params[0].nativeCurrency.symbol, // Native currency symbol
+          precision: params[0].nativeCurrency.decimals // Currency precision
           providerUrl: params[0].rpcUrls[0],
+          providers: params[0].rpcUrls,
         };
+        console.log('currentProvider', currentProvider);
       } else {
         const chainIdToFind = sanitizeChainId(params[0].chainId);
         let chainFound = false;
