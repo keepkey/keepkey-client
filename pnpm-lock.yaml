@@ -107,13 +107,13 @@ importers:
         version: 4.7.62
       '@coinmasters/pioneer-sdk':
         specifier: ^4.7.64
-        version: 4.7.64(@pioneer-platform/helpers@4.0.12)(@types/node@22.7.1)
+        version: 4.7.64(@pioneer-platform/helpers@4.0.12)(@types/node@20.16.8)
       '@coinmasters/types':
         specifier: ^4.7.63
         version: 4.7.63
       '@coinmasters/wallet-keepkey':
         specifier: ^13.0.64
-        version: 13.0.64(@coinmasters/toolbox-cosmos@11.0.64)(@coinmasters/toolbox-evm@11.0.64)(@coinmasters/toolbox-ripple@11.0.64)(@coinmasters/toolbox-utxo@11.0.64)(@keepkey/keepkey-sdk@0.2.57)(@types/node@22.7.1)(bitcoinjs-lib@5.2.0)
+        version: 13.0.64(@coinmasters/toolbox-cosmos@11.0.64)(@coinmasters/toolbox-evm@11.0.64)(@coinmasters/toolbox-ripple@11.0.64)(@coinmasters/toolbox-utxo@11.0.64)(@keepkey/keepkey-sdk@0.2.57)(@types/node@20.16.8)(bitcoinjs-lib@5.2.0)
       '@extension/shared':
         specifier: workspace:*
         version: link:../packages/shared
@@ -128,7 +128,7 @@ importers:
         version: 9.2.32
       '@pioneer-platform/pioneer-coins':
         specifier: ^9.2.23
-        version: 9.2.23(@types/node@22.7.1)
+        version: 9.2.23(@types/node@20.16.8)
       axios:
         specifier: ^1.7.7
         version: 1.7.7
@@ -156,7 +156,7 @@ importers:
         version: link:../packages/vite-config
       '@laynezh/vite-plugin-lib-assets':
         specifier: ^0.5.23
-        version: 0.5.24(vite@5.4.8)
+        version: 0.5.24(vite@5.4.3)
       '@types/ws':
         specifier: ^8.5.12
         version: 8.5.12
@@ -171,7 +171,7 @@ importers:
         version: 0.30.11
       ts-loader:
         specifier: ^9.5.1
-        version: 9.5.1(typescript@5.6.2)(webpack@5.95.0)
+        version: 9.5.1(typescript@5.5.4)(webpack@5.95.0)
 
   packages/dev-utils:
     devDependencies:
@@ -204,7 +204,7 @@ importers:
         version: 4.21.3
       ts-node:
         specifier: ^10.9.2
-        version: 10.9.2(@types/node@22.7.1)(typescript@5.6.2)
+        version: 10.9.2(@types/node@20.16.8)(typescript@5.5.4)
       ws:
         specifier: 8.18.0
         version: 8.18.0
@@ -263,7 +263,7 @@ importers:
         version: link:../tsconfig
       '@vitejs/plugin-react-swc':
         specifier: ^3.6.0
-        version: 3.7.0(vite@5.4.8)
+        version: 3.7.0(vite@5.4.3)
       deepmerge:
         specifier: ^4.3.1
         version: 4.3.1
@@ -498,6 +498,9 @@ importers:
       '@pioneer-platform/helpers':
         specifier: ^4.0.12
         version: 4.0.12
+      '@pioneer-platform/pioneer-coins':
+        specifier: ^9.2.23
+        version: 9.2.23(@types/node@18.19.52)
       axios:
         specifier: ^1.7.7
         version: 1.7.7
@@ -1776,7 +1779,7 @@ packages:
       ky: 1.1.3
     dev: false
 
-  /@coinmasters/core@11.0.64(@coinmasters/api@3.7.64)(@coinmasters/toolbox-cosmos@11.0.64)(@coinmasters/toolbox-evm@11.0.64)(@coinmasters/toolbox-utxo@11.0.64)(@types/node@22.7.1):
+  /@coinmasters/core@11.0.64(@coinmasters/api@3.7.64)(@coinmasters/toolbox-cosmos@11.0.64)(@coinmasters/toolbox-evm@11.0.64)(@coinmasters/toolbox-utxo@11.0.64)(@types/node@20.16.8):
     resolution: {integrity: sha512-Inr6XBwVDp3sySLmWivMpoFOIEDZyBeljgKfn1Dh5uxWkHYV3759HznIQAzdLrQ5KutgzJZlpFX+faHbnorMfQ==}
     peerDependencies:
       '@coinmasters/api': 3.7.64
@@ -1790,7 +1793,7 @@ packages:
       '@coinmasters/toolbox-utxo': 11.0.64
       '@coinmasters/types': 4.7.64
       '@pioneer-platform/helpers': 4.0.12
-      '@pioneer-platform/loggerdog': 8.3.1(@types/node@22.7.1)
+      '@pioneer-platform/loggerdog': 8.3.1(@types/node@20.16.8)
       '@pioneer-platform/pioneer-caip': 9.2.32
     transitivePeerDependencies:
       - '@swc/core'
@@ -1804,22 +1807,22 @@ packages:
       idb: 8.0.0
     dev: false
 
-  /@coinmasters/pioneer-sdk@4.7.64(@pioneer-platform/helpers@4.0.12)(@types/node@22.7.1):
+  /@coinmasters/pioneer-sdk@4.7.64(@pioneer-platform/helpers@4.0.12)(@types/node@20.16.8):
     resolution: {integrity: sha512-cPHif4zAIVU3f0BFklSXj8n+RbWx5bF26ABpAA/oI43aBXXxD4FoW3NK757EPbrCp6orBw2jNBcoaK4l4iBzNw==}
     dependencies:
       '@coinmasters/api': 3.7.64
-      '@coinmasters/core': 11.0.64(@coinmasters/api@3.7.64)(@coinmasters/toolbox-cosmos@11.0.64)(@coinmasters/toolbox-evm@11.0.64)(@coinmasters/toolbox-utxo@11.0.64)(@types/node@22.7.1)
+      '@coinmasters/core': 11.0.64(@coinmasters/api@3.7.64)(@coinmasters/toolbox-cosmos@11.0.64)(@coinmasters/toolbox-evm@11.0.64)(@coinmasters/toolbox-utxo@11.0.64)(@types/node@20.16.8)
       '@coinmasters/tokens': 3.7.64
       '@coinmasters/toolbox-cosmos': 11.0.64(@pioneer-platform/helpers@4.0.12)
       '@coinmasters/toolbox-evm': 11.0.64(@pioneer-platform/helpers@4.0.12)
       '@coinmasters/toolbox-ripple': 11.0.64(@pioneer-platform/helpers@4.0.12)
       '@coinmasters/toolbox-utxo': 11.0.64
       '@coinmasters/types': 4.7.64
-      '@pioneer-platform/loggerdog': 8.3.1(@types/node@22.7.1)
+      '@pioneer-platform/loggerdog': 8.3.1(@types/node@20.16.8)
       '@pioneer-platform/pioneer-caip': 9.2.32
       '@pioneer-platform/pioneer-client': 9.2.5
-      '@pioneer-platform/pioneer-coins': 9.2.23(@types/node@22.7.1)
-      '@pioneer-platform/pioneer-discovery': 0.0.15(@types/node@22.7.1)
+      '@pioneer-platform/pioneer-coins': 9.2.23(@types/node@20.16.8)
+      '@pioneer-platform/pioneer-discovery': 0.0.15(@types/node@20.16.8)
     transitivePeerDependencies:
       - '@pioneer-platform/helpers'
       - '@swc/core'
@@ -1940,7 +1943,7 @@ packages:
     resolution: {integrity: sha512-orHT+oymNol9ESL7OWsydZH+A/j8G3RV8t2AjSzNn4A92XgSj04e8JzIXQ2aqRxzMtHx0+hg/DJFqLenxZhIlA==}
     dev: false
 
-  /@coinmasters/wallet-keepkey@13.0.64(@coinmasters/toolbox-cosmos@11.0.64)(@coinmasters/toolbox-evm@11.0.64)(@coinmasters/toolbox-ripple@11.0.64)(@coinmasters/toolbox-utxo@11.0.64)(@keepkey/keepkey-sdk@0.2.57)(@types/node@22.7.1)(bitcoinjs-lib@5.2.0):
+  /@coinmasters/wallet-keepkey@13.0.64(@coinmasters/toolbox-cosmos@11.0.64)(@coinmasters/toolbox-evm@11.0.64)(@coinmasters/toolbox-ripple@11.0.64)(@coinmasters/toolbox-utxo@11.0.64)(@keepkey/keepkey-sdk@0.2.57)(@types/node@20.16.8)(bitcoinjs-lib@5.2.0):
     resolution: {integrity: sha512-bxm75Rseyo7gZqCEYBnw4YqFg+EPN62LvVxCqZTQ6mGDjtalf1K407hAEgoq37zLhc5xJSEFKjDrCtDDdhzq+g==}
     peerDependencies:
       '@coinmasters/toolbox-cosmos': 11.0.64
@@ -1959,9 +1962,9 @@ packages:
       '@cosmjs/math': 0.32.4
       '@cosmjs/stargate': 0.31.1
       '@keepkey/keepkey-sdk': 0.2.57
-      '@pioneer-platform/loggerdog': 8.3.1(@types/node@22.7.1)
+      '@pioneer-platform/loggerdog': 8.3.1(@types/node@20.16.8)
       '@pioneer-platform/pioneer-caip': 9.2.32
-      '@pioneer-platform/pioneer-coins': 9.2.23(@types/node@22.7.1)
+      '@pioneer-platform/pioneer-coins': 9.2.23(@types/node@20.16.8)
       '@types/bchaddrjs': 0.4.0
       bchaddrjs: 0.5.2
       bitcoinjs-lib: 5.2.0
@@ -3135,7 +3138,7 @@ packages:
     resolution: {integrity: sha512-II6FT7CDuvp0LxIrwMyGRNvR5bxxxtgVzNrHvDrlJj1c+tzF3yK7Mkgz+rUO/KKhm3NSgRaEUVdph8sgj6XYng==}
     dev: false
 
-  /@laynezh/vite-plugin-lib-assets@0.5.24(vite@5.4.8):
+  /@laynezh/vite-plugin-lib-assets@0.5.24(vite@5.4.3):
     resolution: {integrity: sha512-z1M8reWte/xP7xw+aFN0Euh9OinCjCzJ8HhLkvpz+6h6MSTyyA54xrxGmECx5QNd3bCwQlkGd7WAgkozjublCg==}
     peerDependencies:
       vite: ^3.0.0 || ^4.0.0 || ^5.0.0
@@ -3144,7 +3147,7 @@ packages:
       loader-utils: 3.3.1
       mrmime: 1.0.1
       semver: 7.6.3
-      vite: 5.4.8(@types/node@22.7.1)
+      vite: 5.4.3(@types/node@20.16.8)
     dev: true
 
   /@noble/curves@1.2.0:
@@ -3216,11 +3219,11 @@ packages:
       - '@types/node'
     dev: false
 
-  /@pioneer-platform/loggerdog@8.3.1(@types/node@22.7.1):
+  /@pioneer-platform/loggerdog@8.3.1(@types/node@20.16.8):
     resolution: {integrity: sha512-0JTucwEb1nG+MrPBRaIEdj9ptzjKatphh75/Zc3rJ19qJI9gUUZVx6PgjMYIF9cdi0saqytz291WRgge7qOW5g==}
     dependencies:
       os: 0.1.2
-      ts-node: 10.9.2(@types/node@22.7.1)(typescript@5.5.4)
+      ts-node: 10.9.2(@types/node@20.16.8)(typescript@5.5.4)
       typescript: 5.5.4
     transitivePeerDependencies:
       - '@swc/core'
@@ -3240,10 +3243,10 @@ packages:
       - debug
     dev: false
 
-  /@pioneer-platform/pioneer-coins@9.2.23(@types/node@22.7.1):
+  /@pioneer-platform/pioneer-coins@9.2.23(@types/node@18.19.52):
     resolution: {integrity: sha512-4UET5BANaOcMaYOhr9I//+6iIl2ffryljoxhqZDS6wb0HWPOqj/46oOcJ1/dt24JEr8+jJJxGWTVX36nCzwvyQ==}
     dependencies:
-      '@pioneer-platform/loggerdog': 8.3.1(@types/node@22.7.1)
+      '@pioneer-platform/loggerdog': 8.3.1(@types/node@18.19.52)
       bignumber.js: 9.1.2
       bs58check: 3.0.1
     transitivePeerDependencies:
@@ -3252,12 +3255,24 @@ packages:
       - '@types/node'
     dev: false
 
-  /@pioneer-platform/pioneer-discovery@0.0.15(@types/node@22.7.1):
+  /@pioneer-platform/pioneer-coins@9.2.23(@types/node@20.16.8):
+    resolution: {integrity: sha512-4UET5BANaOcMaYOhr9I//+6iIl2ffryljoxhqZDS6wb0HWPOqj/46oOcJ1/dt24JEr8+jJJxGWTVX36nCzwvyQ==}
+    dependencies:
+      '@pioneer-platform/loggerdog': 8.3.1(@types/node@20.16.8)
+      bignumber.js: 9.1.2
+      bs58check: 3.0.1
+    transitivePeerDependencies:
+      - '@swc/core'
+      - '@swc/wasm'
+      - '@types/node'
+    dev: false
+
+  /@pioneer-platform/pioneer-discovery@0.0.15(@types/node@20.16.8):
     resolution: {integrity: sha512-4o5g7cmf/bx+pzE9i+qC/QyCRv5oyqO9KzH199hr2fXwcpsfiMAjIXMWC0akasVXjsSWdJ6EnWeY6fWifwpDLg==}
     dependencies:
       '@coinmasters/tokens': 3.7.64
       '@coinmasters/types': 4.7.64
-      '@pioneer-platform/loggerdog': 8.3.1(@types/node@22.7.1)
+      '@pioneer-platform/loggerdog': 8.3.1(@types/node@20.16.8)
       '@pioneer-platform/pioneer-caip': 9.2.32
     transitivePeerDependencies:
       - '@swc/core'
@@ -4357,7 +4372,6 @@ packages:
     resolution: {integrity: sha512-sbo5JmfbZNkyDv+2HCccr9Y9ZkKJBMTru7UdAsCojMGjKNjdaOV73bqEW242QrHEZL8R4LbHMrW+FHB5lZ5/bw==}
     dependencies:
       undici-types: 6.19.8
-    dev: true
 
   /@types/node@22.7.1:
     resolution: {integrity: sha512-adOMRLVmleuWs/5V/w5/l7o0chDK/az+5ncCsIapTKogsu/3MVWvSgP58qVTXi5IwpfGt8pMobNq9rOWtJyu5Q==}
@@ -4576,13 +4590,13 @@ packages:
     resolution: {integrity: sha512-zuVdFrMJiuCDQUMCzQaD6KL28MjnqqN8XnAqiEq9PNm/hCPTSGfrXCOfwj1ow4LFb/tNymJPwsNbVePc1xFqrQ==}
     dev: true
 
-  /@vitejs/plugin-react-swc@3.7.0(vite@5.4.8):
+  /@vitejs/plugin-react-swc@3.7.0(vite@5.4.3):
     resolution: {integrity: sha512-yrknSb3Dci6svCd/qhHqhFPDSw0QtjumcqdKMoNNzmOl5lMXTTiqzjWtG4Qask2HdvvzaNgSunbQGet8/GrKdA==}
     peerDependencies:
       vite: ^4 || ^5
     dependencies:
       '@swc/core': 1.7.26
-      vite: 5.4.8(@types/node@20.16.8)
+      vite: 5.4.3(@types/node@20.16.8)
     transitivePeerDependencies:
       - '@swc/helpers'
     dev: true
@@ -8374,7 +8388,7 @@ packages:
     resolution: {integrity: sha512-7vuh85V5cdDofPyxn58nrPjBktZo0u9x1g8WtjQol+jZDaE+fhN+cIvTj11GndBnMnyfrUOG1sZQxCdjKh+DKg==}
     engines: {node: '>= 10.13.0'}
     dependencies:
-      '@types/node': 22.7.1
+      '@types/node': 20.16.8
       merge-stream: 2.0.0
       supports-color: 8.1.1
     dev: true
@@ -10910,7 +10924,7 @@ packages:
     resolution: {integrity: sha512-Y/arvbn+rrz3JCKl9C4kVNfTfSm2/mEp5FSz5EsZSANGPSlQrpRI5M4PKF+mJnE52jOO90PnPSc3Ur3bTQw0gA==}
     dev: true
 
-  /ts-loader@9.5.1(typescript@5.6.2)(webpack@5.95.0):
+  /ts-loader@9.5.1(typescript@5.5.4)(webpack@5.95.0):
     resolution: {integrity: sha512-rNH3sK9kGZcH9dYzC7CewQm4NtxJTjSEVRJ2DyBZR7f8/wcta+iV44UPCXc5+nzDzivKtlzV6c9P4e+oFhDLYg==}
     engines: {node: '>=12.0.0'}
     peerDependencies:
@@ -10922,7 +10936,7 @@ packages:
       micromatch: 4.0.8
       semver: 7.6.3
       source-map: 0.7.4
-      typescript: 5.6.2
+      typescript: 5.5.4
       webpack: 5.95.0(esbuild@0.23.1)
     dev: true
 
@@ -10961,7 +10975,7 @@ packages:
       yn: 3.1.1
     dev: false
 
-  /ts-node@10.9.2(@types/node@22.7.1)(typescript@5.5.4):
+  /ts-node@10.9.2(@types/node@20.16.8)(typescript@5.5.4):
     resolution: {integrity: sha512-f0FFpIdcHgn8zcPSbf1dRevwt047YMnaiJM3u2w2RewrB+fob/zePZcrOyQoLMMO7aBIddLcQIEK5dYjkLnGrQ==}
     hasBin: true
     peerDependencies:
@@ -10980,7 +10994,7 @@ packages:
       '@tsconfig/node12': 1.0.11
       '@tsconfig/node14': 1.0.3
       '@tsconfig/node16': 1.0.4
-      '@types/node': 22.7.1
+      '@types/node': 20.16.8
       acorn: 8.12.1
       acorn-walk: 8.3.4
       arg: 4.1.3
@@ -10990,38 +11004,6 @@ packages:
       typescript: 5.5.4
       v8-compile-cache-lib: 3.0.1
       yn: 3.1.1
-    dev: false
-
-  /ts-node@10.9.2(@types/node@22.7.1)(typescript@5.6.2):
-    resolution: {integrity: sha512-f0FFpIdcHgn8zcPSbf1dRevwt047YMnaiJM3u2w2RewrB+fob/zePZcrOyQoLMMO7aBIddLcQIEK5dYjkLnGrQ==}
-    hasBin: true
-    peerDependencies:
-      '@swc/core': '>=1.2.50'
-      '@swc/wasm': '>=1.2.50'
-      '@types/node': '*'
-      typescript: '>=2.7'
-    peerDependenciesMeta:
-      '@swc/core':
-        optional: true
-      '@swc/wasm':
-        optional: true
-    dependencies:
-      '@cspotcode/source-map-support': 0.8.1
-      '@tsconfig/node10': 1.0.11
-      '@tsconfig/node12': 1.0.11
-      '@tsconfig/node14': 1.0.3
-      '@tsconfig/node16': 1.0.4
-      '@types/node': 22.7.1
-      acorn: 8.12.1
-      acorn-walk: 8.3.4
-      arg: 4.1.3
-      create-require: 1.1.1
-      diff: 4.0.2
-      make-error: 1.3.6
-      typescript: 5.6.2
-      v8-compile-cache-lib: 3.0.1
-      yn: 3.1.1
-    dev: true
 
   /ts-node@8.10.2(typescript@5.5.4):
     resolution: {integrity: sha512-ISJJGgkIpDdBhWVu3jufsWpK3Rzo7bdiIXJjQc0ynKxVOVcg2oIrf2H2cejminGrptVc6q6/uynAHNCuWGbpVA==}
@@ -11242,12 +11224,6 @@ packages:
     engines: {node: '>=14.17'}
     hasBin: true
 
-  /typescript@5.6.2:
-    resolution: {integrity: sha512-NW8ByodCSNCwZeghjN3o+JX5OFH0Ojg6sadjEKY4huZ52TqbJTJnDo5+Tw98lSy63NZvi4n+ez5m2u5d4PkZyw==}
-    engines: {node: '>=14.17'}
-    hasBin: true
-    dev: true
-
   /unbox-primitive@1.0.2:
     resolution: {integrity: sha512-61pPlCD9h51VoreyJ0BReideM3MDKMKnh6+V9L08331ipq6Q8OFXZYiqP6n/tbHx4s5I9uRhcye6BrbkizkBDw==}
     dependencies:
@@ -11404,84 +11380,6 @@ packages:
         optional: true
     dependencies:
       '@types/node': 20.16.8
-      esbuild: 0.21.5
-      postcss: 8.4.47
-      rollup: 4.22.4
-    optionalDependencies:
-      fsevents: 2.3.3
-    dev: true
-
-  /vite@5.4.8(@types/node@20.16.8):
-    resolution: {integrity: sha512-FqrItQ4DT1NC4zCUqMB4c4AZORMKIa0m8/URVCZ77OZ/QSNeJ54bU1vrFADbDsuwfIPcgknRkmqakQcgnL4GiQ==}
-    engines: {node: ^18.0.0 || >=20.0.0}
-    hasBin: true
-    peerDependencies:
-      '@types/node': ^18.0.0 || >=20.0.0
-      less: '*'
-      lightningcss: ^1.21.0
-      sass: '*'
-      sass-embedded: '*'
-      stylus: '*'
-      sugarss: '*'
-      terser: ^5.4.0
-    peerDependenciesMeta:
-      '@types/node':
-        optional: true
-      less:
-        optional: true
-      lightningcss:
-        optional: true
-      sass:
-        optional: true
-      sass-embedded:
-        optional: true
-      stylus:
-        optional: true
-      sugarss:
-        optional: true
-      terser:
-        optional: true
-    dependencies:
-      '@types/node': 20.16.8
-      esbuild: 0.21.5
-      postcss: 8.4.47
-      rollup: 4.22.4
-    optionalDependencies:
-      fsevents: 2.3.3
-    dev: true
-
-  /vite@5.4.8(@types/node@22.7.1):
-    resolution: {integrity: sha512-FqrItQ4DT1NC4zCUqMB4c4AZORMKIa0m8/URVCZ77OZ/QSNeJ54bU1vrFADbDsuwfIPcgknRkmqakQcgnL4GiQ==}
-    engines: {node: ^18.0.0 || >=20.0.0}
-    hasBin: true
-    peerDependencies:
-      '@types/node': ^18.0.0 || >=20.0.0
-      less: '*'
-      lightningcss: ^1.21.0
-      sass: '*'
-      sass-embedded: '*'
-      stylus: '*'
-      sugarss: '*'
-      terser: ^5.4.0
-    peerDependenciesMeta:
-      '@types/node':
-        optional: true
-      less:
-        optional: true
-      lightningcss:
-        optional: true
-      sass:
-        optional: true
-      sass-embedded:
-        optional: true
-      stylus:
-        optional: true
-      sugarss:
-        optional: true
-      terser:
-        optional: true
-    dependencies:
-      '@types/node': 22.7.1
       esbuild: 0.21.5
       postcss: 8.4.47
       rollup: 4.22.4

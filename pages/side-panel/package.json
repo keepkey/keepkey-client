@@ -27,6 +27,7 @@
     "@extension/shared": "workspace:*",
     "@extension/storage": "workspace:*",
     "@pioneer-platform/helpers": "^4.0.12",
+    "@pioneer-platform/pioneer-coins": "^9.2.23",
     "axios": "^1.7.7",
     "canvas-confetti": "^1.9.3",
     "framer-motion": "^11.5.4",

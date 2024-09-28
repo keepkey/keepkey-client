@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Flex, Spinner, Avatar, Box, Text, Badge, Card, Stack, Button } from '@chakra-ui/react';
+import AssetSelect from './AssetSelect'; // Import AssetSelect component
 
 const Balances = () => {
   const [balances, setBalances] = useState<any[]>([]);
   const [assets, setAssets] = useState<any[]>([]);
   const [assetContext, setAssetContext] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showAssetSelect, setShowAssetSelect] = useState(false); // New state to toggle between Balances and AssetSelect
 
   // Function to format the balance
   const formatBalance = (balance: string) => {
@@ -106,6 +108,11 @@ const Balances = () => {
       return valueUsdB - valueUsdA; // Sort in descending order by value in USD
     });
 
+  if (showAssetSelect) {
+    // If showAssetSelect is true, render the AssetSelect component
+    return <AssetSelect modalSelected={() => setShowAssetSelect(false)} />;
+  }
+
   return (
     <Flex flex="1" overflowY="auto" width="100%">
       <Stack width="100%">
@@ -159,6 +166,15 @@ const Balances = () => {
                 );
               })
             )}
+
+            {/* Add Blockchain Placeholder */}
+            <Card borderRadius="md" p={4} mb={1} width="100%" bg="gray.100" border="2px dashed teal">
+              <Flex align="center" width="100%" justifyContent="center">
+                <Button colorScheme="teal" size="lg" onClick={() => setShowAssetSelect(true)}>
+                  Add Blockchain
+                </Button>
+              </Flex>
+            </Card>
           </>
         )}
       </Stack>
