@@ -24,7 +24,7 @@ export const handleCosmosRequest = async (
   requestInfo: any,
   ADDRESS: string,
   KEEPKEY_WALLET: any,
-  requireApproval: (requestInfo: any, chain: any, method: string, params: any) => Promise<void>,
+  requireApproval: (networkId: string, requestInfo: any, chain: any, method: string, params: any) => Promise<void>,
 ): Promise<any> => {
   const tag = TAG + ' | handleCosmosRequest | ';
   console.log(tag, 'method:', method);
@@ -56,6 +56,18 @@ export const handleCosmosRequest = async (
       return [balance];
     }
     case 'transfer': {
+      const caip = shortListSymbolToCaip['ATOM'];
+      console.log(tag, 'caip: ', caip);
+      const networkId = caipToNetworkId(caip);
+      //verify context is bitcoin
+      if (!KEEPKEY_WALLET.assetContext) {
+        // Set context to the chain, defaults to ETH
+        const caip = shortListSymbolToCaip['BTC'];
+        await KEEPKEY_WALLET.setAssetContext({ caip });
+      }
+      // Require user approval
+      const result = await requireApproval(networkId, requestInfo, 'bitcoin', method, params[0]);
+      console.log(tag, 'result:', result);
       //send tx
       console.log(tag, 'params[0]: ', params[0]);
       let assetString = 'GAIA.ATOM';

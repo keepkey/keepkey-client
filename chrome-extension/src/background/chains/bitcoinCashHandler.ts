@@ -1,4 +1,4 @@
-const TAG = ' | thorchainHandler | ';
+const TAG = ' | bitcoinCashHandler | ';
 import { JsonRpcProvider } from 'ethers';
 import { Chain } from '@coinmasters/types';
 import { AssetValue } from '@pioneer-platform/helpers';
@@ -54,6 +54,18 @@ export const handleBitcoinCashRequest = async (
       return [balance];
     }
     case 'transfer': {
+      //caip
+      const caip = shortListSymbolToCaip['BCH'];
+      console.log(tag, 'caip: ', caip);
+      const networkId = caipToNetworkId(caip);
+      //verify context is bitcoin
+      if (!KEEPKEY_WALLET.assetContext) {
+        await KEEPKEY_WALLET.setAssetContext({ caip });
+      }
+      // Require user approval
+      const result = await requireApproval(networkId, requestInfo, 'bitcoin', method, params[0]);
+      console.log(tag, 'result:', result);
+
       //send tx
       console.log(tag, 'params[0]: ', params[0]);
       const assetString = 'BCH.BCH';

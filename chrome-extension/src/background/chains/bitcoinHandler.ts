@@ -1,10 +1,8 @@
 const TAG = ' | bitcoinHandler | ';
-import type { JsonRpcProvider } from 'ethers';
 import { Chain } from '@coinmasters/types';
-import { EIP155_CHAINS } from '../chains';
 import { AssetValue } from '@pioneer-platform/helpers';
 // @ts-ignore
-import { ChainToNetworkId, shortListSymbolToCaip } from '@pioneer-platform/pioneer-caip';
+import { ChainToNetworkId, shortListSymbolToCaip, caipToNetworkId } from '@pioneer-platform/pioneer-caip';
 
 interface ProviderRpcError extends Error {
   code: number;
@@ -24,7 +22,7 @@ export const handleBitcoinRequest = async (
   requestInfo: any,
   ADDRESS: string,
   KEEPKEY_WALLET: any,
-  requireApproval: (requestInfo: any, chain: any, method: string, params: any) => Promise<void>,
+  requireApproval: (networkId: string, requestInfo: any, chain: any, method: string, params: any) => Promise<void>,
 ): Promise<any> => {
   const tag = TAG + ' | handleBitcoinRequest | ';
   console.log(tag, 'method:', method);
@@ -57,8 +55,19 @@ export const handleBitcoinRequest = async (
       return [balance];
     }
     case 'transfer': {
+      //caip
+      const caip = shortListSymbolToCaip['BTC'];
+      console.log(tag, 'caip: ', caip);
+      const networkId = caipToNetworkId(caip);
+      //verify context is bitcoin
+      if (!KEEPKEY_WALLET.assetContext) {
+        // Set context to the chain, defaults to ETH
+        const caip = shortListSymbolToCaip['BTC'];
+        await KEEPKEY_WALLET.setAssetContext({ caip });
+      }
+
       // Require user approval
-      const result = await requireApproval(requestInfo, 'bitcoin', method, params[0]);
+      const result = await requireApproval(networkId, requestInfo, 'bitcoin', method, params[0]);
       console.log(tag, 'result:', result);
 
       if (result.success) {

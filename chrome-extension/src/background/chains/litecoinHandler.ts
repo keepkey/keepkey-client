@@ -24,18 +24,18 @@ export const handleLitecoinRequest = async (
   requestInfo: any,
   ADDRESS: string,
   KEEPKEY_WALLET: any,
-  requireApproval: (requestInfo: any, chain: any, method: string, params: any) => Promise<void>,
+  requireApproval: (networkId: string, requestInfo: any, chain: any, method: string, params: any) => Promise<void>,
 ): Promise<any> => {
   const tag = TAG + ' | handleLitecoinRequest | ';
   console.log(tag, 'method:', method);
   console.log(tag, 'params:', params);
   switch (method) {
     case 'request_accounts': {
-      let pubkeys = KEEPKEY_WALLET.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.Litecoin]));
-      let accounts = [];
+      const pubkeys = KEEPKEY_WALLET.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.Litecoin]));
+      const accounts = [];
       for (let i = 0; i < pubkeys.length; i++) {
-        let pubkey = pubkeys[i];
-        let address = pubkey.master || pubkey.address;
+        const pubkey = pubkeys[i];
+        const address = pubkey.master || pubkey.address;
         accounts.push(address);
       }
       console.log(tag, 'accounts: ', accounts);
@@ -45,18 +45,28 @@ export const handleLitecoinRequest = async (
     }
     case 'request_balance': {
       //get sum of all pubkeys configured
-      let pubkeys = await KEEPKEY_WALLET.swapKit.getBalance(Chain.Litecoin);
+      const pubkeys = await KEEPKEY_WALLET.swapKit.getBalance(Chain.Litecoin);
       console.log(tag, 'pubkeys: ', pubkeys);
       return [pubkeys];
     }
     case 'transfer': {
+      const caip = shortListSymbolToCaip['LTC'];
+      console.log(tag, 'caip: ', caip);
+      const networkId = caipToNetworkId(caip);
+      //verify context is bitcoin
+      if (!KEEPKEY_WALLET.assetContext) {
+        await KEEPKEY_WALLET.setAssetContext({ caip });
+      }
+      // Require user approval
+      const result = await requireApproval(networkId, requestInfo, 'bitcoin', method, params[0]);
+      console.log(tag, 'result:', result);
       //send tx
       console.log(tag, 'params[0]: ', params[0]);
-      let assetString = 'LTC.LTC';
+      const assetString = 'LTC.LTC';
       await AssetValue.loadStaticAssets();
       console.log(tag, 'params[0].amount.amount: ', params[0].amount.amount);
-      let assetValue = await AssetValue.fromString(assetString, parseFloat(params[0].amount.amount));
-      let sendPayload = {
+      const assetValue = await AssetValue.fromString(assetString, parseFloat(params[0].amount.amount));
+      const sendPayload = {
         from: params[0].from,
         assetValue,
         memo: params[0].memo || '',

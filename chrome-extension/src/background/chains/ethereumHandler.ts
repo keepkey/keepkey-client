@@ -282,7 +282,7 @@ export const handleEthereumRequest = async (
         const currentProvider = await web3ProviderStorage.getWeb3Provider();
         await KEEPKEY_WALLET.setAssetContext({ caip: currentProvider.caip });
       }
-      let networkId = KEEPKEY_WALLET.assetContext.networkId;
+      const networkId = KEEPKEY_WALLET.assetContext.networkId;
       console.log(tag, 'networkId:', networkId);
       if (!networkId) throw Error('Failed to set context before sending!');
       // Require user approval

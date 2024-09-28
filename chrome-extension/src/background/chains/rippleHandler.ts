@@ -1,7 +1,8 @@
-const TAG = ' | thorchainHandler | ';
+const TAG = ' | rippleHandler | ';
 import { JsonRpcProvider } from 'ethers';
 import { Chain } from '@coinmasters/types';
 import { AssetValue } from '@pioneer-platform/helpers';
+import { EIP155_CHAINS } from '../chains';
 // @ts-ignore
 import { ChainToNetworkId, shortListSymbolToCaip } from '@pioneer-platform/pioneer-caip';
 
@@ -17,7 +18,7 @@ export const createProviderRpcError = (code: number, message: string, data?: unk
   return error;
 };
 
-export const handleDashRequest = async (
+export const handleRippleRequest = async (
   method: string,
   params: any[],
   requestInfo: any,
@@ -25,12 +26,11 @@ export const handleDashRequest = async (
   KEEPKEY_WALLET: any,
   requireApproval: (networkId: string, requestInfo: any, chain: any, method: string, params: any) => Promise<void>,
 ): Promise<any> => {
-  const tag = TAG + ' | handleDashRequest | ';
+  const tag = TAG + ' | handleThorchainRequest | ';
   console.log(tag, 'method:', method);
-  console.log(tag, 'params:', params);
   switch (method) {
     case 'request_accounts': {
-      let pubkeys = KEEPKEY_WALLET.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.Dash]));
+      let pubkeys = KEEPKEY_WALLET.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.THORChain]));
       let accounts = [];
       for (let i = 0; i < pubkeys.length; i++) {
         let pubkey = pubkeys[i];
@@ -44,30 +44,27 @@ export const handleDashRequest = async (
     }
     case 'request_balance': {
       //get sum of all pubkeys configured
-      console.log(tag, 'KEEPKEY_WALLET: ', KEEPKEY_WALLET);
-      console.log(tag, 'KEEPKEY_WALLET.swapKit: ', KEEPKEY_WALLET.swapKit);
-      console.log(tag, 'KEEPKEY_WALLET.swapKit: ', KEEPKEY_WALLET.balances);
-      let balance = KEEPKEY_WALLET.balances.find((balance: any) => balance.caip === shortListSymbolToCaip['BTC']);
+      let balance = KEEPKEY_WALLET.balances.find((balance: any) => balance.caip === shortListSymbolToCaip['THOR']);
 
       //let pubkeys = await KEEPKEY_WALLET.swapKit.getBalance(Chain.Bitcoin);
       console.log(tag, 'balance: ', balance);
       return [balance];
     }
     case 'transfer': {
-      const caip = shortListSymbolToCaip['DOGE'];
+      const caip = shortListSymbolToCaip['XRP'];
       console.log(tag, 'caip: ', caip);
       const networkId = caipToNetworkId(caip);
       //verify context is bitcoin
       if (!KEEPKEY_WALLET.assetContext) {
-        // Set context to the chain, defaults to ETH
         await KEEPKEY_WALLET.setAssetContext({ caip });
       }
       // Require user approval
       const result = await requireApproval(networkId, requestInfo, 'bitcoin', method, params[0]);
       console.log(tag, 'result:', result);
+
       //send tx
       console.log(tag, 'params[0]: ', params[0]);
-      let assetString = 'DASH.DASH';
+      let assetString = 'XRP.XRP';
       await AssetValue.loadStaticAssets();
       console.log(tag, 'params[0].amount.amount: ', params[0].amount.amount);
       let assetValue = await AssetValue.fromString(assetString, parseFloat(params[0].amount.amount));
