@@ -18,6 +18,7 @@ import {
   Button,
   Link,
   Image,
+  Spinner,
 } from '@chakra-ui/react';
 import { ChevronLeftIcon, RepeatIcon, SettingsIcon } from '@chakra-ui/icons';
 import { withErrorBoundary, withSuspense } from '@extension/shared';
@@ -43,11 +44,13 @@ const SidePanel = () => {
   const [assetContext, setAssetContext] = useState<any>(null);
   const [transactionContext, setTransactionContext] = useState<any>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false); // Added state to handle loading spinner
 
   const { isOpen: isSettingsOpen, onOpen: onSettingsOpen, onClose: onSettingsClose } = useDisclosure();
 
   const refreshBalances = async () => {
     try {
+      setIsRefreshing(true); // Start the loading spinner
       setKeepkeyState(null);
       chrome.runtime.sendMessage({ type: 'ON_START' }, response => {
         if (response?.success) {
@@ -58,20 +61,10 @@ const SidePanel = () => {
       });
     } catch (e) {
       console.error(e);
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 2000); // Stop the spinner after 2 seconds (adjust as needed)
     }
   };
-
-  // Timer to check if keepkeyState is not 5, and if so, call refreshBalances
-  // useEffect(() => {
-  //   const timer = setInterval(() => {
-  //     if (keepkeyState !== 5) {
-  //       console.log('KeepKey state is not paired (5). Retrying...');
-  //       refreshBalances();
-  //     }
-  //   }, 5000); // 5-second timer
-  //
-  //   return () => clearInterval(timer); // Cleanup timer on component unmount
-  // }, [keepkeyState]); // Dependency on keepkeyState
 
   useEffect(() => {
     const messageListener = (message: any) => {
@@ -79,6 +72,7 @@ const SidePanel = () => {
         setKeepkeyState(message.state);
       }
       if (message.type === 'ASSET_CONTEXT_UPDATED' && message.assetContext) {
+        console.log('ASSET_CONTEXT_UPDATED:', message.assetContext);
         setAssetContext(message.assetContext);
       }
       if (message.type === 'TRANSACTION_CONTEXT_UPDATED' && message.transactionContext) {
@@ -109,7 +103,22 @@ const SidePanel = () => {
         }
         return <Balances balances={balances} loading={loading} />;
       default:
-        return <Text>Device not connected.</Text>;
+        return (
+          <Flex direction="column" justifyContent="center" alignItems="center" height="100%">
+            <Text fontSize="2xl" fontWeight="bold" textAlign="center" mb={4}>
+              Welcome to the KeepKey Browser Extension
+            </Text>
+            <Button
+              colorScheme="green"
+              size="lg"
+              onClick={refreshBalances}
+              isLoading={isRefreshing} // Disable and show spinner while loading
+              disabled={isRefreshing} // Prevent multiple presses
+            >
+              {isRefreshing ? <Spinner size="md" color="white" /> : 'Begin'}
+            </Button>
+          </Flex>
+        );
     }
   };
 
@@ -129,7 +138,6 @@ const SidePanel = () => {
           <IconButton icon={<RepeatIcon />} aria-label="Refresh" onClick={() => refreshBalances()} ml="auto" />
         </Flex>
       </Box>
-      {keepkeyState === null && <Text>Device not connected or detected. Please connect your KeepKey device.</Text>}
       {renderContent()}
 
       <Modal isOpen={isSettingsOpen} onClose={onSettingsClose} size="xl">

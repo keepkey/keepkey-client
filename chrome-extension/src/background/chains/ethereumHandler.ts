@@ -6,8 +6,6 @@ import { Chain } from '@coinmasters/types';
 import { JsonRpcProvider } from 'ethers';
 import { createProviderRpcError } from '../utils';
 import { web3ProviderStorage, assetContextStorage } from '@extension/storage';
-import axios from 'axios';
-import { v4 as uuidv4 } from 'uuid';
 import { EIP155_CHAINS } from '../chains';
 
 const TAG = ' | ethereumHandler | ';
@@ -97,6 +95,7 @@ export const handleEthereumRequest = async (
   requireApproval: (requestInfo: any, chain: any, method: string, params: any) => Promise<void>,
 ): Promise<any> => {
   const tag = ' | handleEthereumRequest | ';
+  console.log(tag, 'method: ', method);
   switch (method) {
     case 'eth_chainId': {
       const currentProvider = await web3ProviderStorage.getWeb3Provider();
@@ -132,9 +131,16 @@ export const handleEthereumRequest = async (
       const transactionByHash = await provider.getTransaction(params[0]);
       return transactionByHash;
     }
+    case 'web3_clientVersion': {
+      const provider = await getProvider();
+      const clientVersion = await provider.send('web3_clientVersion', []);
+      return clientVersion;
+    }
     case 'eth_call': {
       const provider = await getProvider();
       const [callParams, blockTag, stateOverride] = params;
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      //@ts-expect-error
       const callResult = await provider.call(callParams, blockTag, stateOverride);
       return callResult;
     }
@@ -180,6 +186,7 @@ export const handleEthereumRequest = async (
     }
     case 'wallet_addEthereumChain':
     case 'wallet_switchEthereumChain': {
+      console.log(tag, 'Switching Chain params: ', params);
       if (!params || !params[0] || !params[0].chainId) throw new Error('Invalid chainId (Required)');
       let chainId = 'eip155:' + convertHexToDecimalChainId(params[0].chainId);
       chainId = sanitizeChainId(chainId);
@@ -216,13 +223,18 @@ export const handleEthereumRequest = async (
           throw new Error(`Chain with chainId ${chainIdToFind} not found.`);
         }
       }
-
+      assetContextStorage.updateContext(currentProvider);
       // Save the updated provider to storage
       await web3ProviderStorage.saveWeb3Provider(currentProvider);
 
+      console.log('changing context to ', currentProvider.caip);
+      const result = await KEEPKEY_WALLET.setAssetContext({ caip: currentProvider.caip });
+      console.log('result ', result);
+
       // Update context and notify changes
       chrome.runtime.sendMessage({ type: 'PROVIDER_CHANGED', provider: currentProvider });
-      assetContextStorage.updateContext(currentProvider);
+      chrome.runtime.sendMessage({ type: 'ASSET_CONTEXT_UPDATED', assetContext: KEEPKEY_WALLET.assetContext });
+
       return true;
     }
     case 'wallet_getSnaps': {
@@ -236,6 +248,7 @@ export const handleEthereumRequest = async (
       const permissions = [{ parentCapability: 'eth_accounts' }];
       return permissions;
     }
+    case 'request_accounts':
     case 'eth_accounts': {
       const accounts = [ADDRESS];
       return accounts;

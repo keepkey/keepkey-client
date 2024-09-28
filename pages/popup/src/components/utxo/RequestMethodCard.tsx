@@ -8,14 +8,14 @@ const getMethodInfo = (txType: string, hasSmartContractExecution: boolean) => {
         title: 'transfer',
         description: 'This transaction is a basic transfer',
         icon: <InfoIcon boxSize={8} />,
-        color: 'gray.500',
+        color: 'yellow.500',
       };
     default:
       return {
         title: 'Unknown Method',
         description: 'Verify before proceeding',
         icon: <QuestionIcon boxSize={8} />,
-        color: 'gray.500',
+        color: 'yellow.500',
       };
   }
 };

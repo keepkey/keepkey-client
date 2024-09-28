@@ -198,9 +198,9 @@ export const handleWalletRequest = async (
 ): Promise<any> => {
   const tag = ' | handleWalletRequest | ';
   try {
-    console.log(tag, 'id:', requestInfo.id);
-    console.log(tag, 'chain:', chain);
-    console.log(tag, 'requestInfo:', requestInfo);
+    // console.log(tag, 'id:', requestInfo.id);
+    // console.log(tag, 'chain:', chain);
+    // console.log(tag, 'requestInfo:', requestInfo);
     if (!chain) throw Error('Chain not provided!');
     if (!requestInfo) throw Error('Cannot validate request! Refusing to proceed.');
 

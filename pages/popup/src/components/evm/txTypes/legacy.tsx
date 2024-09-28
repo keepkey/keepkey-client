@@ -14,6 +14,12 @@ export default function LegacyTx({ transaction }: any) {
           <Tbody>
             <Tr>
               <Td>
+                <Badge>chainid:</Badge>
+              </Td>
+              <Td>{transaction?.networkId}</Td>
+            </Tr>
+            <Tr>
+              <Td>
                 <Badge>from:</Badge>
               </Td>
               <Td>{transaction?.request?.from}</Td>

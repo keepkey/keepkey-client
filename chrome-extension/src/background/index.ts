@@ -128,7 +128,7 @@ setTimeout(() => {
 chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: any) => {
   (async () => {
     const tag = TAG + ' | chrome.runtime.onMessage | ';
-    console.log(tag, 'Received message:', message);
+    // console.log(tag, 'Received message:', message);
 
     try {
       switch (message.type) {

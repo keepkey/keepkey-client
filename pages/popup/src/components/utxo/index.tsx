@@ -16,7 +16,7 @@ import {
 import React, { useEffect, useState } from 'react';
 // import RequestFeeCard from './RequestFeeCard';
 import RequestDataCard from './RequestDataCard';
-// import RequestDetailsCard from './RequestDetailsCard';
+import RequestDetailsCard from './RequestDetailsCard';
 // import ContractDetailsCard from './ContractDetailsCard';
 import RequestMethodCard from './RequestMethodCard';
 import ProjectInfoCard from './ProjectInfoCard';
@@ -31,18 +31,20 @@ export function UtxoTransaction({ transaction, reloadEvents, handleResponse }: a
       <Divider />
       <Tabs>
         <TabList>
-          <Tab>Base</Tab>
-          <Tab>utxos</Tab>
+          <Tab>info</Tab>
+          {/*<Tab>utxos</Tab>*/}
           <Tab>Fees</Tab>
           <Tab>Raw</Tab>
         </TabList>
 
         <TabPanels>
           {/* Contract Tab */}
-          <TabPanel></TabPanel>
+          <TabPanel>
+            <RequestDetailsCard transaction={transaction} />
+          </TabPanel>
 
           {/* Review Tab */}
-          <TabPanel></TabPanel>
+          {/*<TabPanel></TabPanel>*/}
 
           {/* Fees Tab */}
           <TabPanel></TabPanel>
@@ -56,7 +58,7 @@ export function UtxoTransaction({ transaction, reloadEvents, handleResponse }: a
 
       <Divider />
 
-      <Flex>
+      <Flex justifyContent="center" alignItems="center">
         <Button colorScheme="green" onClick={() => handleResponse('accept')} mr={2}>
           Approve
         </Button>

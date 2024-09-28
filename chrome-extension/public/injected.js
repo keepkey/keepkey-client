@@ -5,7 +5,7 @@
 
   // Prevent multiple injections
   if (window.keepkeyInjected) {
-    console.log(TAG, 'KeepKey is already injected.');
+    //console.log(TAG, 'KeepKey is already injected.');
     return;
   }
   window.keepkeyInjected = true;
@@ -54,9 +54,9 @@
         platform: navigator.platform,
         language: navigator.language,
       };
-      console.log(tag, 'method:', method);
-      console.log(tag, 'params:', params);
-      console.log(tag, 'chain:', chain);
+      //console.log(tag, 'method:', method);
+      //console.log(tag, 'params:', params);
+      //console.log(tag, 'chain:', chain);
 
       callbacks[requestId] = { callback };
 
@@ -100,9 +100,9 @@
 
   function sendRequestAsync(payload, param1, callback) {
     const tag = TAG + ' | sendRequestAsync | ';
-    console.log(tag, 'payload:', payload);
-    console.log(tag, 'param1:', param1);
-    console.log(tag, 'callback:', callback);
+    //console.log(tag, 'payload:', payload);
+    //console.log(tag, 'param1:', param1);
+    //console.log(tag, 'callback:', callback);
 
     let chain = payload.chain || 'ethereum';
 
@@ -121,13 +121,13 @@
 
   function sendRequestSync(payload, param1) {
     const tag = TAG + ' | sendRequestSync | ';
-    console.log(tag, 'wallet.sendSync called with:', payload);
+    //console.log(tag, 'wallet.sendSync called with:', payload);
     let params = payload.params || param1;
     let method = payload.method || payload;
     let chain = payload.chain || 'ethereum';
-    console.log(tag, 'selected payload:', payload);
-    console.log(tag, 'selected params:', params);
-    console.log(tag, 'selected chain:', chain);
+    //console.log(tag, 'selected payload:', payload);
+    //console.log(tag, 'selected params:', params);
+    //console.log(tag, 'selected chain:', chain);
 
     return {
       id: payload.id,
@@ -155,29 +155,29 @@
         });
       },
       send: (payload, param1, callback) => {
-        console.log('send:', { payload, param1, callback });
+        //console.log('send:', { payload, param1, callback });
         if (!payload.chain) {
           payload.chain = chain;
         }
         return callback ? sendRequestAsync(payload, param1, callback) : sendRequestSync(payload, param1);
       },
       sendAsync: (payload, param1, callback) => {
-        console.log('sendAsync:', { payload, param1, callback });
+        //console.log('sendAsync:', { payload, param1, callback });
         if (!payload.chain) {
           payload.chain = chain;
         }
         return sendRequestAsync(payload, param1, callback);
       },
       on: (event, handler) => {
-        console.log('Adding event listener for:', event);
+        //console.log('Adding event listener for:', event);
         window.addEventListener(event, handler);
       },
       removeListener: (event, handler) => {
-        console.log('Removing event listener for:', event);
+        //console.log('Removing event listener for:', event);
         window.removeEventListener(event, handler);
       },
       removeAllListeners: () => {
-        console.log('Removing all event listeners');
+        //console.log('Removing all event listeners');
         // Implement as needed
       },
     };
@@ -240,11 +240,11 @@
 
     const handler = {
       get: function (target, prop, receiver) {
-        console.log(tag, `Proxy get handler: ${prop}`);
+        //console.log(tag, `Proxy get handler: ${prop}`);
         return Reflect.get(target, prop, receiver);
       },
       set: function (target, prop, value) {
-        console.log(tag, `Proxy set handler: ${prop} = ${value}`);
+        //console.log(tag, `Proxy set handler: ${prop} = ${value}`);
         return Reflect.set(target, prop, value);
       },
     };
@@ -273,7 +273,7 @@
 
     //TODO keplr object
 
-    console.log(tag, 'window.ethereum and window.xfi have been mounted');
+    console.log(tag, 'window.ethereum and window.keepkey have been mounted');
 
     announceProvider(proxyEthereum);
   }

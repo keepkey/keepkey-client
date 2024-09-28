@@ -79,11 +79,11 @@ export const handleBitcoinRequest = async (
         // @ts-expect-error
         console.log(tag, 'sendPayload: ', sendPayload.assetValue.getValue('string'));
         try {
-          const txHash = '083d4710e9880367370235bf0948745cab113f164881a9329330c6a96f9c2b26';
+          // const txHash = '083d4710e9880367370235bf0948745cab113f164881a9329330c6a96f9c2b26';
 
-          // const txHash = await KEEPKEY_WALLET.swapKit.transfer(sendPayload);
-          // console.log(tag, 'txHash: ', txHash);
-          // chrome.runtime.sendMessage({ action: 'transaction_complete', txHash });
+          const txHash = await KEEPKEY_WALLET.swapKit.transfer(sendPayload);
+          console.log(tag, 'txHash: ', txHash);
+          chrome.runtime.sendMessage({ action: 'transaction_complete', txHash });
 
           return txHash;
         } catch (e) {
