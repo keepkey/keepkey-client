@@ -194,19 +194,21 @@ export const handleEthereumRequest = async (
       let currentProvider = await web3ProviderStorage.getWeb3Provider();
 
       if (params && params[0] && params[0].rpcUrls && params[0].rpcUrls[0]) {
+        let name = params[0].chainName;
+        console.log(tag, 'Switching Chain name: ', name);
         currentProvider = {
           explorer: params[0].blockExplorerUrls[0],
-          explorerAddressLink: params[0].blockExplorerUrls[0]+ "/address/",
-          explorerTxLink: params[0].blockExplorerUrls[0]+ "/tx/",
-          networkId: `eip155:${parseInt(params[0].chainId, 16)}`
+          explorerAddressLink: params[0].blockExplorerUrls[0] + '/address/',
+          explorerTxLink: params[0].blockExplorerUrls[0] + '/tx/',
+          networkId: `eip155:${parseInt(params[0].chainId, 16)}`,
           chainId: sanitizeChainId(params[0].chainId),
           caip: `eip155:${parseInt(params[0].chainId, 16)}/slip44:60`,
           name: params[0].chainName,
-          type;'evm',
+          type: 'evm',
           identifier: params[0].chainName,
           nativeCurrency: params[0].nativeCurrency,
           symbol: params[0].nativeCurrency.symbol, // Native currency symbol
-          precision: params[0].nativeCurrency.decimals // Currency precision
+          precision: params[0].nativeCurrency.decimals, // Currency precision
           providerUrl: params[0].rpcUrls[0],
           providers: params[0].rpcUrls,
         };
@@ -237,9 +239,9 @@ export const handleEthereumRequest = async (
       await web3ProviderStorage.saveWeb3Provider(currentProvider);
 
       console.log('changing context to ', currentProvider.caip);
-      const result = await KEEPKEY_WALLET.setAssetContext({ caip: currentProvider.caip });
+      const result = await KEEPKEY_WALLET.setAssetContext(currentProvider);
       console.log('result ', result);
-
+      console.log('KEEPKEY_WALLET.assetContext ', KEEPKEY_WALLET.assetContext);
       // Update context and notify changes
       chrome.runtime.sendMessage({ type: 'PROVIDER_CHANGED', provider: currentProvider });
       chrome.runtime.sendMessage({ type: 'ASSET_CONTEXT_UPDATED', assetContext: KEEPKEY_WALLET.assetContext });
