@@ -5,54 +5,47 @@ import {
   Flex,
   Text,
   Badge,
-  useClipboard,
   Table,
   Tbody,
   Tr,
   Td,
   Select,
   Spinner,
+  VStack,
+  HStack,
+  useToast,
 } from '@chakra-ui/react';
-// import QRCode from "qrcode.react";
 import React, { useEffect, useState } from 'react';
+import QRCode from 'qrcode'; // Import the QRCode library
 
-export function Receive({ onClose }: any) {
+export function Receive({ onClose }: { onClose: () => void }) {
   const [walletType, setWalletType] = useState('');
   const [selectedAddress, setSelectedAddress] = useState('');
   const [pubkeys, setPubkeys] = useState<any[]>([]);
   const [assetContext, setAssetContext] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const { hasCopied, onCopy } = useClipboard(selectedAddress);
+  const [hasCopied, setHasCopied] = useState(false);
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null); // State for QR code image
+  const toast = useToast();
 
   // Fetch asset context and pubkeys from the backend (extension)
   useEffect(() => {
     const fetchAssetContextAndPubkeys = () => {
       setLoading(true);
 
-      // Fetch asset context
       chrome.runtime.sendMessage({ type: 'GET_ASSET_CONTEXT' }, response => {
         if (chrome.runtime.lastError) {
           console.error('Error fetching asset context:', chrome.runtime.lastError.message);
           setLoading(false);
           return;
         }
-        if (response && response.assetContext) {
-          setAssetContext(response.assetContext);
-        }
-      });
-
-      // Fetch pubkeys
-      chrome.runtime.sendMessage({ type: 'GET_PUBKEYS' }, response => {
-        if (chrome.runtime.lastError) {
-          console.error('Error fetching pubkeys:', chrome.runtime.lastError.message);
-          setLoading(false);
-          return;
-        }
-        if (response && response.pubkeys) {
-          setPubkeys(response.pubkeys);
-          // Automatically select the first address on load
-          if (response.pubkeys.length > 0) {
-            setSelectedAddress(response.pubkeys[0].address || response.pubkeys[0].master);
+        if (response && response.assets) {
+          setAssetContext(response.assets);
+          setPubkeys(response.assets.pubkeys || []);
+          if (response.assets.pubkeys && response.assets.pubkeys.length > 0) {
+            const initialAddress = response.assets.pubkeys[0].address || response.assets.pubkeys[0].master;
+            setSelectedAddress(initialAddress);
+            generateQrCode(initialAddress); // Generate QR code for the initial address
           }
         }
         setLoading(false);
@@ -62,8 +55,37 @@ export function Receive({ onClose }: any) {
     fetchAssetContextAndPubkeys();
   }, []);
 
-  const handleAddressChange = (event: any) => {
-    setSelectedAddress(event.target.value);
+  const handleAddressChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const address = event.target.value;
+    setSelectedAddress(address);
+    generateQrCode(address); // Generate QR code for the selected address
+  };
+
+  // Copy to clipboard function
+  const copyToClipboard = () => {
+    if (selectedAddress) {
+      navigator.clipboard.writeText(selectedAddress).then(() => {
+        setHasCopied(true);
+        toast({
+          title: 'Address copied!',
+          status: 'success',
+          duration: 2000,
+          isClosable: true,
+        });
+        setTimeout(() => setHasCopied(false), 2000); // Reset the copied status after 2 seconds
+      });
+    }
+  };
+
+  // Generate QR code using the QRCode library
+  const generateQrCode = (text: string) => {
+    QRCode.toDataURL(text, { width: 150, margin: 2 }, (err, url) => {
+      if (err) {
+        console.error('Error generating QR code:', err);
+        return;
+      }
+      setQrCodeDataUrl(url);
+    });
   };
 
   if (loading) {
@@ -83,32 +105,31 @@ export function Receive({ onClose }: any) {
   }
 
   return (
-    <Box border="1px" borderColor="white" p={4}>
-      <Flex align="center" justify="center" mb={4}>
-        <Avatar size="xl" src={assetContext?.icon} />
-      </Flex>
-
+    <VStack spacing={6} align="center">
+      {/* Avatar and Title */}
+      <Avatar size="xl" src={assetContext?.icon} />
       <Text fontSize="xl" fontWeight="bold" textAlign="center">
         Receive {assetContext?.name}
       </Text>
 
-      <Table variant="simple" mt={4}>
+      {/* Chain and Address Selector */}
+      <Table variant="simple">
         <Tbody>
           <Tr>
-            <Td>Chain</Td>
+            <Td>
+              <Text fontWeight="bold">Chain</Text>
+            </Td>
             <Td>
               <Badge>{assetContext?.chain}</Badge>
             </Td>
           </Tr>
           <Tr>
-            <Td>CAIP</Td>
-            <Td>{assetContext?.caip}</Td>
-          </Tr>
-          <Tr>
-            <Td>Address</Td>
+            <Td>
+              <Text fontWeight="bold">Address</Text>
+            </Td>
             <Td>
               <Select value={selectedAddress} onChange={handleAddressChange}>
-                {pubkeys.map((pubkey: any, index: any) => (
+                {pubkeys.map((pubkey, index) => (
                   <option key={index} value={pubkey.address || pubkey.master}>
                     {pubkey.address || pubkey.master}
                   </option>
@@ -119,14 +140,29 @@ export function Receive({ onClose }: any) {
         </Tbody>
       </Table>
 
-      {selectedAddress && <Flex align="center" justify="center" my={4}></Flex>}
+      {/* Address Display Box */}
+      {selectedAddress && (
+        <>
+          <Box p={4} borderRadius="md" border="1px solid" borderColor="gray.300" width="full" textAlign="center">
+            <Text wordBreak="break-all" fontSize="sm">
+              {selectedAddress}
+            </Text>
+          </Box>
 
-      <Flex align="center" justify="center" my={4}>
-        <Button onClick={onCopy} mx={2}>
-          {hasCopied ? 'Copied' : 'Copy Address'}
-        </Button>
-      </Flex>
-    </Box>
+          {/* QR Code */}
+          <Box mt={4}>
+            {qrCodeDataUrl ? <img src={qrCodeDataUrl} alt="QR Code" style={{ margin: 'auto' }} /> : <Spinner />}
+          </Box>
+
+          {/* Copy Button */}
+          <HStack spacing={4} mt={4}>
+            <Button colorScheme="blue" onClick={copyToClipboard}>
+              {hasCopied ? 'Copied' : 'Copy Address'}
+            </Button>
+          </HStack>
+        </>
+      )}
+    </VStack>
   );
 }
 

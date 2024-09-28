@@ -25,30 +25,24 @@ import {
   useDisclosure,
 } from '@chakra-ui/react';
 import { ChevronDownIcon, ChevronUpIcon, InfoOutlineIcon } from '@chakra-ui/icons';
-import { AssetValue } from '@pioneer-platform/helpers';
 import React, { useCallback, useEffect, useState } from 'react';
-import { getWalletBadgeContent } from '../WalletIcon';
 //@ts-ignore
 import confetti from 'canvas-confetti'; // Make sure to install the confetti package
 
 const TAG = ' | Transfer | ';
 
-export function Transfer({ usePioneer }: any): JSX.Element {
+export function Transfer({}: any): JSX.Element {
   const toast = useToast();
-  const { state, setIntent, connectWallet } = usePioneer();
-  const { app, assetContext, context } = state;
-  const [isPairing, setIsPairing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isMax, setisMax] = useState(false);
   const [inputAmount, setInputAmount] = useState('');
   const [inputAmountUsd, setInputAmountUsd] = useState('');
   const [sendAmount, setSendAmount] = useState<any | undefined>();
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [memo, setMemo] = useState('');
+  const [assetContext, setAssetContext] = useState({});
   const [recipient, setRecipient] = useState('');
-  const [walletType, setWalletType] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
-  const [priceUsd, setPriceUsd] = useState(null);
+  const [priceUsd, setPriceUsd] = useState<number | null>(null);
   const [maxSpendable, setMaxSpendable] = useState('');
   const [loadingMaxSpendable, setLoadingMaxSpendable] = useState(true);
   const [useUsdInput, setUseUsdInput] = useState(false);
@@ -59,86 +53,38 @@ export function Transfer({ usePioneer }: any): JSX.Element {
   const headingColor = useColorModeValue('teal.500', 'teal.300');
 
   useEffect(() => {
-    if (assetContext && assetContext.icon) setAvatarUrl(assetContext.icon);
-  }, [app, app?.swapKit, assetContext]);
+    // Request asset context and set initial state
+    chrome.runtime.sendMessage({ type: 'GET_ASSET_CONTEXT' }, response => {
+      setAssetContext(response.assets);
+      if (response?.assets.icon) setAvatarUrl(response.assets.icon);
+      if (response?.assets.priceUsd) setPriceUsd(response.assets.priceUsd);
+    });
+  }, []);
 
-  useEffect(() => {
-    if (context) {
-      setWalletType(context.split(':')[0]);
-    }
-  }, [context]);
-
-  useEffect(() => {
-    setIsPairing(false);
-  }, [app]);
-
-  let onStart = async function () {
+  const onStart = async function () {
     let tag = TAG + ' | onStart Transfer | ';
-    if (
-      app &&
-      app.swapKit &&
-      assetContext &&
-      assetContext.chain &&
-      app.swapKit.estimateMaxSendableAmount &&
-      assetContext.networkId
-    ) {
-      console.log('onStart Transfer page');
-      console.log(tag, 'assetContext: ', assetContext);
-
-      //get balance from app
-      let balance = app.balances.filter((balance: any) => balance.caip === assetContext.caip);
-      console.log(tag, 'balance: ', balance);
-      if (balance && balance[0] && balance[0].priceUsd) setPriceUsd(balance[0].priceUsd);
-
-      const walletInfo = await app.swapKit.syncWalletByChain(assetContext.chain);
-      console.log(tag, 'walletInfo: ', walletInfo);
-      if (!walletInfo) {
-        console.log(tag, 'connectWallet needed!');
-        await connectWallet('KEEPKEY');
-        setTimeout(onStart, 200);
-      } else {
-        let pubkeys = await app.pubkeys;
-        pubkeys = pubkeys.filter((pubkey: any) => pubkey.networks.includes(assetContext.networkId));
-        console.log('onStart Transfer pubkeys', pubkeys);
-
-        // Check local storage for cached maxSpendable
-        const cacheKey = `maxSpendable_${assetContext.caip}`;
-        const cachedMaxSpendable = localStorage.getItem(cacheKey);
-        if (cachedMaxSpendable) {
-          setMaxSpendable(cachedMaxSpendable);
-          setLoadingMaxSpendable(false);
-        }
-
-        //get assetValue for the asset
-        if (!assetContext.caip) throw Error('Invalid asset context. Missing caip.');
-        let estimatePayload: any = {
-          feeRate: 10,
-          caip: assetContext.caip,
-          pubkeys,
-          memo,
-          recipient,
-        };
-        let maxSpendableAmount = await app.swapKit.estimateMaxSendableAmount({
-          chain: assetContext.chain,
-          params: estimatePayload,
-        });
-        console.log('maxSpendableAmount', maxSpendableAmount);
-        console.log('maxSpendableAmount', maxSpendableAmount.getValue('string'));
-        console.log('onStart Transfer pubkeys', pubkeys);
-        const newMaxSpendable = maxSpendableAmount.getValue('string');
-        setMaxSpendable(newMaxSpendable);
+    chrome.runtime.sendMessage({ type: 'GET_MAX_SPENDABLE' }, maxSpendableResponse => {
+      if (maxSpendableResponse && maxSpendableResponse.maxSpendable) {
+        setMaxSpendable(maxSpendableResponse.maxSpendable);
         setLoadingMaxSpendable(false);
-        localStorage.setItem(cacheKey, newMaxSpendable);
+      } else {
+        toast({
+          title: 'Error',
+          description: 'Failed to fetch max spendable amount.',
+          status: 'error',
+          duration: 5000,
+          isClosable: true,
+        });
+        setLoadingMaxSpendable(false);
       }
-    }
+    });
   };
 
   useEffect(() => {
     onStart();
-  }, [app, app?.swapKit, assetContext]);
+  }, []);
 
   const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setisMax(false);
     if (useUsdInput) {
       setInputAmountUsd(event.target.value);
       setInputAmount((parseFloat(event.target.value) / (priceUsd || 1)).toFixed(8));
@@ -154,76 +100,63 @@ export function Transfer({ usePioneer }: any): JSX.Element {
 
   const handleSend = useCallback(async () => {
     try {
-      if (!inputAmount) {
-        alert('You MUST input an amount to send!');
+      if (!inputAmount || !recipient) {
+        alert('You MUST input both amount and recipient to send!');
         return;
       }
-      if (!recipient) {
-        alert('You MUST input a recipient to send to!');
-        return;
-      }
-      setIntent('transfer:' + assetContext.chain + ':' + assetContext.symbol + ':' + inputAmount + ':' + recipient);
-      const walletInfo = await app.swapKit.syncWalletByChain(assetContext.chain);
+      setIsSubmitting(true);
 
-      if (!walletInfo) {
-        let walletType = app.context.split(':')[0];
-        connectWallet(walletType.toUpperCase());
-        setTimeout(() => {
-          handleSend();
-        }, 3000);
-      } else {
-        setIsSubmitting(true);
-        await AssetValue.loadStaticAssets();
-        //@ts-ignore
-        const assetValue = await AssetValue.fromIdentifier(assetContext.identifier, parseFloat(inputAmount));
+      const sendPayload = {
+        amount: inputAmount,
+        recipient,
+        memo,
+        isMax: false,
+      };
 
-        let sendPayload: any = {
-          assetValue,
-          memo,
-          recipient,
-        };
-        if (isMax) sendPayload.isMax = true;
-        const txHash = await app.swapKit.transfer(sendPayload);
-
-        if (typeof window !== 'undefined') {
-          setTimeout(() => {
-            window.open(`${app.swapKit.getExplorerTxUrl(assetContext.chain, txHash as string)}`, '_blank');
-          }, 10000); // 30 seconds delay
-        }
-
-        confetti(); // Trigger confetti on successful transaction
-
-        toast({
-          title: 'Transaction Successful',
-          description: `Transaction ID: ${txHash}`,
-          status: 'success',
-          duration: 5000,
-          isClosable: true,
-        });
-      }
-    } catch (errorSend: any) {
-      console.error(errorSend);
+      chrome.runtime.sendMessage(
+        {
+          type: 'TRANSFER',
+          payload: sendPayload,
+        },
+        response => {
+          if (response.txHash) {
+            confetti();
+            toast({
+              title: 'Transaction Successful',
+              description: `Transaction ID: ${response.txHash}`,
+              status: 'success',
+              duration: 5000,
+              isClosable: true,
+            });
+          } else if (response.error) {
+            toast({
+              title: 'Error',
+              description: response.error,
+              status: 'error',
+              duration: 5000,
+              isClosable: true,
+            });
+          }
+        },
+      );
+    } catch (error) {
       toast({
         title: 'Error',
-        description: errorSend.toString(),
+        description: error.toString(),
         status: 'error',
         duration: 5000,
         isClosable: true,
       });
     } finally {
       setIsSubmitting(false);
-      onClose(); // Close the confirmation modal after the transaction
+      onClose();
     }
-  }, [assetContext, inputAmount, app, recipient, sendAmount, toast, memo, isMax, connectWallet, setIntent]);
+  }, [inputAmount, recipient, memo, toast]);
 
   const setMaxAmount = () => {
-    setisMax(true);
-    setInputAmount(maxSpendable);
-    setInputAmountUsd((parseFloat(maxSpendable) * (priceUsd || 1)).toFixed(2));
-  };
-
-  const formatNumber = (number: any) => {
-    return number;
+    const maxAmount = maxSpendable;
+    setInputAmount(maxAmount);
+    setInputAmountUsd((parseFloat(maxAmount) * (priceUsd || 1)).toFixed(2));
   };
 
   if (loadingMaxSpendable) {
@@ -239,8 +172,6 @@ export function Transfer({ usePioneer }: any): JSX.Element {
     );
   }
 
-  const isOverMax = parseFloat(inputAmount) > parseFloat(maxSpendable);
-
   return (
     <>
       <VStack align="start" borderRadius="md" p={6} spacing={5} bg={bgColor} margin="0 auto">
@@ -248,96 +179,47 @@ export function Transfer({ usePioneer }: any): JSX.Element {
           Send Crypto!
         </Heading>
 
-        {isPairing ? (
+        <Flex align="center" direction={{ base: 'column', md: 'row' }} gap={20}>
+          <Avatar size="xl" src={avatarUrl} />
           <Box>
             <Text mb={2}>
-              Connecting to {context}...
-              <Spinner size="xl" />
-              Please check your wallet to approve the connection.
+              Asset: <Badge colorScheme="green">{assetContext?.name}</Badge>
             </Text>
+            <Text mb={2}>
+              Chain: <Badge colorScheme="green">{assetContext?.networkId}</Badge>
+            </Text>
+            <Text mb={4}>
+              Symbol: <Badge colorScheme="green">{assetContext?.symbol}</Badge>
+            </Text>
+            <Text mb={4}>Max Spendable: {maxSpendable} Symbol</Text>
+            <Badge colorScheme="teal" fontSize="sm">
+              ${(parseFloat(maxSpendable) * (priceUsd || 1)).toFixed(2)} USD
+            </Badge>
           </Box>
-        ) : (
-          <div>
-            <Flex align="center" direction={{ base: 'column', md: 'row' }} gap={20}>
-              <Box>
-                <Avatar size="xl" src={avatarUrl}>
-                  {/*{getWalletBadgeContent(walletType, '4em')}*/}
-                </Avatar>
-              </Box>
-              <Box>
-                <Text mb={2}>
-                  Asset: <Badge colorScheme="green">{assetContext?.name || 'N/A'}</Badge>
-                </Text>
-                <Text mb={2}>
-                  Chain: <Badge colorScheme="green">{assetContext?.chain || 'N/A'}</Badge>
-                </Text>
-                <Text mb={4}>
-                  Symbol: <Badge colorScheme="green">{assetContext?.symbol || 'N/A'}</Badge>
-                </Text>
-                <Text mb={4}>
-                  Max Spendable: {formatNumber(maxSpendable)} {assetContext?.symbol}
-                </Text>
-                <Badge colorScheme="teal" fontSize="sm">
-                  ${(parseFloat(maxSpendable) * (priceUsd || 1)).toFixed(2)} USD
-                </Badge>
-              </Box>
-            </Flex>
-            <br />
-            <Grid gap={10} templateColumns={{ base: 'repeat(1, 1fr)', md: 'repeat(2, 1fr)' }} w="full">
-              <FormControl>
-                <FormLabel>Recipient:</FormLabel>
-                <Input onChange={handleRecipientChange} placeholder="Address" value={recipient} />
-              </FormControl>
-              <FormControl>
-                <FormLabel>Input Amount:</FormLabel>
-                <Flex align="center">
-                  <Input
-                    onChange={handleInputChange}
-                    placeholder="0.0"
-                    value={useUsdInput ? inputAmountUsd : inputAmount}
-                    isInvalid={isOverMax}
-                  />
-                  <Text ml={2}>{useUsdInput ? 'USD' : assetContext?.symbol}</Text>
-                </Flex>
-                <Text fontSize="sm" color="blue.500" cursor="pointer" onClick={() => setUseUsdInput(!useUsdInput)}>
-                  {useUsdInput
-                    ? `Switch to ${assetContext?.symbol} (${inputAmount})`
-                    : `Switch to USD ($${inputAmountUsd} USD)`}
-                </Text>
-              </FormControl>
-            </Grid>
-            <br />
-            <Flex justify="space-between" w="full" mt="4">
-              <Button onClick={setMaxAmount} size="sm" colorScheme="teal">
-                MAX
-              </Button>
-              {!assetContext?.networkId.includes('eip155') && (
-                <Button
-                  variant="ghost"
-                  rightIcon={showAdvanced ? <ChevronUpIcon /> : <ChevronDownIcon />}
-                  onClick={() => setShowAdvanced(!showAdvanced)}>
-                  Advanced
-                </Button>
-              )}
-            </Flex>
-            {showAdvanced && (
-              <FormControl mt={4}>
-                <FormLabel>
-                  Memo:
-                  <Tooltip
-                    label="Optional memo to include with your transaction for reference."
-                    aria-label="A tooltip for memo input">
-                    <InfoOutlineIcon ml="2" />
-                  </Tooltip>
-                </FormLabel>
-                <Input placeholder="Enter memo (optional)" value={memo} onChange={e => setMemo(e.target.value)} />
-              </FormControl>
-            )}
-            <br />
-          </div>
-        )}
+        </Flex>
 
-        <Button colorScheme="green" w="full" mt={4} onClick={onOpen} isDisabled={isOverMax}>
+        <Grid gap={10} templateColumns={{ base: 'repeat(1, 1fr)', md: 'repeat(2, 1fr)' }} w="full">
+          <FormControl>
+            <FormLabel>Recipient:</FormLabel>
+            <Input onChange={handleRecipientChange} placeholder="Address" value={recipient} />
+          </FormControl>
+          <FormControl>
+            <FormLabel>Input Amount:</FormLabel>
+            <Flex align="center">
+              <Input
+                onChange={handleInputChange}
+                placeholder="0.0"
+                value={useUsdInput ? inputAmountUsd : inputAmount}
+              />
+              <Text ml={2}>{useUsdInput ? 'USD' : 'Symbol'}</Text>
+              <Button ml={4} onClick={setMaxAmount}>
+                Max
+              </Button>
+            </Flex>
+          </FormControl>
+        </Grid>
+
+        <Button colorScheme="green" w="full" mt={4} onClick={onOpen} isDisabled={isSubmitting}>
           {isSubmitting ? 'Sending...' : 'Send'}
         </Button>
       </VStack>
@@ -349,12 +231,9 @@ export function Transfer({ usePioneer }: any): JSX.Element {
           <ModalCloseButton />
           <ModalBody>
             <Text>Recipient: {recipient}</Text>
-            <Text>
-              Amount: {inputAmount} {assetContext?.symbol}
-            </Text>
+            <Text>Amount: {inputAmount} Symbol</Text>
             <Text>Amount (USD): ${inputAmountUsd}</Text>
             {memo && <Text>Memo: {memo}</Text>}
-            {isSubmitting && <Box mt={4}></Box>}
           </ModalBody>
           <ModalFooter>
             <Button colorScheme="red" mr={3} onClick={onClose}>

@@ -14,9 +14,9 @@ type ApiKeyStorage = BaseStorage<string> & {
 };
 
 type PioneerStorage = BaseStorage<string> & {
-  savePioneerWss: (queryKey: string) => Promise<void>;
+  savePioneerWss: (wss: string) => Promise<void>;
   getPioneerWss: () => Promise<string | null>;
-  savePioneerSpec: (queryKey: string) => Promise<void>;
+  savePioneerSpec: (spec: string) => Promise<void>;
   getPioneerSpec: () => Promise<string | null>;
   saveQueryKey: (queryKey: string) => Promise<void>;
   getQueryKey: () => Promise<string | null>;
@@ -32,6 +32,12 @@ type EventStorage = BaseStorage<Event[]> & {
   clearEvents: () => Promise<void>;
 };
 
+type Web3ProviderStorage = BaseStorage<string> & {
+  saveWeb3Provider: (provider: string) => Promise<void>;
+  getWeb3Provider: () => Promise<string | null>;
+  clearWeb3Provider: () => Promise<void>;
+};
+
 type AssetContext = {
   [key: string]: any;
 };
@@ -43,7 +49,7 @@ type AssetContextStorage = BaseStorage<AssetContext> & {
 
 const TAG = ' | customStorage | ';
 
-// Create API Key Storage
+// Create Pioneer Storage
 const createPioneerStorage = (): PioneerStorage => {
   const queryKeyStorage = createStorage<string>('pioneer-query-key', '', {
     storageType: StorageType.Local,
@@ -76,11 +82,11 @@ const createPioneerStorage = (): PioneerStorage => {
     getPioneerSpec: async () => {
       return await specStorage.get();
     },
-    savePioneerWss: async (Wss: string) => {
-      await specStorage.set(() => Wss);
+    savePioneerWss: async (wss: string) => {
+      await wssStorage.set(() => wss);
     },
     getPioneerWss: async () => {
-      return await specStorage.get();
+      return await wssStorage.get();
     },
     saveQueryKey: async (queryKey: string) => {
       await queryKeyStorage.set(() => queryKey);
@@ -122,7 +128,7 @@ export const keepKeyApiKeyStorage = createApiKeyStorage();
 // Create Event Storage
 const createEventStorage = (key: string): EventStorage => {
   const storage = createStorage<Event[]>(key, [], {
-    storageType: StorageType.Local, // Change if needed
+    storageType: StorageType.Local,
     liveUpdate: true,
   });
 
@@ -131,11 +137,11 @@ const createEventStorage = (key: string): EventStorage => {
     addEvent: async (event: Event): Promise<boolean> => {
       const tag = TAG + ' | addEvent | ';
       try {
-        const eventWithId = { ...event, timestamp: new Date().toISOString() };
-        console.log(tag, 'Adding event:', eventWithId);
-        await storage.set(prev => [...prev, eventWithId]);
+        const eventWithTimestamp = { ...event, timestamp: new Date().toISOString() };
+        console.log(tag, 'Adding event:', eventWithTimestamp);
+        await storage.set(prev => [...prev, eventWithTimestamp]);
         const savedEvents = await storage.get();
-        const isSaved = savedEvents ? savedEvents.some(e => e.id === eventWithId.id) : false;
+        const isSaved = savedEvents ? savedEvents.some(e => e.id === eventWithTimestamp.id) : false;
 
         console.log(tag, 'Event saved successfully:', isSaved);
         return isSaved;
@@ -155,14 +161,14 @@ const createEventStorage = (key: string): EventStorage => {
       const events = await storage.get();
       const event = events ? events.find(event => event.id === id) : null;
       console.log(tag, `Event with id ${id}:`, event);
-      return event || null; // Ensure it returns null if not found
+      return event || null;
     },
     removeEventById: async (id: string) => {
       const tag = TAG + ' | removeEventById | ';
       const events = await storage.get();
       if (events) {
         const updatedEvents = events.filter(event => event.id !== id);
-        await storage.set(updatedEvents);
+        await storage.set(() => updatedEvents);
         console.log(tag, `Removed event with id ${id}. Updated events:`, updatedEvents);
       }
     },
@@ -174,6 +180,30 @@ const createEventStorage = (key: string): EventStorage => {
   };
 };
 
+// Create Web3 Provider Storage
+const createWeb3ProviderStorage = (): Web3ProviderStorage => {
+  const storage = createStorage<string>('web3-provider', '', {
+    storageType: StorageType.Local,
+    liveUpdate: true,
+  });
+
+  return {
+    ...storage,
+    saveWeb3Provider: async (provider: string) => {
+      await storage.set(() => provider);
+    },
+    getWeb3Provider: async () => {
+      return await storage.get();
+    },
+    clearWeb3Provider: async () => {
+      await storage.set(() => '');
+    },
+  };
+};
+
+export const web3ProviderStorage = createWeb3ProviderStorage();
+
+// Export Event Storages
 export const requestStorage = createEventStorage('keepkey-requests');
 export const approvalStorage = createEventStorage('keepkey-approvals');
 export const completedStorage = createEventStorage('keepkey-completed');

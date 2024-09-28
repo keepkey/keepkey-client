@@ -1,6 +1,8 @@
 import { JsonRpcProvider } from 'ethers';
 import { requestStorage } from '@extension/storage';
 // import axios from 'axios';
+import { caipToNetworkId, shortListNameToCaip } from '@pioneer-platform/pioneer-caip';
+
 //@ts-ignore
 import { v4 as uuidv4 } from 'uuid';
 import { handleEthereumRequest } from './chains/ethereumHandler';
@@ -87,12 +89,58 @@ const openPopup = function () {
   }
 };
 
-const requireApproval = async function (requestInfo: any, chain: any, method: string, params: any) {
+/*
+  "requestInfo": {
+    "chain": "ethereum",
+    "href": "http://localhost:5173/",
+    "id": 1,
+    "language": "en-US",
+    "method": "personal_sign",
+    "params": [
+      "Hello, World!",
+      null
+    ],
+    "platform": "MacIntel",
+    "referrer": "",
+    "requestTime": "2024-09-19T20:33:37.020Z",
+    "scriptSource": "KeepKey Extension",
+    "siteUrl": "http://localhost:5173/",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+    "version": "1.0.7"
+  },
+
+
+ */
+
+const requireApproval = async function (requestInfo, chain, method, params) {
   const tag = TAG + ' | requireApproval | ';
   try {
     isPopupOpen = true;
-    const event: Event = {
+    //chain to networkId
+    const networkId = caipToNetworkId(shortListNameToCaip[chain]);
+    if (!networkId) throw Error('unhandled chain ' + chain);
+    console.log(tag, 'NetworkId:', networkId);
+
+    //if evm set from address
+
+    //if token transfer, set assetContext to token
+
+    //set assetContext
+
+    const event = {
       id: uuidv4(),
+      networkId,
+      chain,
+      href: requestInfo.href,
+      language: requestInfo.language,
+      platform: requestInfo.platform,
+      referrer: requestInfo.referrer,
+      requestTime: requestInfo.requestTime,
+      scriptSource: requestInfo.scriptSource,
+      siteUrl: requestInfo.siteUrl,
+      userAgent: requestInfo.userAgent,
+      injectScriptVersion: requestInfo.version,
+      requestInfo,
       type: method,
       request: params,
       status: 'request',
@@ -101,14 +149,30 @@ const requireApproval = async function (requestInfo: any, chain: any, method: st
     console.log(tag, 'Requesting approval for event:', event);
     const eventSaved = await requestStorage.addEvent(event);
     if (eventSaved) {
-      console.log(tag, 'eventSaved:', eventSaved);
       console.log(tag, 'Event saved:', event);
     } else {
       throw new Error('Event not saved');
     }
-    // openPopup();
+    openPopup();
+
+    // Wait for user's decision and return the result
+    return new Promise(resolve => {
+      const listener = (message, sender, sendResponse) => {
+        if (message.action === 'eth_sign_response' && message.response.eventId === event.id) {
+          console.log(tag, 'Received eth_sign_response for event:', message.response.eventId);
+          chrome.runtime.onMessage.removeListener(listener);
+          if (message.response.decision === 'accept') {
+            resolve({ success: true });
+          } else {
+            resolve({ success: false });
+          }
+        }
+      };
+      chrome.runtime.onMessage.addListener(listener);
+    });
   } catch (e) {
     console.error(tag, e);
+    return { success: false }; // Return failure in case of error
   }
 };
 
@@ -134,9 +198,9 @@ export const handleWalletRequest = async (
 ): Promise<any> => {
   const tag = ' | handleWalletRequest | ';
   try {
-    console.log(tag, 'id:', requestInfo.id);
-    console.log(tag, 'chain:', chain);
-    console.log(tag, 'requestInfo:', requestInfo);
+    // console.log(tag, 'id:', requestInfo.id);
+    // console.log(tag, 'chain:', chain);
+    // console.log(tag, 'requestInfo:', requestInfo);
     if (!chain) throw Error('Chain not provided!');
     if (!requestInfo) throw Error('Cannot validate request! Refusing to proceed.');
 
@@ -147,112 +211,31 @@ export const handleWalletRequest = async (
 
     switch (chain) {
       case 'ethereum': {
-        return await handleEthereumRequest(
-          method,
-          params,
-          provider,
-          CURRENT_PROVIDER,
-          requestInfo,
-          ADDRESS,
-          KEEPKEY_WALLET,
-          requireApproval,
-        );
+        return await handleEthereumRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
       }
       case 'bitcoin': {
-        return await handleBitcoinRequest(
-          method,
-          params,
-          provider,
-          CURRENT_PROVIDER,
-          requestInfo,
-          ADDRESS,
-          KEEPKEY_WALLET,
-          requireApproval,
-        );
+        return await handleBitcoinRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
       }
       case 'bitcoincash': {
-        return await handleBitcoinCashRequest(
-          method,
-          params,
-          provider,
-          CURRENT_PROVIDER,
-          requestInfo,
-          ADDRESS,
-          KEEPKEY_WALLET,
-          requireApproval,
-        );
+        return await handleBitcoinCashRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
       }
       case 'dogecoin': {
-        return await handleDogecoinRequest(
-          method,
-          params,
-          provider,
-          CURRENT_PROVIDER,
-          requestInfo,
-          ADDRESS,
-          KEEPKEY_WALLET,
-          requireApproval,
-        );
+        return await handleDogecoinRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
       }
       case 'litecoin': {
-        return await handleLitecoinRequest(
-          method,
-          params,
-          provider,
-          CURRENT_PROVIDER,
-          requestInfo,
-          ADDRESS,
-          KEEPKEY_WALLET,
-          requireApproval,
-        );
+        return await handleLitecoinRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
       }
       case 'dash': {
-        return await handleDashRequest(
-          method,
-          params,
-          provider,
-          CURRENT_PROVIDER,
-          requestInfo,
-          ADDRESS,
-          KEEPKEY_WALLET,
-          requireApproval,
-        );
+        return await handleDashRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
       }
       case 'thorchain': {
-        return await handleThorchainRequest(
-          method,
-          params,
-          provider,
-          CURRENT_PROVIDER,
-          requestInfo,
-          ADDRESS,
-          KEEPKEY_WALLET,
-          requireApproval,
-        );
+        return await handleThorchainRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
       }
       case 'cosmos': {
-        return await handleCosmosRequest(
-          method,
-          params,
-          provider,
-          CURRENT_PROVIDER,
-          requestInfo,
-          ADDRESS,
-          KEEPKEY_WALLET,
-          requireApproval,
-        );
+        return await handleCosmosRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
       }
       case 'mayachain': {
-        return await handleMayaRequest(
-          method,
-          params,
-          provider,
-          CURRENT_PROVIDER,
-          requestInfo,
-          ADDRESS,
-          KEEPKEY_WALLET,
-          requireApproval,
-        );
+        return await handleMayaRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
       }
       default: {
         console.log(tag, `Chain ${chain} not supported`);

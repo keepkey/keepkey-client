@@ -87,7 +87,7 @@ const Connect: React.FC<ConnectProps> = ({ setIsConnecting }) => {
           </Button>
         </Stack>
         <Text fontSize="sm" mt={4}>
-          Don't have a KeepKey?{' '}
+          Dont have a KeepKey?{' '}
           <Button variant="link" color="teal.500" onClick={openKeepKeyLink}>
             Buy a KeepKey
           </Button>

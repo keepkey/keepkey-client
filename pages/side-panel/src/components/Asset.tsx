@@ -11,11 +11,6 @@ export function Asset() {
   const [paths, setPaths] = useState<any[]>([]);
   const [asset, setAsset] = useState<any>(null); // Define asset state
 
-  const clearAssetContext = () => {
-    app.setAssetContext(null);
-    onClose();
-  };
-
   useEffect(() => {
     // Fetch asset context from the background script
     chrome.runtime.sendMessage({ type: 'GET_ASSET_CONTEXT' }, response => {
@@ -167,7 +162,7 @@ export function Asset() {
               </Flex>
             </>
           ) : activeTab === 'send' ? (
-            <Transfer usePioneer={usePioneer} onClose={() => setActiveTab(null)} />
+            <Transfer onClose={() => setActiveTab(null)} />
           ) : activeTab === 'receive' ? (
             <Receive onClose={() => setActiveTab(null)} />
           ) : (

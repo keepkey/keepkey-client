@@ -2,10 +2,11 @@ import 'webextension-polyfill';
 import packageJson from '../../package.json'; // Adjust the path as needed
 import { onStartKeepkey } from './keepkey';
 import { handleWalletRequest } from './methods';
-import { listenForApproval } from './approvals';
+// import { listenForApproval } from './approvals';
 import { JsonRpcProvider } from 'ethers';
+import { ChainToNetworkId } from '@pioneer-platform/pioneer-caip';
 import { Chain } from '@coinmasters/types';
-import { exampleSidebarStorage } from '@extension/storage'; // Re-import the storage
+import { exampleSidebarStorage, web3ProviderStorage } from '@extension/storage'; // Re-import the storage
 import { EIP155_CHAINS } from './chains';
 import axios from 'axios';
 
@@ -19,6 +20,7 @@ const KEEPKEY_STATES = {
   2: 'connected',
   3: 'busy',
   4: 'errored',
+  5: 'paired',
 };
 let KEEPKEY_STATE = 0;
 
@@ -44,9 +46,11 @@ async function checkKeepKey() {
   try {
     const response = await axios.get('http://localhost:1646/docs');
     if (response.status === 200) {
-      KEEPKEY_STATE = 2; // Set state to connected
       updateIcon();
-      pushStateChangeEvent();
+      if (KEEPKEY_STATE < 2) {
+        KEEPKEY_STATE = 2; // Set state to connected
+        pushStateChangeEvent();
+      }
     }
   } catch (error) {
     console.error('KeepKey endpoint not found:', error);
@@ -71,22 +75,44 @@ const onStart = async function () {
   const tag = TAG + ' | onStart | ';
   try {
     console.log(tag, 'Starting...');
-    const app = await onStartKeepkey();
-    const address = await app.swapKit.getAddress(Chain.Ethereum);
-    if (address) {
-      KEEPKEY_STATE = 2;
-      updateIcon();
-      pushStateChangeEvent();
-    }
-    console.log(tag, 'address:', address);
-    ADDRESS = address;
-    APP = app;
-
-    listenForApproval(APP, ADDRESS);
-
+    APP = await onStartKeepkey();
     await APP.getAssets();
     await APP.getPubkeys();
     await APP.getBalances();
+    const pubkeysEth = APP.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.Ethereum]));
+    if (pubkeysEth.length > 0) {
+      console.log(tag, 'pubkeys:', pubkeysEth);
+      const address = pubkeysEth[0].address;
+      if (address) {
+        console.log(tag, 'Ethereum address:', address);
+        ADDRESS = address;
+        KEEPKEY_STATE = 5;
+        updateIcon();
+        pushStateChangeEvent();
+      }
+
+      const defaultProvider: any = {
+        chainId: '0x1',
+        caip: 'eip155:1/slip44:60',
+        blockExplorerUrls: ['https://etherscan.io'],
+        name: 'Ethereum',
+        providerUrl: 'https://eth.llamarpc.com',
+        fallbacks: [],
+      };
+      //get current provider
+      const currentProvider = await web3ProviderStorage.getWeb3Provider();
+      if (!currentProvider) {
+        console.log(tag, 'No provider set, setting default provider');
+        await web3ProviderStorage.saveWeb3Provider(defaultProvider);
+      }
+      //if not set, set it to eth mainnet
+    } else {
+      console.error(tag, 'FAILED TO INIT, No Ethereum address found');
+      //TODO retry?
+      // setTimeout(() => {
+      //   onStart();
+      // }, 5000);
+    }
   } catch (e) {
     KEEPKEY_STATE = 4; // errored
     updateIcon();
@@ -95,115 +121,248 @@ const onStart = async function () {
   }
 };
 
-onStart();
+setTimeout(() => {
+  onStart();
+}, 5000);
 
 chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: any) => {
-  const tag = TAG + ' | chrome.runtime.onMessage | ';
-  console.log(tag, 'Received message:', message);
+  (async () => {
+    const tag = TAG + ' | chrome.runtime.onMessage | ';
+    // console.log(tag, 'Received message:', message);
 
-  if (message.type === 'WALLET_REQUEST') {
-    const { requestInfo } = message;
-    const { method, params, chain } = requestInfo;
+    try {
+      switch (message.type) {
+        case 'WALLET_REQUEST': {
+          const { requestInfo } = message;
+          const { method, params, chain } = requestInfo;
 
-    if (method) {
-      handleWalletRequest(requestInfo, chain, method, params, provider, APP, ADDRESS)
-        .then(result => sendResponse({ result }))
-        .catch(error => sendResponse({ error: error.message }));
-    } else {
-      sendResponse({ error: 'Invalid request: missing method' });
-    }
+          if (method) {
+            try {
+              const result = await handleWalletRequest(requestInfo, chain, method, params, provider, APP, ADDRESS);
+              sendResponse({ result });
+            } catch (error) {
+              sendResponse({ error: error.message });
+            }
+          } else {
+            sendResponse({ error: 'Invalid request: missing method' });
+          }
+          break;
+        }
+        //OPEN_SIDEBAR
+        case 'OPEN_SIDEBAR': {
+          console.log(tag, 'Opening sidebar ** ');
+          // Query all tabs across all windows
+          chrome.tabs.query({}, tabs => {
+            if (chrome.runtime.lastError) {
+              console.error('Error querying tabs:', chrome.runtime.lastError);
+              return;
+            }
 
-    return true;
-  }
-
-  if (message.type === 'GET_KEEPKEY_STATE') {
-    sendResponse({ state: KEEPKEY_STATE });
-    return true;
-  }
-
-  if (message.type === 'ON_START') {
-    onStart();
-    setTimeout(() => {
-      sendResponse({ state: KEEPKEY_STATE });
-    }, 15000);
-    return true;
-  }
-
-  if (message.type === 'GET_APP') {
-    sendResponse({ app: APP });
-    return true;
-  }
-
-  if (message.type === 'GET_ASSET_CONTEXT') {
-    if (APP) {
-      sendResponse({ assets: APP.assetContext });
-      return true;
-    } else {
-      sendResponse({ error: 'APP not initialized' });
-    }
-  }
-
-  if (message.type === 'SET_ASSET_CONTEXT') {
-    if (APP) {
-      console.log('SET_ASSET_CONTEXT: message: ', message);
-      if (message.asset && message.asset.caip) {
-        APP.setAssetContext(message.asset)
-          .then(response => {
-            console.log('Asset context set:', response);
-            chrome.runtime.sendMessage({
-              type: 'ASSET_CONTEXT_UPDATED',
-              assetContext: response, // Notify frontend about the change
+            // Filter out extension pages and internal Chrome pages
+            const webPageTabs = tabs.filter(tab => {
+              return (
+                tab.url &&
+                !tab.url.startsWith('chrome://') &&
+                !tab.url.startsWith('chrome-extension://') &&
+                !tab.url.startsWith('about:')
+              );
             });
-            sendResponse(response);
-          })
-          .catch(error => {
-            console.error('Error setting asset context:', error);
-            sendResponse({ error: 'Failed to fetch assets' });
+
+            if (webPageTabs.length > 0) {
+              // Sort tabs by last accessed time to find the most recently active tab
+              webPageTabs.sort((a, b) => b.lastAccessed - a.lastAccessed);
+              const tab = webPageTabs[0];
+              const windowId = tab.windowId;
+
+              console.log(tag, 'Opening sidebar in tab:', tab);
+
+              chrome.sidePanel.open({ windowId }, () => {
+                if (chrome.runtime.lastError) {
+                  console.error('Error opening side panel:', chrome.runtime.lastError);
+                } else {
+                  console.log('Side panel opened successfully.');
+                }
+              });
+            } else {
+              console.error('No suitable web page tabs found to open the side panel.');
+            }
           });
+          break;
+        }
+
+        case 'GET_KEEPKEY_STATE': {
+          sendResponse({ state: KEEPKEY_STATE });
+          break;
+        }
+
+        case 'ON_START': {
+          onStart();
+          setTimeout(() => {
+            sendResponse({ state: KEEPKEY_STATE });
+          }, 15000);
+          break;
+        }
+
+        case 'RESET_APP': {
+          console.log(tag, 'Resetting app...');
+          chrome.runtime.reload();
+          sendResponse({ result: true });
+          break;
+        }
+
+        case 'GET_APP': {
+          sendResponse({ app: APP });
+          break;
+        }
+
+        case 'GET_ASSET_CONTEXT': {
+          if (APP) {
+            sendResponse({ assets: APP.assetContext });
+          } else {
+            sendResponse({ error: 'APP not initialized' });
+          }
+          break;
+        }
+
+        case 'GET_TX_INSIGHT': {
+          if (APP) {
+            //get chainid
+            const assetContext = APP.assetContext;
+            if (!assetContext) throw new Error('Invalid asset context. Missing assetContext.');
+            const { tx, source } = message;
+            tx.chainId = assetContext.networkId.replace('eip155:', '');
+            console.log(tag, 'chainId: ', tx.chainId);
+            console.log(tag, 'GET_TX_INSIGHT', tx, source);
+            if (!tx) throw new Error('Invalid request: missing tx');
+            if (!source) throw new Error('Invalid request: missing source');
+
+            //result
+            const result = await APP.pioneer.Insight({ tx, source });
+            console.log(tag, 'GET_TX_INSIGHT', result);
+            sendResponse(result.data);
+          } else {
+            sendResponse({ error: 'APP not initialized' });
+          }
+          break;
+        }
+
+        case 'GET_GAS_ESTIMATE': {
+          if (APP) {
+            const providerInfo = await web3ProviderStorage.getWeb3Provider();
+            if (!providerInfo) throw Error('Failed to get provider info');
+
+            const provider = new JsonRpcProvider(providerInfo.providerUrl);
+            const feeData = await provider.getFeeData();
+            sendResponse(feeData);
+          } else {
+            sendResponse({ error: 'APP not initialized' });
+          }
+          break;
+        }
+
+        case 'GET_MAX_SPENDABLE': {
+          if (APP) {
+            console.log(tag, 'GET_MAX_SPENDABLE');
+            const assetContext = APP.assetContext;
+            if (!assetContext) throw new Error('Invalid asset context. Missing assetContext.');
+
+            let pubkeys = await APP.pubkeys;
+            pubkeys = pubkeys.filter((pubkey: any) => pubkey.networks.includes(assetContext.networkId));
+            console.log('onStart Transfer pubkeys', pubkeys);
+
+            if (!assetContext.caip) throw new Error('Invalid asset context. Missing caip.');
+
+            const estimatePayload: any = {
+              feeRate: 10,
+              caip: assetContext.caip,
+              pubkeys,
+              memo: '',
+              recipient: '',
+            };
+
+            const maxSpendableAmount = await APP.swapKit.estimateMaxSendableAmount({
+              chain: assetContext.chain,
+              params: estimatePayload,
+            });
+
+            console.log('maxSpendableAmount', maxSpendableAmount);
+            console.log('maxSpendableAmount string value', maxSpendableAmount.getValue('string'));
+
+            sendResponse({ maxSpendable: maxSpendableAmount.getValue('string') });
+          } else {
+            sendResponse({ error: 'APP not initialized' });
+          }
+          break;
+        }
+
+        case 'SET_ASSET_CONTEXT': {
+          if (APP) {
+            const { asset } = message;
+            if (asset && asset.caip) {
+              try {
+                const response = await APP.setAssetContext(asset);
+                console.log('Asset context set:', response);
+                chrome.runtime.sendMessage({
+                  type: 'ASSET_CONTEXT_UPDATED',
+                  assetContext: response, // Notify frontend about the change
+                });
+                sendResponse(response);
+              } catch (error) {
+                console.error('Error setting asset context:', error);
+                sendResponse({ error: 'Failed to fetch assets' });
+              }
+            }
+          } else {
+            sendResponse({ error: 'APP not initialized' });
+          }
+          break;
+        }
+
+        case 'GET_ASSETS': {
+          if (APP) {
+            try {
+              const assets = await APP.getAssets();
+              console.log('Assets fetched:', assets);
+              sendResponse({ assets });
+            } catch (error) {
+              console.error('Error fetching assets:', error);
+              sendResponse({ error: 'Failed to fetch assets' });
+            }
+          } else {
+            sendResponse({ error: 'APP not initialized' });
+          }
+          break;
+        }
+
+        case 'GET_APP_PUBKEYS': {
+          if (APP) {
+            sendResponse({ balances: APP.pubkeys });
+          } else {
+            sendResponse({ error: 'APP not initialized' });
+          }
+          break;
+        }
+
+        case 'GET_APP_BALANCES': {
+          if (APP) {
+            sendResponse({ balances: APP.balances });
+          } else {
+            sendResponse({ error: 'APP not initialized' });
+          }
+          break;
+        }
+
+        default:
+          sendResponse({ error: 'Unknown message type' });
       }
-      return true;
-    } else {
-      console.error('APP not initialized');
-      sendResponse({ error: 'APP not initialized' });
+    } catch (error) {
+      console.error('Error handling message:', error);
+      sendResponse({ error: error.message });
     }
-  }
+  })();
 
-  if (message.type === 'GET_ASSETS') {
-    if (APP) {
-      APP.getAssets()
-        .then(assets => {
-          console.log('Assets fetched:', assets);
-          sendResponse({ assets: assets });
-        })
-        .catch(error => {
-          console.error('Error fetching assets:', error);
-          sendResponse({ error: 'Failed to fetch assets' });
-        });
-      return true; // Indicates the response will be sent asynchronously
-    } else {
-      sendResponse({ error: 'APP not initialized' });
-    }
-  }
-
-  if (message.type === 'GET_APP_PUBKEYS') {
-    if (APP) {
-      sendResponse({ balances: APP.pubkeys });
-      return true;
-    } else {
-      sendResponse({ error: 'APP not initialized' });
-    }
-  }
-
-  if (message.type === 'GET_APP_BALANCES') {
-    if (APP) {
-      sendResponse({ balances: APP.balances });
-      return true;
-    } else {
-      sendResponse({ error: 'APP not initialized' });
-    }
-  }
-
-  return false;
+  // Return true to indicate that the response will be sent asynchronously
+  return true;
 });
 
 exampleSidebarStorage
