@@ -1,7 +1,32 @@
 import React from 'react';
-import { VStack, HStack, Avatar, Text, Switch, Link, Button, Image } from '@chakra-ui/react';
+import { VStack, HStack, Avatar, Text, Switch, Link, Button, Image, Box, useToast } from '@chakra-ui/react';
 
 const Settings = () => {
+  const isComingSoon = (name: string) => ['XDEFI', 'Keplr'].includes(name);
+  const toast = useToast(); // For showing a success/failure message
+
+  const handleForceReset = () => {
+    chrome.runtime.sendMessage({ type: 'RESET_APP' }, response => {
+      if (response?.success) {
+        toast({
+          title: 'App Reset',
+          description: 'The app has been reset successfully. Please reconnect your wallet.',
+          status: 'success',
+          duration: 5000,
+          isClosable: true,
+        });
+      } else {
+        toast({
+          title: 'Reset Failed',
+          description: 'Failed to reset the app. Please try again.',
+          status: 'error',
+          duration: 5000,
+          isClosable: true,
+        });
+      }
+    });
+  };
+
   return (
     <VStack spacing={4}>
       <Link href="https://www.keepkey.com" isExternal w="100%">
@@ -14,6 +39,8 @@ const Settings = () => {
         <Text fontSize="md" fontWeight="bold">
           Enable Masking
         </Text>
+
+        {/* Firefox Option - Enabled */}
         <HStack w="100%" justifyContent="space-between">
           <HStack>
             <Avatar
@@ -25,7 +52,9 @@ const Settings = () => {
           </HStack>
           <Switch size="md" />
         </HStack>
-        <HStack w="100%" justifyContent="space-between">
+
+        {/* XDEFI Option - Coming Soon */}
+        <HStack w="100%" justifyContent="space-between" position="relative" opacity={isComingSoon('XDEFI') ? 0.5 : 1}>
           <HStack>
             <Avatar
               size="md"
@@ -34,9 +63,27 @@ const Settings = () => {
             />
             <Text>Enable XDEFI</Text>
           </HStack>
-          <Switch size="md" />
+          <Switch size="md" isDisabled={isComingSoon('XDEFI')} />
+          {isComingSoon('XDEFI') && (
+            <Box
+              position="absolute"
+              top="0"
+              left="0"
+              w="100%"
+              h="100%"
+              bg="rgba(0, 0, 0, 0.6)"
+              color="white"
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+              fontWeight="bold">
+              Coming Soon
+            </Box>
+          )}
         </HStack>
-        <HStack w="100%" justifyContent="space-between">
+
+        {/* Keplr Option - Coming Soon */}
+        <HStack w="100%" justifyContent="space-between" position="relative" opacity={isComingSoon('Keplr') ? 0.5 : 1}>
           <HStack>
             <Avatar
               size="md"
@@ -45,11 +92,33 @@ const Settings = () => {
             />
             <Text>Enable Keplr</Text>
           </HStack>
-          <Switch size="md" />
+          <Switch size="md" isDisabled={isComingSoon('Keplr')} />
+          {isComingSoon('Keplr') && (
+            <Box
+              position="absolute"
+              top="0"
+              left="0"
+              w="100%"
+              h="100%"
+              bg="rgba(0, 0, 0, 0.6)"
+              color="white"
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+              fontWeight="bold">
+              Coming Soon
+            </Box>
+          )}
         </HStack>
+
         <Text fontSize="sm" color="gray.500">
           This setting may conflict with these apps if also enabled.
         </Text>
+
+        {/* Force Reset Button */}
+        <Button colorScheme="red" variant="solid" w="100%" onClick={handleForceReset}>
+          Force Reset App
+        </Button>
       </VStack>
     </VStack>
   );

@@ -23,7 +23,7 @@ export const handleBitcoinCashRequest = async (
   requestInfo: any,
   ADDRESS: string,
   KEEPKEY_WALLET: any,
-  requireApproval: (requestInfo: any, chain: any, method: string, params: any) => Promise<void>,
+  requireApproval: (networkId: string, requestInfo: any, chain: any, method: string, params: any) => Promise<void>,
 ): Promise<any> => {
   const tag = TAG + ' | handleBitcoinCashRequest | ';
   console.log(tag, 'method:', method);
@@ -31,10 +31,12 @@ export const handleBitcoinCashRequest = async (
   switch (method) {
     case 'request_accounts': {
       //Unsigned TX
-      let pubkeys = KEEPKEY_WALLET.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.BitcoinCash]));
-      let accounts = [];
+      const pubkeys = KEEPKEY_WALLET.pubkeys.filter((e: any) =>
+        e.networks.includes(ChainToNetworkId[Chain.BitcoinCash]),
+      );
+      const accounts = [];
       for (let i = 0; i < pubkeys.length; i++) {
-        let pubkey = pubkeys[i];
+        const pubkey = pubkeys[i];
         let address = pubkey.master || pubkey.address;
         address = 'bitcoincash:' + address;
         accounts.push(address);
@@ -45,7 +47,7 @@ export const handleBitcoinCashRequest = async (
     }
     case 'request_balance': {
       //get sum of all pubkeys configured
-      let balance = KEEPKEY_WALLET.balances.find((balance: any) => balance.caip === shortListSymbolToCaip['BCH']);
+      const balance = KEEPKEY_WALLET.balances.find((balance: any) => balance.caip === shortListSymbolToCaip['BCH']);
 
       //let pubkeys = await KEEPKEY_WALLET.swapKit.getBalance(Chain.Bitcoin);
       console.log(tag, 'balance: ', balance);
@@ -54,11 +56,11 @@ export const handleBitcoinCashRequest = async (
     case 'transfer': {
       //send tx
       console.log(tag, 'params[0]: ', params[0]);
-      let assetString = 'BCH.BCH';
+      const assetString = 'BCH.BCH';
       await AssetValue.loadStaticAssets();
       console.log(tag, 'params[0].amount.amount: ', params[0].amount.amount);
-      let assetValue = await AssetValue.fromString(assetString, parseFloat(params[0].amount.amount));
-      let sendPayload = {
+      const assetValue = await AssetValue.fromString(assetString, parseFloat(params[0].amount.amount));
+      const sendPayload = {
         from: params[0].from,
         assetValue,
         memo: params[0].memo || '',

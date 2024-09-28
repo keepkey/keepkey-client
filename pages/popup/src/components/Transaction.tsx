@@ -3,9 +3,9 @@ import EvmTransaction from './evm';
 import UtxoTransaction from './utxo';
 import { approvalStorage, requestStorage } from '@extension/storage/dist/lib';
 import Confetti from 'react-confetti';
-// eslint-disable-next-line import/named
-import { Flex, Card, CardBody, Image, Spinner, Heading, Button, Icon, Alert, AlertIcon } from '@chakra-ui/react';
-import { WarningIcon } from '@chakra-ui/icons'; // Import the WarningIcon from Chakra UI
+import { Flex, Spinner, Alert, AlertIcon, Button, Icon } from '@chakra-ui/react';
+import { WarningIcon } from '@chakra-ui/icons';
+import AwaitingApproval from './AwaitingApproval'; // Import the new component
 
 const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => void }) => {
   const [transactionType, setTransactionType] = useState<string | null>(null);
@@ -14,9 +14,9 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
   const [awaitingDeviceApproval, setAwaitingDeviceApproval] = useState<boolean>(false);
   const [transactionInProgress, setTransactionInProgress] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showRefreshWarning, setShowRefreshWarning] = useState<boolean>(false);
 
   const openSidebar = () => {
-    // Send a message to open the sidebar
     chrome.runtime.sendMessage({ type: 'OPEN_SIDEBAR' }, response => {
       if (response?.success) {
         console.log('Sidebar opened successfully');
@@ -27,14 +27,16 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
   };
 
   const cancelRequest = () => {
-    // Send a message to open the sidebar
     chrome.runtime.sendMessage({ type: 'RESET_APP' }, response => {
       if (response?.success) {
-        console.log('Sidebar opened successfully');
+        console.log('Sidebar reset successfully');
       } else {
-        console.error('Failed to open sidebar:', response?.error);
+        console.error('Failed to reset the app:', response?.error);
       }
     });
+
+    // Trigger the refresh warning
+    setShowRefreshWarning(true);
   };
 
   const handleResponse = async (decision: 'accept' | 'reject') => {
@@ -63,7 +65,7 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
         setShowConfetti(true);
         setTransactionInProgress(false);
       } else if (message.action === 'transaction_error') {
-        const errorDetails = message.e?.message || JSON.stringify(message.e); // Extract meaningful error message
+        const errorDetails = message.e?.message || JSON.stringify(message.e);
         setErrorMessage('Transaction failed: ' + errorDetails);
         setTransactionInProgress(false);
       }
@@ -127,7 +129,7 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
         <div>
           <h3>Error Occurred</h3>
           <p>{errorMessage}</p>
-          <Icon as={WarningIcon} color="red.500" /> {/* Red warning icon */}
+          <Icon as={WarningIcon} color="red.500" />
           <Button onClick={handleCancel}>Retry</Button>
         </div>
       </Alert>
@@ -140,35 +142,7 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
 
       {!awaitingDeviceApproval && renderTransaction()}
 
-      {awaitingDeviceApproval && (
-        <Flex justify="center" align="center" height="100vh">
-          <Card width="400px" boxShadow="lg" borderRadius="lg" overflow="hidden">
-            <CardBody>
-              <Flex direction="column" align="center">
-                <Heading as="h2" size="md" mb={4} textAlign="center">
-                  Device Signing Request
-                </Heading>
-                <Image
-                  src="https://pioneers.dev/coins/hold-and-release.svg"
-                  alt="Approve on device"
-                  boxSize="150px"
-                  mb={4}
-                />
-                <Heading as="h3" size="md" mb={4} textAlign="center">
-                  Please approve the transaction on your KeepKey
-                </Heading>
-                <br />
-                or....
-                <br />
-                <br />
-                <Button colorScheme="yellow" onClick={handleCancel}>
-                  Abort Signing
-                </Button>
-              </Flex>
-            </CardBody>
-          </Card>
-        </Flex>
-      )}
+      {awaitingDeviceApproval && <AwaitingApproval onCancel={handleCancel} />}
 
       {txHash && (
         <div>
@@ -179,6 +153,13 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
       )}
 
       {showConfetti && <Confetti />}
+
+      {showRefreshWarning && (
+        <Alert status="warning" mt={4}>
+          <AlertIcon />
+          <p>You must refresh the dApp page to reconnect your wallet.</p>
+        </Alert>
+      )}
     </div>
   );
 };

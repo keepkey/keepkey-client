@@ -92,7 +92,7 @@ export const handleEthereumRequest = async (
   requestInfo: any,
   ADDRESS: string,
   KEEPKEY_WALLET: any,
-  requireApproval: (requestInfo: any, chain: any, method: string, params: any) => Promise<void>,
+  requireApproval: (networkId: string, requestInfo: any, chain: any, method: string, params: any) => Promise<void>,
 ): Promise<any> => {
   const tag = ' | handleEthereumRequest | ';
   console.log(tag, 'method: ', method);
@@ -279,12 +279,14 @@ export const handleEthereumRequest = async (
       console.log(tag, 'params:', params);
       if (!KEEPKEY_WALLET.assetContext) {
         // Set context to the chain, defaults to ETH
-        // const currentProvider = await web3ProviderStorage.getWeb3Provider();
-        // await KEEPKEY_WALLET.setAssetContext({ caip: currentProvider.caip });
+        const currentProvider = await web3ProviderStorage.getWeb3Provider();
+        await KEEPKEY_WALLET.setAssetContext({ caip: currentProvider.caip });
       }
-
+      let networkId = KEEPKEY_WALLET.assetContext.networkId;
+      console.log(tag, 'networkId:', networkId);
+      if (!networkId) throw Error('Failed to set context before sending!');
       // Require user approval
-      const result = await requireApproval(requestInfo, 'ethereum', method, params[0]);
+      const result = await requireApproval(networkId, requestInfo, 'ethereum', method, params[0]);
       console.log(tag, 'result:', result);
 
       if (result.success) {

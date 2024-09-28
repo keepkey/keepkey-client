@@ -141,7 +141,7 @@ const Balances = () => {
                         <Text fontWeight="bold" isTruncated>
                           {asset.name}
                         </Text>
-                        <Text>
+                        <Text as="span" fontSize="lg">
                           {integer}.
                           <Text as="span" fontSize="lg">
                             {largePart}

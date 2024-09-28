@@ -112,14 +112,18 @@ const openPopup = function () {
 
  */
 
-const requireApproval = async function (requestInfo, chain, method, params) {
+const requireApproval = async function (networkId, requestInfo, chain, method, params, KEEPKEY_WALLET) {
   const tag = TAG + ' | requireApproval | ';
   try {
     isPopupOpen = true;
+    console.log(tag, 'networkId:', networkId);
+
+    //if chain is ethereum, use current context for networkId
+
     //chain to networkId
-    const networkId = caipToNetworkId(shortListNameToCaip[chain]);
-    if (!networkId) throw Error('unhandled chain ' + chain);
-    console.log(tag, 'NetworkId:', networkId);
+    // const networkId = caipToNetworkId(shortListNameToCaip[chain]);
+    // if (!networkId) throw Error('unhandled chain ' + chain);
+    // console.log(tag, 'NetworkId:', networkId);
 
     //if evm set from address
 

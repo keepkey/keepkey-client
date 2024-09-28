@@ -91,7 +91,9 @@ export function Asset() {
         if (response && response.result) {
           const balanceWei = BigInt(response.result); // Fetching balance as BigInt
           const balanceEth = Number(balanceWei) / 1e18; // Convert from Wei to Ether
-          setBalances([{ balance: balanceEth, symbol: assetLoaded.symbol }]);
+          const formattedBalance = formatBalance(balanceEth); // Format the balance here
+
+          setBalances([{ balance: formattedBalance, symbol: assetLoaded.symbol }]);
         } else {
           console.error('Invalid response for balance:', response);
         }
@@ -119,11 +121,13 @@ export function Asset() {
     });
   };
 
-  const formatBalance = (balance: string) => {
-    const [integer, decimal] = balance.split('.');
-    const largePart = decimal?.slice(0, 4);
-    const smallPart = decimal?.slice(4, 8);
-    return { integer, largePart, smallPart };
+  // Updated function to format balance with 4 sigfigs or show 0.0000 if balance is zero
+  const formatBalance = (balance: number) => {
+    if (balance === 0) {
+      return '0.0000';
+    }
+    // Convert the number to a string and ensure 4 significant figures
+    return balance.toFixed(4);
   };
 
   const openUrl = (url: string) => {
@@ -157,24 +161,18 @@ export function Asset() {
                 </Box>
                 <Box>
                   {balances.length > 0 ? (
-                    balances.map((balance: any, index: any) => {
-                      const formatted = formatBalance(balance.balance.toString());
-                      return (
-                        <Text key={index}>
-                          <Text as="span" fontSize="lg">
-                            {formatted.integer}.{formatted.largePart}
-                          </Text>
-                          <Text as="span" fontSize="xs">
-                            {formatted.smallPart}
-                          </Text>
-                          <Box ml={3} flex="1">
-                            <Badge ml={2} colorScheme="teal">
-                              ({balance.symbol || asset.symbol})
-                            </Badge>
-                          </Box>
+                    balances.map((balance: any, index: any) => (
+                      <Text key={index}>
+                        <Text as="span" fontSize="lg">
+                          {formatBalance(Number(balance.balance))}
                         </Text>
-                      );
-                    })
+                        <Box ml={3} flex="1">
+                          <Badge ml={2} colorScheme="teal">
+                            ({balance.symbol || asset.symbol})
+                          </Badge>
+                        </Box>
+                      </Text>
+                    ))
                   ) : (
                     <Text>No balance available</Text>
                   )}
