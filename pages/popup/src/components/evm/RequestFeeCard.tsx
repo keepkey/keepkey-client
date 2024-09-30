@@ -60,12 +60,15 @@ const RequestFeeCard = ({ transaction }: any) => {
   const [usdFee, setUsdFee] = useState(''); // USD value of the selected fee
   const [assetContext, setAssetContext] = useState<any>(null);
 
+  // Get gasLimit from transaction
+  const gasLimit = transaction.request.gasLimit ? hexToDecimal(transaction.request.gasLimit) : 21000;
+
   // Fetch asset context to get priceUsd
   useEffect(() => {
     const fetchAssetContext = async () => {
       try {
         const context = await requestAssetContext();
-        setAssetContext(context);
+        setAssetContext(context.assets);
       } catch (error) {
         console.error('Error fetching asset context:', error);
       }
@@ -73,11 +76,13 @@ const RequestFeeCard = ({ transaction }: any) => {
     fetchAssetContext();
   }, []);
 
-  // Convert Gwei to ETH and then to USD
+  // Convert Gwei to ETH and then to USD, including gasLimit
   const calculateUsdValue = (gweiFee: string) => {
     if (!assetContext || !assetContext.priceUsd) return '0.00';
-    const ethFee = parseFloat(gweiFee) / 1e9; // Convert Gwei to ETH
-    return (ethFee * parseFloat(assetContext.priceUsd)).toFixed(2); // Convert ETH to USD and format
+    const gasLimitValue = gasLimit;
+    const feeInETH = parseFloat(gweiFee) * gasLimitValue * 1e-9; // Gwei to ETH
+    const feeInUSD = feeInETH * parseFloat(assetContext.priceUsd);
+    return feeInUSD.toFixed(2);
   };
 
   const updateFeeData = (feeData: any) => {
@@ -108,7 +113,7 @@ const RequestFeeCard = ({ transaction }: any) => {
       const highGasPrice = (networkGasPrice * BigInt(120)) / BigInt(100); // 120% of network gas price
 
       setFees({
-        ...fees,
+        dappSuggested: fees.dappSuggested,
         low: (lowGasPrice / BigInt(1e9)).toString(),
         medium: (mediumGasPrice / BigInt(1e9)).toString(),
         high: (highGasPrice / BigInt(1e9)).toString(),
@@ -123,8 +128,8 @@ const RequestFeeCard = ({ transaction }: any) => {
   };
 
   useEffect(() => {
-    // EIP-1559 should be selected if it's Ethereum (chainId 1)
-    const isEthereumMainnet = transaction.request.chainId === '0x1';
+    // EIP-1559 should be selected if it's Ethereum (networkId 'eip155:1')
+    const isEthereumMainnet = transaction.networkId === 'eip155:1';
     setIsEIP1559(isEthereumMainnet);
 
     if (
@@ -164,7 +169,7 @@ const RequestFeeCard = ({ transaction }: any) => {
       feeInGwei = fees[selectedFee] || '';
     }
 
-    setDisplayFee(feeInGwei + ' Gwei');
+    setDisplayFee(feeInGwei);
 
     if (feeInGwei) {
       const feeInUsd = calculateUsdValue(feeInGwei);
@@ -174,8 +179,9 @@ const RequestFeeCard = ({ transaction }: any) => {
     }
   }, [selectedFee, customFee, fees, assetContext]);
 
-  const handleFeeChange = (event: any) => {
-    setSelectedFee(event.target.value);
+  // FIXED: handleFeeChange now receives value directly
+  const handleFeeChange = (value: string) => {
+    setSelectedFee(value);
   };
 
   const handleCustomFeeChange = (event: any) => {
@@ -238,6 +244,7 @@ const RequestFeeCard = ({ transaction }: any) => {
 
       {!loading && assetContext && (
         <FormControl as="fieldset" mt={4}>
+          {/* FIXED: handleFeeChange now receives value directly */}
           <RadioGroup name="fee" value={selectedFee} onChange={handleFeeChange}>
             {dappProvidedFee && fees.dappSuggested && (
               <Radio value="dappSuggested" colorScheme="blue">
@@ -278,19 +285,14 @@ const RequestFeeCard = ({ transaction }: any) => {
 
       {!loading && (
         <Heading as="h6" size="sm" mt={4}>
-          Current Fee: {displayFee || 'No fee selected'}
+          Current Fee: {displayFee ? `${displayFee} Gwei ($${usdFee} USD)` : 'No fee selected'}
         </Heading>
       )}
 
-      {usdFee && (
-        <Text fontSize="sm" color="gray.500" mt={2}>
-          Estimated fee in USD: ${usdFee}
-        </Text>
-      )}
-
       <Box display="flex" alignItems="center" mt={4} justifyContent="space-between">
-        <Button colorScheme="green" onClick={handleSubmit}>
-          Submit Fee
+        {/* FIXED: Changed button text to "Update Fee" */}
+        <Button variant="outline" onClick={handleSubmit}>
+          Update Fee
         </Button>
         <Box display="flex" alignItems="center">
           <Text fontSize="sm" fontStyle="italic" mr={2}>
@@ -299,7 +301,7 @@ const RequestFeeCard = ({ transaction }: any) => {
           <Switch
             id="isEIP1559"
             isChecked={isEIP1559}
-            isDisabled={transaction.request.chainId !== '0x1'} // Disable if not Ethereum mainnet
+            isDisabled={transaction.networkId !== 'eip155:1'} // Disable if not Ethereum mainnet
             onChange={() => setIsEIP1559(!isEIP1559)}
             colorScheme={isEIP1559 ? 'blue' : 'gray'}
           />
