@@ -28,6 +28,7 @@ type EventStorage = BaseStorage<Event[]> & {
   addEvent: (event: Event) => Promise<boolean>;
   getEvents: () => Promise<Event[] | null>;
   getEventById: (id: string) => Promise<Event | null>;
+  updateEventById: (id: string, updatedEvent: Partial<Event>) => Promise<boolean>; // Added this line
   removeEventById: (id: string) => Promise<void>;
   clearEvents: () => Promise<void>;
 };
@@ -163,6 +164,31 @@ const createEventStorage = (key: string): EventStorage => {
       console.log(tag, `Event with id ${id}:`, event);
       return event || null;
     },
+    // Added updateEventById function
+    updateEventById: async (id: string, updatedEvent: Partial<Event>): Promise<boolean> => {
+      const tag = TAG + ' | updateEventById | ';
+      try {
+        const events = await storage.get();
+        if (events) {
+          const index = events.findIndex(event => event.id === id);
+          if (index !== -1) {
+            events[index] = { ...events[index], ...updatedEvent };
+            await storage.set(() => events);
+            console.log(tag, `Updated event with id ${id}.`);
+            return true;
+          } else {
+            console.log(tag, `Event with id ${id} not found.`);
+            return false;
+          }
+        } else {
+          console.log(tag, 'No events found in storage.');
+          return false;
+        }
+      } catch (error) {
+        console.error(tag, 'Error updating event:', error);
+        return false;
+      }
+    },
     removeEventById: async (id: string) => {
       const tag = TAG + ' | removeEventById | ';
       const events = await storage.get();
@@ -211,12 +237,12 @@ export const completedStorage = createEventStorage('keepkey-completed');
 // Create Asset Context Storage
 const createAssetContextStorage = (): AssetContextStorage => {
   const storage = createStorage<AssetContext>(
-    'keepkey-asset-context',
-    {},
-    {
-      storageType: StorageType.Local,
-      liveUpdate: true,
-    },
+      'keepkey-asset-context',
+      {},
+      {
+        storageType: StorageType.Local,
+        liveUpdate: true,
+      },
   );
 
   return {
@@ -234,10 +260,10 @@ export const assetContextStorage = createAssetContextStorage();
 
 // Utility function to move an event between storages
 const moveEvent = async (
-  eventId: string,
-  fromStorage: EventStorage,
-  toStorage: EventStorage,
-  newStatus: 'approval' | 'completed',
+    eventId: string,
+    fromStorage: EventStorage,
+    toStorage: EventStorage,
+    newStatus: 'approval' | 'completed',
 ) => {
   const tag = TAG + ' | moveEvent | ';
   const event = await fromStorage.getEventById(eventId);

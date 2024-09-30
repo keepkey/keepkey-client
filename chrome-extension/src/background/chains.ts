@@ -1,10 +1,10 @@
 export const EIP155_CHAINS: any = {
   'eip155:1': {
-    chainId: '0x1',
+    chainId: 1,
     name: 'Ethereum',
     logo: '/chain-logos/eip155-1.png',
     rgb: '99, 125, 234',
-    rpc: 'https://ethereum-rpc.publicnode.com\t',
+    rpc: 'https://ethereum-rpc.publicnode.com',
     namespace: 'eip155',
     caip: 'eip155:1/slip44:60',
   },

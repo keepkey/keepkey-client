@@ -5,8 +5,9 @@
 import { Chain } from '@coinmasters/types';
 import { JsonRpcProvider } from 'ethers';
 import { createProviderRpcError } from '../utils';
-import { web3ProviderStorage, assetContextStorage } from '@extension/storage';
+import { requestStorage, web3ProviderStorage, assetContextStorage } from '@extension/storage';
 import { EIP155_CHAINS } from '../chains';
+import { v4 as uuidv4 } from 'uuid';
 import { AssetValue } from '@pioneer-platform/helpers';
 
 const TAG = ' | ethereumHandler | ';
@@ -319,6 +320,7 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
   const tag = TAG + ' | handleTransfer | ';
   console.log(tag, 'method: transfer');
   console.log(tag, 'params:', params);
+  console.log(tag, 'requestInfo:', requestInfo);
 
   if (!KEEPKEY_WALLET.assetContext) {
     // Set context to the chain, defaults to ETH
@@ -345,7 +347,7 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
   transaction.chainId = chainId;
 
   // Determine if isEIP1559
-  const isEIP1559 = chainId === '1' || chainId === 1;
+  const isEIP1559 = chainId === '1' || chainId === 1 || chainId === '0x1';
 
   // Get fee data
   const feeData = await provider.getFeeData();
@@ -376,34 +378,34 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
   } else {
     transaction.gasPrice = feeData.gasPrice ? '0x' + feeData.gasPrice.toString(16) : undefined;
   }
-
+  //assign eventId
+  requestInfo.id = uuidv4();
   // Now call requireApproval with the transaction info
   const result = await requireApproval(networkId, requestInfo, 'ethereum', 'transfer', transaction);
 
   console.log(tag, 'requireApproval result:', result);
+  //get payload from storage
+  const response = await requestStorage.getEventById(requestInfo.id)
+  console.log(tag, 'response:', response);
 
   if (result.success) {
     // Prepare transaction input for signing
     const input: any = {
-      from: transaction.from,
+      from: response.request.from,
       addressNList: [2147483692, 2147483708, 2147483648, 0, 0],
-      data: transaction.data || '0x',
-      nonce: transaction.nonce,
-      gasLimit: transaction.gasLimit,
-      value: transaction.value || '0x0',
-      to: transaction.to,
-      chainId: transaction.chainId,
-      // Fee data
-      ...(isEIP1559
-        ? {
-            maxFeePerGas: transaction.maxFeePerGas,
-            maxPriorityFeePerGas: transaction.maxPriorityFeePerGas,
-          }
-        : {
-            gasPrice: transaction.gasPrice,
-          }),
+      data: response.request.data || '0x',
+      nonce: response.request.nonce,
+      gasLimit: response.request.gasLimit,
+      gas: response.request.gasLimit,
+      value: response.request.value || '0x0',
+      to: response.request.to,
+      chainId,
     };
+    if(response.request.gasPrice) input.gasPrice = response.request.gasPrice;
+    if(response.request.maxFeePerGas) input.maxFeePerGas = response.request.maxFeePerGas;
+    if(response.request.maxPriorityFeePerGas) input.maxPriorityFeePerGas = response.request.maxPriorityFeePerGas;
 
+    if(!input.gasPrice && !input.maxFeePerGas) throw Error("Failed to set gas price")
     console.log(tag, 'Final transaction input:', input);
 
     // Sign transaction
@@ -412,6 +414,8 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
 
     // Broadcast transaction
     const txHash = await broadcastTransaction(signedTx.serialized);
+    //push hash to front end
+
 
     return txHash;
   } else {
@@ -591,6 +595,7 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
     if (isNaN(nonce)) throw createProviderRpcError(4000, 'Invalid nonce');
 
     if (!transaction.gasLimit) {
+      console.error(tag,'Asked to estimate gas on a signTransaction!')
       try {
         const estimatedGas = await provider.estimateGas({
           from: transaction.from,
@@ -666,7 +671,7 @@ const broadcastTransaction = async (signedTx: string) => {
     console.log(tag, 'provider: ', provider);
     console.log(tag, 'Broadcasting transaction: ', signedTx);
 
-    const txResponse = await provider.sendTransaction(signedTx);
+    const txResponse = await provider.broadcastTransaction(signedTx);
     console.log('Transaction response:', txResponse);
     return txResponse.hash;
   } catch (e) {

@@ -6,7 +6,7 @@ import { handleWalletRequest } from './methods';
 import { JsonRpcProvider } from 'ethers';
 import { ChainToNetworkId } from '@pioneer-platform/pioneer-caip';
 import { Chain } from '@coinmasters/types';
-import { exampleSidebarStorage, web3ProviderStorage } from '@extension/storage'; // Re-import the storage
+import { requestStorage, exampleSidebarStorage, web3ProviderStorage } from '@extension/storage'; // Re-import the storage
 import { EIP155_CHAINS } from './chains';
 import axios from 'axios';
 
@@ -195,6 +195,21 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           break;
         }
 
+        case 'UPDATE_EVENT_BY_ID': {
+          const { id, updatedEvent } = message.payload;
+
+          // Update the event in storage
+          const success = await requestStorage.updateEventById(id, updatedEvent);
+
+          if (success) {
+            console.log(`Event with id ${id} has been updated successfully.`);
+          } else {
+            console.error(`Failed to update event with id ${id}.`);
+          }
+
+          break;
+        }
+
         case 'ON_START': {
           onStart();
           setTimeout(() => {
@@ -250,7 +265,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           if (APP) {
             const providerInfo = await web3ProviderStorage.getWeb3Provider();
             if (!providerInfo) throw Error('Failed to get provider info');
-
+            console.log('providerInfo', providerInfo);
             const provider = new JsonRpcProvider(providerInfo.providerUrl);
             const feeData = await provider.getFeeData();
             sendResponse(feeData);
@@ -307,6 +322,15 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                   assetContext: response, // Notify frontend about the change
                 });
                 sendResponse(response);
+
+                const currentAssetContext = await APP.assetContext
+                //if eip155 then set web3 provider
+                if(currentAssetContext.networkId.includes('eip155')){
+                  const newProvider = EIP155_CHAINS[currentAssetContext.networkId].provider
+                  console.log('newProvider', newProvider)
+                  await web3ProviderStorage.setWeb3Provider(newProvider)
+                }
+
               } catch (error) {
                 console.error('Error setting asset context:', error);
                 sendResponse({ error: 'Failed to fetch assets' });

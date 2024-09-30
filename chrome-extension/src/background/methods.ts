@@ -73,7 +73,7 @@ const openPopup = function () {
         url: chrome.runtime.getURL('popup/index.html'), // Adjust the URL to your popup file
         type: 'popup',
         width: 360,
-        height: 700,
+        height: 900,
       },
       window => {
         if (chrome.runtime.lastError) {
@@ -132,7 +132,7 @@ const requireApproval = async function (networkId, requestInfo, chain, method, p
     //set assetContext
 
     const event = {
-      id: uuidv4(),
+      id: requestInfo.id || uuidv4(),
       networkId,
       chain,
       href: requestInfo.href,

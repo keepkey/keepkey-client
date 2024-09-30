@@ -32,6 +32,14 @@ import confetti from 'canvas-confetti'; // Make sure to install the confetti pac
 
 const TAG = ' | Transfer | ';
 
+const convertToHex = (amountInEther) => {
+  const weiMultiplier = BigInt(1e18); // 1 Ether = 1e18 Wei
+  const amountInWei = BigInt(parseFloat(amountInEther) * 1e18); // Convert Ether to Wei
+
+  // Convert the amount in Wei to a hex string
+  return '0x' + amountInWei.toString(16);
+};
+
 export function Transfer({}: any): JSX.Element {
   const toast = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -119,8 +127,8 @@ export function Transfer({}: any): JSX.Element {
       setIsSubmitting(true);
 
       const sendPayload = {
-        amount: inputAmount,
-        recipient,
+        value: convertToHex(inputAmount),
+        to:recipient,
         memo,
         isMax: isMax,
       };
