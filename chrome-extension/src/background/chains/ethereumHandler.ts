@@ -304,11 +304,13 @@ const handleSigningMethods = async (method, params, requestInfo, ADDRESS, KEEPKE
   if (!networkId) throw Error('Failed to set context before sending!');
 
   // Require user approval
+  requestInfo.id = uuidv4();
   const result = await requireApproval(networkId, requestInfo, 'ethereum', method, params[0]);
   console.log(tag, 'requireApproval result:', result);
 
   if (result.success) {
-    const approvalResponse = await processApprovedEvent(method, params, KEEPKEY_WALLET, ADDRESS);
+    //TODO reload the params from storage (it may have updated!)
+    const approvalResponse = await processApprovedEvent(method, params, KEEPKEY_WALLET, ADDRESS, requestInfo.id);
     return approvalResponse;
   } else {
     throw createProviderRpcError(4200, 'User denied transaction');
@@ -368,7 +370,7 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
     transaction.gasLimit = '0x' + estimatedGasLimit.toString(16);
   } catch (e) {
     // Set default gasLimit if estimation fails
-    transaction.gasLimit = '0x' + BigInt('21000').toString(16); // minimum gas limit for ETH transfer
+    transaction.gasLimit = '0x' + BigInt('81000').toString(16); // minimum gas limit for ETH transfer
   }
 
   // Set fee data
@@ -409,19 +411,21 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
     console.log(tag, 'Final transaction input:', input);
 
     // Sign transaction
-    // const signedTx = await KEEPKEY_WALLET.keepKeySdk.eth.ethSignTransaction(input);
-    // console.log(tag, 'Signed transaction:', signedTx);
-    //
-    // response.signedTx = signedTx.serialized;
-    // await requestStorage.updateEventById(requestInfo.id, response);
-    //
-    // // Broadcast transaction
-    // const txHash = await broadcastTransaction(signedTx.serialized);
+    const signedTx = await KEEPKEY_WALLET.keepKeySdk.eth.ethSignTransaction(input);
+    console.log(tag, 'Signed transaction:', signedTx);
 
-    const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-    await delay(3000);
+    response.signedTx = signedTx.serialized;
+    await requestStorage.updateEventById(requestInfo.id, response);
 
-    const txHash = '0xdda2b03af8127237d180ac2389c2407af1880940069c95e4cced62f9ebc94573';
+    // Broadcast transaction
+    const txHash = await broadcastTransaction(signedTx.serialized);
+
+    //Placeholder for broadcast transaction testing
+    // const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+    // await delay(3000);
+    //
+    // const txHash = '';
+
     //push hash to front end
     response.txid = txHash;
     await requestStorage.updateEventById(requestInfo.id, response);
@@ -545,7 +549,7 @@ export const handleEthereumRequest = async (
 
 // Helper functions for processing approvals and signing
 
-const processApprovedEvent = async (method: string, params: any, KEEPKEY_WALLET: any, ADDRESS: string) => {
+const processApprovedEvent = async (method: string, params: any, KEEPKEY_WALLET: any, ADDRESS: string, id: string) => {
   try {
     console.log(TAG, 'processApprovedEvent method:', method);
     console.log(TAG, 'processApprovedEvent params:', params);
@@ -557,7 +561,7 @@ const processApprovedEvent = async (method: string, params: any, KEEPKEY_WALLET:
         result = await signMessage(params[0], KEEPKEY_WALLET, ADDRESS);
         break;
       case 'eth_sendTransaction':
-        result = await sendTransaction(params, KEEPKEY_WALLET, ADDRESS);
+        result = await sendTransaction(params, KEEPKEY_WALLET, ADDRESS, id);
         break;
       case 'eth_signTypedData':
       case 'eth_signTypedData_v3':
@@ -606,20 +610,53 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
 
     const provider = await getProvider();
 
-    const nonce = parseInt(transaction.nonce, 16);
-    if (isNaN(nonce)) throw createProviderRpcError(4000, 'Invalid nonce');
+    let nonce;
+    if (!transaction.nonce) {
+      // Get the nonce from the provider for the account
+      nonce = await provider.getTransactionCount(transaction.from, 'latest');
+      transaction.nonce = '0x' + nonce.toString(16);
+    }
 
     if (!transaction.gasLimit) {
       console.error(tag, 'Asked to estimate gas on a signTransaction!');
       try {
-        const estimatedGas = await provider.estimateGas({
+        console.log('estimateGasPayload: ', {
           from: transaction.from,
           to: transaction.to,
           data: transaction.data,
         });
-        transaction.gasLimit = '0x' + estimatedGas.toString(16);
+
+        let estimatedGas: any = await provider.estimateGas({
+          from: transaction.from,
+          to: transaction.to,
+          data: transaction.data,
+        });
+
+        console.log(tag, 'Estimated gas: ', estimatedGas.toString());
+
+        // If estimated gas is less than 115,000, set a warning and adjust
+        if (estimatedGas < 115000) {
+          console.warn(tag, `Estimated gas too low (${estimatedGas.toString()}). Using minimum of 115000.`);
+          estimatedGas = 115000;
+        }
+
+        // If estimated gas exceeds 115,000, apply 25% bump
+        if (estimatedGas > 115000) {
+          estimatedGas = BigInt(estimatedGas) + BigInt(estimatedGas) / BigInt(4); // Adds 25%
+          console.log(tag, `Increased gas by 25%: ${estimatedGas.toString()}`);
+        }
+
+        // Never exceed 1 million gas
+        if (estimatedGas > 1000000) {
+          console.warn(tag, `Estimated gas exceeds max limit. Using 1,000,000.`);
+          estimatedGas = 1000000;
+        }
+
+        transaction.gasLimit = '0x' + estimatedGas.toString(16); // Convert to hex
       } catch (e) {
-        transaction.gasLimit = '0x' + BigInt('21000').toString(16); // Fallback gas limit
+        console.error(tag, 'e: ', e);
+        console.error(tag, 'Error estimating gas, using fallback 115,000 gas limit.');
+        transaction.gasLimit = '0x' + BigInt('115000').toString(16); // Fallback gas limit
       }
     }
 
@@ -629,6 +666,7 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
       data: transaction.data || '0x',
       nonce: transaction.nonce,
       gasLimit: transaction.gasLimit,
+      gas: transaction.gasLimit,
       value: transaction.value || '0x0',
       to: transaction.to,
       chainId: transaction.chainId,
@@ -695,7 +733,7 @@ const broadcastTransaction = async (signedTx: string) => {
   }
 };
 
-const sendTransaction = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string) => {
+const sendTransaction = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string, id: string) => {
   const tag = ' | sendTransaction | ';
   try {
     console.log(tag, 'User accepted the request');
@@ -710,9 +748,22 @@ const sendTransaction = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string
     const signedTx = await signTransaction(transaction, KEEPKEY_WALLET);
     console.log(tag, 'signedTx:', signedTx);
 
-    const result = await broadcastTransaction(signedTx);
-    console.log(tag, 'result:', result);
-    return result;
+    const txHash = await broadcastTransaction(signedTx);
+    console.log(tag, 'txHash:', txHash);
+
+    const response = await requestStorage.getEventById(id);
+    console.log(tag, 'response:', response);
+
+    response.txid = txHash;
+    await requestStorage.updateEventById(id, response);
+
+    //push event
+    chrome.runtime.sendMessage({
+      action: 'transaction_complete',
+      txHash: txHash,
+    });
+
+    return txHash;
   } catch (e) {
     console.error(e);
     throw createProviderRpcError(4000, 'Error sending transaction', e);
