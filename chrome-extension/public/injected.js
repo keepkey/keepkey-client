@@ -1,6 +1,6 @@
 (function () {
   const TAG = ' | InjectedScript | ';
-  const VERSION = '1.0.7';
+  const VERSION = '1.0.8';
   console.log('**** KeepKey Injection script ****:', VERSION);
 
   // Prevent multiple injections

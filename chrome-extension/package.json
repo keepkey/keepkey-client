@@ -17,9 +17,9 @@
   },
   "dependencies": {
     "@coinmasters/pioneer-db": "^4.7.65",
-    "@coinmasters/pioneer-sdk": "^4.7.66",
+    "@coinmasters/pioneer-sdk": "^4.7.68",
     "@coinmasters/types": "^4.7.66",
-    "@coinmasters/wallet-keepkey": "^13.0.66",
+    "@coinmasters/wallet-keepkey": "^13.0.68",
     "@extension/shared": "workspace:*",
     "@extension/storage": "workspace:*",
     "@pioneer-platform/helpers": "^4.0.12",

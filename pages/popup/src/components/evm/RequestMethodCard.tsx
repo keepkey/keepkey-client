@@ -19,6 +19,13 @@ const getMethodInfo = (txType: string, hasSmartContractExecution: boolean) => {
         color: 'green.400',
       };
 
+    case 'transfer':
+      return {
+        title: 'Transaction',
+        description: 'Moves funds only, no smart contract execution',
+        icon: <WarningIcon boxSize={8} color="yellow.400" />,
+        color: 'yellow.400',
+      };
     case 'eth_sendTransaction':
     case 'eth_signTransaction':
       return {

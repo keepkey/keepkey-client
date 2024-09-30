@@ -1,6 +1,5 @@
 import { useMemo, useEffect, useState } from 'react';
-import { Avatar, Box, Text, VStack, Stack, Badge, HStack, Icon } from '@chakra-ui/react';
-import { MdReport, MdReportProblem, MdNewReleases } from 'react-icons/md';
+import { Avatar, Box, Text, VStack, Stack, Badge } from '@chakra-ui/react';
 
 interface IProps {
   transaction: any;
@@ -20,13 +19,15 @@ export default function ProjectInfoCard({ transaction }: IProps) {
     }
   }, [transaction?.siteUrl]);
 
-  // Attempt to fetch the favicon from the cleaned URL
+  // Attempt to fetch the favicon from the cleaned URL or handle the KeepKey Browser Extension case
   useEffect(() => {
-    if (cleanUrl) {
+    if (transaction?.siteUrl === 'KeepKey Browser Extension') {
+      setFaviconUrl('https://pioneers.dev/coins/keepkey.png');
+    } else if (cleanUrl) {
       const favicon = `${cleanUrl}/favicon.ico`;
       setFaviconUrl(favicon);
     }
-  }, [cleanUrl]);
+  }, [cleanUrl, transaction?.siteUrl]);
 
   return (
     <Box textAlign="center">
@@ -47,21 +48,11 @@ export default function ProjectInfoCard({ transaction }: IProps) {
       </Stack>
       <Stack align="center" mt={4}>
         <Text fontSize="2xl" data-testid="session-info-card-text">
-          {cleanUrl || 'Unknown site'} <br />
+          {transaction?.siteUrl === 'KeepKey Browser Extension' ? 'KeepKey Browser Extension' : cleanUrl} <br />
           <Text fontSize="xl">
             wants to <Badge>{transaction.type}</Badge>
           </Text>
         </Text>
-      </Stack>
-      <Stack align="center">
-        {/* Display the transaction's site URL and allow opening in a new tab */}
-        {/*{cleanUrl && (*/}
-        {/*    <HStack>*/}
-        {/*        <Text fontSize="md" >*/}
-        {/*            {cleanUrl}*/}
-        {/*        </Text>*/}
-        {/*    </HStack>*/}
-        {/*)}*/}
       </Stack>
     </Box>
   );

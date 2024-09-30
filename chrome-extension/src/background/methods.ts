@@ -72,8 +72,8 @@ const openPopup = function () {
       {
         url: chrome.runtime.getURL('popup/index.html'), // Adjust the URL to your popup file
         type: 'popup',
-        width: 400,
-        height: 600,
+        width: 360,
+        height: 700,
       },
       window => {
         if (chrome.runtime.lastError) {

@@ -62,9 +62,6 @@ export const handleBitcoinCashRequest = async (
       if (!KEEPKEY_WALLET.assetContext) {
         await KEEPKEY_WALLET.setAssetContext({ caip });
       }
-      // Require user approval
-      const result = await requireApproval(networkId, requestInfo, 'bitcoin', method, params[0]);
-      console.log(tag, 'result:', result);
 
       //send tx
       console.log(tag, 'params[0]: ', params[0]);
@@ -79,9 +76,27 @@ export const handleBitcoinCashRequest = async (
         recipient: params[0].recipient,
       };
       console.log(tag, 'sendPayload: ', sendPayload);
-      const txHash = await KEEPKEY_WALLET.swapKit.transfer(sendPayload);
-      console.log(tag, 'txHash: ', txHash);
-      return txHash;
+      // const txHash = await KEEPKEY_WALLET.swapKit.transfer(sendPayload);
+      // console.log(tag, 'txHash: ', txHash);
+
+      const unsignedTx = await wallet.buildTx(sendPayload);
+      log.info('unsignedTx: ', unsignedTx);
+      requestInfo.unsignedTx = unsignedTx;
+      // Require user approval
+      const result = await requireApproval(networkId, requestInfo, 'bitcoin', method, params[0]);
+      console.log(tag, 'result:', result);
+
+      // signTransaction
+      const signedTx = await wallet.signTransaction(unsignedTx.psbt, unsignedTx.inputs, unsignedTx.memo);
+      log.info('signedTx: ', signedTx);
+
+      //push signed to user to approve
+
+      //broadcastTx
+      const txid = await wallet.broadcastTx(signedTx);
+      log.info('txid: ', txid);
+
+      return txid;
     }
     default: {
       console.log(tag, `Method ${method} not supported`);

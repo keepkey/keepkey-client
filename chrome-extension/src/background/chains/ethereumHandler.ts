@@ -7,6 +7,7 @@ import { JsonRpcProvider } from 'ethers';
 import { createProviderRpcError } from '../utils';
 import { web3ProviderStorage, assetContextStorage } from '@extension/storage';
 import { EIP155_CHAINS } from '../chains';
+import { AssetValue } from '@pioneer-platform/helpers';
 
 const TAG = ' | ethereumHandler | ';
 const DOMAIN_WHITE_LIST = [];
@@ -86,225 +87,6 @@ const sanitizeChainId = (chainId: string): string => {
   return chainId.replace(/^0x0x/, '0x');
 };
 
-export const handleEthereumRequest = async (
-  method: string,
-  params: any[],
-  requestInfo: any,
-  ADDRESS: string,
-  KEEPKEY_WALLET: any,
-  requireApproval: (networkId: string, requestInfo: any, chain: any, method: string, params: any) => Promise<void>,
-): Promise<any> => {
-  const tag = ' | handleEthereumRequest | ';
-  console.log(tag, 'method: ', method);
-  switch (method) {
-    case 'eth_chainId': {
-      const currentProvider = await web3ProviderStorage.getWeb3Provider();
-      return currentProvider.chainId;
-    }
-    case 'net_version': {
-      const currentProvider = await web3ProviderStorage.getWeb3Provider();
-      const netVersion = currentProvider.chainId.toString();
-      return convertHexToDecimalChainId(netVersion).toString();
-    }
-    case 'eth_getBlockByNumber': {
-      const provider = await getProvider();
-      const blockByNumber = await provider.getBlock(params[0]);
-      return blockByNumber;
-    }
-    case 'eth_blockNumber': {
-      const provider = await getProvider();
-      const blockNumber = await provider.getBlockNumber();
-      return '0x' + blockNumber.toString(16);
-    }
-    case 'eth_getBalance': {
-      const provider = await getProvider();
-      const balance = await provider.getBalance(params[0], params[1]);
-      return '0x' + balance.toString(16);
-    }
-    case 'eth_getTransactionReceipt': {
-      const provider = await getProvider();
-      const transactionReceipt = await provider.getTransactionReceipt(params[0]);
-      return transactionReceipt;
-    }
-    case 'eth_getTransactionByHash': {
-      const provider = await getProvider();
-      const transactionByHash = await provider.getTransaction(params[0]);
-      return transactionByHash;
-    }
-    case 'web3_clientVersion': {
-      const provider = await getProvider();
-      const clientVersion = await provider.send('web3_clientVersion', []);
-      return clientVersion;
-    }
-    case 'eth_call': {
-      const provider = await getProvider();
-      const [callParams, blockTag, stateOverride] = params;
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      //@ts-expect-error
-      const callResult = await provider.call(callParams, blockTag, stateOverride);
-      return callResult;
-    }
-    case 'eth_maxPriorityFeePerGas': {
-      const provider = await getProvider();
-      const feeData = await provider.getFeeData();
-      return feeData.maxPriorityFeePerGas ? '0x' + feeData.maxPriorityFeePerGas.toString(16) : '0x0';
-    }
-    case 'eth_maxFeePerGas': {
-      const provider = await getProvider();
-      const feeData = await provider.getFeeData();
-      return feeData.maxFeePerGas ? '0x' + feeData.maxFeePerGas.toString(16) : '0x0';
-    }
-    case 'eth_estimateGas': {
-      const provider = await getProvider();
-      const estimateGas = await provider.estimateGas(params[0]);
-      return '0x' + estimateGas.toString(16);
-    }
-    case 'eth_gasPrice': {
-      const provider = await getProvider();
-      const gasPrice = await provider.getFeeData();
-      return '0x' + gasPrice.gasPrice.toString(16);
-    }
-    case 'eth_getCode': {
-      const provider = await getProvider();
-      const code = await provider.getCode(params[0], params[1]);
-      return code;
-    }
-    case 'eth_getStorageAt': {
-      const provider = await getProvider();
-      const storage = await provider.getStorageAt(params[0], params[1], params[2]);
-      return storage;
-    }
-    case 'eth_getTransactionCount': {
-      const provider = await getProvider();
-      const transactionCount = await provider.getTransactionCount(params[0], params[1]);
-      return '0x' + transactionCount.toString(16);
-    }
-    case 'eth_sendRawTransaction': {
-      const provider = await getProvider();
-      const txResponse = await provider.broadcastTransaction(params[0]);
-      return txResponse.hash;
-    }
-    case 'wallet_addEthereumChain':
-    case 'wallet_switchEthereumChain': {
-      console.log(tag, 'Switching Chain params: ', params);
-      if (!params || !params[0] || !params[0].chainId) throw new Error('Invalid chainId (Required)');
-      let chainId = 'eip155:' + convertHexToDecimalChainId(params[0].chainId);
-      chainId = sanitizeChainId(chainId);
-
-      let currentProvider = await web3ProviderStorage.getWeb3Provider();
-
-      if (params && params[0] && params[0].rpcUrls && params[0].rpcUrls[0]) {
-        let name = params[0].chainName;
-        console.log(tag, 'Switching Chain name: ', name);
-        currentProvider = {
-          explorer: params[0].blockExplorerUrls[0],
-          explorerAddressLink: params[0].blockExplorerUrls[0] + '/address/',
-          explorerTxLink: params[0].blockExplorerUrls[0] + '/tx/',
-          networkId: `eip155:${parseInt(params[0].chainId, 16)}`,
-          chainId: sanitizeChainId(params[0].chainId),
-          caip: `eip155:${parseInt(params[0].chainId, 16)}/slip44:60`,
-          name: params[0].chainName,
-          type: 'evm',
-          identifier: params[0].chainName,
-          nativeCurrency: params[0].nativeCurrency,
-          symbol: params[0].nativeCurrency.symbol, // Native currency symbol
-          precision: params[0].nativeCurrency.decimals, // Currency precision
-          providerUrl: params[0].rpcUrls[0],
-          providers: params[0].rpcUrls,
-        };
-        console.log('currentProvider', currentProvider);
-      } else {
-        const chainIdToFind = sanitizeChainId(params[0].chainId);
-        let chainFound = false;
-
-        for (const key of Object.keys(EIP155_CHAINS)) {
-          if (EIP155_CHAINS[key].chainId === chainIdToFind) {
-            currentProvider = {
-              chainId: chainIdToFind,
-              caip: EIP155_CHAINS[key].caip,
-              name: EIP155_CHAINS[key].name,
-              providerUrl: EIP155_CHAINS[key].rpc,
-            };
-            chainFound = true;
-            break;
-          }
-        }
-
-        if (!chainFound) {
-          throw new Error(`Chain with chainId ${chainIdToFind} not found.`);
-        }
-      }
-      assetContextStorage.updateContext(currentProvider);
-      // Save the updated provider to storage
-      await web3ProviderStorage.saveWeb3Provider(currentProvider);
-
-      console.log('changing context to ', currentProvider.caip);
-      const result = await KEEPKEY_WALLET.setAssetContext(currentProvider);
-      console.log('result ', result);
-      console.log('KEEPKEY_WALLET.assetContext ', KEEPKEY_WALLET.assetContext);
-      // Update context and notify changes
-      chrome.runtime.sendMessage({ type: 'PROVIDER_CHANGED', provider: currentProvider });
-      chrome.runtime.sendMessage({ type: 'ASSET_CONTEXT_UPDATED', assetContext: KEEPKEY_WALLET.assetContext });
-
-      return true;
-    }
-    case 'wallet_getSnaps': {
-      return [];
-    }
-    case 'wallet_watchAsset': {
-      return true;
-    }
-    case 'wallet_getPermissions':
-    case 'wallet_requestPermissions': {
-      const permissions = [{ parentCapability: 'eth_accounts' }];
-      return permissions;
-    }
-    case 'request_accounts':
-    case 'eth_accounts': {
-      const accounts = [ADDRESS];
-      return accounts;
-    }
-    case 'eth_requestAccounts': {
-      const requestAccounts = [ADDRESS];
-      return requestAccounts;
-    }
-    case 'eth_sendTransaction':
-    case 'eth_signTransaction':
-    case 'personal_sign':
-    case 'eth_sign':
-    case 'eth_signTypedData':
-    case 'eth_signTypedData_v3':
-    case 'eth_signTypedData_v4': {
-      console.log(tag, 'method:', method);
-      console.log(tag, 'params:', params);
-      if (!KEEPKEY_WALLET.assetContext) {
-        // Set context to the chain, defaults to ETH
-        const currentProvider = await web3ProviderStorage.getWeb3Provider();
-        await KEEPKEY_WALLET.setAssetContext({ caip: currentProvider.caip });
-      }
-      const networkId = KEEPKEY_WALLET.assetContext.networkId;
-      console.log(tag, 'networkId:', networkId);
-      if (!networkId) throw Error('Failed to set context before sending!');
-      // Require user approval
-      const result = await requireApproval(networkId, requestInfo, 'ethereum', method, params[0]);
-      console.log(tag, 'result:', result);
-
-      if (result.success) {
-        const approvalResponse = await processApprovedEvent(method, params, KEEPKEY_WALLET, ADDRESS);
-        return approvalResponse;
-      } else {
-        throw createProviderRpcError(4200, 'User denied transaction');
-      }
-    }
-    case 'eth_getEncryptionPublicKey': {
-      throw createProviderRpcError(4200, 'Method eth_getEncryptionPublicKey not supported');
-    }
-    default: {
-      throw createProviderRpcError(4200, `Method ${method} not supported`);
-    }
-  }
-};
-
 // Helper function to get the provider
 const getProvider = async (): Promise<JsonRpcProvider> => {
   const currentProvider = await web3ProviderStorage.getWeb3Provider();
@@ -313,6 +95,436 @@ const getProvider = async (): Promise<JsonRpcProvider> => {
   }
   return new JsonRpcProvider(currentProvider.providerUrl);
 };
+
+// Handler functions for each method
+
+const handleEthChainId = async () => {
+  const currentProvider = await web3ProviderStorage.getWeb3Provider();
+  return currentProvider.chainId;
+};
+
+const handleNetVersion = async () => {
+  const currentProvider = await web3ProviderStorage.getWeb3Provider();
+  const netVersion = currentProvider.chainId.toString();
+  return convertHexToDecimalChainId(netVersion).toString();
+};
+
+const handleEthGetBlockByNumber = async params => {
+  const provider = await getProvider();
+  const blockByNumber = await provider.getBlock(params[0]);
+  return blockByNumber;
+};
+
+const handleEthBlockNumber = async () => {
+  const provider = await getProvider();
+  const blockNumber = await provider.getBlockNumber();
+  return '0x' + blockNumber.toString(16);
+};
+
+const handleEthGetBalance = async params => {
+  const provider = await getProvider();
+  const balance = await provider.getBalance(params[0], params[1]);
+  return '0x' + balance.toString(16);
+};
+
+const handleEthGetTransactionReceipt = async params => {
+  const provider = await getProvider();
+  const transactionReceipt = await provider.getTransactionReceipt(params[0]);
+  return transactionReceipt;
+};
+
+const handleEthGetTransactionByHash = async params => {
+  const provider = await getProvider();
+  const transactionByHash = await provider.getTransaction(params[0]);
+  return transactionByHash;
+};
+
+const handleWeb3ClientVersion = async () => {
+  const provider = await getProvider();
+  const clientVersion = await provider.send('web3_clientVersion', []);
+  return clientVersion;
+};
+
+const handleEthCall = async params => {
+  const provider = await getProvider();
+  const [callParams, blockTag, stateOverride] = params;
+  const callResult = await provider.call(callParams, blockTag, stateOverride);
+  return callResult;
+};
+
+const handleEthMaxPriorityFeePerGas = async () => {
+  const provider = await getProvider();
+  const feeData = await provider.getFeeData();
+  return feeData.maxPriorityFeePerGas ? '0x' + feeData.maxPriorityFeePerGas.toString(16) : '0x0';
+};
+
+const handleEthMaxFeePerGas = async () => {
+  const provider = await getProvider();
+  const feeData = await provider.getFeeData();
+  return feeData.maxFeePerGas ? '0x' + feeData.maxFeePerGas.toString(16) : '0x0';
+};
+
+const handleEthEstimateGas = async params => {
+  const provider = await getProvider();
+  const estimateGas = await provider.estimateGas(params[0]);
+  return '0x' + estimateGas.toString(16);
+};
+
+const handleEthGasPrice = async () => {
+  const provider = await getProvider();
+  const feeData = await provider.getFeeData();
+  return '0x' + feeData.gasPrice.toString(16);
+};
+
+const handleEthGetCode = async params => {
+  const provider = await getProvider();
+  const code = await provider.getCode(params[0], params[1]);
+  return code;
+};
+
+const handleEthGetStorageAt = async params => {
+  const provider = await getProvider();
+  const storage = await provider.getStorageAt(params[0], params[1], params[2]);
+  return storage;
+};
+
+const handleEthGetTransactionCount = async params => {
+  const provider = await getProvider();
+  const transactionCount = await provider.getTransactionCount(params[0], params[1]);
+  return '0x' + transactionCount.toString(16);
+};
+
+const handleEthSendRawTransaction = async params => {
+  const provider = await getProvider();
+  const txResponse = await provider.broadcastTransaction(params[0]);
+  return txResponse.hash;
+};
+
+const handleWalletAddEthereumChain = async (params, KEEPKEY_WALLET) => {
+  const tag = TAG + ' | handleWalletAddEthereumChain | ';
+  console.log(tag, 'Switching Chain params: ', params);
+  if (!params || !params[0] || !params[0].chainId) throw new Error('Invalid chainId (Required)');
+  let chainId = 'eip155:' + convertHexToDecimalChainId(params[0].chainId);
+  chainId = sanitizeChainId(chainId);
+
+  let currentProvider = await web3ProviderStorage.getWeb3Provider();
+
+  if (params && params[0] && params[0].rpcUrls && params[0].rpcUrls[0]) {
+    const name = params[0].chainName;
+    console.log(tag, 'Switching Chain name: ', name);
+    currentProvider = {
+      explorer: params[0].blockExplorerUrls[0],
+      explorerAddressLink: params[0].blockExplorerUrls[0] + '/address/',
+      explorerTxLink: params[0].blockExplorerUrls[0] + '/tx/',
+      networkId: `eip155:${parseInt(params[0].chainId, 16)}`,
+      chainId: sanitizeChainId(params[0].chainId),
+      caip: `eip155:${parseInt(params[0].chainId, 16)}/slip44:60`,
+      name: params[0].chainName,
+      type: 'evm',
+      identifier: params[0].chainName,
+      nativeCurrency: params[0].nativeCurrency,
+      symbol: params[0].nativeCurrency.symbol, // Native currency symbol
+      precision: params[0].nativeCurrency.decimals, // Currency precision
+      providerUrl: params[0].rpcUrls[0],
+      providers: params[0].rpcUrls,
+    };
+    console.log('currentProvider', currentProvider);
+  } else {
+    const chainIdToFind = sanitizeChainId(params[0].chainId);
+    let chainFound = false;
+
+    for (const key of Object.keys(EIP155_CHAINS)) {
+      if (EIP155_CHAINS[key].chainId === chainIdToFind) {
+        currentProvider = {
+          chainId: chainIdToFind,
+          caip: EIP155_CHAINS[key].caip,
+          name: EIP155_CHAINS[key].name,
+          providerUrl: EIP155_CHAINS[key].rpc,
+        };
+        chainFound = true;
+        break;
+      }
+    }
+
+    if (!chainFound) {
+      throw new Error(`Chain with chainId ${chainIdToFind} not found.`);
+    }
+  }
+  assetContextStorage.updateContext(currentProvider);
+  // Save the updated provider to storage
+  await web3ProviderStorage.saveWeb3Provider(currentProvider);
+
+  console.log('changing context to ', currentProvider.caip);
+  const result = await KEEPKEY_WALLET.setAssetContext(currentProvider);
+  console.log('result ', result);
+  console.log('KEEPKEY_WALLET.assetContext ', KEEPKEY_WALLET.assetContext);
+  // Update context and notify changes
+  chrome.runtime.sendMessage({ type: 'PROVIDER_CHANGED', provider: currentProvider });
+  chrome.runtime.sendMessage({ type: 'ASSET_CONTEXT_UPDATED', assetContext: KEEPKEY_WALLET.assetContext });
+
+  return true;
+};
+
+const handleWalletGetSnaps = async () => {
+  return [];
+};
+
+const handleWalletWatchAsset = async () => {
+  return true;
+};
+
+const handleWalletPermissions = async () => {
+  const permissions = [{ parentCapability: 'eth_accounts' }];
+  return permissions;
+};
+
+const handleEthAccounts = async ADDRESS => {
+  const accounts = [ADDRESS];
+  return accounts;
+};
+
+const handleEthRequestAccounts = async ADDRESS => {
+  const requestAccounts = [ADDRESS];
+  return requestAccounts;
+};
+
+const handleSigningMethods = async (method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval) => {
+  const tag = TAG + ` | handle${method} | `;
+  console.log(tag, 'method:', method);
+  console.log(tag, 'params:', params);
+
+  if (!KEEPKEY_WALLET.assetContext) {
+    // Set context to the chain, defaults to ETH
+    const currentProvider = await web3ProviderStorage.getWeb3Provider();
+    await KEEPKEY_WALLET.setAssetContext({ caip: currentProvider.caip });
+  }
+  const networkId = KEEPKEY_WALLET.assetContext.networkId;
+  console.log(tag, 'networkId:', networkId);
+  if (!networkId) throw Error('Failed to set context before sending!');
+
+  // Require user approval
+  const result = await requireApproval(networkId, requestInfo, 'ethereum', method, params[0]);
+  console.log(tag, 'requireApproval result:', result);
+
+  if (result.success) {
+    const approvalResponse = await processApprovedEvent(method, params, KEEPKEY_WALLET, ADDRESS);
+    return approvalResponse;
+  } else {
+    throw createProviderRpcError(4200, 'User denied transaction');
+  }
+};
+
+// For 'transfer', build transaction info before calling requireApproval
+const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval) => {
+  const tag = TAG + ' | handleTransfer | ';
+  console.log(tag, 'method: transfer');
+  console.log(tag, 'params:', params);
+
+  if (!KEEPKEY_WALLET.assetContext) {
+    // Set context to the chain, defaults to ETH
+    const currentProvider = await web3ProviderStorage.getWeb3Provider();
+    await KEEPKEY_WALLET.setAssetContext({ caip: currentProvider.caip });
+  }
+  const networkId = KEEPKEY_WALLET.assetContext.networkId;
+  console.log(tag, 'networkId:', networkId);
+  if (!networkId) throw Error('Failed to set context before sending!');
+
+  // Build transaction info before requireApproval
+  const transaction = params[0];
+
+  // Ensure 'from' is set
+  transaction.from = transaction.from || ADDRESS;
+
+  // Get provider
+  const provider = await getProvider();
+
+  // Get chainId
+  const currentProvider = await web3ProviderStorage.getWeb3Provider();
+  const chainId = currentProvider.chainId;
+
+  transaction.chainId = chainId;
+
+  // Determine if isEIP1559
+  const isEIP1559 = chainId === '1' || chainId === 1;
+
+  // Get fee data
+  const feeData = await provider.getFeeData();
+
+  // Get nonce
+  const nonce = await provider.getTransactionCount(transaction.from, 'pending');
+  transaction.nonce = '0x' + nonce.toString(16);
+
+  // Estimate gas limit
+  let estimatedGasLimit;
+  try {
+    estimatedGasLimit = await provider.estimateGas({
+      from: transaction.from,
+      to: transaction.to,
+      value: transaction.value,
+      data: transaction.data,
+    });
+    transaction.gasLimit = '0x' + estimatedGasLimit.toString(16);
+  } catch (e) {
+    // Set default gasLimit if estimation fails
+    transaction.gasLimit = '0x' + BigInt('21000').toString(16); // minimum gas limit for ETH transfer
+  }
+
+  // Set fee data
+  if (isEIP1559 && feeData.maxFeePerGas && feeData.maxPriorityFeePerGas) {
+    transaction.maxFeePerGas = '0x' + feeData.maxFeePerGas.toString(16);
+    transaction.maxPriorityFeePerGas = '0x' + feeData.maxPriorityFeePerGas.toString(16);
+  } else {
+    transaction.gasPrice = feeData.gasPrice ? '0x' + feeData.gasPrice.toString(16) : undefined;
+  }
+
+  // Now call requireApproval with the transaction info
+  const result = await requireApproval(networkId, requestInfo, 'ethereum', 'transfer', transaction);
+
+  console.log(tag, 'requireApproval result:', result);
+
+  if (result.success) {
+    // Prepare transaction input for signing
+    const input: any = {
+      from: transaction.from,
+      addressNList: [2147483692, 2147483708, 2147483648, 0, 0],
+      data: transaction.data || '0x',
+      nonce: transaction.nonce,
+      gasLimit: transaction.gasLimit,
+      value: transaction.value || '0x0',
+      to: transaction.to,
+      chainId: transaction.chainId,
+      // Fee data
+      ...(isEIP1559
+        ? {
+            maxFeePerGas: transaction.maxFeePerGas,
+            maxPriorityFeePerGas: transaction.maxPriorityFeePerGas,
+          }
+        : {
+            gasPrice: transaction.gasPrice,
+          }),
+    };
+
+    console.log(tag, 'Final transaction input:', input);
+
+    // Sign transaction
+    const signedTx = await KEEPKEY_WALLET.keepKeySdk.eth.ethSignTransaction(input);
+    console.log(tag, 'Signed transaction:', signedTx);
+
+    // Broadcast transaction
+    const txHash = await broadcastTransaction(signedTx.serialized);
+
+    return txHash;
+  } else {
+    throw createProviderRpcError(4200, 'User denied transaction');
+  }
+};
+
+// Main handler function
+export const handleEthereumRequest = async (
+  method: string,
+  params: any[],
+  requestInfo: any,
+  ADDRESS: string,
+  KEEPKEY_WALLET: any,
+  requireApproval: (networkId: string, requestInfo: any, chain: any, method: string, params: any) => Promise<any>,
+): Promise<any> => {
+  const tag = ' | handleEthereumRequest | ';
+  console.log(tag, 'method: ', method);
+
+  switch (method) {
+    case 'eth_chainId':
+      return await handleEthChainId();
+
+    case 'net_version':
+      return await handleNetVersion();
+
+    case 'eth_getBlockByNumber':
+      return await handleEthGetBlockByNumber(params);
+
+    case 'eth_blockNumber':
+      return await handleEthBlockNumber();
+
+    case 'eth_getBalance':
+      return await handleEthGetBalance(params);
+
+    case 'eth_getTransactionReceipt':
+      return await handleEthGetTransactionReceipt(params);
+
+    case 'eth_getTransactionByHash':
+      return await handleEthGetTransactionByHash(params);
+
+    case 'web3_clientVersion':
+      return await handleWeb3ClientVersion();
+
+    case 'eth_call':
+      return await handleEthCall(params);
+
+    case 'eth_maxPriorityFeePerGas':
+      return await handleEthMaxPriorityFeePerGas();
+
+    case 'eth_maxFeePerGas':
+      return await handleEthMaxFeePerGas();
+
+    case 'eth_estimateGas':
+      return await handleEthEstimateGas(params);
+
+    case 'eth_gasPrice':
+      return await handleEthGasPrice();
+
+    case 'eth_getCode':
+      return await handleEthGetCode(params);
+
+    case 'eth_getStorageAt':
+      return await handleEthGetStorageAt(params);
+
+    case 'eth_getTransactionCount':
+      return await handleEthGetTransactionCount(params);
+
+    case 'eth_sendRawTransaction':
+      return await handleEthSendRawTransaction(params);
+
+    case 'wallet_addEthereumChain':
+    case 'wallet_switchEthereumChain':
+      return await handleWalletAddEthereumChain(params, KEEPKEY_WALLET);
+
+    case 'wallet_getSnaps':
+      return await handleWalletGetSnaps();
+
+    case 'wallet_watchAsset':
+      return await handleWalletWatchAsset();
+
+    case 'wallet_getPermissions':
+    case 'wallet_requestPermissions':
+      return await handleWalletPermissions();
+
+    case 'request_accounts':
+    case 'eth_accounts':
+      return await handleEthAccounts(ADDRESS);
+
+    case 'eth_requestAccounts':
+      return await handleEthRequestAccounts(ADDRESS);
+
+    case 'eth_sendTransaction':
+    case 'eth_signTransaction':
+    case 'personal_sign':
+    case 'eth_sign':
+    case 'eth_signTypedData':
+    case 'eth_signTypedData_v3':
+    case 'eth_signTypedData_v4':
+      return await handleSigningMethods(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
+
+    case 'transfer':
+      return await handleTransfer(params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
+
+    case 'eth_getEncryptionPublicKey':
+      throw createProviderRpcError(4200, 'Method eth_getEncryptionPublicKey not supported');
+
+    default:
+      throw createProviderRpcError(4200, `Method ${method} not supported`);
+  }
+};
+
+// Helper functions for processing approvals and signing
 
 const processApprovedEvent = async (method: string, params: any, KEEPKEY_WALLET: any, ADDRESS: string) => {
   try {
@@ -375,42 +587,44 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
 
     const provider = await getProvider();
 
-    const nonce = await provider.getTransactionCount(transaction.from, 'pending');
-    if (!transaction.nonce) transaction.nonce = '0x' + nonce.toString(16);
-    if (transaction.nonce !== '0x' + nonce.toString(16)) {
-      console.error('transaction.nonce:', transaction.nonce);
-      console.error('nonce:', nonce);
-      console.error('transaction nonce does not match recommended nonce');
-    }
+    const nonce = parseInt(transaction.nonce, 16);
+    if (isNaN(nonce)) throw createProviderRpcError(4000, 'Invalid nonce');
 
-    try {
-      const estimatedGas = await provider.estimateGas({
-        from: transaction.from,
-        to: transaction.to,
-        data: transaction.data,
-      });
-      transaction.gas = '0x' + Math.max(Math.floor(estimatedGas.toNumber() * 1.2), 0xc350).toString(16); // 50,000 min
-    } catch (e) {
-      transaction.gas = '0x' + BigInt('1000000').toString(16); // 1,000,000 fallback with min 50,000
+    if (!transaction.gasLimit) {
+      try {
+        const estimatedGas = await provider.estimateGas({
+          from: transaction.from,
+          to: transaction.to,
+          data: transaction.data,
+        });
+        transaction.gasLimit = '0x' + estimatedGas.toString(16);
+      } catch (e) {
+        transaction.gasLimit = '0x' + BigInt('21000').toString(16); // Fallback gas limit
+      }
     }
-
-    const feeData = await provider.getFeeData();
-    transaction.gasPrice = '0x' + feeData.gasPrice.toString(16);
 
     const input: any = {
       from: transaction.from,
       addressNList: [2147483692, 2147483708, 2147483648, 0, 0],
       data: transaction.data || '0x',
       nonce: transaction.nonce,
-      gasLimit: transaction.gas,
-      gas: transaction.gas,
+      gasLimit: transaction.gasLimit,
       value: transaction.value || '0x0',
       to: transaction.to,
-      chainId: '0x' + parseInt(transaction.chainId, 16).toString(16),
+      chainId: transaction.chainId,
     };
-    if (transaction.gasPrice) input.gasPrice = transaction.gasPrice;
-    if (transaction.maxFeePerGas) input.maxFeePerGas = transaction.maxFeePerGas;
-    if (transaction.maxPriorityFeePerGas) input.maxPriorityFeePerGas = transaction.maxPriorityFeePerGas;
+
+    // Set fee data
+    if (transaction.maxFeePerGas && transaction.maxPriorityFeePerGas) {
+      input.maxFeePerGas = transaction.maxFeePerGas;
+      input.maxPriorityFeePerGas = transaction.maxPriorityFeePerGas;
+    } else if (transaction.gasPrice) {
+      input.gasPrice = transaction.gasPrice;
+    } else {
+      // Fetch fee data if not provided
+      const feeData = await provider.getFeeData();
+      input.gasPrice = feeData.gasPrice ? '0x' + feeData.gasPrice.toString(16) : undefined;
+    }
 
     console.log(`${tag} Final input: `, input);
     const output = await KEEPKEY_WALLET.keepKeySdk.eth.ethSignTransaction(input);
@@ -427,12 +641,15 @@ const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string) 
   const tag = ' | signTypedData | ';
   try {
     console.log(tag, '**** params: ', params);
-    const wallet = await KEEPKEY_WALLET.swapKit.getWallet(Chain.Ethereum);
-    console.log('wallet: ', wallet);
-    let typedData = params[1];
-    if (typedData && typeof typedData === 'string') typedData = JSON.parse(typedData);
-    const { domain, types, message, primaryType } = typedData;
-    const signedMessage = await wallet.signTypedData({ domain, types, message, primaryType });
+    const typedData = params[1];
+    const { domain, types, message, primaryType } = JSON.parse(typedData);
+    const signedMessage = await KEEPKEY_WALLET.keepKeySdk.eth.ethSignTypedData({
+      address: ADDRESS,
+      domain,
+      types,
+      message,
+      primaryType,
+    });
     console.log(tag, '**** signedMessage: ', signedMessage);
     return signedMessage;
   } catch (e) {
@@ -449,9 +666,8 @@ const broadcastTransaction = async (signedTx: string) => {
     console.log(tag, 'provider: ', provider);
     console.log(tag, 'Broadcasting transaction: ', signedTx);
 
-    const txResponse = await provider.broadcastTransaction(signedTx);
+    const txResponse = await provider.sendTransaction(signedTx);
     console.log('Transaction response:', txResponse);
-    // await txResponse.wait(); // Wait for transaction confirmation
     return txResponse.hash;
   } catch (e) {
     console.error(tag, e);

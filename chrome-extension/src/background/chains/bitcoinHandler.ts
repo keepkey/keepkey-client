@@ -1,7 +1,6 @@
 const TAG = ' | bitcoinHandler | ';
 import { Chain } from '@coinmasters/types';
 import { AssetValue } from '@pioneer-platform/helpers';
-// @ts-ignore
 import { ChainToNetworkId, shortListSymbolToCaip, caipToNetworkId } from '@pioneer-platform/pioneer-caip';
 
 interface ProviderRpcError extends Error {
@@ -24,88 +23,63 @@ export const handleBitcoinRequest = async (
   KEEPKEY_WALLET: any,
   requireApproval: (networkId: string, requestInfo: any, chain: any, method: string, params: any) => Promise<void>,
 ): Promise<any> => {
-  const tag = TAG + ' | handleBitcoinRequest | ';
-  console.log(tag, 'method:', method);
-  console.log(tag, 'params:', params);
+  const tag = `${TAG} | handleBitcoinRequest | `;
+
   switch (method) {
     case 'request_accounts': {
-      console.log(tag, 'KEEPKEY_WALLET: ', KEEPKEY_WALLET);
-      //Unsigned TX
       const pubkeys = KEEPKEY_WALLET.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.Bitcoin]));
-      const accounts = [];
-      for (let i = 0; i < pubkeys.length; i++) {
-        const pubkey = pubkeys[i];
-        const address = pubkey.master || pubkey.address;
-        accounts.push(address);
-      }
-      console.log(tag, 'accounts: ', accounts);
-      console.log(tag, method + ' Returning', accounts);
-      //TODO preference on which account to return
-      return [accounts[1]];
-    }
-    case 'request_balance': {
-      //get sum of all pubkeys configured
-      console.log(tag, 'KEEPKEY_WALLET: ', KEEPKEY_WALLET);
-      console.log(tag, 'KEEPKEY_WALLET.swapKit: ', KEEPKEY_WALLET.swapKit);
-      console.log(tag, 'KEEPKEY_WALLET.swapKit: ', KEEPKEY_WALLET.balances);
-      const balance = KEEPKEY_WALLET.balances.find((balance: any) => balance.caip === shortListSymbolToCaip['BTC']);
+      const accounts = pubkeys.map((pubkey: any) => pubkey.master || pubkey.address);
 
-      //let pubkeys = await KEEPKEY_WALLET.swapKit.getBalance(Chain.Bitcoin);
-      console.log(tag, 'balance: ', balance);
+      return [accounts[1]]; // Return preference account
+    }
+
+    case 'request_balance': {
+      const balance = KEEPKEY_WALLET.balances.find((balance: any) => balance.caip === shortListSymbolToCaip['BTC']);
       return [balance];
     }
+
     case 'transfer': {
-      //caip
       const caip = shortListSymbolToCaip['BTC'];
-      console.log(tag, 'caip: ', caip);
       const networkId = caipToNetworkId(caip);
-      //verify context is bitcoin
+
       if (!KEEPKEY_WALLET.assetContext) {
-        // Set context to the chain, defaults to ETH
-        const caip = shortListSymbolToCaip['BTC'];
         await KEEPKEY_WALLET.setAssetContext({ caip });
       }
 
-      // Require user approval
+      const pubkeys = KEEPKEY_WALLET.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.Bitcoin]));
+      const accounts = pubkeys.map((pubkey: any) => pubkey.master || pubkey.address);
+
+      const assetString = 'BTC.BTC';
+      await AssetValue.loadStaticAssets();
+
+      const assetValue = await AssetValue.fromString(assetString, parseFloat(params[0].amount.amount) / 100000000);
+      const sendPayload = {
+        from: accounts[0], //Select preference change address
+        assetValue,
+        memo: params[0].memo || '',
+        recipient: params[0].recipient,
+      };
+
+      const wallet = await KEEPKEY_WALLET.swapKit.getWallet(Chain.Bitcoin);
+      if (!wallet) throw Error('Failed to init swapkit');
+
+      const unsignedTx = await wallet.buildTx(sendPayload);
+      requestInfo.inputs = unsignedTx.inputs;
+      requestInfo.outputs = unsignedTx.outputs;
+      requestInfo.memo = unsignedTx.memo;
+
       const result = await requireApproval(networkId, requestInfo, 'bitcoin', method, params[0]);
-      console.log(tag, 'result:', result);
 
       if (result.success) {
-        //send tx
-        console.log(tag, 'params[0]: ', params[0]);
-        const assetString = 'BTC.BTC';
-        await AssetValue.loadStaticAssets();
-        console.log(tag, 'params[0].amount.amount: ', params[0].amount.amount);
-        const assetValue = await AssetValue.fromString(assetString, parseFloat(params[0].amount.amount) / 100000000);
-        const sendPayload = {
-          from: params[0].from,
-          assetValue,
-          memo: params[0].memo || '',
-          recipient: params[0].recipient,
-        };
-        console.log(tag, 'sendPayload: ', sendPayload);
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-expect-error
-        console.log(tag, 'sendPayload: ', sendPayload.assetValue.getValue('string'));
-        try {
-          // const txHash = '083d4710e9880367370235bf0948745cab113f164881a9329330c6a96f9c2b26';
-
-          const txHash = await KEEPKEY_WALLET.swapKit.transfer(sendPayload);
-          console.log(tag, 'txHash: ', txHash);
-          chrome.runtime.sendMessage({ action: 'transaction_complete', txHash });
-
-          return txHash;
-        } catch (e) {
-          console.error(tag, 'Failed to send transaction: ', e);
-          chrome.runtime.sendMessage({ action: 'transaction_error', e });
-          throw createProviderRpcError(4200, 'Failed to send transaction');
-        }
+        const signedTx = await wallet.signTransaction(unsignedTx.psbt, unsignedTx.inputs, unsignedTx.memo);
+        const txid = await wallet.broadcastTx(signedTx);
+        return txid;
       } else {
         throw createProviderRpcError(4200, 'User denied transaction');
       }
     }
+
     default: {
-      console.log(tag, `Method ${method} not supported`);
       throw createProviderRpcError(4200, `Method ${method} not supported`);
     }
   }

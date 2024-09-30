@@ -34,7 +34,7 @@ export function EvmTransaction({ transaction, reloadEvents, handleResponse }: an
           {/*<Tab>Insight</Tab>*/}
           <Tab>Details</Tab>
           <Tab>Fees</Tab>
-          {/*<Tab>Raw</Tab>*/}
+          <Tab>Raw</Tab>
         </TabList>
 
         <TabPanels>
@@ -58,9 +58,9 @@ export function EvmTransaction({ transaction, reloadEvents, handleResponse }: an
           </TabPanel>
 
           {/* Raw Data Tab */}
-          {/*<TabPanel>*/}
-          {/*  <RequestDataCard transaction={transaction} />*/}
-          {/*</TabPanel>*/}
+          <TabPanel>
+            <RequestDataCard transaction={transaction} />
+          </TabPanel>
         </TabPanels>
       </Tabs>
 

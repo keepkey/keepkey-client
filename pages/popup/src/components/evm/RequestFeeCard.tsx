@@ -13,6 +13,8 @@ import {
   Input,
   Spinner,
   Badge,
+  InputGroup,
+  InputLeftAddon,
 } from '@chakra-ui/react';
 
 const requestFeeData = () => {
@@ -26,8 +28,20 @@ const requestFeeData = () => {
   });
 };
 
-// Sample ETH price in USD for calculation
-const ETH_PRICE_IN_USD = 1800;
+const requestAssetContext = () => {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({ type: 'GET_ASSET_CONTEXT' }, response => {
+      if (chrome.runtime.lastError) {
+        return reject(chrome.runtime.lastError);
+      }
+      resolve(response);
+    });
+  });
+};
+
+const hexToDecimal = hex => {
+  return parseInt(hex, 16);
+};
 
 const RequestFeeCard = ({ transaction }: any) => {
   const [selectedFee, setSelectedFee] = useState('');
@@ -38,14 +52,32 @@ const RequestFeeCard = ({ transaction }: any) => {
   const [isEIP1559, setIsEIP1559] = useState(false);
   const [fees, setFees] = useState<any>({
     dappSuggested: '',
-    networkRecommended: '',
+    low: '',
+    medium: '',
+    high: '',
   });
-  const [loading, setLoading] = useState(false); // Track if data is being fetched
+  const [loading, setLoading] = useState(true); // Start with loading true
   const [usdFee, setUsdFee] = useState(''); // USD value of the selected fee
+  const [assetContext, setAssetContext] = useState<any>(null);
 
+  // Fetch asset context to get priceUsd
+  useEffect(() => {
+    const fetchAssetContext = async () => {
+      try {
+        const context = await requestAssetContext();
+        setAssetContext(context);
+      } catch (error) {
+        console.error('Error fetching asset context:', error);
+      }
+    };
+    fetchAssetContext();
+  }, []);
+
+  // Convert Gwei to ETH and then to USD
   const calculateUsdValue = (gweiFee: string) => {
+    if (!assetContext || !assetContext.priceUsd) return '0.00';
     const ethFee = parseFloat(gweiFee) / 1e9; // Convert Gwei to ETH
-    return (ethFee * ETH_PRICE_IN_USD).toFixed(2); // Convert ETH to USD and format
+    return (ethFee * parseFloat(assetContext.priceUsd)).toFixed(2); // Convert ETH to USD and format
   };
 
   const updateFeeData = (feeData: any) => {
@@ -69,15 +101,18 @@ const RequestFeeCard = ({ transaction }: any) => {
       const feeData = await requestFeeData();
       console.log('feeData fetched: ', feeData);
 
-      const networkRecommendedFee = feeData.gasPrice
-        ? (BigInt(feeData.gasPrice.toString()) / BigInt(1e9)).toString()
-        : '';
-      console.log('networkRecommendedFee calculated: ', networkRecommendedFee);
+      const networkGasPrice = BigInt(hexToDecimal(feeData.gasPrice));
 
-      setFees((prevFees: any) => ({
-        ...prevFees,
-        networkRecommended: networkRecommendedFee,
-      }));
+      const lowGasPrice = (networkGasPrice * BigInt(80)) / BigInt(100); // 80% of network gas price
+      const mediumGasPrice = networkGasPrice; // same as network gas price
+      const highGasPrice = (networkGasPrice * BigInt(120)) / BigInt(100); // 120% of network gas price
+
+      setFees({
+        ...fees,
+        low: (lowGasPrice / BigInt(1e9)).toString(),
+        medium: (mediumGasPrice / BigInt(1e9)).toString(),
+        high: (highGasPrice / BigInt(1e9)).toString(),
+      });
 
       setFeeWarning(false);
     } catch (e) {
@@ -88,6 +123,10 @@ const RequestFeeCard = ({ transaction }: any) => {
   };
 
   useEffect(() => {
+    // EIP-1559 should be selected if it's Ethereum (chainId 1)
+    const isEthereumMainnet = transaction.request.chainId === '0x1';
+    setIsEIP1559(isEthereumMainnet);
+
     if (
       !transaction.request.maxPriorityFeePerGas &&
       !transaction.request.maxFeePerGas &&
@@ -96,46 +135,44 @@ const RequestFeeCard = ({ transaction }: any) => {
       console.log('DApp did not provide fee data');
       getFee();
       setDappProvidedFee(false);
-      setSelectedFee('networkRecommended');
+      setSelectedFee('medium');
     } else {
       console.log('DApp provided fee data');
-      const dappFee = transaction.request.gasPrice
-        ? (BigInt(transaction.request.gasPrice.toString()) / BigInt(1e9)).toString()
-        : '';
-      const networkFee = fees.networkRecommended;
-      console.log('networkFee: ', networkFee);
+      const dappGasPrice = BigInt(hexToDecimal(transaction.request.gasPrice));
+      const dappGasPriceGwei = (dappGasPrice / BigInt(1e9)).toString();
 
       setDappProvidedFee(true);
       setFees((prevFees: any) => ({
         ...prevFees,
-        dappSuggested: dappFee,
+        dappSuggested: dappGasPriceGwei,
       }));
 
-      if (networkFee && BigInt(dappFee) < BigInt(networkFee)) {
-        setFeeWarning(true);
+      if (!fees.medium) {
+        // If network fees not yet fetched, fetch them
+        getFee();
       }
+
       setSelectedFee('dappSuggested');
     }
-  }, [transaction, fees.networkRecommended]);
+  }, [transaction]);
 
   useEffect(() => {
-    console.log('Selected fee updated: ', selectedFee);
-    console.log('Fees object: ', fees);
-
+    let feeInGwei = '';
     if (selectedFee === 'custom') {
-      setDisplayFee(customFee + ' Gwei');
+      feeInGwei = customFee;
     } else {
-      setDisplayFee(fees[selectedFee] ? fees[selectedFee] + ' Gwei' : '');
+      feeInGwei = fees[selectedFee] || '';
     }
 
-    if (fees[selectedFee]) {
-      const feeInUsd = calculateUsdValue(fees[selectedFee]);
+    setDisplayFee(feeInGwei + ' Gwei');
+
+    if (feeInGwei) {
+      const feeInUsd = calculateUsdValue(feeInGwei);
       setUsdFee(feeInUsd);
+    } else {
+      setUsdFee('');
     }
-
-    console.log('Display fee updated: ', displayFee);
-    console.log('USD Fee: ', usdFee);
-  }, [selectedFee, customFee, fees]);
+  }, [selectedFee, customFee, fees, assetContext]);
 
   const handleFeeChange = (event: any) => {
     setSelectedFee(event.target.value);
@@ -184,7 +221,7 @@ const RequestFeeCard = ({ transaction }: any) => {
   return (
     <Fragment>
       {/* Show spinner while loading fee data */}
-      {loading && <Spinner size="xl" color="blue.500" />}
+      {(loading || !assetContext) && <Spinner size="xl" color="blue.500" />}
 
       {!loading && !dappProvidedFee && (
         <Text fontSize="sm" fontStyle="italic" mt={2}>
@@ -199,39 +236,42 @@ const RequestFeeCard = ({ transaction }: any) => {
         </Alert>
       )}
 
-      {!loading && (
-        <FormControl as="fieldset">
+      {!loading && assetContext && (
+        <FormControl as="fieldset" mt={4}>
           <RadioGroup name="fee" value={selectedFee} onChange={handleFeeChange}>
             {dappProvidedFee && fees.dappSuggested && (
-              <Radio value="dappSuggested">
+              <Radio value="dappSuggested" colorScheme="blue">
                 DApp Suggested Fee ({fees.dappSuggested} Gwei){' '}
-                <Badge colorScheme="green">${calculateUsdValue(fees.dappSuggested)} USD</Badge>
+                <Badge colorScheme="blue">${calculateUsdValue(fees.dappSuggested)} USD</Badge>
               </Radio>
             )}
-            {/*{fees.networkRecommended && (*/}
-            {/*    <Radio value="networkRecommended">*/}
-            {/*      Network Recommended Fee ({fees.networkRecommended} Gwei) <Badge colorScheme="green">${calculateUsdValue(fees.networkRecommended)} USD</Badge>*/}
-            {/*    </Radio>*/}
-            {/*)}*/}
-
-            <Radio value="networkRecommended">
-              Network Recommended Fee ({fees.networkRecommended} Gwei){' '}
-              <Badge colorScheme="green">${calculateUsdValue(fees.networkRecommended)} USD</Badge>
+            <Radio value="low" colorScheme="green" mt={2}>
+              Low ({fees.low} Gwei) <Badge colorScheme="green">${calculateUsdValue(fees.low)} USD</Badge>
             </Radio>
-
-            <Radio value="custom">Custom Fee</Radio>
+            <Radio value="medium" colorScheme="yellow" mt={2}>
+              Medium ({fees.medium} Gwei) <Badge colorScheme="yellow">${calculateUsdValue(fees.medium)} USD</Badge>
+            </Radio>
+            <Radio value="high" colorScheme="red" mt={2}>
+              High ({fees.high} Gwei) <Badge colorScheme="red">${calculateUsdValue(fees.high)} USD</Badge>
+            </Radio>
+            <br />
+            <Radio value="custom" mt={2}>
+              Custom Fee
+            </Radio>
           </RadioGroup>
           {selectedFee === 'custom' && (
-            <Input
-              variant="outline"
-              value={customFee}
-              onChange={handleCustomFeeChange}
-              margin="normal"
-              type="number"
-              bg="white"
-              color="black"
-              mt={2}
-            />
+            <InputGroup size="md" mt={2}>
+              <InputLeftAddon children="Gwei" />
+              <Input
+                variant="outline"
+                value={customFee}
+                onChange={handleCustomFeeChange}
+                margin="normal"
+                type="number"
+                bg="white"
+                color="black"
+              />
+            </InputGroup>
           )}
         </FormControl>
       )}
@@ -243,7 +283,7 @@ const RequestFeeCard = ({ transaction }: any) => {
       )}
 
       {usdFee && (
-        <Text fontSize="sm" color="green.500" mt={2}>
+        <Text fontSize="sm" color="gray.500" mt={2}>
           Estimated fee in USD: ${usdFee}
         </Text>
       )}
@@ -259,6 +299,7 @@ const RequestFeeCard = ({ transaction }: any) => {
           <Switch
             id="isEIP1559"
             isChecked={isEIP1559}
+            isDisabled={transaction.request.chainId !== '0x1'} // Disable if not Ethereum mainnet
             onChange={() => setIsEIP1559(!isEIP1559)}
             colorScheme={isEIP1559 ? 'blue' : 'gray'}
           />

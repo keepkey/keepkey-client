@@ -17,6 +17,7 @@ import React, { useEffect, useState } from 'react';
 // import RequestFeeCard from './RequestFeeCard';
 import RequestDataCard from './RequestDataCard';
 import RequestDetailsCard from './RequestDetailsCard';
+import CoinControl from './CoinControlCard';
 // import ContractDetailsCard from './ContractDetailsCard';
 import RequestMethodCard from './RequestMethodCard';
 import ProjectInfoCard from './ProjectInfoCard';
@@ -32,9 +33,9 @@ export function UtxoTransaction({ transaction, reloadEvents, handleResponse }: a
       <Tabs>
         <TabList>
           <Tab>info</Tab>
-          {/*<Tab>utxos</Tab>*/}
+          <Tab>coin control</Tab>
           <Tab>Fees</Tab>
-          <Tab>Raw</Tab>
+          {/*<Tab>Raw</Tab>*/}
         </TabList>
 
         <TabPanels>
@@ -44,15 +45,17 @@ export function UtxoTransaction({ transaction, reloadEvents, handleResponse }: a
           </TabPanel>
 
           {/* Review Tab */}
-          {/*<TabPanel></TabPanel>*/}
+          <TabPanel>
+            <CoinControl transaction={transaction} />
+          </TabPanel>
 
           {/* Fees Tab */}
           <TabPanel></TabPanel>
 
           {/* Raw Data Tab */}
-          <TabPanel>
-            <RequestDataCard transaction={transaction} />
-          </TabPanel>
+          {/*<TabPanel>*/}
+          {/*  <RequestDataCard transaction={transaction} />*/}
+          {/*</TabPanel>*/}
         </TabPanels>
       </Tabs>
 

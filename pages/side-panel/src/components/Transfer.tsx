@@ -26,6 +26,7 @@ import {
 } from '@chakra-ui/react';
 import { ChevronDownIcon, ChevronUpIcon, InfoOutlineIcon } from '@chakra-ui/icons';
 import React, { useCallback, useEffect, useState } from 'react';
+import { NetworkIdToChain } from '@pioneer-platform/pioneer-caip';
 //@ts-ignore
 import confetti from 'canvas-confetti'; // Make sure to install the confetti package
 
@@ -34,18 +35,19 @@ const TAG = ' | Transfer | ';
 export function Transfer({}: any): JSX.Element {
   const toast = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [inputAmount, setInputAmount] = useState('');
-  const [inputAmountUsd, setInputAmountUsd] = useState('');
+  const [inputAmount, setInputAmount] = useState(0);
+  const [inputAmountUsd, setInputAmountUsd] = useState(0);
   const [sendAmount, setSendAmount] = useState<any | undefined>();
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [memo, setMemo] = useState('');
-  const [assetContext, setAssetContext] = useState({});
+  const [assetContext, setAssetContext] = useState<any>({});
   const [recipient, setRecipient] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
   const [priceUsd, setPriceUsd] = useState<number | null>(null);
   const [maxSpendable, setMaxSpendable] = useState('');
   const [loadingMaxSpendable, setLoadingMaxSpendable] = useState(true);
   const [useUsdInput, setUseUsdInput] = useState(false);
+  const [isMax, setIsMax] = useState(false);
 
   const { isOpen, onOpen, onClose } = useDisclosure();
 
@@ -62,7 +64,7 @@ export function Transfer({}: any): JSX.Element {
   }, []);
 
   const onStart = async function () {
-    let tag = TAG + ' | onStart Transfer | ';
+    const tag = TAG + ' | onStart Transfer | ';
     chrome.runtime.sendMessage({ type: 'GET_MAX_SPENDABLE' }, maxSpendableResponse => {
       if (maxSpendableResponse && maxSpendableResponse.maxSpendable) {
         setMaxSpendable(maxSpendableResponse.maxSpendable);
@@ -85,18 +87,28 @@ export function Transfer({}: any): JSX.Element {
   }, []);
 
   const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value;
+    setIsMax(false); // Reset isMax if user manually changes input
     if (useUsdInput) {
-      setInputAmountUsd(event.target.value);
-      setInputAmount((parseFloat(event.target.value) / (priceUsd || 1)).toFixed(8));
+      setInputAmountUsd(value);
+      setInputAmount((parseFloat(value) / (priceUsd || 1)).toFixed(8));
     } else {
-      setInputAmount(event.target.value);
-      setInputAmountUsd((parseFloat(event.target.value) * (priceUsd || 1)).toFixed(2));
+      setInputAmount(value);
+      setInputAmountUsd((parseFloat(value) * (priceUsd || 1)).toFixed(2));
     }
   };
 
   const handleRecipientChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setRecipient(event.target.value);
   };
+
+  useEffect(() => {
+    if (useUsdInput) {
+      setInputAmountUsd((parseFloat(inputAmount) * (priceUsd || 1)).toFixed(2));
+    } else {
+      setInputAmount((parseFloat(inputAmountUsd) / (priceUsd || 1)).toFixed(8));
+    }
+  }, [useUsdInput, priceUsd]);
 
   const handleSend = useCallback(async () => {
     try {
@@ -110,13 +122,27 @@ export function Transfer({}: any): JSX.Element {
         amount: inputAmount,
         recipient,
         memo,
-        isMax: false,
+        isMax: isMax,
       };
+
+      let chain = assetContext?.networkId.includes('eip155')
+        ? 'ethereum'
+        : NetworkIdToChain(assetContext?.networkId).toLowerCase();
+
+      chain = chain.toLowerCase();
+
+      const requestInfo = {
+        method: 'transfer',
+        params: [sendPayload],
+        chain,
+        siteUrl: 'KeepKey Browser Extension',
+      };
+      console.log('requestInfo: ', requestInfo);
 
       chrome.runtime.sendMessage(
         {
-          type: 'TRANSFER',
-          payload: sendPayload,
+          type: 'WALLET_REQUEST',
+          requestInfo,
         },
         response => {
           if (response.txHash) {
@@ -151,12 +177,57 @@ export function Transfer({}: any): JSX.Element {
       setIsSubmitting(false);
       onClose();
     }
-  }, [inputAmount, recipient, memo, toast]);
+  }, [inputAmount, recipient, memo, isMax, assetContext?.networkId, toast]);
 
   const setMaxAmount = () => {
     const maxAmount = maxSpendable;
     setInputAmount(maxAmount);
     setInputAmountUsd((parseFloat(maxAmount) * (priceUsd || 1)).toFixed(2));
+    setIsMax(true); // Set isMax to true when Max button is clicked
+  };
+
+  const formatMaxSpendable = (amount: string) => {
+    const [integerPart, fractionalPart] = amount.toString().split('.');
+    let formattedIntegerPart;
+    if (integerPart.length > 4) {
+      formattedIntegerPart = (
+        <>
+          <Text as="span">{integerPart.slice(0, 4)}</Text>
+          <Text as="span" fontSize="sm">
+            {integerPart.slice(4)}
+          </Text>
+        </>
+      );
+    } else {
+      formattedIntegerPart = <Text as="span">{integerPart}</Text>;
+    }
+    let formattedFractionalPart;
+    if (fractionalPart) {
+      if (fractionalPart.length > 4) {
+        formattedFractionalPart = (
+          <>
+            .<Text as="span">{fractionalPart.slice(0, 4)}</Text>
+            <Text as="span" fontSize="sm">
+              {fractionalPart.slice(4)}
+            </Text>
+          </>
+        );
+      } else {
+        formattedFractionalPart = (
+          <>
+            .<Text as="span">{fractionalPart}</Text>
+          </>
+        );
+      }
+    } else {
+      formattedFractionalPart = null;
+    }
+    return (
+      <>
+        {formattedIntegerPart}
+        {formattedFractionalPart}
+      </>
+    );
   };
 
   if (loadingMaxSpendable) {
@@ -174,31 +245,33 @@ export function Transfer({}: any): JSX.Element {
 
   return (
     <>
-      <VStack align="start" borderRadius="md" p={6} spacing={5} bg={bgColor} margin="0 auto">
-        <Heading as="h1" mb={4} size="lg" color={headingColor}>
+      <VStack align="start" borderRadius="md" p={4} spacing={4} bg={bgColor} margin="0 auto">
+        <Heading as="h1" mb={2} size="md" color={headingColor}>
           Send Crypto!
         </Heading>
 
-        <Flex align="center" direction={{ base: 'column', md: 'row' }} gap={20}>
-          <Avatar size="xl" src={avatarUrl} />
+        <Flex align="center" direction="row" gap={4}>
+          <Avatar size="md" src={avatarUrl} />
           <Box>
-            <Text mb={2}>
+            <Text mb={1}>
               Asset: <Badge colorScheme="green">{assetContext?.name}</Badge>
             </Text>
-            <Text mb={2}>
+            <Text mb={1}>
               Chain: <Badge colorScheme="green">{assetContext?.networkId}</Badge>
             </Text>
-            <Text mb={4}>
+            <Text mb={1}>
               Symbol: <Badge colorScheme="green">{assetContext?.symbol}</Badge>
             </Text>
-            <Text mb={4}>Max Spendable: {maxSpendable} Symbol</Text>
+            <Text mb={1}>
+              Max Spendable: {formatMaxSpendable(maxSpendable)} {assetContext?.symbol || 'Symbol'}
+            </Text>
             <Badge colorScheme="teal" fontSize="sm">
               ${(parseFloat(maxSpendable) * (priceUsd || 1)).toFixed(2)} USD
             </Badge>
           </Box>
         </Flex>
 
-        <Grid gap={10} templateColumns={{ base: 'repeat(1, 1fr)', md: 'repeat(2, 1fr)' }} w="full">
+        <Grid gap={6} templateColumns="repeat(1, 1fr)" w="full">
           <FormControl>
             <FormLabel>Recipient:</FormLabel>
             <Input onChange={handleRecipientChange} placeholder="Address" value={recipient} />
@@ -211,8 +284,10 @@ export function Transfer({}: any): JSX.Element {
                 placeholder="0.0"
                 value={useUsdInput ? inputAmountUsd : inputAmount}
               />
-              <Text ml={2}>{useUsdInput ? 'USD' : 'Symbol'}</Text>
-              <Button ml={4} onClick={setMaxAmount}>
+              <Button ml={2} onClick={() => setUseUsdInput(!useUsdInput)}>
+                {useUsdInput ? 'USD' : assetContext?.symbol || 'Symbol'}
+              </Button>
+              <Button ml={2} onClick={setMaxAmount}>
                 Max
               </Button>
             </Flex>
@@ -231,7 +306,9 @@ export function Transfer({}: any): JSX.Element {
           <ModalCloseButton />
           <ModalBody>
             <Text>Recipient: {recipient}</Text>
-            <Text>Amount: {inputAmount} Symbol</Text>
+            <Text>
+              Amount: {inputAmount} {assetContext?.symbol || 'Symbol'}
+            </Text>
             <Text>Amount (USD): ${inputAmountUsd}</Text>
             {memo && <Text>Memo: {memo}</Text>}
           </ModalBody>

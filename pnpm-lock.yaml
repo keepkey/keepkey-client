@@ -19,11 +19,11 @@ importers:
         specifier: ^0.0.270
         version: 0.0.270
       '@types/node':
-        specifier: ^20.16.8
-        version: 20.16.8
+        specifier: ^20.16.10
+        version: 20.16.10
       '@types/react':
-        specifier: ^18.3.9
-        version: 18.3.9
+        specifier: ^18.3.10
+        version: 18.3.10
       '@types/react-dom':
         specifier: ^18.3.0
         version: 18.3.0
@@ -98,7 +98,7 @@ importers:
         version: 5.5.4
       vite:
         specifier: 5.4.3
-        version: 5.4.3(@types/node@20.16.8)
+        version: 5.4.3(@types/node@20.16.10)
 
   chrome-extension:
     dependencies:
@@ -106,14 +106,14 @@ importers:
         specifier: ^4.7.65
         version: 4.7.65
       '@coinmasters/pioneer-sdk':
-        specifier: ^4.7.66
-        version: 4.7.66(@pioneer-platform/helpers@4.0.12)(@types/node@22.7.4)
+        specifier: ^4.7.68
+        version: 4.7.68(@pioneer-platform/helpers@4.0.12)(@types/node@20.16.10)
       '@coinmasters/types':
         specifier: ^4.7.66
         version: 4.7.66
       '@coinmasters/wallet-keepkey':
-        specifier: ^13.0.66
-        version: 13.0.66(@coinmasters/toolbox-cosmos@11.0.66)(@coinmasters/toolbox-evm@11.0.66)(@coinmasters/toolbox-ripple@11.0.66)(@coinmasters/toolbox-utxo@11.0.66)(@keepkey/keepkey-sdk@0.2.57)(@types/node@22.7.4)(bitcoinjs-lib@5.2.0)
+        specifier: ^13.0.68
+        version: 13.0.68(@coinmasters/toolbox-cosmos@11.0.68)(@coinmasters/toolbox-evm@11.0.68)(@coinmasters/toolbox-ripple@11.0.68)(@coinmasters/toolbox-utxo@11.0.68)(@keepkey/keepkey-sdk@0.2.57)(@types/node@20.16.10)(bitcoinjs-lib@5.2.0)
       '@extension/shared':
         specifier: workspace:*
         version: link:../packages/shared
@@ -128,7 +128,7 @@ importers:
         version: 9.2.32
       '@pioneer-platform/pioneer-coins':
         specifier: ^9.2.23
-        version: 9.2.23(@types/node@22.7.4)
+        version: 9.2.23(@types/node@20.16.10)
       axios:
         specifier: ^1.7.7
         version: 1.7.7
@@ -156,7 +156,7 @@ importers:
         version: link:../packages/vite-config
       '@laynezh/vite-plugin-lib-assets':
         specifier: ^0.5.24
-        version: 0.5.24(vite@5.4.8)
+        version: 0.5.24(vite@5.4.3)
       '@types/ws':
         specifier: ^8.5.12
         version: 8.5.12
@@ -171,7 +171,7 @@ importers:
         version: 0.30.11
       ts-loader:
         specifier: ^9.5.1
-        version: 9.5.1(typescript@5.6.2)(webpack@5.95.0)
+        version: 9.5.1(typescript@5.5.4)(webpack@5.95.0)
 
   packages/dev-utils:
     devDependencies:
@@ -204,7 +204,7 @@ importers:
         version: 4.21.3
       ts-node:
         specifier: ^10.9.2
-        version: 10.9.2(@types/node@22.7.4)(typescript@5.6.2)
+        version: 10.9.2(@types/node@20.16.10)(typescript@5.5.4)
       ws:
         specifier: 8.18.0
         version: 8.18.0
@@ -263,7 +263,7 @@ importers:
         version: link:../tsconfig
       '@vitejs/plugin-react-swc':
         specifier: ^3.6.0
-        version: 3.7.0(vite@5.4.8)
+        version: 3.7.0(vite@5.4.3)
       deepmerge:
         specifier: ^4.3.1
         version: 4.3.1
@@ -424,13 +424,13 @@ importers:
         version: 2.1.1(@chakra-ui/system@2.6.2)(react@18.3.1)
       '@chakra-ui/react':
         specifier: ^2.8.2
-        version: 2.8.2(@emotion/react@11.13.3)(@emotion/styled@11.13.0)(@types/react@18.3.9)(framer-motion@11.5.4)(react-dom@18.3.1)(react@18.3.1)
+        version: 2.8.2(@emotion/react@11.13.3)(@emotion/styled@11.13.0)(@types/react@18.3.10)(framer-motion@11.5.4)(react-dom@18.3.1)(react@18.3.1)
       '@emotion/react':
         specifier: ^11.13.3
-        version: 11.13.3(@types/react@18.3.9)(react@18.3.1)
+        version: 11.13.3(@types/react@18.3.10)(react@18.3.1)
       '@emotion/styled':
         specifier: ^11.13.0
-        version: 11.13.0(@emotion/react@11.13.3)(@types/react@18.3.9)(react@18.3.1)
+        version: 11.13.0(@emotion/react@11.13.3)(@types/react@18.3.10)(react@18.3.1)
       '@extension/content-runtime-script':
         specifier: workspace:*
         version: link:../content-runtime
@@ -479,16 +479,16 @@ importers:
         version: 2.1.1(@chakra-ui/system@2.6.2)(react@18.3.1)
       '@chakra-ui/react':
         specifier: ^2.8.2
-        version: 2.8.2(@emotion/react@11.13.3)(@emotion/styled@11.13.0)(@types/react@18.3.9)(framer-motion@11.5.4)(react-dom@18.3.1)(react@18.3.1)
+        version: 2.8.2(@emotion/react@11.13.3)(@emotion/styled@11.13.0)(@types/react@18.3.10)(framer-motion@11.5.4)(react-dom@18.3.1)(react@18.3.1)
       '@coinmasters/types':
         specifier: ^4.7.63
         version: 4.7.63
       '@emotion/react':
         specifier: ^11.13.3
-        version: 11.13.3(@types/react@18.3.9)(react@18.3.1)
+        version: 11.13.3(@types/react@18.3.10)(react@18.3.1)
       '@emotion/styled':
         specifier: ^11.13.0
-        version: 11.13.0(@emotion/react@11.13.3)(@types/react@18.3.9)(react@18.3.1)
+        version: 11.13.0(@emotion/react@11.13.3)(@types/react@18.3.10)(react@18.3.1)
       '@extension/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -498,9 +498,12 @@ importers:
       '@pioneer-platform/helpers':
         specifier: ^4.0.12
         version: 4.0.12
+      '@pioneer-platform/pioneer-caip':
+        specifier: ^9.2.32
+        version: 9.2.32
       '@pioneer-platform/pioneer-coins':
         specifier: ^9.2.23
-        version: 9.2.23(@types/node@22.7.4)
+        version: 9.2.23(@types/node@18.19.54)
       axios:
         specifier: ^1.7.7
         version: 1.7.7
@@ -847,7 +850,7 @@ packages:
       '@emotion/react': '>=10.0.35'
       react: '>=18'
     dependencies:
-      '@emotion/react': 11.13.3(@types/react@18.3.9)(react@18.3.1)
+      '@emotion/react': 11.13.3(@types/react@18.3.10)(react@18.3.1)
       react: 18.3.1
     dev: false
 
@@ -888,14 +891,14 @@ packages:
     resolution: {integrity: sha512-IGM/yGUHS+8TOQrZGpAKOJl/xGBrmRYJrmbHfUE7zrG3PpQyXvbLDP1M+RggkCFVgHlJi2wpYIf0QtQlU0XZfw==}
     dev: false
 
-  /@chakra-ui/focus-lock@2.1.0(@types/react@18.3.9)(react@18.3.1):
+  /@chakra-ui/focus-lock@2.1.0(@types/react@18.3.10)(react@18.3.1):
     resolution: {integrity: sha512-EmGx4PhWGjm4dpjRqM4Aa+rCWBxP+Rq8Uc/nAVnD4YVqkEhBkrPTpui2lnjsuxqNaZ24fIAZ10cF1hlpemte/w==}
     peerDependencies:
       react: '>=18'
     dependencies:
       '@chakra-ui/dom-utils': 2.1.0
       react: 18.3.1
-      react-focus-lock: 2.13.2(@types/react@18.3.9)(react@18.3.1)
+      react-focus-lock: 2.13.2(@types/react@18.3.10)(react@18.3.1)
     transitivePeerDependencies:
       - '@types/react'
     dev: false
@@ -1044,7 +1047,7 @@ packages:
       react: 18.3.1
     dev: false
 
-  /@chakra-ui/modal@2.3.1(@chakra-ui/system@2.6.2)(@types/react@18.3.9)(framer-motion@11.5.4)(react-dom@18.3.1)(react@18.3.1):
+  /@chakra-ui/modal@2.3.1(@chakra-ui/system@2.6.2)(@types/react@18.3.10)(framer-motion@11.5.4)(react-dom@18.3.1)(react@18.3.1):
     resolution: {integrity: sha512-TQv1ZaiJMZN+rR9DK0snx/OPwmtaGH1HbZtlYt4W4s6CzyK541fxLRTjIXfEzIGpvNW+b6VFuFjbcR78p4DEoQ==}
     peerDependencies:
       '@chakra-ui/system': '>=2.0.0'
@@ -1053,7 +1056,7 @@ packages:
       react-dom: '>=18'
     dependencies:
       '@chakra-ui/close-button': 2.1.1(@chakra-ui/system@2.6.2)(react@18.3.1)
-      '@chakra-ui/focus-lock': 2.1.0(@types/react@18.3.9)(react@18.3.1)
+      '@chakra-ui/focus-lock': 2.1.0(@types/react@18.3.10)(react@18.3.1)
       '@chakra-ui/portal': 2.1.0(react-dom@18.3.1)(react@18.3.1)
       '@chakra-ui/react-context': 2.1.0(react@18.3.1)
       '@chakra-ui/react-types': 2.0.7(react@18.3.1)
@@ -1065,7 +1068,7 @@ packages:
       framer-motion: 11.5.4(react-dom@18.3.1)(react@18.3.1)
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
-      react-remove-scroll: 2.6.0(@types/react@18.3.9)(react@18.3.1)
+      react-remove-scroll: 2.6.0(@types/react@18.3.10)(react@18.3.1)
     transitivePeerDependencies:
       - '@types/react'
     dev: false
@@ -1186,8 +1189,8 @@ packages:
       '@chakra-ui/react-env': 3.1.0(react@18.3.1)
       '@chakra-ui/system': 2.6.2(@emotion/react@11.13.3)(@emotion/styled@11.13.0)(react@18.3.1)
       '@chakra-ui/utils': 2.0.15
-      '@emotion/react': 11.13.3(@types/react@18.3.9)(react@18.3.1)
-      '@emotion/styled': 11.13.0(@emotion/react@11.13.3)(@types/react@18.3.9)(react@18.3.1)
+      '@emotion/react': 11.13.3(@types/react@18.3.10)(react@18.3.1)
+      '@emotion/styled': 11.13.0(@emotion/react@11.13.3)(@types/react@18.3.10)(react@18.3.1)
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
     dev: false
@@ -1403,7 +1406,7 @@ packages:
       react: 18.3.1
     dev: false
 
-  /@chakra-ui/react@2.8.2(@emotion/react@11.13.3)(@emotion/styled@11.13.0)(@types/react@18.3.9)(framer-motion@11.5.4)(react-dom@18.3.1)(react@18.3.1):
+  /@chakra-ui/react@2.8.2(@emotion/react@11.13.3)(@emotion/styled@11.13.0)(@types/react@18.3.10)(framer-motion@11.5.4)(react-dom@18.3.1)(react@18.3.1):
     resolution: {integrity: sha512-Hn0moyxxyCDKuR9ywYpqgX8dvjqwu9ArwpIb9wHNYjnODETjLwazgNIliCVBRcJvysGRiV51U2/JtJVrpeCjUQ==}
     peerDependencies:
       '@emotion/react': ^11.0.0
@@ -1424,7 +1427,7 @@ packages:
       '@chakra-ui/counter': 2.1.0(react@18.3.1)
       '@chakra-ui/css-reset': 2.3.0(@emotion/react@11.13.3)(react@18.3.1)
       '@chakra-ui/editable': 3.1.0(@chakra-ui/system@2.6.2)(react@18.3.1)
-      '@chakra-ui/focus-lock': 2.1.0(@types/react@18.3.9)(react@18.3.1)
+      '@chakra-ui/focus-lock': 2.1.0(@types/react@18.3.10)(react@18.3.1)
       '@chakra-ui/form-control': 2.2.0(@chakra-ui/system@2.6.2)(react@18.3.1)
       '@chakra-ui/hooks': 2.2.1(react@18.3.1)
       '@chakra-ui/icon': 3.2.0(@chakra-ui/system@2.6.2)(react@18.3.1)
@@ -1434,7 +1437,7 @@ packages:
       '@chakra-ui/live-region': 2.1.0(react@18.3.1)
       '@chakra-ui/media-query': 3.3.0(@chakra-ui/system@2.6.2)(react@18.3.1)
       '@chakra-ui/menu': 2.2.1(@chakra-ui/system@2.6.2)(framer-motion@11.5.4)(react@18.3.1)
-      '@chakra-ui/modal': 2.3.1(@chakra-ui/system@2.6.2)(@types/react@18.3.9)(framer-motion@11.5.4)(react-dom@18.3.1)(react@18.3.1)
+      '@chakra-ui/modal': 2.3.1(@chakra-ui/system@2.6.2)(@types/react@18.3.10)(framer-motion@11.5.4)(react-dom@18.3.1)(react@18.3.1)
       '@chakra-ui/number-input': 2.1.2(@chakra-ui/system@2.6.2)(react@18.3.1)
       '@chakra-ui/pin-input': 2.1.0(@chakra-ui/system@2.6.2)(react@18.3.1)
       '@chakra-ui/popover': 2.2.1(@chakra-ui/system@2.6.2)(framer-motion@11.5.4)(react@18.3.1)
@@ -1465,8 +1468,8 @@ packages:
       '@chakra-ui/transition': 2.1.0(framer-motion@11.5.4)(react@18.3.1)
       '@chakra-ui/utils': 2.0.15
       '@chakra-ui/visually-hidden': 2.2.0(@chakra-ui/system@2.6.2)(react@18.3.1)
-      '@emotion/react': 11.13.3(@types/react@18.3.9)(react@18.3.1)
-      '@emotion/styled': 11.13.0(@emotion/react@11.13.3)(@types/react@18.3.9)(react@18.3.1)
+      '@emotion/react': 11.13.3(@types/react@18.3.10)(react@18.3.1)
+      '@emotion/styled': 11.13.0(@emotion/react@11.13.3)(@types/react@18.3.10)(react@18.3.1)
       framer-motion: 11.5.4(react-dom@18.3.1)(react@18.3.1)
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
@@ -1605,8 +1608,8 @@ packages:
       '@chakra-ui/styled-system': 2.9.2
       '@chakra-ui/theme-utils': 2.0.21
       '@chakra-ui/utils': 2.0.15
-      '@emotion/react': 11.13.3(@types/react@18.3.9)(react@18.3.1)
-      '@emotion/styled': 11.13.0(@emotion/react@11.13.3)(@types/react@18.3.9)(react@18.3.1)
+      '@emotion/react': 11.13.3(@types/react@18.3.10)(react@18.3.1)
+      '@emotion/styled': 11.13.0(@emotion/react@11.13.3)(@types/react@18.3.10)(react@18.3.1)
       react: 18.3.1
       react-fast-compare: 3.2.2
     dev: false
@@ -1772,28 +1775,28 @@ packages:
       react: 18.3.1
     dev: false
 
-  /@coinmasters/api@3.7.66:
-    resolution: {integrity: sha512-FLvqwUFqMyac4Rq37gzIwkDrPnHh6SD1EQ3mIlpLKlmkoQGDiG8qDuRTb0wSbk+JtFIJ+mgwGQhvpO5LsKTKpg==}
+  /@coinmasters/api@3.7.68:
+    resolution: {integrity: sha512-t20+rv2nufiKWCH+ik+UGaMZlbhluBrtxa/Kz8Rxg/2em+1txzd5JN7AjSm8E9FJ8480Iam/+yZqRUD5tvI4pg==}
     dependencies:
-      '@coinmasters/types': 4.7.66
+      '@coinmasters/types': 4.7.68
       ky: 1.1.3
     dev: false
 
-  /@coinmasters/core@11.0.66(@coinmasters/api@3.7.66)(@coinmasters/toolbox-cosmos@11.0.66)(@coinmasters/toolbox-evm@11.0.66)(@coinmasters/toolbox-utxo@11.0.66)(@types/node@22.7.4):
-    resolution: {integrity: sha512-ZQOfqDtoHZTnl1DfN3J8FX0BgExemm9faN2b8++QQL36I/g9hfOuq8qoPMjOjU8xCD5tS6DydxZaEbs/TZUw+A==}
+  /@coinmasters/core@11.0.68(@coinmasters/api@3.7.68)(@coinmasters/toolbox-cosmos@11.0.68)(@coinmasters/toolbox-evm@11.0.68)(@coinmasters/toolbox-utxo@11.0.68)(@types/node@20.16.10):
+    resolution: {integrity: sha512-5oVBZoFxfpMvVo0QqqfBVQZtEhpkpdT+XVh/6fIumKzf1ZHzb+VzUSoaCdJidfTx98YYf2bKhEOOqd7UcWcCaQ==}
     peerDependencies:
-      '@coinmasters/api': 3.7.66
-      '@coinmasters/toolbox-cosmos': 11.0.66
-      '@coinmasters/toolbox-evm': 11.0.66
-      '@coinmasters/toolbox-utxo': 11.0.66
+      '@coinmasters/api': 3.7.68
+      '@coinmasters/toolbox-cosmos': 11.0.68
+      '@coinmasters/toolbox-evm': 11.0.68
+      '@coinmasters/toolbox-utxo': 11.0.68
     dependencies:
-      '@coinmasters/api': 3.7.66
-      '@coinmasters/toolbox-cosmos': 11.0.66(@pioneer-platform/helpers@4.0.12)
-      '@coinmasters/toolbox-evm': 11.0.66(@pioneer-platform/helpers@4.0.12)
-      '@coinmasters/toolbox-utxo': 11.0.66
-      '@coinmasters/types': 4.7.66
+      '@coinmasters/api': 3.7.68
+      '@coinmasters/toolbox-cosmos': 11.0.68(@pioneer-platform/helpers@4.0.12)
+      '@coinmasters/toolbox-evm': 11.0.68(@pioneer-platform/helpers@4.0.12)
+      '@coinmasters/toolbox-utxo': 11.0.68
+      '@coinmasters/types': 4.7.68
       '@pioneer-platform/helpers': 4.0.12
-      '@pioneer-platform/loggerdog': 8.3.1(@types/node@22.7.4)
+      '@pioneer-platform/loggerdog': 8.3.1(@types/node@20.16.10)
       '@pioneer-platform/pioneer-caip': 9.2.32
     transitivePeerDependencies:
       - '@swc/core'
@@ -1807,22 +1810,22 @@ packages:
       idb: 8.0.0
     dev: false
 
-  /@coinmasters/pioneer-sdk@4.7.66(@pioneer-platform/helpers@4.0.12)(@types/node@22.7.4):
-    resolution: {integrity: sha512-k/spxL936qYhw+99kAwe5Bs6MSi5A8+p9WNszjTLCzlhRN+bGvs3oqwGlZ4Sp5ZehdsEdTjLV6W7ne3tFiM77w==}
+  /@coinmasters/pioneer-sdk@4.7.68(@pioneer-platform/helpers@4.0.12)(@types/node@20.16.10):
+    resolution: {integrity: sha512-E7vtCxXHlCU4K1GYhrK1fkbSGsE9n9mXFt+4mP9OqWUMsdRU9va44R/MiUzfTA4VrnEeaJn7bxraGob0rA9lRA==}
     dependencies:
-      '@coinmasters/api': 3.7.66
-      '@coinmasters/core': 11.0.66(@coinmasters/api@3.7.66)(@coinmasters/toolbox-cosmos@11.0.66)(@coinmasters/toolbox-evm@11.0.66)(@coinmasters/toolbox-utxo@11.0.66)(@types/node@22.7.4)
-      '@coinmasters/tokens': 3.7.66
-      '@coinmasters/toolbox-cosmos': 11.0.66(@pioneer-platform/helpers@4.0.12)
-      '@coinmasters/toolbox-evm': 11.0.66(@pioneer-platform/helpers@4.0.12)
-      '@coinmasters/toolbox-ripple': 11.0.66(@pioneer-platform/helpers@4.0.12)
-      '@coinmasters/toolbox-utxo': 11.0.66
-      '@coinmasters/types': 4.7.66
-      '@pioneer-platform/loggerdog': 8.3.1(@types/node@22.7.4)
+      '@coinmasters/api': 3.7.68
+      '@coinmasters/core': 11.0.68(@coinmasters/api@3.7.68)(@coinmasters/toolbox-cosmos@11.0.68)(@coinmasters/toolbox-evm@11.0.68)(@coinmasters/toolbox-utxo@11.0.68)(@types/node@20.16.10)
+      '@coinmasters/tokens': 3.7.68
+      '@coinmasters/toolbox-cosmos': 11.0.68(@pioneer-platform/helpers@4.0.12)
+      '@coinmasters/toolbox-evm': 11.0.68(@pioneer-platform/helpers@4.0.12)
+      '@coinmasters/toolbox-ripple': 11.0.68(@pioneer-platform/helpers@4.0.12)
+      '@coinmasters/toolbox-utxo': 11.0.68
+      '@coinmasters/types': 4.7.68
+      '@pioneer-platform/loggerdog': 8.3.1(@types/node@20.16.10)
       '@pioneer-platform/pioneer-caip': 9.2.32
       '@pioneer-platform/pioneer-client': 9.2.5
-      '@pioneer-platform/pioneer-coins': 9.2.23(@types/node@22.7.4)
-      '@pioneer-platform/pioneer-discovery': 0.0.15(@types/node@22.7.4)
+      '@pioneer-platform/pioneer-coins': 9.2.23(@types/node@20.16.10)
+      '@pioneer-platform/pioneer-discovery': 0.0.15(@types/node@20.16.10)
     transitivePeerDependencies:
       - '@pioneer-platform/helpers'
       - '@swc/core'
@@ -1837,13 +1840,17 @@ packages:
     resolution: {integrity: sha512-nJRA0c7NZ5qPQinYQUvPv/SUioe+SjyaDbN0nTEhO85ntixjMXL0zQAHTK68JOkb1a26hLco0Io16DZvmfb8GQ==}
     dev: false
 
-  /@coinmasters/toolbox-cosmos@11.0.66(@pioneer-platform/helpers@4.0.12):
-    resolution: {integrity: sha512-IK7EEF//gwIdTMtgg7hJ3jyzaBoGUxgxiGLPnxbYedSeh56pWLt3PnT8yJQxYbL/pe2zeIpDtuGNIG5WwhSkcg==}
+  /@coinmasters/tokens@3.7.68:
+    resolution: {integrity: sha512-1/+yhtjWLQPFGZ/T8n7lH7tsxZ0ETjCuxgJtQ1odLhql1sC7Rxqkpf3HqEn9OA8pMbSBiCZNsyV43h7/WD/MpQ==}
+    dev: false
+
+  /@coinmasters/toolbox-cosmos@11.0.68(@pioneer-platform/helpers@4.0.12):
+    resolution: {integrity: sha512-0GekKYGvO/kYyBr38kk9Izy7RXh3/ecTtXH7IpNPh4uARBmOtfHytGCQFtcFhKS3aNTv4qo8UgfBZ1v+GM1cfA==}
     peerDependencies:
       '@pioneer-platform/helpers': ^4.0.12
     dependencies:
-      '@coinmasters/api': 3.7.66
-      '@coinmasters/types': 4.7.66
+      '@coinmasters/api': 3.7.68
+      '@coinmasters/types': 4.7.68
       '@cosmjs/amino': 0.32.0
       '@cosmjs/crypto': 0.32.0
       '@cosmjs/encoding': 0.32.0
@@ -1867,12 +1874,12 @@ packages:
       - utf-8-validate
     dev: false
 
-  /@coinmasters/toolbox-evm@11.0.66(@pioneer-platform/helpers@4.0.12):
-    resolution: {integrity: sha512-Q548o58hpRKFHxR3seIbge2btKJHTQx8ZsNlnalal8IgOnsoancK9SsJQo7J5ncEQ6hRIFnbqbmwQggZcHQMGQ==}
+  /@coinmasters/toolbox-evm@11.0.68(@pioneer-platform/helpers@4.0.12):
+    resolution: {integrity: sha512-yxxKh7fE450DofhNAZ3i//pY0yRBtrXrGOgxXl/wqR36X3Jccm8Aof4V4WVWRhtZSNCIgo4yN6JnTe5yFGAMgQ==}
     peerDependencies:
       '@pioneer-platform/helpers': ^4.0.12
     dependencies:
-      '@coinmasters/types': 4.7.66
+      '@coinmasters/types': 4.7.68
       '@pioneer-platform/helpers': 4.0.12
       '@pioneer-platform/pioneer-caip': 9.2.32
       ethers: 6.9.0
@@ -1881,13 +1888,13 @@ packages:
       - utf-8-validate
     dev: false
 
-  /@coinmasters/toolbox-ripple@11.0.66(@pioneer-platform/helpers@4.0.12):
-    resolution: {integrity: sha512-Gt3IzFPyt4l/4jeNsa/wZQz3M6P2dt8ceIGv50fVTRe8tDZ5bXwuUoMPlonEvf/7mNd/9QuG9bIupmbQzzAV4g==}
+  /@coinmasters/toolbox-ripple@11.0.68(@pioneer-platform/helpers@4.0.12):
+    resolution: {integrity: sha512-rEftZfPxEjFxMkAjGG+uuOmYe3THmPraSQqPqQ9GW1X89kP6akp1YWUSscOeOG+KgbyQbu9+FXFLskIESd0iug==}
     peerDependencies:
       '@pioneer-platform/helpers': latest
     dependencies:
-      '@coinmasters/api': 3.7.66
-      '@coinmasters/types': 4.7.66
+      '@coinmasters/api': 3.7.68
+      '@coinmasters/types': 4.7.68
       '@cosmjs/amino': 0.31.1
       '@cosmjs/crypto': 0.31.1
       '@cosmjs/encoding': 0.31.1
@@ -1911,10 +1918,10 @@ packages:
       - utf-8-validate
     dev: false
 
-  /@coinmasters/toolbox-utxo@11.0.66:
-    resolution: {integrity: sha512-zY91oWHkEfP7v9InDXq0KQ1KXn/AizHPeqCIarybjNlOJdC2TIa9W4BDFEQLf7Bbkw0TQSAmkZgdC6zCOZZwyQ==}
+  /@coinmasters/toolbox-utxo@11.0.68:
+    resolution: {integrity: sha512-SlxXuDIGXJ8PeZ01eK78HEbEjHPpBqRV3R8kSGTn0dNuzWyXMCsqS6kUP3GJa8Zw+v1jfwXBEn792Okt3j8uhA==}
     dependencies:
-      '@coinmasters/types': 4.7.66
+      '@coinmasters/types': 4.7.68
       '@pioneer-platform/helpers': 4.0.12
       '@pioneer-platform/pioneer-caip': 9.2.32
       '@psf/bitcoincashjs-lib': 4.0.3
@@ -1939,28 +1946,32 @@ packages:
     resolution: {integrity: sha512-XEv71gZz49ILwePIeuz8eo5gVJ7zdXTAzuzISjZ3gldrXVpfloDHdUb8m3hJPFez1/kAcuNlyEh7dBdNS1BwzA==}
     dev: false
 
-  /@coinmasters/wallet-keepkey@13.0.66(@coinmasters/toolbox-cosmos@11.0.66)(@coinmasters/toolbox-evm@11.0.66)(@coinmasters/toolbox-ripple@11.0.66)(@coinmasters/toolbox-utxo@11.0.66)(@keepkey/keepkey-sdk@0.2.57)(@types/node@22.7.4)(bitcoinjs-lib@5.2.0):
-    resolution: {integrity: sha512-qj4nR4MkF+9HXXLELe6aii92Iz+NoVArdaetjjfsyK7oNSZbu8OGU4uXqQoMZOgZpx83ZzuwU6P62I5+nbzmhg==}
+  /@coinmasters/types@4.7.68:
+    resolution: {integrity: sha512-/odrNw0mmSouJQFrHIjUxMTqQ8braWKNjR5c7T75+1xe/4QGoMYUxYhwi/JNomk1Xa1VRHxDiN+mH/rUz25Q7Q==}
+    dev: false
+
+  /@coinmasters/wallet-keepkey@13.0.68(@coinmasters/toolbox-cosmos@11.0.68)(@coinmasters/toolbox-evm@11.0.68)(@coinmasters/toolbox-ripple@11.0.68)(@coinmasters/toolbox-utxo@11.0.68)(@keepkey/keepkey-sdk@0.2.57)(@types/node@20.16.10)(bitcoinjs-lib@5.2.0):
+    resolution: {integrity: sha512-+9Oscsqyjv3Aj4/28ysoPNIAWAFc4+bGHPfvaHFdcnW/GpXVB3ICIQLsMhgM+9MBLXJm4AZcw+5JdIc7sGggeQ==}
     peerDependencies:
-      '@coinmasters/toolbox-cosmos': 11.0.66
-      '@coinmasters/toolbox-evm': 11.0.66
-      '@coinmasters/toolbox-ripple': 11.0.66
-      '@coinmasters/toolbox-utxo': 11.0.66
+      '@coinmasters/toolbox-cosmos': 11.0.68
+      '@coinmasters/toolbox-evm': 11.0.68
+      '@coinmasters/toolbox-ripple': 11.0.68
+      '@coinmasters/toolbox-utxo': 11.0.68
       '@keepkey/keepkey-sdk': ^0.2.57
       bitcoinjs-lib: 5.2.0
     dependencies:
-      '@coinmasters/tokens': 3.7.66
-      '@coinmasters/toolbox-cosmos': 11.0.66(@pioneer-platform/helpers@4.0.12)
-      '@coinmasters/toolbox-evm': 11.0.66(@pioneer-platform/helpers@4.0.12)
-      '@coinmasters/toolbox-ripple': 11.0.66(@pioneer-platform/helpers@4.0.12)
-      '@coinmasters/toolbox-utxo': 11.0.66
-      '@coinmasters/types': 4.7.66
+      '@coinmasters/tokens': 3.7.68
+      '@coinmasters/toolbox-cosmos': 11.0.68(@pioneer-platform/helpers@4.0.12)
+      '@coinmasters/toolbox-evm': 11.0.68(@pioneer-platform/helpers@4.0.12)
+      '@coinmasters/toolbox-ripple': 11.0.68(@pioneer-platform/helpers@4.0.12)
+      '@coinmasters/toolbox-utxo': 11.0.68
+      '@coinmasters/types': 4.7.68
       '@cosmjs/math': 0.32.4
       '@cosmjs/stargate': 0.31.1
       '@keepkey/keepkey-sdk': 0.2.57
-      '@pioneer-platform/loggerdog': 8.3.1(@types/node@22.7.4)
+      '@pioneer-platform/loggerdog': 8.3.1(@types/node@20.16.10)
       '@pioneer-platform/pioneer-caip': 9.2.32
-      '@pioneer-platform/pioneer-coins': 9.2.23(@types/node@22.7.4)
+      '@pioneer-platform/pioneer-coins': 9.2.23(@types/node@20.16.10)
       '@types/bchaddrjs': 0.4.0
       bchaddrjs: 0.5.2
       bitcoinjs-lib: 5.2.0
@@ -2341,7 +2352,7 @@ packages:
     resolution: {integrity: sha512-30FAj7/EoJ5mwVPOWhAyCX+FPfMDrVecJAM+Iw9NRoSl4BBAQeqj4cApHHUXOVvIPgLVDsCFoz/hGD+5QQD1GQ==}
     dev: false
 
-  /@emotion/react@11.13.3(@types/react@18.3.9)(react@18.3.1):
+  /@emotion/react@11.13.3(@types/react@18.3.10)(react@18.3.1):
     resolution: {integrity: sha512-lIsdU6JNrmYfJ5EbUCf4xW1ovy5wKQ2CkPRM4xogziOxH1nXxBSjpC9YqbFAP7circxMfYp+6x676BqWcEiixg==}
     peerDependencies:
       '@types/react': '*'
@@ -2357,7 +2368,7 @@ packages:
       '@emotion/use-insertion-effect-with-fallbacks': 1.1.0(react@18.3.1)
       '@emotion/utils': 1.4.0
       '@emotion/weak-memoize': 0.4.0
-      '@types/react': 18.3.9
+      '@types/react': 18.3.10
       hoist-non-react-statics: 3.3.2
       react: 18.3.1
     transitivePeerDependencies:
@@ -2378,7 +2389,7 @@ packages:
     resolution: {integrity: sha512-fTBW9/8r2w3dXWYM4HCB1Rdp8NLibOw2+XELH5m5+AkWiL/KqYX6dc0kKYlaYyKjrQ6ds33MCdMPEwgs2z1rqg==}
     dev: false
 
-  /@emotion/styled@11.13.0(@emotion/react@11.13.3)(@types/react@18.3.9)(react@18.3.1):
+  /@emotion/styled@11.13.0(@emotion/react@11.13.3)(@types/react@18.3.10)(react@18.3.1):
     resolution: {integrity: sha512-tkzkY7nQhW/zC4hztlwucpT8QEZ6eUzpXDRhww/Eej4tFfO0FxQYWRyg/c5CCXa4d/f174kqeXYjuQRnhzf6dA==}
     peerDependencies:
       '@emotion/react': ^11.0.0-rc.0
@@ -2391,11 +2402,11 @@ packages:
       '@babel/runtime': 7.25.6
       '@emotion/babel-plugin': 11.12.0
       '@emotion/is-prop-valid': 1.3.0
-      '@emotion/react': 11.13.3(@types/react@18.3.9)(react@18.3.1)
+      '@emotion/react': 11.13.3(@types/react@18.3.10)(react@18.3.1)
       '@emotion/serialize': 1.3.1
       '@emotion/use-insertion-effect-with-fallbacks': 1.1.0(react@18.3.1)
       '@emotion/utils': 1.4.0
-      '@types/react': 18.3.9
+      '@types/react': 18.3.10
       react: 18.3.1
     transitivePeerDependencies:
       - supports-color
@@ -2933,7 +2944,7 @@ packages:
       '@inquirer/figures': 1.0.6
       '@inquirer/type': 2.0.0
       '@types/mute-stream': 0.0.4
-      '@types/node': 22.7.1
+      '@types/node': 22.7.4
       '@types/wrap-ansi': 3.0.0
       ansi-escapes: 4.3.2
       cli-width: 4.1.0
@@ -3087,7 +3098,7 @@ packages:
       '@jest/schemas': 29.6.3
       '@types/istanbul-lib-coverage': 2.0.6
       '@types/istanbul-reports': 3.0.4
-      '@types/node': 20.16.8
+      '@types/node': 22.7.4
       '@types/yargs': 17.0.33
       chalk: 4.1.2
     dev: true
@@ -3134,7 +3145,7 @@ packages:
     resolution: {integrity: sha512-II6FT7CDuvp0LxIrwMyGRNvR5bxxxtgVzNrHvDrlJj1c+tzF3yK7Mkgz+rUO/KKhm3NSgRaEUVdph8sgj6XYng==}
     dev: false
 
-  /@laynezh/vite-plugin-lib-assets@0.5.24(vite@5.4.8):
+  /@laynezh/vite-plugin-lib-assets@0.5.24(vite@5.4.3):
     resolution: {integrity: sha512-z1M8reWte/xP7xw+aFN0Euh9OinCjCzJ8HhLkvpz+6h6MSTyyA54xrxGmECx5QNd3bCwQlkGd7WAgkozjublCg==}
     peerDependencies:
       vite: ^3.0.0 || ^4.0.0 || ^5.0.0
@@ -3143,7 +3154,7 @@ packages:
       loader-utils: 3.3.1
       mrmime: 1.0.1
       semver: 7.6.3
-      vite: 5.4.8(@types/node@22.7.4)
+      vite: 5.4.3(@types/node@20.16.10)
     dev: true
 
   /@noble/curves@1.2.0:
@@ -3192,7 +3203,7 @@ packages:
     resolution: {integrity: sha512-yR2QxRsPxMQwict54SXB4l5Q33y4zgEv4ikGxwe+fyK/tSasK1lE44NyyhkDtT/5aLSFJ9Y6y2pBU8Ln0BsyCw==}
     dependencies:
       '@coinmasters/tokens': 3.7.66
-      '@coinmasters/types': 4.7.66
+      '@coinmasters/types': 4.7.68
       '@noble/hashes': 1.5.0
       '@pioneer-platform/loggerdog': 8.3.1(@types/node@18.19.54)
       '@types/node': 18.19.54
@@ -3215,11 +3226,11 @@ packages:
       - '@types/node'
     dev: false
 
-  /@pioneer-platform/loggerdog@8.3.1(@types/node@22.7.4):
+  /@pioneer-platform/loggerdog@8.3.1(@types/node@20.16.10):
     resolution: {integrity: sha512-0JTucwEb1nG+MrPBRaIEdj9ptzjKatphh75/Zc3rJ19qJI9gUUZVx6PgjMYIF9cdi0saqytz291WRgge7qOW5g==}
     dependencies:
       os: 0.1.2
-      ts-node: 10.9.2(@types/node@22.7.4)(typescript@5.6.2)
+      ts-node: 10.9.2(@types/node@20.16.10)(typescript@5.6.2)
       typescript: 5.6.2
     transitivePeerDependencies:
       - '@swc/core'
@@ -3239,10 +3250,10 @@ packages:
       - debug
     dev: false
 
-  /@pioneer-platform/pioneer-coins@9.2.23(@types/node@22.7.4):
+  /@pioneer-platform/pioneer-coins@9.2.23(@types/node@18.19.54):
     resolution: {integrity: sha512-4UET5BANaOcMaYOhr9I//+6iIl2ffryljoxhqZDS6wb0HWPOqj/46oOcJ1/dt24JEr8+jJJxGWTVX36nCzwvyQ==}
     dependencies:
-      '@pioneer-platform/loggerdog': 8.3.1(@types/node@22.7.4)
+      '@pioneer-platform/loggerdog': 8.3.1(@types/node@18.19.54)
       bignumber.js: 9.1.2
       bs58check: 3.0.1
     transitivePeerDependencies:
@@ -3251,12 +3262,24 @@ packages:
       - '@types/node'
     dev: false
 
-  /@pioneer-platform/pioneer-discovery@0.0.15(@types/node@22.7.4):
+  /@pioneer-platform/pioneer-coins@9.2.23(@types/node@20.16.10):
+    resolution: {integrity: sha512-4UET5BANaOcMaYOhr9I//+6iIl2ffryljoxhqZDS6wb0HWPOqj/46oOcJ1/dt24JEr8+jJJxGWTVX36nCzwvyQ==}
+    dependencies:
+      '@pioneer-platform/loggerdog': 8.3.1(@types/node@20.16.10)
+      bignumber.js: 9.1.2
+      bs58check: 3.0.1
+    transitivePeerDependencies:
+      - '@swc/core'
+      - '@swc/wasm'
+      - '@types/node'
+    dev: false
+
+  /@pioneer-platform/pioneer-discovery@0.0.15(@types/node@20.16.10):
     resolution: {integrity: sha512-4o5g7cmf/bx+pzE9i+qC/QyCRv5oyqO9KzH199hr2fXwcpsfiMAjIXMWC0akasVXjsSWdJ6EnWeY6fWifwpDLg==}
     dependencies:
-      '@coinmasters/tokens': 3.7.66
+      '@coinmasters/tokens': 3.7.68
       '@coinmasters/types': 4.7.66
-      '@pioneer-platform/loggerdog': 8.3.1(@types/node@22.7.4)
+      '@pioneer-platform/loggerdog': 8.3.1(@types/node@20.16.10)
       '@pioneer-platform/pioneer-caip': 9.2.32
     transitivePeerDependencies:
       - '@swc/core'
@@ -3414,14 +3437,6 @@ packages:
     dev: true
     optional: true
 
-  /@rollup/rollup-android-arm-eabi@4.22.4:
-    resolution: {integrity: sha512-Fxamp4aEZnfPOcGA8KSNEohV8hX7zVHOemC8jVBoBUHu5zpJK/Eu3uJwt6BMgy9fkvzxDaurgj96F/NiLukF2w==}
-    cpu: [arm]
-    os: [android]
-    requiresBuild: true
-    dev: true
-    optional: true
-
   /@rollup/rollup-android-arm-eabi@4.22.5:
     resolution: {integrity: sha512-SU5cvamg0Eyu/F+kLeMXS7GoahL+OoizlclVFX3l5Ql6yNlywJJ0OuqTzUx0v+aHhPHEB/56CT06GQrRrGNYww==}
     cpu: [arm]
@@ -3432,14 +3447,6 @@ packages:
 
   /@rollup/rollup-android-arm64@4.21.3:
     resolution: {integrity: sha512-zrt8ecH07PE3sB4jPOggweBjJMzI1JG5xI2DIsUbkA+7K+Gkjys6eV7i9pOenNSDJH3eOr/jLb/PzqtmdwDq5g==}
-    cpu: [arm64]
-    os: [android]
-    requiresBuild: true
-    dev: true
-    optional: true
-
-  /@rollup/rollup-android-arm64@4.22.4:
-    resolution: {integrity: sha512-VXoK5UMrgECLYaMuGuVTOx5kcuap1Jm8g/M83RnCHBKOqvPPmROFJGQaZhGccnsFtfXQ3XYa4/jMCJvZnbJBdA==}
     cpu: [arm64]
     os: [android]
     requiresBuild: true
@@ -3462,14 +3469,6 @@ packages:
     dev: true
     optional: true
 
-  /@rollup/rollup-darwin-arm64@4.22.4:
-    resolution: {integrity: sha512-xMM9ORBqu81jyMKCDP+SZDhnX2QEVQzTcC6G18KlTQEzWK8r/oNZtKuZaCcHhnsa6fEeOBionoyl5JsAbE/36Q==}
-    cpu: [arm64]
-    os: [darwin]
-    requiresBuild: true
-    dev: true
-    optional: true
-
   /@rollup/rollup-darwin-arm64@4.22.5:
     resolution: {integrity: sha512-250ZGg4ipTL0TGvLlfACkIxS9+KLtIbn7BCZjsZj88zSg2Lvu3Xdw6dhAhfe/FjjXPVNCtcSp+WZjVsD3a/Zlw==}
     cpu: [arm64]
@@ -3480,14 +3479,6 @@ packages:
 
   /@rollup/rollup-darwin-x64@4.21.3:
     resolution: {integrity: sha512-L1M0vKGO5ASKntqtsFEjTq/fD91vAqnzeaF6sfNAy55aD+Hi2pBI5DKwCO+UNDQHWsDViJLqshxOahXyLSh3EA==}
-    cpu: [x64]
-    os: [darwin]
-    requiresBuild: true
-    dev: true
-    optional: true
-
-  /@rollup/rollup-darwin-x64@4.22.4:
-    resolution: {integrity: sha512-aJJyYKQwbHuhTUrjWjxEvGnNNBCnmpHDvrb8JFDbeSH3m2XdHcxDd3jthAzvmoI8w/kSjd2y0udT+4okADsZIw==}
     cpu: [x64]
     os: [darwin]
     requiresBuild: true
@@ -3510,14 +3501,6 @@ packages:
     dev: true
     optional: true
 
-  /@rollup/rollup-linux-arm-gnueabihf@4.22.4:
-    resolution: {integrity: sha512-j63YtCIRAzbO+gC2L9dWXRh5BFetsv0j0va0Wi9epXDgU/XUi5dJKo4USTttVyK7fGw2nPWK0PbAvyliz50SCQ==}
-    cpu: [arm]
-    os: [linux]
-    requiresBuild: true
-    dev: true
-    optional: true
-
   /@rollup/rollup-linux-arm-gnueabihf@4.22.5:
     resolution: {integrity: sha512-PNqXYmdNFyWNg0ma5LdY8wP+eQfdvyaBAojAXgO7/gs0Q/6TQJVXAXe8gwW9URjbS0YAammur0fynYGiWsKlXw==}
     cpu: [arm]
@@ -3528,14 +3511,6 @@ packages:
 
   /@rollup/rollup-linux-arm-musleabihf@4.21.3:
     resolution: {integrity: sha512-zmjbSphplZlau6ZTkxd3+NMtE4UKVy7U4aVFMmHcgO5CUbw17ZP6QCgyxhzGaU/wFFdTfiojjbLG3/0p9HhAqA==}
-    cpu: [arm]
-    os: [linux]
-    requiresBuild: true
-    dev: true
-    optional: true
-
-  /@rollup/rollup-linux-arm-musleabihf@4.22.4:
-    resolution: {integrity: sha512-dJnWUgwWBX1YBRsuKKMOlXCzh2Wu1mlHzv20TpqEsfdZLb3WoJW2kIEsGwLkroYf24IrPAvOT/ZQ2OYMV6vlrg==}
     cpu: [arm]
     os: [linux]
     requiresBuild: true
@@ -3558,14 +3533,6 @@ packages:
     dev: true
     optional: true
 
-  /@rollup/rollup-linux-arm64-gnu@4.22.4:
-    resolution: {integrity: sha512-AdPRoNi3NKVLolCN/Sp4F4N1d98c4SBnHMKoLuiG6RXgoZ4sllseuGioszumnPGmPM2O7qaAX/IJdeDU8f26Aw==}
-    cpu: [arm64]
-    os: [linux]
-    requiresBuild: true
-    dev: true
-    optional: true
-
   /@rollup/rollup-linux-arm64-gnu@4.22.5:
     resolution: {integrity: sha512-oTXQeJHRbOnwRnRffb6bmqmUugz0glXaPyspp4gbQOPVApdpRrY/j7KP3lr7M8kTfQTyrBUzFjj5EuHAhqH4/w==}
     cpu: [arm64]
@@ -3576,14 +3543,6 @@ packages:
 
   /@rollup/rollup-linux-arm64-musl@4.21.3:
     resolution: {integrity: sha512-MnvSPGO8KJXIMGlQDYfvYS3IosFN2rKsvxRpPO2l2cum+Z3exiExLwVU+GExL96pn8IP+GdH8Tz70EpBhO0sIQ==}
-    cpu: [arm64]
-    os: [linux]
-    requiresBuild: true
-    dev: true
-    optional: true
-
-  /@rollup/rollup-linux-arm64-musl@4.22.4:
-    resolution: {integrity: sha512-Gl0AxBtDg8uoAn5CCqQDMqAx22Wx22pjDOjBdmG0VIWX3qUBHzYmOKh8KXHL4UpogfJ14G4wk16EQogF+v8hmA==}
     cpu: [arm64]
     os: [linux]
     requiresBuild: true
@@ -3606,14 +3565,6 @@ packages:
     dev: true
     optional: true
 
-  /@rollup/rollup-linux-powerpc64le-gnu@4.22.4:
-    resolution: {integrity: sha512-3aVCK9xfWW1oGQpTsYJJPF6bfpWfhbRnhdlyhak2ZiyFLDaayz0EP5j9V1RVLAAxlmWKTDfS9wyRyY3hvhPoOg==}
-    cpu: [ppc64]
-    os: [linux]
-    requiresBuild: true
-    dev: true
-    optional: true
-
   /@rollup/rollup-linux-powerpc64le-gnu@4.22.5:
     resolution: {integrity: sha512-TMYu+DUdNlgBXING13rHSfUc3Ky5nLPbWs4bFnT+R6Vu3OvXkTkixvvBKk8uO4MT5Ab6lC3U7x8S8El2q5o56w==}
     cpu: [ppc64]
@@ -3624,14 +3575,6 @@ packages:
 
   /@rollup/rollup-linux-riscv64-gnu@4.21.3:
     resolution: {integrity: sha512-yXH6K6KfqGXaxHrtr+Uoy+JpNlUlI46BKVyonGiaD74ravdnF9BUNC+vV+SIuB96hUMGShhKV693rF9QDfO6nQ==}
-    cpu: [riscv64]
-    os: [linux]
-    requiresBuild: true
-    dev: true
-    optional: true
-
-  /@rollup/rollup-linux-riscv64-gnu@4.22.4:
-    resolution: {integrity: sha512-ePYIir6VYnhgv2C5Xe9u+ico4t8sZWXschR6fMgoPUK31yQu7hTEJb7bCqivHECwIClJfKgE7zYsh1qTP3WHUA==}
     cpu: [riscv64]
     os: [linux]
     requiresBuild: true
@@ -3654,14 +3597,6 @@ packages:
     dev: true
     optional: true
 
-  /@rollup/rollup-linux-s390x-gnu@4.22.4:
-    resolution: {integrity: sha512-GqFJ9wLlbB9daxhVlrTe61vJtEY99/xB3C8e4ULVsVfflcpmR6c8UZXjtkMA6FhNONhj2eA5Tk9uAVw5orEs4Q==}
-    cpu: [s390x]
-    os: [linux]
-    requiresBuild: true
-    dev: true
-    optional: true
-
   /@rollup/rollup-linux-s390x-gnu@4.22.5:
     resolution: {integrity: sha512-bR5nCojtpuMss6TDEmf/jnBnzlo+6n1UhgwqUvRoe4VIotC7FG1IKkyJbwsT7JDsF2jxR+NTnuOwiGv0hLyDoQ==}
     cpu: [s390x]
@@ -3672,14 +3607,6 @@ packages:
 
   /@rollup/rollup-linux-x64-gnu@4.21.3:
     resolution: {integrity: sha512-kZPbX/NOPh0vhS5sI+dR8L1bU2cSO9FgxwM8r7wHzGydzfSjLRCFAT87GR5U9scj2rhzN3JPYVC7NoBbl4FZ0g==}
-    cpu: [x64]
-    os: [linux]
-    requiresBuild: true
-    dev: true
-    optional: true
-
-  /@rollup/rollup-linux-x64-gnu@4.22.4:
-    resolution: {integrity: sha512-87v0ol2sH9GE3cLQLNEy0K/R0pz1nvg76o8M5nhMR0+Q+BBGLnb35P0fVz4CQxHYXaAOhE8HhlkaZfsdUOlHwg==}
     cpu: [x64]
     os: [linux]
     requiresBuild: true
@@ -3702,14 +3629,6 @@ packages:
     dev: true
     optional: true
 
-  /@rollup/rollup-linux-x64-musl@4.22.4:
-    resolution: {integrity: sha512-UV6FZMUgePDZrFjrNGIWzDo/vABebuXBhJEqrHxrGiU6HikPy0Z3LfdtciIttEUQfuDdCn8fqh7wiFJjCNwO+g==}
-    cpu: [x64]
-    os: [linux]
-    requiresBuild: true
-    dev: true
-    optional: true
-
   /@rollup/rollup-linux-x64-musl@4.22.5:
     resolution: {integrity: sha512-uBa2e28ohzNNwjr6Uxm4XyaA1M/8aTgfF2T7UIlElLaeXkgpmIJ2EitVNQxjO9xLLLy60YqAgKn/AqSpCUkE9g==}
     cpu: [x64]
@@ -3720,14 +3639,6 @@ packages:
 
   /@rollup/rollup-win32-arm64-msvc@4.21.3:
     resolution: {integrity: sha512-9isNzeL34yquCPyerog+IMCNxKR8XYmGd0tHSV+OVx0TmE0aJOo9uw4fZfUuk2qxobP5sug6vNdZR6u7Mw7Q+Q==}
-    cpu: [arm64]
-    os: [win32]
-    requiresBuild: true
-    dev: true
-    optional: true
-
-  /@rollup/rollup-win32-arm64-msvc@4.22.4:
-    resolution: {integrity: sha512-BjI+NVVEGAXjGWYHz/vv0pBqfGoUH0IGZ0cICTn7kB9PyjrATSkX+8WkguNjWoj2qSr1im/+tTGRaY+4/PdcQw==}
     cpu: [arm64]
     os: [win32]
     requiresBuild: true
@@ -3750,14 +3661,6 @@ packages:
     dev: true
     optional: true
 
-  /@rollup/rollup-win32-ia32-msvc@4.22.4:
-    resolution: {integrity: sha512-SiWG/1TuUdPvYmzmYnmd3IEifzR61Tragkbx9D3+R8mzQqDBz8v+BvZNDlkiTtI9T15KYZhP0ehn3Dld4n9J5g==}
-    cpu: [ia32]
-    os: [win32]
-    requiresBuild: true
-    dev: true
-    optional: true
-
   /@rollup/rollup-win32-ia32-msvc@4.22.5:
     resolution: {integrity: sha512-ElTYOh50InL8kzyUD6XsnPit7jYCKrphmddKAe1/Ytt74apOxDq5YEcbsiKs0fR3vff3jEneMM+3I7jbqaMyBg==}
     cpu: [ia32]
@@ -3768,14 +3671,6 @@ packages:
 
   /@rollup/rollup-win32-x64-msvc@4.21.3:
     resolution: {integrity: sha512-fOvu7PCQjAj4eWDEuD8Xz5gpzFqXzGlxHZozHP4b9Jxv9APtdxL6STqztDzMLuRXEc4UpXGGhx029Xgm91QBeA==}
-    cpu: [x64]
-    os: [win32]
-    requiresBuild: true
-    dev: true
-    optional: true
-
-  /@rollup/rollup-win32-x64-msvc@4.22.4:
-    resolution: {integrity: sha512-j8pPKp53/lq9lMXN57S8cFz0MynJk8OWNuUnXct/9KCpKU7DgU3bYMJhwWmcqC0UU29p8Lr0/7KEVcaM6bf47Q==}
     cpu: [x64]
     os: [win32]
     requiresBuild: true
@@ -4384,7 +4279,7 @@ packages:
     resolution: {integrity: sha512-ADvkowV7YnJfycZZxL2brluZ6STGW+9oKG37B422UePf2PCXuFA/XdERI0T18wtuWPx0tmFeZqq6MOXVk1IC+Q==}
     dependencies:
       '@types/filesystem': 0.0.36
-      '@types/har-format': 1.2.15
+      '@types/har-format': 1.2.16
     dev: true
 
   /@types/estree@1.0.5:
@@ -4405,8 +4300,8 @@ packages:
     resolution: {integrity: sha512-xFU8ZXTw4gd358lb2jw25nxY9QAgqn2+bKKjKOYfNCzN4DKCFetK7sPtrlpg66Ywe3vWY9FNxprZawAh9wfJ3g==}
     dev: true
 
-  /@types/har-format@1.2.15:
-    resolution: {integrity: sha512-RpQH4rXLuvTXKR0zqHq3go0RVXYv/YVqv4TnPH95VbwUxZdQlK1EtcMvQvMpDngHbt13Csh9Z4qT9AbkiQH5BA==}
+  /@types/har-format@1.2.16:
+    resolution: {integrity: sha512-fluxdy7ryD3MV6h8pTfTYpy/xQzCFC7m89nOH9y94cNqJ1mDIDPut7MnRHI3F6qRmh/cT2fUjG1MLdCNb4hE9A==}
     dev: true
 
   /@types/hast@2.3.10:
@@ -4463,7 +4358,7 @@ packages:
   /@types/mute-stream@0.0.4:
     resolution: {integrity: sha512-CPM9nzrCPPJHQNA9keH9CVkVI+WR5kMa+7XEs5jcGQ0VoAGnLv242w8lIVgwAEfmE4oufJRaTc9PNLQl0ioAow==}
     dependencies:
-      '@types/node': 20.16.8
+      '@types/node': 20.16.10
     dev: true
 
   /@types/node@10.12.18:
@@ -4480,17 +4375,10 @@ packages:
       undici-types: 5.26.5
     dev: false
 
-  /@types/node@20.16.8:
-    resolution: {integrity: sha512-sbo5JmfbZNkyDv+2HCccr9Y9ZkKJBMTru7UdAsCojMGjKNjdaOV73bqEW242QrHEZL8R4LbHMrW+FHB5lZ5/bw==}
+  /@types/node@20.16.10:
+    resolution: {integrity: sha512-vQUKgWTjEIRFCvK6CyriPH3MZYiYlNy0fKiEYHWbcoWLEgs4opurGGKlebrTLqdSMIbXImH6XExNiIyNUv3WpA==}
     dependencies:
       undici-types: 6.19.8
-    dev: true
-
-  /@types/node@22.7.1:
-    resolution: {integrity: sha512-adOMRLVmleuWs/5V/w5/l7o0chDK/az+5ncCsIapTKogsu/3MVWvSgP58qVTXi5IwpfGt8pMobNq9rOWtJyu5Q==}
-    dependencies:
-      undici-types: 6.19.8
-    dev: true
 
   /@types/node@22.7.4:
     resolution: {integrity: sha512-y+NPi1rFzDs1NdQHHToqeiX2TIS79SWEAw9GYhkkx8bD0ChpfqC+n2j5OXOCpzfojBEBt6DnEnnG9MY0zk1XLg==}
@@ -4517,11 +4405,11 @@ packages:
   /@types/react-dom@18.3.0:
     resolution: {integrity: sha512-EhwApuTmMBmXuFOikhQLIBUn6uFg81SwLMOAUgodJF14SOBOCMdU04gDoYi0WOJJHD144TL32z4yDqCW3dnkQg==}
     dependencies:
-      '@types/react': 18.3.9
+      '@types/react': 18.3.10
     dev: true
 
-  /@types/react@18.3.9:
-    resolution: {integrity: sha512-+BpAVyTpJkNWWSSnaLBk6ePpHLOGJKnEQNbINNovPWzvEUyAe3e+/d494QdEh71RekM/qV7lw6jzf1HGrJyAtQ==}
+  /@types/react@18.3.10:
+    resolution: {integrity: sha512-02sAAlBnP39JgXwkAq3PeU9DVaaGpZyF3MGcC0MKgQVkZor5IiiDAipVaxQHtDJAmO4GIy/rVBy/LzVj76Cyqg==}
     dependencies:
       '@types/prop-types': 15.7.13
       csstype: 3.1.3
@@ -4574,7 +4462,7 @@ packages:
     resolution: {integrity: sha512-oJoftv0LSuaDZE3Le4DbKX+KS9G36NzOeSap90UIK0yMA/NhKJhqlSGtNDORNRaIbQfzjXDrQa0ytJ6mNRGz/Q==}
     requiresBuild: true
     dependencies:
-      '@types/node': 20.16.8
+      '@types/node': 20.16.10
     dev: true
     optional: true
 
@@ -4709,13 +4597,13 @@ packages:
     resolution: {integrity: sha512-zuVdFrMJiuCDQUMCzQaD6KL28MjnqqN8XnAqiEq9PNm/hCPTSGfrXCOfwj1ow4LFb/tNymJPwsNbVePc1xFqrQ==}
     dev: true
 
-  /@vitejs/plugin-react-swc@3.7.0(vite@5.4.8):
+  /@vitejs/plugin-react-swc@3.7.0(vite@5.4.3):
     resolution: {integrity: sha512-yrknSb3Dci6svCd/qhHqhFPDSw0QtjumcqdKMoNNzmOl5lMXTTiqzjWtG4Qask2HdvvzaNgSunbQGet8/GrKdA==}
     peerDependencies:
       vite: ^4 || ^5
     dependencies:
       '@swc/core': 1.7.26
-      vite: 5.4.8(@types/node@20.16.8)
+      vite: 5.4.3(@types/node@20.16.10)
     transitivePeerDependencies:
       - '@swc/helpers'
     dev: true
@@ -4749,7 +4637,7 @@ packages:
     engines: {node: '>=18.20.0'}
     hasBin: true
     dependencies:
-      '@types/node': 20.16.8
+      '@types/node': 20.16.10
       '@vitest/snapshot': 1.6.0
       '@wdio/config': 9.0.8
       '@wdio/globals': 9.0.9(@wdio/logger@9.0.8)
@@ -4828,7 +4716,7 @@ packages:
     resolution: {integrity: sha512-cqhCqHHO9PnH51+buvXd0ck3FB0HCnqPQLe/SLZuGI5tzywK1X7wFKlcAHkmqCPyu3xdV2mh8QZTEL4k8ayzsw==}
     engines: {node: '>=18.20.0'}
     dependencies:
-      '@types/node': 20.16.8
+      '@types/node': 20.16.10
       '@wdio/logger': 9.0.8
       '@wdio/repl': 9.0.8
       '@wdio/runner': 9.0.9
@@ -4879,7 +4767,7 @@ packages:
     engines: {node: '>=18.20.0'}
     dependencies:
       '@types/mocha': 10.0.8
-      '@types/node': 20.16.8
+      '@types/node': 20.16.10
       '@wdio/logger': 9.0.8
       '@wdio/types': 9.0.8
       '@wdio/utils': 9.0.8
@@ -4896,14 +4784,14 @@ packages:
     resolution: {integrity: sha512-3iubjl4JX5zD21aFxZwQghqC3lgu+mSs8c3NaiYYNCC+IT5cI/8QuKlgh9s59bu+N3gG988jqMJeCYlKuUv/iw==}
     engines: {node: '>=18.20.0'}
     dependencies:
-      '@types/node': 20.16.8
+      '@types/node': 20.16.10
     dev: true
 
   /@wdio/reporter@9.0.8:
     resolution: {integrity: sha512-2T2XmCL31bLVkHN0UvHagg4KkkUHwzbXnHm1wjlWtd90BdVZ3lJyMhDh3TkKsyyDxPaZZJEhyDp9g/COwuF/bw==}
     engines: {node: '>=18.20.0'}
     dependencies:
-      '@types/node': 20.16.8
+      '@types/node': 20.16.10
       '@wdio/logger': 9.0.8
       '@wdio/types': 9.0.8
       diff: 5.2.0
@@ -4914,7 +4802,7 @@ packages:
     resolution: {integrity: sha512-DIyFSt/mF7EVyFvgKztVAzf7lfunXsMxfYm3Hqjxgh0IQXJfjvOFKmT+R/T61tTHyzHHsx0JBQTu12WqHkNQtA==}
     engines: {node: '>=18.20.0'}
     dependencies:
-      '@types/node': 20.16.8
+      '@types/node': 20.16.10
       '@wdio/config': 9.0.8
       '@wdio/globals': 9.0.9(@wdio/logger@9.0.8)
       '@wdio/logger': 9.0.8
@@ -4947,7 +4835,7 @@ packages:
     resolution: {integrity: sha512-pmz2iRWddTanrv8JC7v3wUGm17KRv2WyyJhQfklMSANn9V1ep6pw1RJG2WJnKq4NojMvH1nVv1sMZxXrYPhpYw==}
     engines: {node: '>=18.20.0'}
     dependencies:
-      '@types/node': 20.16.8
+      '@types/node': 20.16.10
     dev: true
 
   /@wdio/utils@9.0.8:
@@ -5419,7 +5307,7 @@ packages:
       postcss: ^8.1.0
     dependencies:
       browserslist: 4.24.0
-      caniuse-lite: 1.0.30001663
+      caniuse-lite: 1.0.30001664
       fraction.js: 4.3.7
       normalize-range: 0.1.2
       picocolors: 1.1.0
@@ -5461,10 +5349,6 @@ packages:
     resolution: {integrity: sha512-goKlv8DZrK9hUh975fnHzhNIO4jUnFCfv/dszV5VwUGDFjI6vQ2VwoyjYjYNEbBE8AH87TduWP5uyDR1D+Iteg==}
     dependencies:
       deep-equal: 2.2.3
-    dev: true
-
-  /b4a@1.6.6:
-    resolution: {integrity: sha512-5Tk1HLk6b6ctmjIkAcU/Ujv/1WqiDl0F0JdRCR80VsOcUlHcu7pWeWRlOqQLHfDEsVx9YH/aif5AG4ehoCtTmg==}
     dev: true
 
   /b4a@1.6.7:
@@ -5703,10 +5587,10 @@ packages:
     engines: {node: ^6 || ^7 || ^8 || ^9 || ^10 || ^11 || ^12 || >=13.7}
     hasBin: true
     dependencies:
-      caniuse-lite: 1.0.30001663
-      electron-to-chromium: 1.5.28
+      caniuse-lite: 1.0.30001664
+      electron-to-chromium: 1.5.29
       node-releases: 2.0.18
-      update-browserslist-db: 1.1.0(browserslist@4.24.0)
+      update-browserslist-db: 1.1.1(browserslist@4.24.0)
     dev: true
 
   /bs58@4.0.1:
@@ -5795,8 +5679,8 @@ packages:
     resolution: {integrity: sha512-dU+Tx2fsypxTgtLoE36npi3UqcjSSMNYfkqgmoEhtZrraP5VWq0K7FkWVTYa8eMPtnU/G2txVsfdCJTn9uzpuQ==}
     dev: false
 
-  /caniuse-lite@1.0.30001663:
-    resolution: {integrity: sha512-o9C3X27GLKbLeTYZ6HBOLU1tsAcBZsLis28wrVzddShCS16RujjHp9GDHKZqrB3meE0YjhawvMFsGb/igqiPzA==}
+  /caniuse-lite@1.0.30001664:
+    resolution: {integrity: sha512-AmE7k4dXiNKQipgn7a2xg558IRqPN3jMQY/rOsbxDhrd0tyChwbITBfiwtnqz8bi2M5mIWbxAYBvk7W7QBUS2g==}
     dev: true
 
   /canvas-confetti@1.9.3:
@@ -6582,8 +6466,8 @@ packages:
       jake: 10.9.2
     dev: true
 
-  /electron-to-chromium@1.5.28:
-    resolution: {integrity: sha512-VufdJl+rzaKZoYVUijN13QcXVF5dWPZANeFTLNy+OSpHdDL5ynXTF35+60RSBbaQYB1ae723lQXHCrf4pyLsMw==}
+  /electron-to-chromium@1.5.29:
+    resolution: {integrity: sha512-PF8n2AlIhCKXQ+gTpiJi0VhcHDb69kYX4MtCiivctc2QD3XuNZ/XIOlbGzt7WAjjEev0TtaH6Cu3arZExm5DOw==}
     dev: true
 
   /elliptic@6.5.4:
@@ -6933,8 +6817,8 @@ packages:
       - supports-color
     dev: true
 
-  /eslint-module-utils@2.11.1(@typescript-eslint/parser@7.18.0)(eslint-import-resolver-node@0.3.9)(eslint@8.57.0):
-    resolution: {integrity: sha512-EwcbfLOhwVMAfatfqLecR2yv3dE5+kQ8kx+Rrt0DvDXEVwW86KQ/xbMDQhtp5l42VXukD5SOF8mQQHbaNtO0CQ==}
+  /eslint-module-utils@2.12.0(@typescript-eslint/parser@7.18.0)(eslint-import-resolver-node@0.3.9)(eslint@8.57.0):
+    resolution: {integrity: sha512-wALZ0HFoytlyh/1+4wuZ9FJCD/leWHQzzrxJ8+rebyReSLk7LApMyd3WJaLVoN+D5+WIdJyDK1c6JnE65V4Zyg==}
     engines: {node: '>=4'}
     peerDependencies:
       '@typescript-eslint/parser': '*'
@@ -6981,7 +6865,7 @@ packages:
       doctrine: 2.1.0
       eslint: 8.57.0
       eslint-import-resolver-node: 0.3.9
-      eslint-module-utils: 2.11.1(@typescript-eslint/parser@7.18.0)(eslint-import-resolver-node@0.3.9)(eslint@8.57.0)
+      eslint-module-utils: 2.12.0(@typescript-eslint/parser@7.18.0)(eslint-import-resolver-node@0.3.9)(eslint@8.57.0)
       hasown: 2.0.2
       is-core-module: 2.15.1
       is-glob: 4.0.3
@@ -7790,7 +7674,7 @@ packages:
       jackspeak: 3.4.3
       minimatch: 9.0.5
       minipass: 7.1.2
-      package-json-from-dist: 1.0.0
+      package-json-from-dist: 1.0.1
       path-scurry: 1.11.1
     dev: true
 
@@ -7803,7 +7687,7 @@ packages:
       jackspeak: 4.0.2
       minimatch: 10.0.1
       minipass: 7.1.2
-      package-json-from-dist: 1.0.0
+      package-json-from-dist: 1.0.1
       path-scurry: 2.0.0
     dev: true
 
@@ -8520,7 +8404,7 @@ packages:
     requiresBuild: true
     dependencies:
       '@jest/types': 29.6.3
-      '@types/node': 20.16.8
+      '@types/node': 22.7.4
       chalk: 4.1.2
       ci-info: 3.9.0
       graceful-fs: 4.2.11
@@ -8531,7 +8415,7 @@ packages:
     resolution: {integrity: sha512-7vuh85V5cdDofPyxn58nrPjBktZo0u9x1g8WtjQol+jZDaE+fhN+cIvTj11GndBnMnyfrUOG1sZQxCdjKh+DKg==}
     engines: {node: '>= 10.13.0'}
     dependencies:
-      '@types/node': 22.7.4
+      '@types/node': 20.16.10
       merge-stream: 2.0.0
       supports-color: 8.1.1
     dev: true
@@ -9343,8 +9227,8 @@ packages:
       netmask: 2.0.2
     dev: true
 
-  /package-json-from-dist@1.0.0:
-    resolution: {integrity: sha512-dATvCeZN/8wQsGywez1mzHtTlP22H8OEfPrVMLNr4/eGa+ijtLn/6M5f0dY8UKNrC2O9UCU6SSoG3qRKnt7STw==}
+  /package-json-from-dist@1.0.1:
+    resolution: {integrity: sha512-UEZIS3/by4OC8vL3P2dTXRETpebLI2NiI5vIrjaD/5UtrkFX/tNbwjTSRAGC/+7CAo2pIcBaRgWmcBBHcsaCIw==}
     dev: true
 
   /pako@1.0.11:
@@ -9883,7 +9767,7 @@ packages:
     resolution: {integrity: sha512-nsO+KSNgo1SbJqJEYRE9ERzo7YtYbou/OqjSQKxV7jcKox7+usiUVZOAC+XnDOABXggQTno0Y1CpVnuWEc1boQ==}
     dev: false
 
-  /react-focus-lock@2.13.2(@types/react@18.3.9)(react@18.3.1):
+  /react-focus-lock@2.13.2(@types/react@18.3.10)(react@18.3.1):
     resolution: {integrity: sha512-T/7bsofxYqnod2xadvuwjGKHOoL5GH7/EIPI5UyEvaU/c2CcphvGI371opFtuY/SYdbMsNiuF4HsHQ50nA/TKQ==}
     peerDependencies:
       '@types/react': ^16.8.0 || ^17.0.0 || ^18.0.0
@@ -9893,13 +9777,13 @@ packages:
         optional: true
     dependencies:
       '@babel/runtime': 7.25.6
-      '@types/react': 18.3.9
+      '@types/react': 18.3.10
       focus-lock: 1.3.5
       prop-types: 15.8.1
       react: 18.3.1
       react-clientside-effect: 1.2.6(react@18.3.1)
-      use-callback-ref: 1.3.2(@types/react@18.3.9)(react@18.3.1)
-      use-sidecar: 1.1.2(@types/react@18.3.9)(react@18.3.1)
+      use-callback-ref: 1.3.2(@types/react@18.3.10)(react@18.3.1)
+      use-sidecar: 1.1.2(@types/react@18.3.10)(react@18.3.1)
     dev: false
 
   /react-is@16.13.1:
@@ -9909,7 +9793,7 @@ packages:
     resolution: {integrity: sha512-/LLMVyas0ljjAtoYiPqYiL8VWXzUUdThrmU5+n20DZv+a+ClRoevUzw5JxU+Ieh5/c87ytoTBV9G1FiKfNJdmg==}
     dev: true
 
-  /react-remove-scroll-bar@2.3.6(@types/react@18.3.9)(react@18.3.1):
+  /react-remove-scroll-bar@2.3.6(@types/react@18.3.10)(react@18.3.1):
     resolution: {integrity: sha512-DtSYaao4mBmX+HDo5YWYdBWQwYIQQshUV/dVxFxK+KM26Wjwp1gZ6rv6OC3oujI6Bfu6Xyg3TwK533AQutsn/g==}
     engines: {node: '>=10'}
     peerDependencies:
@@ -9919,13 +9803,13 @@ packages:
       '@types/react':
         optional: true
     dependencies:
-      '@types/react': 18.3.9
+      '@types/react': 18.3.10
       react: 18.3.1
-      react-style-singleton: 2.2.1(@types/react@18.3.9)(react@18.3.1)
+      react-style-singleton: 2.2.1(@types/react@18.3.10)(react@18.3.1)
       tslib: 2.7.0
     dev: false
 
-  /react-remove-scroll@2.6.0(@types/react@18.3.9)(react@18.3.1):
+  /react-remove-scroll@2.6.0(@types/react@18.3.10)(react@18.3.1):
     resolution: {integrity: sha512-I2U4JVEsQenxDAKaVa3VZ/JeJZe0/2DxPWL8Tj8yLKctQJQiZM52pn/GWFpSp8dftjM3pSAHVJZscAnC/y+ySQ==}
     engines: {node: '>=10'}
     peerDependencies:
@@ -9935,16 +9819,16 @@ packages:
       '@types/react':
         optional: true
     dependencies:
-      '@types/react': 18.3.9
+      '@types/react': 18.3.10
       react: 18.3.1
-      react-remove-scroll-bar: 2.3.6(@types/react@18.3.9)(react@18.3.1)
-      react-style-singleton: 2.2.1(@types/react@18.3.9)(react@18.3.1)
+      react-remove-scroll-bar: 2.3.6(@types/react@18.3.10)(react@18.3.1)
+      react-style-singleton: 2.2.1(@types/react@18.3.10)(react@18.3.1)
       tslib: 2.7.0
-      use-callback-ref: 1.3.2(@types/react@18.3.9)(react@18.3.1)
-      use-sidecar: 1.1.2(@types/react@18.3.9)(react@18.3.1)
+      use-callback-ref: 1.3.2(@types/react@18.3.10)(react@18.3.1)
+      use-sidecar: 1.1.2(@types/react@18.3.10)(react@18.3.1)
     dev: false
 
-  /react-style-singleton@2.2.1(@types/react@18.3.9)(react@18.3.1):
+  /react-style-singleton@2.2.1(@types/react@18.3.10)(react@18.3.1):
     resolution: {integrity: sha512-ZWj0fHEMyWkHzKYUr2Bs/4zU6XLmq9HsgBURm7g5pAVfyn49DgUiNgY2d4lXRlYSiCif9YBGpQleewkcqddc7g==}
     engines: {node: '>=10'}
     peerDependencies:
@@ -9954,7 +9838,7 @@ packages:
       '@types/react':
         optional: true
     dependencies:
-      '@types/react': 18.3.9
+      '@types/react': 18.3.10
       get-nonce: 1.0.1
       invariant: 2.2.4
       react: 18.3.1
@@ -10175,7 +10059,7 @@ packages:
     hasBin: true
     dependencies:
       glob: 11.0.0
-      package-json-from-dist: 1.0.0
+      package-json-from-dist: 1.0.1
     dev: true
 
   /ripemd160@2.0.2:
@@ -10208,32 +10092,6 @@ packages:
       '@rollup/rollup-win32-arm64-msvc': 4.21.3
       '@rollup/rollup-win32-ia32-msvc': 4.21.3
       '@rollup/rollup-win32-x64-msvc': 4.21.3
-      fsevents: 2.3.3
-    dev: true
-
-  /rollup@4.22.4:
-    resolution: {integrity: sha512-vD8HJ5raRcWOyymsR6Z3o6+RzfEPCnVLMFJ6vRslO1jt4LO6dUo5Qnpg7y4RkZFM2DMe3WUirkI5c16onjrc6A==}
-    engines: {node: '>=18.0.0', npm: '>=8.0.0'}
-    hasBin: true
-    dependencies:
-      '@types/estree': 1.0.5
-    optionalDependencies:
-      '@rollup/rollup-android-arm-eabi': 4.22.4
-      '@rollup/rollup-android-arm64': 4.22.4
-      '@rollup/rollup-darwin-arm64': 4.22.4
-      '@rollup/rollup-darwin-x64': 4.22.4
-      '@rollup/rollup-linux-arm-gnueabihf': 4.22.4
-      '@rollup/rollup-linux-arm-musleabihf': 4.22.4
-      '@rollup/rollup-linux-arm64-gnu': 4.22.4
-      '@rollup/rollup-linux-arm64-musl': 4.22.4
-      '@rollup/rollup-linux-powerpc64le-gnu': 4.22.4
-      '@rollup/rollup-linux-riscv64-gnu': 4.22.4
-      '@rollup/rollup-linux-s390x-gnu': 4.22.4
-      '@rollup/rollup-linux-x64-gnu': 4.22.4
-      '@rollup/rollup-linux-x64-musl': 4.22.4
-      '@rollup/rollup-win32-arm64-msvc': 4.22.4
-      '@rollup/rollup-win32-ia32-msvc': 4.22.4
-      '@rollup/rollup-win32-x64-msvc': 4.22.4
       fsevents: 2.3.3
     dev: true
 
@@ -10936,7 +10794,7 @@ packages:
   /tar-stream@3.1.7:
     resolution: {integrity: sha512-qJj60CXt7IU1Ffyc3NJMjh6EkuCFej46zUqJ4J7pqYlThyd9bO0XBTmcOIhSzZJVWfsLks0+nle/j538YAW9RQ==}
     dependencies:
-      b4a: 1.6.6
+      b4a: 1.6.7
       fast-fifo: 1.3.2
       streamx: 2.20.1
     dev: true
@@ -10981,7 +10839,7 @@ packages:
     resolution: {integrity: sha512-n1yg1mOj9DNpk3NeZOx7T6jchTbyJS3i3cucbNN6FcdPriMZx7NsgrGpWWdWZZGxD7ES1XB+3uoqHMgOKaN+fg==}
     requiresBuild: true
     dependencies:
-      b4a: 1.6.6
+      b4a: 1.6.7
     dev: true
 
   /text-table@0.2.0:
@@ -11093,7 +10951,7 @@ packages:
     resolution: {integrity: sha512-Y/arvbn+rrz3JCKl9C4kVNfTfSm2/mEp5FSz5EsZSANGPSlQrpRI5M4PKF+mJnE52jOO90PnPSc3Ur3bTQw0gA==}
     dev: true
 
-  /ts-loader@9.5.1(typescript@5.6.2)(webpack@5.95.0):
+  /ts-loader@9.5.1(typescript@5.5.4)(webpack@5.95.0):
     resolution: {integrity: sha512-rNH3sK9kGZcH9dYzC7CewQm4NtxJTjSEVRJ2DyBZR7f8/wcta+iV44UPCXc5+nzDzivKtlzV6c9P4e+oFhDLYg==}
     engines: {node: '>=12.0.0'}
     peerDependencies:
@@ -11105,7 +10963,7 @@ packages:
       micromatch: 4.0.8
       semver: 7.6.3
       source-map: 0.7.4
-      typescript: 5.6.2
+      typescript: 5.5.4
       webpack: 5.95.0(esbuild@0.23.1)
     dev: true
 
@@ -11144,7 +11002,7 @@ packages:
       yn: 3.1.1
     dev: false
 
-  /ts-node@10.9.2(@types/node@22.7.4)(typescript@5.6.2):
+  /ts-node@10.9.2(@types/node@20.16.10)(typescript@5.5.4):
     resolution: {integrity: sha512-f0FFpIdcHgn8zcPSbf1dRevwt047YMnaiJM3u2w2RewrB+fob/zePZcrOyQoLMMO7aBIddLcQIEK5dYjkLnGrQ==}
     hasBin: true
     peerDependencies:
@@ -11163,7 +11021,38 @@ packages:
       '@tsconfig/node12': 1.0.11
       '@tsconfig/node14': 1.0.3
       '@tsconfig/node16': 1.0.4
-      '@types/node': 22.7.4
+      '@types/node': 20.16.10
+      acorn: 8.12.1
+      acorn-walk: 8.3.4
+      arg: 4.1.3
+      create-require: 1.1.1
+      diff: 4.0.2
+      make-error: 1.3.6
+      typescript: 5.5.4
+      v8-compile-cache-lib: 3.0.1
+      yn: 3.1.1
+    dev: true
+
+  /ts-node@10.9.2(@types/node@20.16.10)(typescript@5.6.2):
+    resolution: {integrity: sha512-f0FFpIdcHgn8zcPSbf1dRevwt047YMnaiJM3u2w2RewrB+fob/zePZcrOyQoLMMO7aBIddLcQIEK5dYjkLnGrQ==}
+    hasBin: true
+    peerDependencies:
+      '@swc/core': '>=1.2.50'
+      '@swc/wasm': '>=1.2.50'
+      '@types/node': '*'
+      typescript: '>=2.7'
+    peerDependenciesMeta:
+      '@swc/core':
+        optional: true
+      '@swc/wasm':
+        optional: true
+    dependencies:
+      '@cspotcode/source-map-support': 0.8.1
+      '@tsconfig/node10': 1.0.11
+      '@tsconfig/node12': 1.0.11
+      '@tsconfig/node14': 1.0.3
+      '@tsconfig/node16': 1.0.4
+      '@types/node': 20.16.10
       acorn: 8.12.1
       acorn-walk: 8.3.4
       arg: 4.1.3
@@ -11173,6 +11062,7 @@ packages:
       typescript: 5.6.2
       v8-compile-cache-lib: 3.0.1
       yn: 3.1.1
+    dev: false
 
   /ts-node@8.10.2(typescript@5.6.2):
     resolution: {integrity: sha512-ISJJGgkIpDdBhWVu3jufsWpK3Rzo7bdiIXJjQc0ynKxVOVcg2oIrf2H2cejminGrptVc6q6/uynAHNCuWGbpVA==}
@@ -11398,6 +11288,7 @@ packages:
     resolution: {integrity: sha512-NW8ByodCSNCwZeghjN3o+JX5OFH0Ojg6sadjEKY4huZ52TqbJTJnDo5+Tw98lSy63NZvi4n+ez5m2u5d4PkZyw==}
     engines: {node: '>=14.17'}
     hasBin: true
+    dev: false
 
   /unbox-primitive@1.0.2:
     resolution: {integrity: sha512-61pPlCD9h51VoreyJ0BReideM3MDKMKnh6+V9L08331ipq6Q8OFXZYiqP6n/tbHx4s5I9uRhcye6BrbkizkBDw==}
@@ -11437,8 +11328,8 @@ packages:
     resolution: {integrity: sha512-08/DA66UF65OlpUDIQtbJyrqTR0jTAlJ+jsnkQ4jxR7+K5g5YG1APZKQSMCE1vqqmD+2pv6+IdEjmopFatacvg==}
     dev: false
 
-  /update-browserslist-db@1.1.0(browserslist@4.24.0):
-    resolution: {integrity: sha512-EdRAaAyk2cUE1wOf2DkEhzxqOQvFOoRJFNS6NeyJ01Gp2beMRpBAINjM2iDXE3KCuKhwnvHIQCJm6ThL2Z+HzQ==}
+  /update-browserslist-db@1.1.1(browserslist@4.24.0):
+    resolution: {integrity: sha512-R8UzCaa9Az+38REPiJ1tXlImTJXlVfgHZsglwBD/k6nj76ctsH1E3q4doGrukiLQd3sGQYu56r5+lo5r94l29A==}
     hasBin: true
     peerDependencies:
       browserslist: '>= 4.21.0'
@@ -11459,7 +11350,7 @@ packages:
     requiresBuild: true
     dev: true
 
-  /use-callback-ref@1.3.2(@types/react@18.3.9)(react@18.3.1):
+  /use-callback-ref@1.3.2(@types/react@18.3.10)(react@18.3.1):
     resolution: {integrity: sha512-elOQwe6Q8gqZgDA8mrh44qRTQqpIHDcZ3hXTLjBe1i4ph8XpNJnO+aQf3NaG+lriLopI4HMx9VjQLfPQ6vhnoA==}
     engines: {node: '>=10'}
     peerDependencies:
@@ -11469,12 +11360,12 @@ packages:
       '@types/react':
         optional: true
     dependencies:
-      '@types/react': 18.3.9
+      '@types/react': 18.3.10
       react: 18.3.1
       tslib: 2.7.0
     dev: false
 
-  /use-sidecar@1.1.2(@types/react@18.3.9)(react@18.3.1):
+  /use-sidecar@1.1.2(@types/react@18.3.10)(react@18.3.1):
     resolution: {integrity: sha512-epTbsLuzZ7lPClpz2TyryBfztm7m+28DlEv2ZCQ3MDr5ssiwyOwGH/e5F9CkfWjJ1t4clvI58yF822/GUkjjhw==}
     engines: {node: '>=10'}
     peerDependencies:
@@ -11484,7 +11375,7 @@ packages:
       '@types/react':
         optional: true
     dependencies:
-      '@types/react': 18.3.9
+      '@types/react': 18.3.10
       detect-node-es: 1.1.0
       react: 18.3.1
       tslib: 2.7.0
@@ -11523,7 +11414,7 @@ packages:
       safe-buffer: 5.2.1
     dev: false
 
-  /vite@5.4.3(@types/node@20.16.8):
+  /vite@5.4.3(@types/node@20.16.10):
     resolution: {integrity: sha512-IH+nl64eq9lJjFqU+/yrRnrHPVTlgy42/+IzbOdaFDVlyLgI/wDlf+FCobXLX1cT0X5+7LMyH1mIy2xJdLfo8Q==}
     engines: {node: ^18.0.0 || >=20.0.0}
     hasBin: true
@@ -11554,85 +11445,7 @@ packages:
       terser:
         optional: true
     dependencies:
-      '@types/node': 20.16.8
-      esbuild: 0.21.5
-      postcss: 8.4.47
-      rollup: 4.22.4
-    optionalDependencies:
-      fsevents: 2.3.3
-    dev: true
-
-  /vite@5.4.8(@types/node@20.16.8):
-    resolution: {integrity: sha512-FqrItQ4DT1NC4zCUqMB4c4AZORMKIa0m8/URVCZ77OZ/QSNeJ54bU1vrFADbDsuwfIPcgknRkmqakQcgnL4GiQ==}
-    engines: {node: ^18.0.0 || >=20.0.0}
-    hasBin: true
-    peerDependencies:
-      '@types/node': ^18.0.0 || >=20.0.0
-      less: '*'
-      lightningcss: ^1.21.0
-      sass: '*'
-      sass-embedded: '*'
-      stylus: '*'
-      sugarss: '*'
-      terser: ^5.4.0
-    peerDependenciesMeta:
-      '@types/node':
-        optional: true
-      less:
-        optional: true
-      lightningcss:
-        optional: true
-      sass:
-        optional: true
-      sass-embedded:
-        optional: true
-      stylus:
-        optional: true
-      sugarss:
-        optional: true
-      terser:
-        optional: true
-    dependencies:
-      '@types/node': 20.16.8
-      esbuild: 0.21.5
-      postcss: 8.4.47
-      rollup: 4.22.5
-    optionalDependencies:
-      fsevents: 2.3.3
-    dev: true
-
-  /vite@5.4.8(@types/node@22.7.4):
-    resolution: {integrity: sha512-FqrItQ4DT1NC4zCUqMB4c4AZORMKIa0m8/URVCZ77OZ/QSNeJ54bU1vrFADbDsuwfIPcgknRkmqakQcgnL4GiQ==}
-    engines: {node: ^18.0.0 || >=20.0.0}
-    hasBin: true
-    peerDependencies:
-      '@types/node': ^18.0.0 || >=20.0.0
-      less: '*'
-      lightningcss: ^1.21.0
-      sass: '*'
-      sass-embedded: '*'
-      stylus: '*'
-      sugarss: '*'
-      terser: ^5.4.0
-    peerDependenciesMeta:
-      '@types/node':
-        optional: true
-      less:
-        optional: true
-      lightningcss:
-        optional: true
-      sass:
-        optional: true
-      sass-embedded:
-        optional: true
-      stylus:
-        optional: true
-      sugarss:
-        optional: true
-      terser:
-        optional: true
-    dependencies:
-      '@types/node': 22.7.4
+      '@types/node': 20.16.10
       esbuild: 0.21.5
       postcss: 8.4.47
       rollup: 4.22.5
@@ -11682,7 +11495,7 @@ packages:
     resolution: {integrity: sha512-UnV0ANriSTUgypGk0pz8lApeQuHt+72WEDQG5hFwkkSvggtKLyWdT7+PQkNoXvDajTmiLIqUOq8XPI/Pm71rtw==}
     engines: {node: '>=18.20.0'}
     dependencies:
-      '@types/node': 20.16.8
+      '@types/node': 20.16.10
       '@types/ws': 8.5.12
       '@wdio/config': 9.0.8
       '@wdio/logger': 9.0.8
@@ -11706,7 +11519,7 @@ packages:
       puppeteer-core:
         optional: true
     dependencies:
-      '@types/node': 20.16.8
+      '@types/node': 20.16.10
       '@types/sinonjs__fake-timers': 8.1.5
       '@wdio/config': 9.0.8
       '@wdio/logger': 9.0.8

@@ -1,12 +1,14 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Image, Button, Card, Stack, Text, Box } from '@chakra-ui/react';
+import { Image, Button, Card, Stack, Text, Box, Spinner } from '@chakra-ui/react';
 
 interface ConnectProps {
   setIsConnecting: (isConnecting: boolean) => void;
 }
 
 const Connect: React.FC<ConnectProps> = ({ setIsConnecting }) => {
+  const [isConnecting, setLocalIsConnecting] = useState(false);
+
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
@@ -30,6 +32,7 @@ const Connect: React.FC<ConnectProps> = ({ setIsConnecting }) => {
   const connectKeepkey = () => {
     console.log('connectKeepkey called');
     setIsConnecting(true);
+    setLocalIsConnecting(true);
     try {
       chrome.runtime.sendMessage({ type: 'ON_START' }, response => {
         if (chrome.runtime.lastError) {
@@ -38,10 +41,12 @@ const Connect: React.FC<ConnectProps> = ({ setIsConnecting }) => {
           console.log('Response:', response);
         }
         setIsConnecting(false);
+        setLocalIsConnecting(false);
       });
     } catch (error) {
       console.error('Error in connectKeepkey:', error);
       setIsConnecting(false);
+      setLocalIsConnecting(false);
     }
   };
 
@@ -61,7 +66,7 @@ const Connect: React.FC<ConnectProps> = ({ setIsConnecting }) => {
   };
 
   return (
-    <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
+    <Box display="flex" justifyContent="center" alignItems="center" height="100vh" position="relative">
       <Card
         borderRadius="md"
         p={6}
@@ -93,6 +98,22 @@ const Connect: React.FC<ConnectProps> = ({ setIsConnecting }) => {
           </Button>
         </Text>
       </Card>
+
+      {isConnecting && (
+        <Box
+          position="absolute"
+          top={0}
+          left={0}
+          right={0}
+          bottom={0}
+          display="flex"
+          justifyContent="center"
+          alignItems="center"
+          bg="rgba(255, 255, 255, 0.8)"
+          zIndex={1}>
+          <Spinner size="xl" thickness="4px" color="teal.500" />
+        </Box>
+      )}
     </Box>
   );
 };
