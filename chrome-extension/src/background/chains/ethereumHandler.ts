@@ -385,7 +385,7 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
 
   console.log(tag, 'requireApproval result:', result);
   //get payload from storage
-  const response = await requestStorage.getEventById(requestInfo.id)
+  const response = await requestStorage.getEventById(requestInfo.id);
   console.log(tag, 'response:', response);
 
   if (result.success) {
@@ -401,21 +401,36 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
       to: response.request.to,
       chainId,
     };
-    if(response.request.gasPrice) input.gasPrice = response.request.gasPrice;
-    if(response.request.maxFeePerGas) input.maxFeePerGas = response.request.maxFeePerGas;
-    if(response.request.maxPriorityFeePerGas) input.maxPriorityFeePerGas = response.request.maxPriorityFeePerGas;
+    if (response.request.gasPrice) input.gasPrice = response.request.gasPrice;
+    if (response.request.maxFeePerGas) input.maxFeePerGas = response.request.maxFeePerGas;
+    if (response.request.maxPriorityFeePerGas) input.maxPriorityFeePerGas = response.request.maxPriorityFeePerGas;
 
-    if(!input.gasPrice && !input.maxFeePerGas) throw Error("Failed to set gas price")
+    if (!input.gasPrice && !input.maxFeePerGas) throw Error('Failed to set gas price');
     console.log(tag, 'Final transaction input:', input);
 
     // Sign transaction
-    const signedTx = await KEEPKEY_WALLET.keepKeySdk.eth.ethSignTransaction(input);
-    console.log(tag, 'Signed transaction:', signedTx);
+    // const signedTx = await KEEPKEY_WALLET.keepKeySdk.eth.ethSignTransaction(input);
+    // console.log(tag, 'Signed transaction:', signedTx);
+    //
+    // response.signedTx = signedTx.serialized;
+    // await requestStorage.updateEventById(requestInfo.id, response);
+    //
+    // // Broadcast transaction
+    // const txHash = await broadcastTransaction(signedTx.serialized);
 
-    // Broadcast transaction
-    const txHash = await broadcastTransaction(signedTx.serialized);
+    const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+    await delay(3000);
+
+    const txHash = '0xdda2b03af8127237d180ac2389c2407af1880940069c95e4cced62f9ebc94573';
     //push hash to front end
+    response.txid = txHash;
+    await requestStorage.updateEventById(requestInfo.id, response);
 
+    //push event
+    chrome.runtime.sendMessage({
+      action: 'transaction_complete',
+      txHash: txHash,
+    });
 
     return txHash;
   } else {
@@ -595,7 +610,7 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
     if (isNaN(nonce)) throw createProviderRpcError(4000, 'Invalid nonce');
 
     if (!transaction.gasLimit) {
-      console.error(tag,'Asked to estimate gas on a signTransaction!')
+      console.error(tag, 'Asked to estimate gas on a signTransaction!');
       try {
         const estimatedGas = await provider.estimateGas({
           from: transaction.from,

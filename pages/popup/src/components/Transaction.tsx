@@ -2,19 +2,59 @@ import React, { useEffect, useState } from 'react';
 import EvmTransaction from './evm';
 import UtxoTransaction from './utxo';
 import { approvalStorage, requestStorage } from '@extension/storage/dist/lib';
-import Confetti from 'react-confetti';
-import { Flex, Spinner, Alert, AlertIcon, Button, Icon } from '@chakra-ui/react';
+import { Spinner, Alert, AlertIcon, Button, Icon } from '@chakra-ui/react';
 import { WarningIcon } from '@chakra-ui/icons';
-import AwaitingApproval from './AwaitingApproval'; // Import the new component
+import AwaitingApproval from './AwaitingApproval';
+import TxidPage from './TxidPage';
+
+// Function to request asset context from background script
+const requestAssetContext = () => {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({ type: 'GET_ASSET_CONTEXT' }, response => {
+      if (chrome.runtime.lastError) {
+        return reject(chrome.runtime.lastError);
+      }
+      resolve(response);
+    });
+  });
+};
 
 const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => void }) => {
   const [transactionType, setTransactionType] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
-  const [showConfetti, setShowConfetti] = useState<boolean>(false);
   const [awaitingDeviceApproval, setAwaitingDeviceApproval] = useState<boolean>(false);
   const [transactionInProgress, setTransactionInProgress] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showTxidPage, setShowTxidPage] = useState<boolean>(false);
+  const [assetContext, setAssetContext] = useState<any>(null); // Local state for asset context
+  const [explorerUrl, setExplorerUrl] = useState<string | null>(null);
   const [showRefreshWarning, setShowRefreshWarning] = useState<boolean>(false);
+
+  // Fetch the assetContext on component mount
+  useEffect(() => {
+    requestAssetContext()
+      .then((context: any) => {
+        setAssetContext(context); // Set asset context state
+        console.log('assetContext: ', context);
+      })
+      .catch(error => {
+        console.error('Failed to fetch asset context:', error);
+      });
+  }, []);
+
+  useEffect(() => {
+    // Once assetContext and txHash are both available, construct explorer URL
+    if (assetContext && txHash) {
+      const explorerLink = assetContext?.assets?.explorerTxLink;
+      if (explorerLink) {
+        const finalUrl = explorerLink + txHash;
+        setExplorerUrl(finalUrl);
+        console.log('Generated explorerUrl:', finalUrl);
+      } else {
+        console.error('explorerTxLink is missing in asset context.');
+      }
+    }
+  }, [assetContext, txHash]);
 
   const openSidebar = () => {
     chrome.runtime.sendMessage({ type: 'OPEN_SIDEBAR' }, response => {
@@ -35,13 +75,11 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
       }
     });
 
-    // Trigger the refresh warning
     setShowRefreshWarning(true);
   };
 
   const handleResponse = async (decision: 'accept' | 'reject') => {
     try {
-      console.log('handleResponse:', decision);
       chrome.runtime.sendMessage({ action: 'eth_sign_response', response: { decision, eventId: event.id } });
 
       if (decision === 'reject') {
@@ -58,11 +96,11 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
 
   useEffect(() => {
     const handleMessage = (message: any) => {
+      console.log('message received:', message);
       if (message.action === 'transaction_complete') {
-        console.log('Transaction completed with txHash:', message.txHash);
-        setTxHash(message.txHash);
+        setShowTxidPage(true);
+        setTxHash(message.txHash); // Set the txHash from the event
         setAwaitingDeviceApproval(false);
-        setShowConfetti(true);
         setTransactionInProgress(false);
       } else if (message.action === 'transaction_error') {
         const errorDetails = message.e?.message || JSON.stringify(message.e);
@@ -79,7 +117,7 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
   }, []);
 
   useEffect(() => {
-    if (event && event?.networkId) {
+    if (event?.networkId) {
       if (event.networkId.includes('eip155')) {
         setTransactionType('evm');
       } else if (event.chain === 'bitcoin') {
@@ -136,6 +174,11 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
     );
   }
 
+  if (showTxidPage && txHash && explorerUrl) {
+    // Show the txid page if the transaction is complete and explorerUrl is available
+    return <TxidPage txHash={txHash} explorerUrl={explorerUrl} onClose={handleCloseTab} />;
+  }
+
   return (
     <div>
       {transactionInProgress && <Spinner />}
@@ -143,16 +186,6 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
       {!awaitingDeviceApproval && renderTransaction()}
 
       {awaitingDeviceApproval && <AwaitingApproval onCancel={handleCancel} />}
-
-      {txHash && (
-        <div>
-          <h3>Transaction completed successfully!</h3>
-          <p>Transaction Hash: {txHash}</p>
-          <button onClick={handleCloseTab}>Close</button>
-        </div>
-      )}
-
-      {showConfetti && <Confetti />}
 
       {showRefreshWarning && (
         <Alert status="warning" mt={4}>

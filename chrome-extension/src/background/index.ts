@@ -323,14 +323,13 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                 });
                 sendResponse(response);
 
-                const currentAssetContext = await APP.assetContext
+                const currentAssetContext = await APP.assetContext;
                 //if eip155 then set web3 provider
-                if(currentAssetContext.networkId.includes('eip155')){
-                  const newProvider = EIP155_CHAINS[currentAssetContext.networkId].provider
-                  console.log('newProvider', newProvider)
-                  await web3ProviderStorage.setWeb3Provider(newProvider)
+                if (currentAssetContext.networkId.includes('eip155')) {
+                  const newProvider = EIP155_CHAINS[currentAssetContext.networkId].provider;
+                  console.log('newProvider', newProvider);
+                  await web3ProviderStorage.setWeb3Provider(newProvider);
                 }
-
               } catch (error) {
                 console.error('Error setting asset context:', error);
                 sendResponse({ error: 'Failed to fetch assets' });
@@ -402,8 +401,8 @@ exampleSidebarStorage
           });
         });
       } else {
-        chrome.action.setPopup({ popup: 'popup/index.html' });
-        chrome.action.openPopup();
+        // chrome.action.setPopup({ popup: 'popup/index.html' });
+        // chrome.action.openPopup();
       }
     });
   })
