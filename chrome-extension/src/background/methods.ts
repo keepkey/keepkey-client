@@ -153,6 +153,10 @@ const requireApproval = async function (networkId, requestInfo, chain, method, p
     console.log(tag, 'Requesting approval for event:', event);
     const eventSaved = await requestStorage.addEvent(event);
     if (eventSaved) {
+      chrome.runtime.sendMessage({
+        action: 'TRANSACTION_CONTEXT_UPDATED',
+        id: event.id,
+      });
       console.log(tag, 'Event saved:', event);
     } else {
       throw new Error('Event not saved');

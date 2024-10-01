@@ -70,8 +70,9 @@ const SidePanel = () => {
       if (message.type === 'ASSET_CONTEXT_UPDATED' && message.assetContext) {
         setAssetContext(message.assetContext);
       }
-      if (message.type === 'TRANSACTION_CONTEXT_UPDATED' && message.transactionContext) {
-        setTransactionContext(message.transactionContext); // Show Activity page on transaction event
+      if (message.type === 'TRANSACTION_CONTEXT_UPDATED' && message.id) {
+        console.log('TRANSACTION_CONTEXT_UPDATED', message.id);
+        setTransactionContext(message.id); // Show Activity page on transaction event
       }
     };
 
@@ -137,7 +138,7 @@ const SidePanel = () => {
             <IconButton
               icon={<CalendarIcon />} // Activity Icon
               aria-label="Activity"
-              onClick={() => setTransactionContext([])}
+              onClick={() => setTransactionContext('none')}
             />
           </Box>
           {/*{keepkeyState === 5 && (*/}

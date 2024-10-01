@@ -369,8 +369,9 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
     });
     transaction.gasLimit = '0x' + estimatedGasLimit.toString(16);
   } catch (e) {
+    console.error('Failed to estimate gas limit:', e);
     // Set default gasLimit if estimation fails
-    transaction.gasLimit = '0x' + BigInt('81000').toString(16); // minimum gas limit for ETH transfer
+    transaction.gasLimit = '0x' + BigInt('281000').toString(16); // minimum gas limit for ETH transfer
   }
 
   // Set fee data
@@ -635,28 +636,28 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
         console.log(tag, 'Estimated gas: ', estimatedGas.toString());
 
         // If estimated gas is less than 115,000, set a warning and adjust
-        if (estimatedGas < 115000) {
+        if (estimatedGas < 315000) {
           console.warn(tag, `Estimated gas too low (${estimatedGas.toString()}). Using minimum of 115000.`);
-          estimatedGas = 115000;
+          estimatedGas = 315000;
         }
 
         // If estimated gas exceeds 115,000, apply 25% bump
-        if (estimatedGas > 115000) {
+        if (estimatedGas > 315000) {
           estimatedGas = BigInt(estimatedGas) + BigInt(estimatedGas) / BigInt(4); // Adds 25%
           console.log(tag, `Increased gas by 25%: ${estimatedGas.toString()}`);
         }
 
-        // Never exceed 1 million gas
-        if (estimatedGas > 1000000) {
+        // Never exceed 2 million gas
+        if (estimatedGas > 2000000) {
           console.warn(tag, `Estimated gas exceeds max limit. Using 1,000,000.`);
-          estimatedGas = 1000000;
+          estimatedGas = 2000000;
         }
 
         transaction.gasLimit = '0x' + estimatedGas.toString(16); // Convert to hex
       } catch (e) {
         console.error(tag, 'e: ', e);
         console.error(tag, 'Error estimating gas, using fallback 115,000 gas limit.');
-        transaction.gasLimit = '0x' + BigInt('115000').toString(16); // Fallback gas limit
+        transaction.gasLimit = '0x' + BigInt('315000').toString(16); // Fallback gas limit
       }
     }
 
