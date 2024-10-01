@@ -14,13 +14,14 @@ import {
   Spinner,
   Button,
 } from '@chakra-ui/react';
-import { ChevronLeftIcon, RepeatIcon, SettingsIcon } from '@chakra-ui/icons';
+import { ChevronLeftIcon, RepeatIcon, SettingsIcon, CalendarIcon } from '@chakra-ui/icons'; // Using CalendarIcon for Activity
 import { withErrorBoundary, withSuspense } from '@extension/shared';
 
 import Connect from './components/Connect';
 import Loading from './components/Loading';
 import Balances from './components/Balances';
 import Asset from './components/Asset';
+import History from './components/History';
 import Settings from './components/Settings';
 
 const stateNames: { [key: number]: string } = {
@@ -39,13 +40,13 @@ const SidePanel = () => {
   const [assetContext, setAssetContext] = useState<any>(null);
   const [transactionContext, setTransactionContext] = useState<any>(null);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false); // Added state to handle loading spinner
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const { isOpen: isSettingsOpen, onOpen: onSettingsOpen, onClose: onSettingsClose } = useDisclosure();
 
   const refreshBalances = async () => {
     try {
-      setIsRefreshing(true); // Start the loading spinner
+      setIsRefreshing(true);
       setKeepkeyState(null);
       chrome.runtime.sendMessage({ type: 'ON_START' }, response => {
         if (response?.success) {
@@ -57,7 +58,7 @@ const SidePanel = () => {
     } catch (e) {
       console.error(e);
     } finally {
-      setTimeout(() => setIsRefreshing(false), 2000); // Stop the spinner after 2 seconds (adjust as needed)
+      setTimeout(() => setIsRefreshing(false), 2000); // Stop the spinner after 2 seconds
     }
   };
 
@@ -67,11 +68,10 @@ const SidePanel = () => {
         setKeepkeyState(message.state);
       }
       if (message.type === 'ASSET_CONTEXT_UPDATED' && message.assetContext) {
-        console.log('ASSET_CONTEXT_UPDATED:', message.assetContext);
         setAssetContext(message.assetContext);
       }
       if (message.type === 'TRANSACTION_CONTEXT_UPDATED' && message.transactionContext) {
-        setTransactionContext(message.transactionContext);
+        setTransactionContext(message.transactionContext); // Show Activity page on transaction event
       }
     };
 
@@ -82,6 +82,11 @@ const SidePanel = () => {
   }, []);
 
   const renderContent = () => {
+    // If transactionContext is available, show the History view
+    if (transactionContext) {
+      return <History transactionContext={transactionContext} />;
+    }
+
     switch (keepkeyState) {
       case 0:
       case 1:
@@ -105,9 +110,8 @@ const SidePanel = () => {
               colorScheme="green"
               size="lg"
               onClick={refreshBalances}
-              isLoading={isRefreshing} // Disable and show spinner while loading
-              disabled={isRefreshing} // Prevent multiple presses
-            >
+              isLoading={isRefreshing}
+              disabled={isRefreshing}>
               {isRefreshing ? <Spinner size="md" color="white" /> : 'Begin'}
             </Button>
           </Flex>
@@ -122,13 +126,32 @@ const SidePanel = () => {
           KeepKey State: {keepkeyState !== null ? keepkeyState : 'N/A'} -{' '}
           {keepkeyState !== null ? stateNames[keepkeyState] : 'unknown'}
         </Text>
-        <Flex alignItems="center" p={4} borderBottom="1px solid #ccc" width="100%">
-          {assetContext ? (
-            <IconButton icon={<ChevronLeftIcon />} aria-label="Go back" onClick={() => setAssetContext(null)} />
-          ) : (
-            <IconButton icon={<SettingsIcon />} aria-label="Settings" onClick={onSettingsOpen} />
-          )}
-          <IconButton icon={<RepeatIcon />} aria-label="Refresh" onClick={() => refreshBalances()} ml="auto" />
+
+        {/* Row with left-aligned, centered, and right-aligned buttons */}
+        <Flex alignItems="center" justifyContent="space-between" p={4} borderBottom="1px solid #ccc" width="100%">
+          {/* Left-aligned button (Settings) */}
+          <IconButton icon={<SettingsIcon />} aria-label="Settings" onClick={onSettingsOpen} />
+
+          {/* Center-aligned Activity button */}
+          <Box mx="auto">
+            <IconButton
+              icon={<CalendarIcon />} // Activity Icon
+              aria-label="Activity"
+              onClick={() => setTransactionContext([])}
+            />
+          </Box>
+          {/*{keepkeyState === 5 && (*/}
+          {/*    <Box mx="auto">*/}
+          {/*      <IconButton*/}
+          {/*          icon={<CalendarIcon />} // Activity Icon*/}
+          {/*          aria-label="Activity"*/}
+          {/*          onClick={() => setTransactionContext([])}*/}
+          {/*      />*/}
+          {/*    </Box>*/}
+          {/*)}*/}
+
+          {/* Right-aligned button (Refresh) */}
+          <IconButton icon={<RepeatIcon />} aria-label="Refresh" onClick={() => refreshBalances()} />
         </Flex>
       </Box>
       {renderContent()}
