@@ -21,6 +21,7 @@ import RequestDetailsCard from './RequestDetailsCard';
 import RequestDataCard from './RequestDataCard';
 import CoinControl from './CoinControlCard';
 import RequestMethodCard from './RequestMethodCard';
+import ProjectFeeCard from './ProjectFeeCard';
 import ProjectInfoCard from './ProjectInfoCard';
 
 export function UtxoTransaction({ transaction: initialTransaction, handleResponse }: any) {
@@ -125,14 +126,19 @@ export function UtxoTransaction({ transaction: initialTransaction, handleRespons
           <Divider />
           <Tabs>
             <TabList defaultIndex={1}>
-              <Tab>Info</Tab>
+              <Tab>Basic</Tab>
+              <Tab>Fees</Tab>
               <Tab>Coin Control</Tab>
-              <Tab>Raw</Tab>
+              {/*<Tab>UTXO</Tab>*/}
             </TabList>
 
             <TabPanels>
               <TabPanel>
                 <RequestDetailsCard transaction={transaction} />
+              </TabPanel>
+
+              <TabPanel>
+                <ProjectFeeCard transaction={transaction} />
               </TabPanel>
 
               <TabPanel>
