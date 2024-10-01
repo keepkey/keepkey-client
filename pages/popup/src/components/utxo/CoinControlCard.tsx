@@ -33,12 +33,14 @@ interface Output {
   amount: number;
 }
 
+interface UnsignedTx {
+  inputs: Input[];
+  outputs: Output[];
+  memo?: string;
+}
+
 interface Transaction {
-  requestInfo: {
-    inputs: Input[];
-    outputs: Output[];
-    memo: string;
-  };
+  unsignedTx: UnsignedTx;
 }
 
 interface IProps {
@@ -48,22 +50,24 @@ interface IProps {
 export default function CoinControl({ transaction }: IProps) {
   const [inputs, setInputs] = useState<Input[]>([]);
   const [outputs, setOutputs] = useState<Output[]>([]);
+  const [memo, setMemo] = useState<string | null>(null);
   const [lockedInputs, setLockedInputs] = useState<string[]>([]);
   const [selectedInputs, setSelectedInputs] = useState<string[]>([]);
   const [fee, setFee] = useState<number>(0);
   const [adjustedFee, setAdjustedFee] = useState<number>(0);
 
   useEffect(() => {
-    if (transaction) {
-      setInputs(transaction.requestInfo.inputs || []);
-      setOutputs(transaction.requestInfo.outputs || []);
+    if (transaction && transaction.unsignedTx) {
+      setInputs(transaction.unsignedTx.inputs || []);
+      setOutputs(transaction.unsignedTx.outputs || []);
+      setMemo(transaction.unsignedTx.memo || null);
     }
   }, [transaction]);
 
   useEffect(() => {
     // Calculate total inputs and outputs amount
     const totalInputAmount = inputs.reduce((acc, input) => acc + parseInt(input.amount || '0'), 0);
-    const totalOutputAmount = outputs.reduce((acc, output) => acc + parseInt(output.amount.toString() || '0'), 0);
+    const totalOutputAmount = outputs.reduce((acc, output) => acc + output.amount, 0); // Changed to handle number amount
     setFee(totalInputAmount - totalOutputAmount);
     setAdjustedFee(totalInputAmount - totalOutputAmount);
   }, [inputs, outputs]);
@@ -75,8 +79,6 @@ export default function CoinControl({ transaction }: IProps) {
     } else {
       setLockedInputs([...lockedInputs, input.txid]);
     }
-    // Mock saving to storage
-    // exampleSidebarStorage.set('lockedInputs', lockedInputs);
   };
 
   const handleRemoveInput = (input: Input) => {
@@ -172,6 +174,17 @@ export default function CoinControl({ transaction }: IProps) {
             </CardBody>
           </Card>
         ))}
+
+        {memo && (
+          <Card w="100%" mt={4}>
+            <CardBody>
+              <Text fontSize="lg" fontWeight="bold">
+                Memo
+              </Text>
+              <Text>{memo}</Text>
+            </CardBody>
+          </Card>
+        )}
 
         <Card w="100%" mt={4}>
           <CardBody>

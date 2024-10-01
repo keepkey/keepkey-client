@@ -1,7 +1,11 @@
+import { requestStorage } from '@extension/storage/dist/lib';
+
 const TAG = ' | bitcoinHandler | ';
 import { Chain } from '@coinmasters/types';
 import { AssetValue } from '@pioneer-platform/helpers';
 import { ChainToNetworkId, shortListSymbolToCaip, caipToNetworkId } from '@pioneer-platform/pioneer-caip';
+//@ts-ignore
+import { v4 as uuidv4 } from 'uuid';
 
 interface ProviderRpcError extends Error {
   code: number;
@@ -30,7 +34,7 @@ export const handleBitcoinRequest = async (
       const pubkeys = KEEPKEY_WALLET.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.Bitcoin]));
       const accounts = pubkeys.map((pubkey: any) => pubkey.master || pubkey.address);
 
-      return [accounts[1]]; // Return preference account
+      return [accounts]; // Return preference account
     }
 
     case 'request_balance': {
@@ -38,10 +42,32 @@ export const handleBitcoinRequest = async (
       return [balance];
     }
 
+    //TODO: add paths
+
+    case 'request_paths': {
+      const paths = KEEPKEY_WALLET.paths.find((balance: any) => balance.caip === shortListSymbolToCaip['BTC']);
+      return paths;
+    }
+
+    //list unspent
+    case 'list_unspent': {
+      const wallet = await KEEPKEY_WALLET.swapKit.getWallet(Chain.Bitcoin);
+      if (!wallet) throw new Error('Failed to init swapkit');
+      const xpub = params[0];
+      if (!xpub) throw Error('param Xpub requered!');
+      const unspent = await wallet.listUnspent(xpub);
+      return unspent;
+    }
+
+    case 'request_pubkeys': {
+      const pubkeys = KEEPKEY_WALLET.pubkeys.find((balance: any) => balance.caip === shortListSymbolToCaip['BTC']);
+      return pubkeys;
+    }
+
     case 'transfer': {
       const caip = shortListSymbolToCaip['BTC'];
       const networkId = caipToNetworkId(caip);
-
+      requestInfo.id = uuidv4();
       if (!KEEPKEY_WALLET.assetContext) {
         await KEEPKEY_WALLET.setAssetContext({ caip });
       }
@@ -54,23 +80,47 @@ export const handleBitcoinRequest = async (
 
       const assetValue = await AssetValue.fromString(assetString, parseFloat(params[0].amount.amount) / 100000000);
       const sendPayload = {
-        from: accounts[0], //Select preference change address
+        from: accounts[0], // Select preference change address
         assetValue,
         memo: params[0].memo || '',
         recipient: params[0].recipient,
       };
 
+      // Start building the transaction but don't wait for it to finish
       const wallet = await KEEPKEY_WALLET.swapKit.getWallet(Chain.Bitcoin);
-      if (!wallet) throw Error('Failed to init swapkit');
+      if (!wallet) throw new Error('Failed to init swapkit');
 
-      const unsignedTx = await wallet.buildTx(sendPayload);
-      requestInfo.inputs = unsignedTx.inputs;
-      requestInfo.outputs = unsignedTx.outputs;
-      requestInfo.memo = unsignedTx.memo;
+      const buildTxPromise = wallet
+        .buildTx(sendPayload)
+        .then(async unsignedTx => {
+          console.log(tag, 'unsignedTx', unsignedTx);
+          // Update requestInfo with transaction details after buildTx resolves
+          requestInfo.inputs = unsignedTx.inputs;
+          requestInfo.outputs = unsignedTx.outputs;
+          requestInfo.memo = unsignedTx.memo;
 
+          chrome.runtime.sendMessage({
+            action: 'utxo_build_tx',
+            unsignedTx: unsignedTx,
+          });
+          const response = await requestStorage.getEventById(requestInfo.id);
+          response.unsignedTx = unsignedTx;
+          await requestStorage.updateEventById(requestInfo.id, response);
+          // Push an event to the front-end that UTXOs are found
+          // This could be something like: sendUpdateToFrontend('UTXOs found', unsignedTx);
+        })
+        .catch(error => {
+          console.error('Error building the transaction:', error);
+          // Handle buildTx failure appropriately, such as notifying the user
+        });
+
+      // Proceed with requiring approval without waiting for buildTx to resolve
       const result = await requireApproval(networkId, requestInfo, 'bitcoin', method, params[0]);
 
-      if (result.success) {
+      // Wait for the buildTx to complete (if not already completed) before signing
+      const unsignedTx = await buildTxPromise;
+
+      if (result.success && unsignedTx) {
         const signedTx = await wallet.signTransaction(unsignedTx.psbt, unsignedTx.inputs, unsignedTx.memo);
         const txid = await wallet.broadcastTx(signedTx);
         return txid;
@@ -78,7 +128,6 @@ export const handleBitcoinRequest = async (
         throw createProviderRpcError(4200, 'User denied transaction');
       }
     }
-
     default: {
       throw createProviderRpcError(4200, `Method ${method} not supported`);
     }

@@ -1,21 +1,42 @@
-import { Box, Heading, Text, IconButton } from '@chakra-ui/react';
+import { Box, Heading, IconButton, Button, Spinner } from '@chakra-ui/react';
 import { CodeBlock, codepen } from 'react-code-blocks';
 import { useState } from 'react';
 import { ChevronDownIcon, ChevronRightIcon } from '@chakra-ui/icons';
-
-/**
- * Types
- */
+import { requestStorage } from '@extension/storage'; // Import the requestStorage
 
 /**
  * Component
  */
 export default function RequestDataCard({ transaction }: any) {
   const [isOpen, setIsOpen] = useState(false);
+  const [fetchedTransaction, setFetchedTransaction] = useState<any>(transaction);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Toggle visibility
   const toggleVisibility = () => {
     setIsOpen(!isOpen);
+  };
+
+  // Function to fetch event data from storage
+  const fetchEventData = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Fetch the transaction from storage using its ID
+      const response = await requestStorage.getEventById(transaction.id);
+      if (response) {
+        setFetchedTransaction(response); // Update the transaction data with the fetched data
+      } else {
+        setError('Transaction not found in storage');
+      }
+    } catch (err) {
+      console.error('Error fetching event data:', err);
+      setError('Failed to fetch data');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -33,15 +54,29 @@ export default function RequestDataCard({ transaction }: any) {
         </Heading>
       </Box>
 
-      {/* Conditionally render the code block */}
       {isOpen && (
         <Box mt={2}>
-          <CodeBlock
-            showLineNumbers={false}
-            text={JSON.stringify(transaction, null, 2)}
-            theme={codepen}
-            language="json"
-          />
+          {/* Fetch Data Button */}
+          <Button size="sm" colorScheme="blue" onClick={fetchEventData} disabled={loading}>
+            {loading ? <Spinner size="sm" /> : 'Fetch Event Data'}
+          </Button>
+
+          {/* Display error if any */}
+          {error && (
+            <Box mt={2} color="red.500">
+              {error}
+            </Box>
+          )}
+
+          {/* Conditionally render the code block */}
+          <Box mt={2}>
+            <CodeBlock
+              showLineNumbers={false}
+              text={JSON.stringify(fetchedTransaction, null, 2)}
+              theme={codepen}
+              language="json"
+            />
+          </Box>
         </Box>
       )}
     </Box>
