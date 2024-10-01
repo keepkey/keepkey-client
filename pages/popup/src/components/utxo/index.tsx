@@ -2,6 +2,7 @@ import {
   Avatar,
   Button,
   Card,
+  Box,
   CardHeader,
   Flex,
   Spinner,
@@ -49,7 +50,7 @@ export function UtxoTransaction({ transaction: initialTransaction, handleRespons
       } else {
         console.log('No unsigned transaction found in data.');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching transaction from storage:', error);
       setErrorMessage('Error loading transaction: ' + error.message);
       setIsLoading(false); // Stop spinner if there is an error
@@ -63,11 +64,15 @@ export function UtxoTransaction({ transaction: initialTransaction, handleRespons
 
   // Listen for events that update the transaction state
   useEffect(() => {
-    const handleMessage = async (message: any) => {
+    const handleMessage = (message: any) => {
       console.log('Message received:', message);
       if (message.action === 'utxo_build_tx') {
         console.log('Received utxo_build_tx event:', message);
-        await fetchTransactionData(message.unsignedTx.id); // Fetch updated transaction
+
+        // Add 1-second delay before fetching updated transaction data
+        setTimeout(async () => {
+          await fetchTransactionData(transaction.id); // Fetch updated transaction
+        }, 1000);
       } else if (message.action === 'transaction_error') {
         const errorDetails = message.e?.message || JSON.stringify(message.e);
         setErrorMessage('Transaction failed: ' + errorDetails);
@@ -80,7 +85,7 @@ export function UtxoTransaction({ transaction: initialTransaction, handleRespons
     return () => {
       chrome.runtime.onMessage.removeListener(handleMessage);
     };
-  }, []);
+  }, [transaction.id]);
 
   // Reload function to refetch the transaction without refreshing the page
   const handleReload = () => {
@@ -91,9 +96,9 @@ export function UtxoTransaction({ transaction: initialTransaction, handleRespons
 
   if (isLoading) {
     return (
-      <Flex direction="column" alignItems="center" justifyContent="center" height="100vh">
+      <Flex direction="column" alignItems="center" justifyContent="center" height="100vh" pt="400px">
         <Card padding="4" boxShadow="lg" borderRadius="md">
-          <Flex direction="column" alignItems="center" justifyContent="center">
+          <Flex direction="column" alignItems="center">
             <Spinner size="xl" />
             <p>Transaction ID: {transaction.id}</p> {/* Show transaction ID while loading */}
             {showMessage1 && <p>Building transaction...</p>}
@@ -104,12 +109,13 @@ export function UtxoTransaction({ transaction: initialTransaction, handleRespons
             {errorMessage && <p style={{ color: 'red' }}>{errorMessage}</p>}
           </Flex>
         </Card>
+        <Box height="400px" /> {/* Add bottom buffer */}
       </Flex>
     );
   }
 
   return (
-    <Flex direction="column" alignItems="center" justifyContent="center" height="100vh">
+    <Flex direction="column" alignItems="center">
       <Card padding="4" boxShadow="lg" borderRadius="md" width="100%" maxWidth="600px">
         <Stack>
           <ProjectInfoCard transaction={transaction} />

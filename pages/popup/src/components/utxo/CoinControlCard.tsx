@@ -12,13 +12,14 @@ import {
   Card,
   CardBody,
   CardHeader,
-  CardFooter,
   Badge,
   Flex,
+  Input,
 } from '@chakra-ui/react';
-import { ExternalLinkIcon, LockIcon, UnlockIcon, DeleteIcon } from '@chakra-ui/icons';
+import { ExternalLinkIcon } from '@chakra-ui/icons';
+import { requestStorage } from '@extension/storage';
 
-interface Input {
+interface InputType {
   addressNList: number[];
   amount: string;
   hex: string;
@@ -27,69 +28,154 @@ interface Input {
   vout: number;
 }
 
-interface Output {
+interface OutputType {
   address: string;
   addressType: string;
   amount: number;
 }
 
 interface UnsignedTx {
-  inputs: Input[];
-  outputs: Output[];
+  inputs: InputType[];
+  outputs: OutputType[];
   memo?: string;
+  fee?: number;
 }
 
 interface Transaction {
+  id: string; // Include id for updating the event
   unsignedTx: UnsignedTx;
+}
+
+interface AssetContext {
+  priceUsd: number;
 }
 
 interface IProps {
   transaction: Transaction;
 }
 
+const requestAssetContext = (): Promise<AssetContext> => {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({ type: 'GET_ASSET_CONTEXT' }, response => {
+      if (chrome.runtime.lastError) {
+        return reject(chrome.runtime.lastError);
+      }
+      resolve(response);
+    });
+  });
+};
+
+const updateEventById = async (id: string, updatedTransaction: Transaction) => {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(
+      { type: 'UPDATE_EVENT_BY_ID', payload: { id, updatedEvent: updatedTransaction } },
+      response => {
+        if (chrome.runtime.lastError) {
+          return reject(chrome.runtime.lastError);
+        }
+        resolve(response);
+      },
+    );
+  });
+};
+
 export default function CoinControl({ transaction }: IProps) {
-  const [inputs, setInputs] = useState<Input[]>([]);
-  const [outputs, setOutputs] = useState<Output[]>([]);
+  const [inputs, setInputs] = useState<InputType[]>([]);
+  const [outputs, setOutputs] = useState<OutputType[]>([]);
   const [memo, setMemo] = useState<string | null>(null);
   const [lockedInputs, setLockedInputs] = useState<string[]>([]);
-  const [selectedInputs, setSelectedInputs] = useState<string[]>([]);
-  const [fee, setFee] = useState<number>(0);
   const [adjustedFee, setAdjustedFee] = useState<number>(0);
+  const [assetContext, setAssetContext] = useState<AssetContext | null>(null);
+  const [recommendedFeeRate, setRecommendedFeeRate] = useState<number>(10); // Placeholder 10 sat/byte
 
   useEffect(() => {
     if (transaction && transaction.unsignedTx) {
       setInputs(transaction.unsignedTx.inputs || []);
       setOutputs(transaction.unsignedTx.outputs || []);
       setMemo(transaction.unsignedTx.memo || null);
+      setAdjustedFee(transaction.unsignedTx.fee || 0);
     }
   }, [transaction]);
 
   useEffect(() => {
-    // Calculate total inputs and outputs amount
-    const totalInputAmount = inputs.reduce((acc, input) => acc + parseInt(input.amount || '0'), 0);
-    const totalOutputAmount = outputs.reduce((acc, output) => acc + output.amount, 0); // Changed to handle number amount
-    setFee(totalInputAmount - totalOutputAmount);
-    setAdjustedFee(totalInputAmount - totalOutputAmount);
-  }, [inputs, outputs]);
+    // Fetch asset context to get priceUsd
+    requestAssetContext()
+      .then(context => {
+        setAssetContext(context);
+      })
+      .catch(error => {
+        console.error('Error fetching asset context:', error);
+      });
+  }, []);
 
-  const handleLockInput = (input: Input) => {
-    // Toggle lock
-    if (lockedInputs.includes(input.txid)) {
-      setLockedInputs(lockedInputs.filter(txid => txid !== input.txid));
-    } else {
-      setLockedInputs([...lockedInputs, input.txid]);
+  // Calculate total inputs amount once
+  const totalInputAmount = inputs.reduce((acc, input) => acc + parseInt(input.amount || '0'), 0);
+
+  // Calculate estimated transaction size
+  const txSizeInBytes = inputs.length * 180 + outputs.length * 34 + 10;
+
+  // Initialize fee if not set
+  useEffect(() => {
+    if (adjustedFee === 0) {
+      const initialFee = Math.ceil(txSizeInBytes * recommendedFeeRate);
+      setAdjustedFee(initialFee);
     }
-  };
+  }, [adjustedFee, recommendedFeeRate, txSizeInBytes]);
 
-  const handleRemoveInput = (input: Input) => {
-    setInputs(inputs.filter(i => i.txid !== input.txid));
-  };
+  const handleFeeChange = (newFee: number) => {
+    setAdjustedFee(newFee);
 
-  const handleSelectInput = (input: Input) => {
-    if (selectedInputs.includes(input.txid)) {
-      setSelectedInputs(selectedInputs.filter(txid => txid !== input.txid));
+    // Adjust the outputs amounts accordingly
+    const newTotalOutputsAmount = totalInputAmount - newFee;
+
+    // Start by adjusting the change output if it exists
+    const changeOutputIndex = outputs.findIndex(output => output.addressType === 'change');
+    const recipientOutputs = outputs.filter(output => output.addressType !== 'change');
+
+    if (changeOutputIndex !== -1) {
+      // There is a change output; adjust its amount
+      const recipientAmount = recipientOutputs.reduce((acc, output) => acc + output.amount, 0);
+      let newChangeAmount = newTotalOutputsAmount - recipientAmount;
+
+      if (newChangeAmount >= 0) {
+        outputs[changeOutputIndex].amount = newChangeAmount;
+      } else {
+        // Remove the change output if its amount is zero or negative
+        outputs.splice(changeOutputIndex, 1);
+        // Adjust recipient outputs proportionally
+        adjustRecipientOutputs(newTotalOutputsAmount);
+      }
     } else {
-      setSelectedInputs([...selectedInputs, input.txid]);
+      // No change output, adjust recipient outputs
+      adjustRecipientOutputs(newTotalOutputsAmount);
+    }
+
+    // Update the outputs state
+    setOutputs([...outputs]);
+  };
+
+  const adjustRecipientOutputs = (newTotalOutputsAmount: number) => {
+    const recipientOutputs = outputs.filter(output => output.addressType !== 'change');
+    const totalRecipientAmount = recipientOutputs.reduce((acc, output) => acc + output.amount, 0);
+
+    // Adjust recipient outputs proportionally
+    recipientOutputs.forEach(output => {
+      const proportion = output.amount / totalRecipientAmount;
+      output.amount = Math.max(Math.floor(newTotalOutputsAmount * proportion), 0);
+    });
+  };
+
+  const handleUpdateTransaction = async () => {
+    // Update the transaction in storage
+    const updatedTransaction = { ...transaction };
+    updatedTransaction.unsignedTx.outputs = outputs;
+    updatedTransaction.unsignedTx.fee = adjustedFee;
+
+    try {
+      await updateEventById(transaction.id, updatedTransaction);
+      console.log('Transaction updated in storage:', updatedTransaction);
+    } catch (error) {
+      console.error('Error updating transaction in storage:', error);
     }
   };
 
@@ -97,6 +183,22 @@ export default function CoinControl({ transaction }: IProps) {
     const url = `https://live.blockcypher.com/btc/tx/${txid}`;
     window.open(url, '_blank');
   };
+
+  const formatAmount = (amountInSatoshi: number) => {
+    const btcAmount = amountInSatoshi / 1e8;
+    const usdValue = assetContext && assetContext.priceUsd ? (btcAmount * assetContext.priceUsd).toFixed(2) : 'N/A';
+    return `${amountInSatoshi} sats (${btcAmount.toFixed(8)} BTC) ≈ $${usdValue}`;
+  };
+
+  const feeRate = adjustedFee / txSizeInBytes; // satoshi per byte
+
+  // Calculate fee in USD
+  const feeInBtc = adjustedFee / 1e8;
+  const feeInUsd = assetContext && assetContext.priceUsd ? (feeInBtc * assetContext.priceUsd).toFixed(2) : 'N/A';
+
+  // Show fee calculation
+  const totalOutputAmount = outputs.reduce((acc, output) => acc + output.amount, 0);
+  const feeMath = totalInputAmount - totalOutputAmount;
 
   return (
     <Box p={4}>
@@ -124,37 +226,10 @@ export default function CoinControl({ transaction }: IProps) {
             </CardHeader>
             <CardBody>
               <Flex justify="space-between">
-                <Text>Amount: {input.amount}</Text>
+                <Text>Amount: {formatAmount(parseInt(input.amount))}</Text>
                 <Text>Script Type: {input.scriptType}</Text>
               </Flex>
             </CardBody>
-            <CardFooter>
-              <HStack spacing={2}>
-                <Button
-                  size="sm"
-                  variant={selectedInputs.includes(input.txid) ? 'solid' : 'outline'}
-                  onClick={() => handleSelectInput(input)}>
-                  {selectedInputs.includes(input.txid) ? 'Deselect' : 'Select'}
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => handleRemoveInput(input)}>
-                  <DeleteIcon mr={1} />
-                  Remove
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => handleLockInput(input)}>
-                  {lockedInputs.includes(input.txid) ? (
-                    <>
-                      <UnlockIcon mr={1} />
-                      Unlock
-                    </>
-                  ) : (
-                    <>
-                      <LockIcon mr={1} />
-                      Lock
-                    </>
-                  )}
-                </Button>
-              </HStack>
-            </CardFooter>
           </Card>
         ))}
 
@@ -167,7 +242,7 @@ export default function CoinControl({ transaction }: IProps) {
               <Flex justify="space-between" align="center">
                 <Box>
                   <Text>Address: {output.address}</Text>
-                  <Text>Amount: {output.amount}</Text>
+                  <Text>Amount: {formatAmount(output.amount)}</Text>
                 </Box>
                 <Badge colorScheme={output.addressType === 'change' ? 'green' : 'blue'}>{output.addressType}</Badge>
               </Flex>
@@ -188,10 +263,28 @@ export default function CoinControl({ transaction }: IProps) {
 
         <Card w="100%" mt={4}>
           <CardBody>
-            <Text fontSize="lg" fontWeight="bold" mb={2}>
-              Adjust Fee
-            </Text>
-            <Slider defaultValue={fee} min={0} max={fee * 2} step={1} onChange={val => setAdjustedFee(val)}>
+            <Flex justify="space-between" align="center">
+              <Text fontSize="lg" fontWeight="bold" mb={2}>
+                Adjust Fee
+              </Text>
+              <HStack>
+                <Text>Recommended Fee:</Text>
+                <Input
+                  width="80px"
+                  value={recommendedFeeRate}
+                  onChange={e => setRecommendedFeeRate(parseInt(e.target.value) || 10)}
+                  size="sm"
+                  type="number"
+                />
+                <Text>sat/byte</Text>
+              </HStack>
+            </Flex>
+            <Slider
+              min={1} // Minimum fee
+              max={totalInputAmount}
+              step={1}
+              value={adjustedFee}
+              onChange={handleFeeChange}>
               <SliderTrack bg="red.100">
                 <SliderFilledTrack bg="tomato" />
               </SliderTrack>
@@ -200,11 +293,22 @@ export default function CoinControl({ transaction }: IProps) {
               </SliderThumb>
             </Slider>
             <HStack justify="space-between" mt={2}>
-              <Text>Adjusted Fee: {adjustedFee}</Text>
-              <Text>Total Fee: {fee}</Text>
+              <Text>
+                Adjusted Fee: {adjustedFee} sats ({feeRate.toFixed(2)} sat/byte) ≈ ${feeInUsd}
+              </Text>
+              <Text>Original Fee: {transaction.unsignedTx.fee || 'N/A'} sats</Text>
             </HStack>
+            <Text mt={2}>Estimated Transaction Size: {txSizeInBytes} bytes</Text>
+            <Text mt={2}>
+              Fee Calculation: {totalInputAmount} sats (inputs) - {totalOutputAmount} sats (outputs) = {feeMath} sats
+              (fee)
+            </Text>
           </CardBody>
         </Card>
+
+        <Button colorScheme="blue" onClick={handleUpdateTransaction}>
+          Update Transaction
+        </Button>
       </VStack>
     </Box>
   );
