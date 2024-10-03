@@ -27,12 +27,13 @@ import {
 import { ChevronDownIcon, ChevronUpIcon, InfoOutlineIcon } from '@chakra-ui/icons';
 import React, { useCallback, useEffect, useState } from 'react';
 import { NetworkIdToChain } from '@pioneer-platform/pioneer-caip';
+import { COIN_MAP_KEEPKEY_LONG } from '@pioneer-platform/pioneer-coins';
 //@ts-ignore
 import confetti from 'canvas-confetti'; // Make sure to install the confetti package
 
 const TAG = ' | Transfer | ';
 
-const convertToHex = (amountInEther) => {
+const convertToHex = amountInEther => {
   const weiMultiplier = BigInt(1e18); // 1 Ether = 1e18 Wei
   const amountInWei = BigInt(parseFloat(amountInEther) * 1e18); // Convert Ether to Wei
 
@@ -128,16 +129,16 @@ export function Transfer({}: any): JSX.Element {
 
       const sendPayload = {
         value: convertToHex(inputAmount),
-        to:recipient,
+        to: recipient,
         memo,
         isMax: isMax,
       };
 
       let chain = assetContext?.networkId.includes('eip155')
         ? 'ethereum'
-        : NetworkIdToChain(assetContext?.networkId).toLowerCase();
+        : NetworkIdToChain[assetContext?.networkId].toLowerCase();
 
-      chain = chain.toLowerCase();
+      chain = COIN_MAP_KEEPKEY_LONG[chain.toUpperCase()].toLowerCase();
 
       const requestInfo = {
         method: 'transfer',

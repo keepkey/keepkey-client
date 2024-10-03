@@ -1,10 +1,15 @@
-const TAG = ' | thorchainHandler | ';
+const TAG = ' | mayaHandler | ';
 import { JsonRpcProvider } from 'ethers';
 import { Chain } from '@coinmasters/types';
 import { AssetValue } from '@pioneer-platform/helpers';
 import { EIP155_CHAINS } from '../chains';
-// @ts-ignore
-import { ChainToNetworkId, shortListSymbolToCaip } from '@pioneer-platform/pioneer-caip';
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-expect-error
+import { ChainToNetworkId, shortListSymbolToCaip, caipToNetworkId } from '@pioneer-platform/pioneer-caip';
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-expect-error
+import { v4 as uuidv4 } from 'uuid';
+import { requestStorage, web3ProviderStorage, assetContextStorage } from '@extension/storage';
 
 interface ProviderRpcError extends Error {
   code: number;

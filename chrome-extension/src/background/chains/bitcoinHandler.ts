@@ -90,6 +90,9 @@ export const handleBitcoinRequest = async (
       const wallet = await KEEPKEY_WALLET.swapKit.getWallet(Chain.Bitcoin);
       if (!wallet) throw new Error('Failed to init swapkit');
 
+      const pubkeysLocal = await wallet.getPubkeys();
+      console.log(tag, 'pubkeysLocal: ', pubkeysLocal);
+
       const buildTxPromise = wallet
         .buildTx(sendPayload)
         .then(async unsignedTx => {
@@ -106,6 +109,7 @@ export const handleBitcoinRequest = async (
           const response = await requestStorage.getEventById(requestInfo.id);
           response.unsignedTx = unsignedTx;
           await requestStorage.updateEventById(requestInfo.id, response);
+
           // Push an event to the front-end that UTXOs are found
           // This could be something like: sendUpdateToFrontend('UTXOs found', unsignedTx);
         })

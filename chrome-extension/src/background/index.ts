@@ -76,6 +76,9 @@ const onStart = async function () {
   try {
     console.log(tag, 'Starting...');
     APP = await onStartKeepkey();
+    console.log(tag, 'APP:', APP);
+    if (!APP) throw Error('Failed to INIT!');
+
     await APP.getAssets();
     await APP.getPubkeys();
     await APP.getBalances();
@@ -133,12 +136,13 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
     try {
       switch (message.type) {
         case 'WALLET_REQUEST': {
+          if (!APP) throw Error('APP not initialized');
           const { requestInfo } = message;
           const { method, params, chain } = requestInfo;
 
           if (method) {
             try {
-              const result = await handleWalletRequest(requestInfo, chain, method, params, provider, APP, ADDRESS);
+              const result = await handleWalletRequest(requestInfo, chain, method, params, APP, ADDRESS);
               sendResponse({ result });
             } catch (error) {
               sendResponse({ error: error.message });

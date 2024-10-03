@@ -120,10 +120,27 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
     if (event?.networkId) {
       if (event.networkId.includes('eip155')) {
         setTransactionType('evm');
-      } else if (event.chain === 'bitcoin') {
-        setTransactionType('utxo');
       } else {
-        setTransactionType('unknown');
+        switch (event.chain) {
+          case 'bitcoin':
+          case 'bitcoincash':
+          case 'dogecoin':
+          case 'litecoin':
+          case 'dash':
+            setTransactionType('utxo');
+            break;
+          case 'cosmos':
+          case 'thorchain':
+          case 'osmosis':
+          case 'mayachain':
+            setTransactionType('tendermint');
+            break;
+          case 'ripple':
+            setTransactionType('other');
+            break;
+          default:
+            setTransactionType('unknown');
+        }
       }
     }
   }, [event]);
@@ -156,7 +173,7 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
       case 'utxo':
         return <UtxoTransaction transaction={event} handleResponse={handleResponse} />;
       default:
-        return <div>Unknown Transaction Type</div>;
+        return <div>Unknown Transaction Type {transactionType}</div>;
     }
   };
 

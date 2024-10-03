@@ -200,50 +200,57 @@ export const handleWalletRequest = async (
   chain: string,
   method: string,
   params: any[],
-  provider: JsonRpcProvider,
   KEEPKEY_WALLET: any,
   ADDRESS: string,
 ): Promise<any> => {
   const tag = ' | handleWalletRequest | ';
   try {
-    // console.log(tag, 'id:', requestInfo.id);
-    // console.log(tag, 'chain:', chain);
-    // console.log(tag, 'requestInfo:', requestInfo);
+    console.log(tag, 'id:', requestInfo.id);
+    console.log(tag, 'chain:', chain);
+    console.log(tag, 'params:', params);
+    console.log(tag, 'requestInfo:', requestInfo);
+    console.log(tag, 'KEEPKEY_WALLET:', KEEPKEY_WALLET);
     if (!chain) throw Error('Chain not provided!');
     if (!requestInfo) throw Error('Cannot validate request! Refusing to proceed.');
-
-    // if (!ADDRESS || !ADDRESS.length) {
-    //   console.log('Device is not paired!');
-    //   await requireUnlock();
-    // }
 
     switch (chain) {
       case 'ethereum': {
         return await handleEthereumRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
+        break;
       }
       case 'bitcoin': {
         return await handleBitcoinRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
+        break;
       }
       case 'bitcoincash': {
         return await handleBitcoinCashRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
+        break;
       }
       case 'dogecoin': {
+        console.log(tag, 'checkpoint handle doge');
         return await handleDogecoinRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
+        break;
       }
       case 'litecoin': {
+        console.log(tag, 'checkpoint handle litecoin');
         return await handleLitecoinRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
+        break;
       }
       case 'dash': {
         return await handleDashRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
+        break;
       }
       case 'thorchain': {
         return await handleThorchainRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
+        break;
       }
       case 'cosmos': {
         return await handleCosmosRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
+        break;
       }
       case 'mayachain': {
         return await handleMayaRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
+        break;
       }
       default: {
         console.log(tag, `Chain ${chain} not supported`);
@@ -252,7 +259,6 @@ export const handleWalletRequest = async (
     }
   } catch (error) {
     console.error(tag, `Error processing method ${method}:`, error);
-
     if ((error as ProviderRpcError).code && (error as ProviderRpcError).message) {
       throw error;
     } else {

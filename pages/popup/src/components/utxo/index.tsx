@@ -45,7 +45,7 @@ export function UtxoTransaction({ transaction: initialTransaction, handleRespons
       const data = await requestStorage.getEventById(id);
       console.log('Fetched transaction data:', data); // Log the data for debugging
 
-      if (data.unsignedTx) {
+      if (data.utxos) {
         setTransaction(data); // Update transaction state
         setIsLoading(false); // Stop spinner when data is populated
       } else {
@@ -127,8 +127,9 @@ export function UtxoTransaction({ transaction: initialTransaction, handleRespons
           <Tabs>
             <TabList defaultIndex={1}>
               <Tab>Basic</Tab>
-              <Tab>Fees</Tab>
-              <Tab>Coin Control</Tab>
+              {/*<Tab>Fees</Tab>*/}
+              {/*<Tab>Coin Control</Tab>*/}
+              <Tab>raw</Tab>
               {/*<Tab>UTXO</Tab>*/}
             </TabList>
 
@@ -137,13 +138,17 @@ export function UtxoTransaction({ transaction: initialTransaction, handleRespons
                 <RequestDetailsCard transaction={transaction} />
               </TabPanel>
 
-              <TabPanel>
-                <ProjectFeeCard transaction={transaction} />
-              </TabPanel>
+              {/*<TabPanel>*/}
+              {/*  <ProjectFeeCard transaction={transaction} />*/}
+              {/*</TabPanel>*/}
 
-              <TabPanel>
-                <CoinControl transaction={transaction} />
-              </TabPanel>
+              {/*<TabPanel>*/}
+              {/*  <CoinControl transaction={transaction} />*/}
+              {/*</TabPanel>*/}
+
+              {/*<TabPanel>*/}
+              {/*  <RequestDataCard transaction={transaction} />*/}
+              {/*</TabPanel>*/}
 
               <TabPanel>
                 <RequestDataCard transaction={transaction} />

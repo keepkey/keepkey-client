@@ -1,6 +1,6 @@
 {
   "name": "chrome-extension",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "description": "chrome extension - core settings",
   "type": "module",
   "scripts": {
@@ -17,15 +17,16 @@
   },
   "dependencies": {
     "@coinmasters/pioneer-db": "^4.7.65",
-    "@coinmasters/pioneer-sdk": "^4.7.68",
+    "@coinmasters/pioneer-sdk": "^4.7.70",
     "@coinmasters/types": "^4.7.66",
-    "@coinmasters/wallet-keepkey": "^13.0.68",
+    "@coinmasters/wallet-keepkey": "^13.0.70",
     "@extension/shared": "workspace:*",
     "@extension/storage": "workspace:*",
     "@pioneer-platform/helpers": "^4.0.12",
     "@pioneer-platform/pioneer-caip": "^9.2.32",
     "@pioneer-platform/pioneer-coins": "^9.2.23",
     "axios": "^1.7.7",
+    "coinselect": "^3.1.13",
     "ethers": "^6.13.2",
     "uuid": "^10.0.0",
     "webextension-polyfill": "^0.12.0"

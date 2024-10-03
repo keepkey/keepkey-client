@@ -3,7 +3,10 @@ import { JsonRpcProvider } from 'ethers';
 import { Chain } from '@coinmasters/types';
 import { AssetValue } from '@pioneer-platform/helpers';
 // @ts-ignore
-import { ChainToNetworkId, shortListSymbolToCaip } from '@pioneer-platform/pioneer-caip';
+// @ts-ignore
+import { ChainToNetworkId, shortListSymbolToCaip, caipToNetworkId } from '@pioneer-platform/pioneer-caip';
+// @ts-ignore
+import { v4 as uuidv4 } from 'uuid';
 
 interface ProviderRpcError extends Error {
   code: number;
