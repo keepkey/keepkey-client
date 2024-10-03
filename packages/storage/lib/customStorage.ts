@@ -6,6 +6,7 @@ type Event = {
   request: any;
   status: 'request' | 'approval' | 'completed';
   timestamp: string;
+  [key: string]: any; // Allow additional properties
 };
 
 type ApiKeyStorage = BaseStorage<string> & {
@@ -28,7 +29,7 @@ type EventStorage = BaseStorage<Event[]> & {
   addEvent: (event: Event) => Promise<boolean>;
   getEvents: () => Promise<Event[] | null>;
   getEventById: (id: string) => Promise<Event | null>;
-  updateEventById: (id: string, updatedEvent: Partial<Event>) => Promise<boolean>; // Added this line
+  updateEventById: (id: string, updatedEvent: Partial<Event>) => Promise<boolean>;
   removeEventById: (id: string) => Promise<void>;
   clearEvents: () => Promise<void>;
 };
@@ -164,7 +165,6 @@ const createEventStorage = (key: string): EventStorage => {
       console.log(tag, `Event with id ${id}:`, event);
       return event || null;
     },
-    // Added updateEventById function
     updateEventById: async (id: string, updatedEvent: Partial<Event>): Promise<boolean> => {
       const tag = TAG + ' | updateEventById | ';
       try {
@@ -203,6 +203,7 @@ const createEventStorage = (key: string): EventStorage => {
       await storage.set(() => []);
       console.log(tag, 'Cleared all events.');
     },
+    subscribe: storage.subscribe,
   };
 };
 
@@ -237,12 +238,12 @@ export const completedStorage = createEventStorage('keepkey-completed');
 // Create Asset Context Storage
 const createAssetContextStorage = (): AssetContextStorage => {
   const storage = createStorage<AssetContext>(
-      'keepkey-asset-context',
-      {},
-      {
-        storageType: StorageType.Local,
-        liveUpdate: true,
-      },
+    'keepkey-asset-context',
+    {},
+    {
+      storageType: StorageType.Local,
+      liveUpdate: true,
+    },
   );
 
   return {
@@ -260,10 +261,10 @@ export const assetContextStorage = createAssetContextStorage();
 
 // Utility function to move an event between storages
 const moveEvent = async (
-    eventId: string,
-    fromStorage: EventStorage,
-    toStorage: EventStorage,
-    newStatus: 'approval' | 'completed',
+  eventId: string,
+  fromStorage: EventStorage,
+  toStorage: EventStorage,
+  newStatus: 'approval' | 'completed',
 ) => {
   const tag = TAG + ' | moveEvent | ';
   const event = await fromStorage.getEventById(eventId);

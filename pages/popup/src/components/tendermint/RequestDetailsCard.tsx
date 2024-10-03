@@ -59,7 +59,7 @@ export default function RequestDetailsCard({ transaction }: any) {
                 <Td>
                   <Badge>Memo:</Badge>
                 </Td>
-                <Td>{transaction?.memo || 'none'}</Td>
+                <Td>{transaction?.request?.memo || 'none'}</Td>
               </Tr>
             </Tbody>
           </Table>

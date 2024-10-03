@@ -28,6 +28,12 @@ const TxidPage = ({ txHash, explorerUrl }: { txHash: string; explorerUrl: string
     return () => clearTimeout(confettiTimer);
   }, []);
 
+  // Function to handle the View on Explorer and close popup
+  const handleExplorerClick = () => {
+    window.open(explorerUrl, '_blank', 'noopener,noreferrer'); // Open the explorer URL
+    window.close(); // Close the popup
+  };
+
   return (
     <Flex
       align="center"
@@ -77,8 +83,8 @@ const TxidPage = ({ txHash, explorerUrl }: { txHash: string; explorerUrl: string
             </Tooltip>
           </Box>
 
-          {/* Button to view the transaction on the explorer */}
-          <Button as="a" href={explorerUrl} target="_blank" rel="noopener noreferrer" colorScheme="teal" size="lg">
+          {/* Button to view the transaction on the explorer and close the popup */}
+          <Button onClick={handleExplorerClick} colorScheme="teal" size="lg">
             View on Explorer
           </Button>
         </CardBody>

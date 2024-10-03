@@ -228,7 +228,7 @@
       litecoin: createWalletObject('litecoin'),
       thorchain: createWalletObject('thorchain'),
       mayachain: createWalletObject('mayachain'),
-      solana: createWalletObject('solana'),
+      // solana: createWalletObject('solana'),
     };
 
     const keepkey = {
@@ -238,11 +238,13 @@
       dogecoin: createWalletObject('dogecoin'),
       dash: createWalletObject('dash'),
       ethereum: ethereum,
+      osmosis: createWalletObject('osmosis'),
       cosmos: createWalletObject('cosmos'),
       litecoin: createWalletObject('litecoin'),
       thorchain: createWalletObject('thorchain'),
       mayachain: createWalletObject('mayachain'),
-      solana: createWalletObject('solana'),
+      ripple: createWalletObject('ripple'),
+      // solana: createWalletObject('solana'),
     };
 
     const handler = {

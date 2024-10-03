@@ -37,11 +37,11 @@ export const handleMayaRequest = async (
   switch (method) {
     case 'request_accounts': {
       //Unsigned TX
-      let pubkeys = KEEPKEY_WALLET.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.Mayachain]));
-      let accounts = [];
+      const pubkeys = KEEPKEY_WALLET.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.Mayachain]));
+      const accounts = [];
       for (let i = 0; i < pubkeys.length; i++) {
-        let pubkey = pubkeys[i];
-        let address = pubkey.master || pubkey.address;
+        const pubkey = pubkeys[i];
+        const address = pubkey.master || pubkey.address;
         accounts.push(address);
       }
       console.log(tag, 'accounts: ', accounts);
@@ -51,39 +51,62 @@ export const handleMayaRequest = async (
     }
     case 'request_balance': {
       //get sum of all pubkeys configured
-      let pubkeys = await KEEPKEY_WALLET.swapKit.getBalance(Chain.Litecoin);
+      const pubkeys = await KEEPKEY_WALLET.swapKit.getBalance(Chain.Litecoin);
       console.log(tag, 'pubkeys: ', pubkeys);
       return [pubkeys];
     }
     case 'transfer': {
       const caip = shortListSymbolToCaip['MAYA'];
       console.log(tag, 'caip: ', caip);
+      await KEEPKEY_WALLET.setAssetContext({ caip });
       const networkId = caipToNetworkId(caip);
+      requestInfo.id = uuidv4();
+      console.log(tag, 'requestInfo: ', requestInfo);
+      //push event to ux
+      chrome.runtime.sendMessage({
+        action: 'TRANSACTION_CONTEXT_UPDATED',
+        id: requestInfo.id,
+      });
+
       //verify context is bitcoin
       if (!KEEPKEY_WALLET.assetContext) {
         // Set context to the chain, defaults to ETH
         await KEEPKEY_WALLET.setAssetContext({ caip });
       }
       // Require user approval
-      const result = await requireApproval(networkId, requestInfo, 'bitcoin', method, params[0]);
+      const result = await requireApproval(networkId, requestInfo, 'mayachain', method, params[0]);
       console.log(tag, 'result:', result);
 
-      //send tx
-      console.log(tag, 'params[0]: ', params[0]);
-      let assetString = 'MAYA.CACAO';
-      await AssetValue.loadStaticAssets();
-      console.log(tag, 'params[0].amount.amount: ', params[0].amount.amount);
-      let assetValue = await AssetValue.fromString(assetString, parseFloat(params[0].amount.amount));
-      let sendPayload = {
-        from: params[0].from,
-        assetValue,
-        memo: params[0].memo || '',
-        recipient: params[0].recipient,
-      };
-      console.log(tag, 'sendPayload: ', sendPayload);
-      const txHash = await KEEPKEY_WALLET.swapKit.transfer(sendPayload);
-      console.log(tag, 'txHash: ', txHash);
-      return txHash;
+      if (result.success) {
+        //send tx
+        console.log(tag, 'params[0]: ', params[0]);
+        const assetString = 'MAYA.CACAO';
+        await AssetValue.loadStaticAssets();
+        console.log(tag, 'params[0].amount.amount: ', params[0].amount.amount);
+        const assetValue = await AssetValue.fromString(assetString, parseFloat(params[0].amount.amount));
+        const sendPayload = {
+          from: params[0].from,
+          assetValue,
+          memo: params[0].memo || '',
+          recipient: params[0].recipient,
+        };
+        console.log(tag, 'sendPayload: ', sendPayload);
+        const txHash = await KEEPKEY_WALLET.swapKit.transfer(sendPayload);
+        console.log(tag, 'txHash: ', txHash);
+
+        const response = await requestStorage.getEventById(requestInfo.id);
+        console.log(tag, 'response: ', response);
+        response.txid = txHash;
+        await requestStorage.updateEventById(requestInfo.id, response);
+        chrome.runtime.sendMessage({
+          action: 'transaction_complete',
+          txHash: txHash,
+        });
+
+        return txHash;
+      } else {
+        throw createProviderRpcError(4200, 'User denied transaction');
+      }
     }
     default: {
       console.log(tag, `Method ${method} not supported`);

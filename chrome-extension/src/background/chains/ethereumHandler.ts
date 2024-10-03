@@ -317,6 +317,14 @@ const handleSigningMethods = async (method, params, requestInfo, ADDRESS, KEEPKE
   }
 };
 
+const convertToHex = (amountInEther: string) => {
+  const weiMultiplier = BigInt(1e18); // 1 Ether = 1e18 Wei
+  const amountInWei = BigInt(parseFloat(amountInEther || '0') * 1e18); // Convert Ether to Wei
+
+  // Convert the amount in Wei to a hex string
+  return '0x' + amountInWei.toString(16);
+};
+
 // For 'transfer', build transaction info before calling requireApproval
 const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval) => {
   const tag = TAG + ' | handleTransfer | ';
@@ -335,7 +343,9 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
 
   // Build transaction info before requireApproval
   const transaction = params[0];
-
+  console.log(tag, 'transaction:', transaction);
+  transaction.value = convertToHex(transaction.amount.amount);
+  delete transaction.amount;
   // Ensure 'from' is set
   transaction.from = transaction.from || ADDRESS;
 

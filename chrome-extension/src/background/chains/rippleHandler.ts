@@ -35,11 +35,11 @@ export const handleRippleRequest = async (
   console.log(tag, 'method:', method);
   switch (method) {
     case 'request_accounts': {
-      let pubkeys = KEEPKEY_WALLET.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.THORChain]));
-      let accounts = [];
+      const pubkeys = KEEPKEY_WALLET.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.THORChain]));
+      const accounts = [];
       for (let i = 0; i < pubkeys.length; i++) {
-        let pubkey = pubkeys[i];
-        let address = pubkey.master || pubkey.address;
+        const pubkey = pubkeys[i];
+        const address = pubkey.master || pubkey.address;
         accounts.push(address);
       }
       console.log(tag, 'accounts: ', accounts);
@@ -49,7 +49,7 @@ export const handleRippleRequest = async (
     }
     case 'request_balance': {
       //get sum of all pubkeys configured
-      let balance = KEEPKEY_WALLET.balances.find((balance: any) => balance.caip === shortListSymbolToCaip['THOR']);
+      const balance = KEEPKEY_WALLET.balances.find((balance: any) => balance.caip === shortListSymbolToCaip['THOR']);
 
       //let pubkeys = await KEEPKEY_WALLET.swapKit.getBalance(Chain.Bitcoin);
       console.log(tag, 'balance: ', balance);
@@ -57,32 +57,50 @@ export const handleRippleRequest = async (
     }
     case 'transfer': {
       const caip = shortListSymbolToCaip['XRP'];
+      await KEEPKEY_WALLET.setAssetContext({ caip });
       console.log(tag, 'caip: ', caip);
       const networkId = caipToNetworkId(caip);
-      //verify context is bitcoin
-      if (!KEEPKEY_WALLET.assetContext) {
-        await KEEPKEY_WALLET.setAssetContext({ caip });
-      }
-      // Require user approval
-      const result = await requireApproval(networkId, requestInfo, 'bitcoin', method, params[0]);
-      console.log(tag, 'result:', result);
+      requestInfo.id = uuidv4();
+      console.log(tag, 'requestInfo: ', requestInfo);
+      //push event to ux
+      chrome.runtime.sendMessage({
+        action: 'TRANSACTION_CONTEXT_UPDATED',
+        id: requestInfo.id,
+      });
 
-      //send tx
-      console.log(tag, 'params[0]: ', params[0]);
-      let assetString = 'XRP.XRP';
-      await AssetValue.loadStaticAssets();
-      console.log(tag, 'params[0].amount.amount: ', params[0].amount.amount);
-      let assetValue = await AssetValue.fromString(assetString, parseFloat(params[0].amount.amount));
-      let sendPayload = {
-        from: params[0].from,
-        assetValue,
-        memo: params[0].memo || '',
-        recipient: params[0].recipient,
-      };
-      console.log(tag, 'sendPayload: ', sendPayload);
-      const txHash = await KEEPKEY_WALLET.swapKit.transfer(sendPayload);
-      console.log(tag, 'txHash: ', txHash);
-      return txHash;
+      // Require user approval
+      const result = await requireApproval(networkId, requestInfo, 'ripple', method, params[0]);
+      console.log(tag, 'result:', result);
+      if (result.success) {
+        //send tx
+        console.log(tag, 'params[0]: ', params[0]);
+        const assetString = 'XRP.XRP';
+        await AssetValue.loadStaticAssets();
+        console.log(tag, 'params[0].amount.amount: ', params[0].amount.amount);
+        const assetValue = await AssetValue.fromString(assetString, parseFloat(params[0].amount.amount));
+        const sendPayload = {
+          from: params[0].from,
+          assetValue,
+          memo: params[0].memo || '',
+          recipient: params[0].recipient,
+        };
+        console.log(tag, 'sendPayload: ', sendPayload);
+        const txHash = await KEEPKEY_WALLET.swapKit.transfer(sendPayload);
+        console.log(tag, 'txHash: ', txHash);
+
+        const response = await requestStorage.getEventById(requestInfo.id);
+        console.log(tag, 'response: ', response);
+        response.txid = txHash;
+        await requestStorage.updateEventById(requestInfo.id, response);
+        chrome.runtime.sendMessage({
+          action: 'transaction_complete',
+          txHash: txHash,
+        });
+
+        return txHash;
+      } else {
+        throw createProviderRpcError(4200, 'User denied transaction');
+      }
     }
     default: {
       console.log(tag, `Method ${method} not supported`);

@@ -13,7 +13,9 @@ import { handleDogecoinRequest } from './chains/dogecoinHandler';
 import { handleLitecoinRequest } from './chains/litecoinHandler';
 import { handleDashRequest } from './chains/dashHandler';
 import { handleCosmosRequest } from './chains/cosmosHandler';
+import { handleOsmosisRequest } from './chains/osmosisHandler';
 import { handleMayaRequest } from './chains/mayaHandler';
+import { handleRippleRequest } from './chains/rippleHandler';
 
 const TAG = ' | METHODS | ';
 const DOMAIN_WHITE_LIST = [];
@@ -244,8 +246,16 @@ export const handleWalletRequest = async (
         return await handleThorchainRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
         break;
       }
+      case 'osmosis': {
+        return await handleOsmosisRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
+        break;
+      }
       case 'cosmos': {
         return await handleCosmosRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
+        break;
+      }
+      case 'ripple': {
+        return await handleRippleRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
         break;
       }
       case 'mayachain': {

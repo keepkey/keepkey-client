@@ -66,7 +66,11 @@ export const handleDogecoinRequest = async (
       console.log(tag, 'caip: ', caip);
       const networkId = caipToNetworkId(caip);
       requestInfo.id = uuidv4();
-      console.log(tag, 'assetContext: ', KEEPKEY_WALLET);
+      //push event to ux
+      chrome.runtime.sendMessage({
+        action: 'TRANSACTION_CONTEXT_UPDATED',
+        id: requestInfo.id,
+      });
       // eslint-disable-next-line no-constant-condition
       if (!KEEPKEY_WALLET.assetContext) {
         // Set context to the chain, defaults to ETH
@@ -76,23 +80,10 @@ export const handleDogecoinRequest = async (
       console.log(tag, 'pubkeys: ', pubkeys);
       if (!pubkeys || pubkeys.length === 0) throw Error('Failed to locate pubkeys for chain ' + Chain.Dogecoin);
 
-      console.log(tag, 'params[0]: ', params[0]);
-      const assetString = 'DOGE.DOGE';
-      await AssetValue.loadStaticAssets();
-      console.log(tag, 'params[0].amount.amount: ', params[0].amount.amount);
-      const assetValue = await AssetValue.fromString(assetString, parseFloat(params[0].amount.amount));
-
       const wallet = await KEEPKEY_WALLET.swapKit.getWallet(Chain.Dogecoin);
       if (!wallet) throw new Error('Failed to init swapkit');
       const walletAddress = await wallet.getAddress();
       console.log(tag, 'walletAddress: ', walletAddress);
-
-      const sendPayload = {
-        from: walletAddress, // Select preference change address
-        assetValue,
-        memo: params[0].memo || '',
-        recipient: params[0].recipient,
-      };
 
       const buildTx = async function () {
         try {

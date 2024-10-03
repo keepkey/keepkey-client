@@ -223,7 +223,7 @@ export function Asset() {
             <Receive onClose={() => setActiveTab(null)} />
           ) : (
             <Flex justifyContent="center" p={5}>
-              <Text>No asset selected</Text>
+              <Text>No asset selected (Go Back!)</Text>
             </Flex>
           )}
         </CardBody>

@@ -2,6 +2,7 @@ const TAG = ' | cosmosHandler | ';
 import { JsonRpcProvider } from 'ethers';
 import { Chain } from '@coinmasters/types';
 import { AssetValue } from '@pioneer-platform/helpers';
+import { requestStorage, web3ProviderStorage, assetContextStorage } from '@extension/storage';
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-expect-error
@@ -63,17 +64,19 @@ export const handleCosmosRequest = async (
       const caip = shortListSymbolToCaip['ATOM'];
       console.log(tag, 'caip: ', caip);
       const networkId = caipToNetworkId(caip);
+      requestInfo.id = uuidv4();
+      console.log(tag, 'requestInfo: ', requestInfo);
+      //push event to ux
+      chrome.runtime.sendMessage({
+        action: 'TRANSACTION_CONTEXT_UPDATED',
+        id: requestInfo.id,
+      });
       //verify context is bitcoin
       if (!KEEPKEY_WALLET.assetContext) {
         // Set context to the chain, defaults to ETH
-        const caip = shortListSymbolToCaip['BTC'];
         await KEEPKEY_WALLET.setAssetContext({ caip });
       }
-      // Require user approval
-      const result = await requireApproval(networkId, requestInfo, 'bitcoin', method, params[0]);
-      console.log(tag, 'result:', result);
-      //send tx
-      console.log(tag, 'params[0]: ', params[0]);
+
       let assetString = 'GAIA.ATOM';
       await AssetValue.loadStaticAssets();
       console.log(tag, 'params[0].amount.amount: ', params[0].amount.amount);
@@ -84,9 +87,30 @@ export const handleCosmosRequest = async (
         memo: params[0].memo || '',
         recipient: params[0].recipient,
       };
-      const txHash = await KEEPKEY_WALLET.swapKit.transfer(sendPayload);
-      console.log(tag, 'txHash: ', txHash);
-      return txHash;
+      console.log(tag, 'sendPayload: ', sendPayload);
+      requestInfo.unsignedTx = sendPayload;
+      // Require user approval
+      const result = await requireApproval(networkId, requestInfo, 'cosmos', method, params[0]);
+      console.log(tag, 'result:', result);
+      //send tx
+      console.log(tag, 'params[0]: ', params[0]);
+
+      if (result.success) {
+        const txHash = await KEEPKEY_WALLET.swapKit.transfer(sendPayload);
+        console.log(tag, 'txHash: ', txHash);
+
+        const response = await requestStorage.getEventById(requestInfo.id);
+        console.log(tag, 'response: ', response);
+        response.txid = txHash;
+        await requestStorage.updateEventById(requestInfo.id, response);
+        chrome.runtime.sendMessage({
+          action: 'transaction_complete',
+          txHash: txHash,
+        });
+        return txHash;
+      } else {
+        throw createProviderRpcError(4200, 'User denied transaction');
+      }
     }
     default: {
       console.log(tag, `Method ${method} not supported`);

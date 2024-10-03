@@ -17,14 +17,19 @@ import {
   Checkbox,
   Select,
   useToast,
+  Collapse,
+  Tooltip,
 } from '@chakra-ui/react';
-import { DeleteIcon } from '@chakra-ui/icons';
-import { formatDistanceToNow, format } from 'date-fns'; // Library for formatting time
-import { requestStorage } from '@extension/storage/dist/lib';
+import { DeleteIcon, InfoOutlineIcon } from '@chakra-ui/icons';
+import { formatDistanceToNow, format } from 'date-fns';
+import { requestStorage } from '@extension/storage';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface HistoryProps {
   transactionContext: any;
 }
+
+const MotionBox = motion(Box);
 
 const History: React.FC<HistoryProps> = ({ transactionContext }) => {
   const [events, setEvents] = useState<any[]>([]);
@@ -32,22 +37,67 @@ const History: React.FC<HistoryProps> = ({ transactionContext }) => {
   const [assets, setAssets] = useState<any[]>([]);
   const [hideFailed, setHideFailed] = useState(false);
   const [selectedNetwork, setSelectedNetwork] = useState('');
-  const [showUnix, setShowUnix] = useState(false); // Toggle for human-readable/Unix timestamps
+  const [showUnix, setShowUnix] = useState(false);
+  const [expandedRawJson, setExpandedRawJson] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const itemsPerPage = 10;
   const toast = useToast();
 
-  useEffect(() => {
-    requestStorage.getEvents().then((data: any) => {
-      const sortedEvents = data.sort((a: any, b: any) => new Date(b.timestamp) - new Date(a.timestamp));
+  // Function to load events from storage
+  const loadEvents = async () => {
+    try {
+      console.log('Fetching events from requestStorage...');
+      const data = await requestStorage.getEvents();
+      if (!data || data.length === 0) {
+        console.error('No events found in storage.');
+        setIsLoading(false);
+        return;
+      }
+      console.log('Events fetched:', data);
+      const sortedEvents = data.sort(
+        (a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+      );
       setEvents(sortedEvents);
+      setIsLoading(false);
+    } catch (error) {
+      console.error('Error fetching events:', error);
+      setIsLoading(false); // Ensure loading is finished even if there's an error
+    }
+  };
+
+  // Add a log when adding events to verify that the event is actually saved
+  const addEventToStorage = async (event: any) => {
+    console.log('Adding event to requestStorage:', event);
+    const result = await requestStorage.addEvent(event);
+    console.log('Event added result:', result);
+    loadEvents(); // Re-load events after adding a new one
+  };
+
+  // UseEffect to initially load events and subscribe to updates
+  useEffect(() => {
+    loadEvents();
+
+    // Subscribe to storage changes
+    const unsubscribe = requestStorage.subscribe(() => {
+      console.log('Storage updated, reloading events...');
+      loadEvents();
     });
+
     fetchAssets();
+
+    return () => {
+      unsubscribe();
+    };
   }, [transactionContext]);
 
   const fetchAssets = async () => {
-    const response = await fetch('/api/GET_ASSETS'); // Replace with actual endpoint
-    const data = await response.json();
-    setAssets(data);
+    try {
+      const response = await fetch('/api/GET_ASSETS'); // Replace with actual endpoint
+      const data = await response.json();
+      setAssets(data);
+    } catch (error) {
+      console.error('Error fetching assets:', error);
+    }
   };
 
   const getAssetIcon = (networkId: string) => {
@@ -62,6 +112,7 @@ const History: React.FC<HistoryProps> = ({ transactionContext }) => {
   };
 
   const handleDelete = async (id: string) => {
+    console.log(`Deleting event with id: ${id}`);
     await requestStorage.removeEventById(id);
     setEvents(events.filter((event: any) => event.id !== id));
     toast({
@@ -78,120 +129,177 @@ const History: React.FC<HistoryProps> = ({ transactionContext }) => {
   const filteredEvents = events
     .filter((event: any) => !hideFailed || event.txid) // Hide failed transactions if checkbox is checked
     .filter((event: any) => !selectedNetwork || event.networkId === selectedNetwork);
+
   const currentItems = filteredEvents.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  const toggleRawJson = (id: string) => {
+    setExpandedRawJson(prevId => (prevId === id ? null : id));
+  };
 
   return (
     <Box>
       {/* Total Transactions and Network Selection */}
       <Flex justifyContent="space-between" alignItems="center" mb={4}>
-        <Text fontSize="xs">Total Transactions: {filteredEvents.length}</Text>
+        <Text fontSize="md" fontWeight="bold">
+          Total Transactions: {filteredEvents.length}
+        </Text>
 
         {/* Network Selection Dropdown */}
-        <Select
-          placeholder="Select network"
-          size="sm"
-          width="200px"
-          value={selectedNetwork}
-          onChange={e => setSelectedNetwork(e.target.value)}>
-          {assets.map((asset: any) => (
-            <option key={asset.networkId} value={asset.networkId}>
-              {asset.networkId}
-            </option>
-          ))}
-        </Select>
+        {/*<Select*/}
+        {/*    placeholder="Select network"*/}
+        {/*    size="sm"*/}
+        {/*    width="200px"*/}
+        {/*    value={selectedNetwork}*/}
+        {/*    onChange={e => setSelectedNetwork(e.target.value)}*/}
+        {/*>*/}
+        {/*  {assets.map((asset: any) => (*/}
+        {/*      <option key={asset.networkId} value={asset.networkId}>*/}
+        {/*        {asset.networkId}*/}
+        {/*      </option>*/}
+        {/*  ))}*/}
+        {/*</Select>*/}
       </Flex>
 
-      {/* Hide Failed Checkbox */}
-      <Checkbox isChecked={hideFailed} onChange={e => setHideFailed(e.target.checked)} mb={4}>
-        Hide Failed
-      </Checkbox>
+      <Flex justifyContent="space-between" alignItems="center" mb={4}>
+        {/* Hide Failed Checkbox */}
+        <Checkbox isChecked={hideFailed} onChange={e => setHideFailed(e.target.checked)} mb={4}>
+          Hide Failed
+        </Checkbox>
 
-      {currentItems.length > 0 ? (
+        {/* Timestamp Toggle */}
+        <Flex alignItems="center">
+          <Text fontSize="sm">Show Unix Timestamp</Text>
+          <Checkbox isChecked={showUnix} onChange={toggleTimestamp} ml={2} size="sm" />
+        </Flex>
+      </Flex>
+
+      {isLoading ? (
+        <Flex justifyContent="center" mt={10}>
+          <Spinner size="xl" />
+        </Flex>
+      ) : currentItems.length > 0 ? (
         <Accordion allowMultiple>
-          {currentItems.map((event: any) => (
-            <AccordionItem
-              key={event.id}
-              borderRadius="md"
-              mb={4}
-              border="1px solid"
-              borderColor={getStatusColor(event)}>
-              <AccordionButton _expanded={{ bg: getStatusColor(event), color: 'white' }} borderRadius="md" p={4}>
-                <Flex justifyContent="space-between" flex="1">
-                  {/* Status Badge */}
-                  <Badge colorScheme={event.blockHeight ? 'green' : 'yellow'}>
-                    {event.blockHeight ? 'Confirmed' : 'Pending'}
-                  </Badge>
-                  <Text>
-                    {showUnix ? format(new Date(event.timestamp), 't') : formatDistanceToNow(new Date(event.timestamp))}{' '}
-                    ago
-                  </Text>
-                  {event.txid && event.status === 'error' && (
-                    <Spinner thickness="4px" speed="0.65s" emptyColor="gray.200" color="blue.500" size="lg" />
-                  )}
-                  <AccordionIcon />
-                </Flex>
-              </AccordionButton>
-              <AccordionPanel pb={4}>
-                <SimpleGrid columns={1} spacing={4}>
-                  <Flex alignItems="center">
-                    <strong>Network:</strong>{' '}
-                    {getAssetIcon(event.networkId) && (
-                      <Image src={getAssetIcon(event.networkId)} alt="network icon" boxSize="20px" ml={2} />
-                    )}
-                    <Text ml={2}>{event.networkId}</Text>
-                  </Flex>
-                  {event.txid && (
-                    <Text>
-                      <strong>Txid:</strong>{' '}
-                      <a href={`https://etherscan.io/tx/${event.txid}`} target="_blank" rel="noopener noreferrer">
-                        {event.txid}
-                      </a>
-                    </Text>
-                  )}
-                  <Text>
-                    <strong>Status:</strong>{' '}
-                    {event.blockHeight ? (
-                      <Badge colorScheme="green">Confirmed</Badge>
-                    ) : (
-                      <Badge colorScheme="yellow">Pending</Badge>
-                    )}
-                  </Text>
-                  <Text>
-                    <strong>Site URL:</strong> {event.siteUrl}
-                  </Text>
-                </SimpleGrid>
+          <AnimatePresence>
+            {currentItems.map((event: any) => (
+              <MotionBox
+                key={event.id}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                transition={{ duration: 0.2 }}
+                mb={4}>
+                <AccordionItem borderRadius="md" border="1px solid" borderColor={getStatusColor(event)} boxShadow="md">
+                  <AccordionButton _expanded={{ bg: getStatusColor(event), color: 'white' }} borderRadius="md" p={4}>
+                    <Flex justifyContent="space-between" flex="1" alignItems="center">
+                      {/* Status Badge */}
+                      <Badge colorScheme={event.blockHeight ? 'green' : 'yellow'}>
+                        {event.blockHeight ? 'Confirmed' : 'Pending'}
+                      </Badge>
 
-                {/* Timestamp Toggle */}
-                <Flex mt={4} alignItems="center">
-                  <Text fontSize="sm">Show Unix Timestamp</Text>
-                  <Checkbox isChecked={showUnix} onChange={toggleTimestamp} ml={2} size="sm" />
-                </Flex>
+                      {/* Timestamp */}
+                      <Text fontSize="sm">
+                        {showUnix
+                          ? format(new Date(event.timestamp), 't')
+                          : formatDistanceToNow(new Date(event.timestamp))}{' '}
+                        ago
+                      </Text>
 
-                {/* Action Buttons */}
-                <Flex mt={4} justifyContent="space-around">
-                  <Button colorScheme="blue" onClick={() => console.log('Open transaction')} size="sm">
-                    Open
-                  </Button>
-                  <Button colorScheme="green" onClick={() => console.log('Broadcast transaction')} size="sm">
-                    Broadcast
-                  </Button>
-                  <Button colorScheme="teal" onClick={() => window.open(event.siteUrl, '_blank')} size="sm">
-                    External
-                  </Button>
-                </Flex>
+                      {/* Spinner for pending transactions */}
+                      {!event.blockHeight && (
+                        <Spinner thickness="2px" speed="0.65s" emptyColor="gray.200" color="blue.500" size="sm" />
+                      )}
 
-                {/* Delete Button */}
-                <IconButton
-                  aria-label="Delete transaction"
-                  icon={<DeleteIcon />}
-                  colorScheme="red"
-                  size="sm"
-                  mt={4}
-                  onClick={() => handleDelete(event.id)}
-                />
-              </AccordionPanel>
-            </AccordionItem>
-          ))}
+                      <AccordionIcon />
+                    </Flex>
+                  </AccordionButton>
+                  <AccordionPanel pb={4}>
+                    <SimpleGrid columns={1} spacing={4}>
+                      <Flex alignItems="center">
+                        <strong>Network:</strong>
+                        {getAssetIcon(event.networkId) && (
+                          <Image src={getAssetIcon(event.networkId)} alt="network icon" boxSize="20px" ml={2} />
+                        )}
+                        <Text ml={2}>{event.networkId}</Text>
+                      </Flex>
+                      {event.txid && typeof event.txid === 'object' && event.txid.txid ? (
+                        <Text>
+                          <strong>Txid:</strong>{' '}
+                          <a
+                            href={`https://etherscan.io/tx/${event.txid.txid}`}
+                            target="_blank"
+                            rel="noopener noreferrer">
+                            {event.txid.txid}
+                          </a>
+                        </Text>
+                      ) : (
+                        <Text>
+                          <strong>Txid:</strong> {event.txid}
+                        </Text>
+                      )}
+                      <Text>
+                        <strong>Status:</strong>{' '}
+                        {event.blockHeight ? (
+                          <Badge colorScheme="green">Confirmed</Badge>
+                        ) : (
+                          <Badge colorScheme="yellow">Pending</Badge>
+                        )}
+                      </Text>
+                      <Text>
+                        <strong>Site URL:</strong> {event.siteUrl}
+                      </Text>
+                    </SimpleGrid>
+
+                    {/* Action Buttons */}
+                    <Flex mt={4} justifyContent="space-around">
+                      <Button colorScheme="blue" onClick={() => console.log('Open transaction')} size="sm">
+                        Open
+                      </Button>
+                      <Button colorScheme="green" onClick={() => console.log('Broadcast transaction')} size="sm">
+                        Broadcast
+                      </Button>
+                      <Button colorScheme="teal" onClick={() => window.open(event.siteUrl, '_blank')} size="sm">
+                        External
+                      </Button>
+                      <Tooltip label="View Raw JSON" aria-label="View Raw JSON">
+                        <IconButton
+                          icon={<InfoOutlineIcon />}
+                          aria-label="View Raw JSON"
+                          onClick={() => toggleRawJson(event.id)}
+                          size="sm"
+                        />
+                      </Tooltip>
+                    </Flex>
+
+                    {/* Raw JSON Data */}
+                    <Collapse in={expandedRawJson === event.id} animateOpacity>
+                      <Box
+                        mt={4}
+                        p={4}
+                        bg="gray.50"
+                        borderRadius="md"
+                        overflow="auto"
+                        maxHeight="200px"
+                        whiteSpace="pre-wrap"
+                        fontSize="sm">
+                        <pre>{JSON.stringify(event, null, 2)}</pre>
+                      </Box>
+                    </Collapse>
+
+                    {/* Delete Button */}
+                    <Flex mt={4} justifyContent="flex-end">
+                      <IconButton
+                        aria-label="Delete transaction"
+                        icon={<DeleteIcon />}
+                        colorScheme="red"
+                        size="sm"
+                        onClick={() => handleDelete(event.id)}
+                      />
+                    </Flex>
+                  </AccordionPanel>
+                </AccordionItem>
+              </MotionBox>
+            ))}
+          </AnimatePresence>
         </Accordion>
       ) : (
         <Text>No history available.</Text>
@@ -203,7 +311,7 @@ const History: React.FC<HistoryProps> = ({ transactionContext }) => {
           Previous
         </Button>
         <Text>
-          {currentPage} / {totalPages}
+          Page {currentPage} / {totalPages}
         </Text>
         <Button onClick={() => setCurrentPage(currentPage + 1)} isDisabled={currentPage === totalPages} ml={2}>
           Next

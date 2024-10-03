@@ -48,6 +48,7 @@ export const onStartKeepkey = async function () {
       'OP',
       'MATIC',
       'THOR',
+      'MAYA',
     ];
 
     await db.init({});

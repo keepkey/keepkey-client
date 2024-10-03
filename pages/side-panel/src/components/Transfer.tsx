@@ -144,7 +144,11 @@ export function Transfer({}: any): JSX.Element {
       setIsSubmitting(true);
 
       const sendPayload = {
-        value: convertToHex(inputAmount),
+        amount: {
+          amount: inputAmount,
+          denom: assetContext?.symbol,
+        },
+        recipient,
         to: recipient,
         memo,
         isMax: isMax,

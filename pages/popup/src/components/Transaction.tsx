@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import EvmTransaction from './evm';
 import UtxoTransaction from './utxo';
+import OtherTransaction from './other';
+import TendermintTransaction from './tendermint';
 import { approvalStorage, requestStorage } from '@extension/storage/dist/lib';
 import { Spinner, Alert, AlertIcon, Button, Icon } from '@chakra-ui/react';
 import { WarningIcon } from '@chakra-ui/icons';
@@ -167,11 +169,16 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
   };
 
   const renderTransaction = () => {
+    console.log('transactionType:', transactionType);
     switch (transactionType) {
       case 'evm':
         return <EvmTransaction transaction={event} reloadEvents={reloadEvents} handleResponse={handleResponse} />;
+      case 'tendermint':
+        return <TendermintTransaction transaction={event} handleResponse={handleResponse} />;
       case 'utxo':
         return <UtxoTransaction transaction={event} handleResponse={handleResponse} />;
+      case 'other':
+        return <OtherTransaction transaction={event} handleResponse={handleResponse} />;
       default:
         return <div>Unknown Transaction Type {transactionType}</div>;
     }
