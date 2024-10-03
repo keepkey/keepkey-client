@@ -12,7 +12,6 @@ import {
   Spinner,
   Text,
   VStack,
-  Tooltip,
   useToast,
   useColorModeValue,
   Modal,
@@ -24,7 +23,6 @@ import {
   ModalFooter,
   useDisclosure,
 } from '@chakra-ui/react';
-import { ChevronDownIcon, ChevronUpIcon, InfoOutlineIcon } from '@chakra-ui/icons';
 import React, { useCallback, useEffect, useState } from 'react';
 import { NetworkIdToChain } from '@pioneer-platform/pioneer-caip';
 import { COIN_MAP_KEEPKEY_LONG } from '@pioneer-platform/pioneer-coins';
@@ -33,9 +31,9 @@ import confetti from 'canvas-confetti'; // Make sure to install the confetti pac
 
 const TAG = ' | Transfer | ';
 
-const convertToHex = amountInEther => {
+const convertToHex = (amountInEther: string) => {
   const weiMultiplier = BigInt(1e18); // 1 Ether = 1e18 Wei
-  const amountInWei = BigInt(parseFloat(amountInEther) * 1e18); // Convert Ether to Wei
+  const amountInWei = BigInt(parseFloat(amountInEther || '0') * 1e18); // Convert Ether to Wei
 
   // Convert the amount in Wei to a hex string
   return '0x' + amountInWei.toString(16);
@@ -44,9 +42,8 @@ const convertToHex = amountInEther => {
 export function Transfer({}: any): JSX.Element {
   const toast = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [inputAmount, setInputAmount] = useState(0);
-  const [inputAmountUsd, setInputAmountUsd] = useState(0);
-  const [sendAmount, setSendAmount] = useState<any | undefined>();
+  const [inputAmount, setInputAmount] = useState(''); // Initialize as an empty string
+  const [inputAmountUsd, setInputAmountUsd] = useState(''); // Initialize as an empty string
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [memo, setMemo] = useState('');
   const [assetContext, setAssetContext] = useState<any>({});
@@ -73,7 +70,6 @@ export function Transfer({}: any): JSX.Element {
   }, []);
 
   const onStart = async function () {
-    const tag = TAG + ' | onStart Transfer | ';
     chrome.runtime.sendMessage({ type: 'GET_MAX_SPENDABLE' }, maxSpendableResponse => {
       if (maxSpendableResponse && maxSpendableResponse.maxSpendable) {
         setMaxSpendable(maxSpendableResponse.maxSpendable);
@@ -95,29 +91,49 @@ export function Transfer({}: any): JSX.Element {
     onStart();
   }, []);
 
+  const handleInputFocus = () => {
+    // Optional: Clear input when focusing
+    // setInputAmount('');
+    // setInputAmountUsd('');
+  };
+
   const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const value = event.target.value;
+
     setIsMax(false); // Reset isMax if user manually changes input
+
     if (useUsdInput) {
       setInputAmountUsd(value);
-      setInputAmount((parseFloat(value) / (priceUsd || 1)).toFixed(8));
+
+      const parsedValue = parseFloat(value);
+      if (!isNaN(parsedValue) && priceUsd) {
+        setInputAmount((parsedValue / priceUsd).toFixed(4)); // 4 decimal places for NATIVE
+      } else {
+        setInputAmount('');
+      }
     } else {
       setInputAmount(value);
-      setInputAmountUsd((parseFloat(value) * (priceUsd || 1)).toFixed(2));
+
+      const parsedValue = parseFloat(value);
+      if (!isNaN(parsedValue) && priceUsd) {
+        setInputAmountUsd((parsedValue * priceUsd).toFixed(2)); // 2 decimal places for USD
+      } else {
+        setInputAmountUsd('');
+      }
+    }
+  };
+
+  const handleInputBlur = () => {
+    if (!useUsdInput && inputAmount && !isNaN(parseFloat(inputAmount))) {
+      setInputAmount(parseFloat(inputAmount).toFixed(4)); // 4 decimal places for NATIVE
+    } else if (useUsdInput && inputAmountUsd && !isNaN(parseFloat(inputAmountUsd))) {
+      setInputAmountUsd(parseFloat(inputAmountUsd).toFixed(2)); // 2 decimal places for USD
     }
   };
 
   const handleRecipientChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setRecipient(event.target.value);
   };
-
-  useEffect(() => {
-    if (useUsdInput) {
-      setInputAmountUsd((parseFloat(inputAmount) * (priceUsd || 1)).toFixed(2));
-    } else {
-      setInputAmount((parseFloat(inputAmountUsd) / (priceUsd || 1)).toFixed(8));
-    }
-  }, [useUsdInput, priceUsd]);
 
   const handleSend = useCallback(async () => {
     try {
@@ -134,11 +150,27 @@ export function Transfer({}: any): JSX.Element {
         isMax: isMax,
       };
 
-      let chain = assetContext?.networkId.includes('eip155')
-        ? 'ethereum'
-        : NetworkIdToChain[assetContext?.networkId].toLowerCase();
-
-      chain = COIN_MAP_KEEPKEY_LONG[chain.toUpperCase()].toLowerCase();
+      let chain;
+      if (assetContext?.networkId) {
+        if (assetContext.networkId.includes('eip155')) {
+          chain = 'ethereum';
+        } else {
+          const chainFromNetworkId = NetworkIdToChain[assetContext.networkId];
+          if (chainFromNetworkId) {
+            chain = chainFromNetworkId.toLowerCase();
+            const coinMapEntry = COIN_MAP_KEEPKEY_LONG[chain.toUpperCase()];
+            if (coinMapEntry) {
+              chain = coinMapEntry.toLowerCase();
+            } else {
+              throw new Error('Unsupported chain' + chain);
+            }
+          } else {
+            throw new Error('Unsupported network ID');
+          }
+        }
+      } else {
+        throw new Error('Network ID is undefined');
+      }
 
       const requestInfo = {
         method: 'transfer',
@@ -175,6 +207,7 @@ export function Transfer({}: any): JSX.Element {
         },
       );
     } catch (error) {
+      console.error(error);
       toast({
         title: 'Error',
         description: error.toString(),
@@ -190,53 +223,13 @@ export function Transfer({}: any): JSX.Element {
 
   const setMaxAmount = () => {
     const maxAmount = maxSpendable;
-    setInputAmount(maxAmount);
-    setInputAmountUsd((parseFloat(maxAmount) * (priceUsd || 1)).toFixed(2));
+    setInputAmount(parseFloat(maxAmount).toFixed(4)); // 4 decimal places for NATIVE
+    setInputAmountUsd((parseFloat(maxAmount) * (priceUsd || 1)).toFixed(2)); // 2 decimal places for USD
     setIsMax(true); // Set isMax to true when Max button is clicked
   };
 
   const formatMaxSpendable = (amount: string) => {
-    const [integerPart, fractionalPart] = amount.toString().split('.');
-    let formattedIntegerPart;
-    if (integerPart.length > 4) {
-      formattedIntegerPart = (
-        <>
-          <Text as="span">{integerPart.slice(0, 4)}</Text>
-          <Text as="span" fontSize="sm">
-            {integerPart.slice(4)}
-          </Text>
-        </>
-      );
-    } else {
-      formattedIntegerPart = <Text as="span">{integerPart}</Text>;
-    }
-    let formattedFractionalPart;
-    if (fractionalPart) {
-      if (fractionalPart.length > 4) {
-        formattedFractionalPart = (
-          <>
-            .<Text as="span">{fractionalPart.slice(0, 4)}</Text>
-            <Text as="span" fontSize="sm">
-              {fractionalPart.slice(4)}
-            </Text>
-          </>
-        );
-      } else {
-        formattedFractionalPart = (
-          <>
-            .<Text as="span">{fractionalPart}</Text>
-          </>
-        );
-      }
-    } else {
-      formattedFractionalPart = null;
-    }
-    return (
-      <>
-        {formattedIntegerPart}
-        {formattedFractionalPart}
-      </>
-    );
+    return parseFloat(amount).toFixed(4);
   };
 
   if (loadingMaxSpendable) {
@@ -290,7 +283,9 @@ export function Transfer({}: any): JSX.Element {
             <Flex align="center">
               <Input
                 onChange={handleInputChange}
-                placeholder="0.0"
+                onFocus={handleInputFocus}
+                onBlur={handleInputBlur}
+                placeholder="0.0000"
                 value={useUsdInput ? inputAmountUsd : inputAmount}
               />
               <Button ml={2} onClick={() => setUseUsdInput(!useUsdInput)}>
@@ -303,7 +298,12 @@ export function Transfer({}: any): JSX.Element {
           </FormControl>
         </Grid>
 
-        <Button colorScheme="green" w="full" mt={4} onClick={onOpen} isDisabled={isSubmitting}>
+        <Button
+          colorScheme="green"
+          w="full"
+          mt={4}
+          onClick={onOpen}
+          isDisabled={isSubmitting || !inputAmount || !recipient}>
           {isSubmitting ? 'Sending...' : 'Send'}
         </Button>
       </VStack>

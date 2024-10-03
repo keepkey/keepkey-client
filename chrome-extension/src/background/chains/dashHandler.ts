@@ -1,7 +1,7 @@
 const TAG = ' | dashHandler | ';
 import { requestStorage } from '@extension/storage/dist/lib';
 import { JsonRpcProvider } from 'ethers';
-import { Chain } from '@coinmasters/types';
+import { Chain, DerivationPath } from '@coinmasters/types';
 import { AssetValue } from '@pioneer-platform/helpers';
 //@ts-ignore
 import * as coinSelect from 'coinselect';
@@ -41,11 +41,11 @@ export const handleDashRequest = async (
 
   switch (method) {
     case 'request_accounts': {
-      let pubkeys = KEEPKEY_WALLET.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.Dash]));
-      let accounts = [];
+      const pubkeys = KEEPKEY_WALLET.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.Dash]));
+      const accounts = [];
       for (let i = 0; i < pubkeys.length; i++) {
-        let pubkey = pubkeys[i];
-        let address = pubkey.master || pubkey.address;
+        const pubkey = pubkeys[i];
+        const address = pubkey.master || pubkey.address;
         accounts.push(address);
       }
       console.log(tag, 'accounts: ', accounts);
@@ -58,7 +58,7 @@ export const handleDashRequest = async (
       console.log(tag, 'KEEPKEY_WALLET: ', KEEPKEY_WALLET);
       console.log(tag, 'KEEPKEY_WALLET.swapKit: ', KEEPKEY_WALLET.swapKit);
       console.log(tag, 'KEEPKEY_WALLET.swapKit: ', KEEPKEY_WALLET.balances);
-      let balance = KEEPKEY_WALLET.balances.find((balance: any) => balance.caip === shortListSymbolToCaip['BTC']);
+      const balance = KEEPKEY_WALLET.balances.find((balance: any) => balance.caip === shortListSymbolToCaip['BTC']);
 
       //let pubkeys = await KEEPKEY_WALLET.swapKit.getBalance(Chain.Bitcoin);
       console.log(tag, 'balance: ', balance);
@@ -80,10 +80,10 @@ export const handleDashRequest = async (
       if (!pubkeys || pubkeys.length === 0) throw Error('Failed to locate pubkeys for chain ' + Chain.Dash);
 
       console.log(tag, 'params[0]: ', params[0]);
-      let assetString = 'DASH.DASH';
+      const assetString = 'DASH.DASH';
       await AssetValue.loadStaticAssets();
       console.log(tag, 'params[0].amount.amount: ', params[0].amount.amount);
-      let assetValue = await AssetValue.fromString(assetString, parseFloat(params[0].amount.amount));
+      const assetValue = await AssetValue.fromString(assetString, parseFloat(params[0].amount.amount));
 
       const wallet = await KEEPKEY_WALLET.swapKit.getWallet(Chain.Dash);
       if (!wallet) throw new Error('Failed to init swapkit');
@@ -117,16 +117,16 @@ export const handleDashRequest = async (
           changeAddressIndex = changeAddressIndex.data.changeIndex;
           console.log(tag, 'changeAddressIndex: ', changeAddressIndex);
 
-          let path = `m/44'/5'/0'/1/${changeAddressIndex}`;
+          const path = DerivationPath['DASH'].replace('/0/0', `/1/${changeAddressIndex}`);
           console.log(tag, 'path: ', path);
-          let customAddressInfo = {
+          const customAddressInfo = {
             coin: 'Dash',
             script_type: 'p2pkh',
             address_n: bip32ToAddressNList(path),
           };
-          let address = await wallet.getAddress(customAddressInfo);
+          const address = await wallet.getAddress(customAddressInfo);
           console.log('address: ', address);
-          let changeAddress = {
+          const changeAddress = {
             address: address,
             path: path,
             index: changeAddressIndex,
@@ -134,16 +134,16 @@ export const handleDashRequest = async (
           };
 
           for (let i = 0; i < utxos.length; i++) {
-            let utxo = utxos[i];
+            const utxo = utxos[i];
             //@ts-ignore
             utxo.value = Number(utxo.value);
           }
           console.log('utxos: ', utxos);
 
-          let amountOut: number = Math.floor(Number(params[0].amount.amount) * 1e8);
+          const amountOut: number = Math.floor(Number(params[0].amount.amount) * 1e8);
 
           console.log(tag, 'amountOut: ', amountOut);
-          let effectiveFeeRate = 10;
+          const effectiveFeeRate = 10;
           console.log('utxos: ', utxos);
           const { inputs, outputs, fee } = coinSelect.default(
             utxos,
@@ -154,7 +154,7 @@ export const handleDashRequest = async (
           console.log('outputs: ', outputs);
           console.log('fee: ', fee);
 
-          let unsignedTx = await wallet.buildTx({
+          const unsignedTx = await wallet.buildTx({
             inputs,
             outputs,
             memo: 'test',
@@ -162,11 +162,6 @@ export const handleDashRequest = async (
           });
 
           //push to front
-          requestInfo.inputs = unsignedTx.inputs;
-          requestInfo.outputs = unsignedTx.outputs;
-          requestInfo.memo = unsignedTx.memo;
-          requestInfo.utxos = utxos;
-          requestInfo.changeAddress = changeAddress;
 
           chrome.runtime.sendMessage({
             action: 'utxo_build_tx',
@@ -177,6 +172,7 @@ export const handleDashRequest = async (
           console.log(tag, 'storedEvent: ', storedEvent);
           storedEvent.utxos = utxos;
           storedEvent.changeAddress = changeAddress;
+          storedEvent.unsignedTx = unsignedTx;
           await requestStorage.updateEventById(requestInfo.id, storedEvent);
         } catch (e) {
           console.error(e);
@@ -186,13 +182,34 @@ export const handleDashRequest = async (
       buildTx();
 
       // Proceed with requiring approval without waiting for buildTx to resolve
-      const result = await requireApproval(networkId, requestInfo, 'bitcoin', method, params[0]);
+      const result = await requireApproval(networkId, requestInfo, 'dash', method, params[0]);
       console.log(tag, 'result:', result);
 
-      if (result.success && unsignedTx) {
-        // const signedTx = await wallet.signTransaction(unsignedTx.psbt, unsignedTx.inputs, unsignedTx.memo);
-        // const txid = await wallet.broadcastTx(signedTx);
-        return 'FAKETXIDBRO';
+      const response = await requestStorage.getEventById(requestInfo.id);
+      console.log(tag, 'response: ', response);
+
+      if (result.success && response.unsignedTx) {
+        const signedTx = await wallet.signTx(
+          response.unsignedTx.inputs,
+          response.unsignedTx.outputs,
+          response.unsignedTx.memo,
+        );
+
+        response.signedTx = signedTx;
+        await requestStorage.updateEventById(requestInfo.id, response);
+
+        const txHash = await wallet.broadcastTx(signedTx);
+
+        response.txid = txHash;
+        await requestStorage.updateEventById(requestInfo.id, response);
+
+        //push event
+        chrome.runtime.sendMessage({
+          action: 'transaction_complete',
+          txHash: txHash,
+        });
+
+        return txHash;
       } else {
         throw createProviderRpcError(4200, 'User denied transaction');
       }

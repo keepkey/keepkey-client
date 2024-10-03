@@ -1,5 +1,5 @@
 import { Box, Heading, IconButton, Button, Spinner } from '@chakra-ui/react';
-import { CodeBlock, codepen } from 'react-code-blocks';
+import ReactJson from 'react-json-view';
 import { useState } from 'react';
 import { ChevronDownIcon, ChevronRightIcon } from '@chakra-ui/icons';
 import { requestStorage } from '@extension/storage'; // Import the requestStorage
@@ -68,13 +68,17 @@ export default function RequestDataCard({ transaction }: any) {
             </Box>
           )}
 
-          {/* Conditionally render the code block */}
+          {/* Render the collapsible JSON viewer */}
           <Box mt={2}>
-            <CodeBlock
-              showLineNumbers={false}
-              text={JSON.stringify(fetchedTransaction, null, 2)}
-              theme={codepen}
-              language="json"
+            <ReactJson
+              src={fetchedTransaction}
+              name={null}
+              collapsed={true} // Set to true if you want the JSON collapsed by default
+              enableClipboard={false}
+              displayDataTypes={true}
+              displayObjectSize={true}
+              indentWidth={2}
+              theme="tomorrow" // You can choose from various themes or customize your own
             />
           </Box>
         </Box>

@@ -1,11 +1,14 @@
 import { requestStorage } from '@extension/storage/dist/lib';
 
 const TAG = ' | bitcoinHandler | ';
-import { Chain } from '@coinmasters/types';
+import { Chain, DerivationPath } from '@coinmasters/types';
 import { AssetValue } from '@pioneer-platform/helpers';
 import { ChainToNetworkId, shortListSymbolToCaip, caipToNetworkId } from '@pioneer-platform/pioneer-caip';
 //@ts-ignore
 import { v4 as uuidv4 } from 'uuid';
+import { bip32ToAddressNList } from '@pioneer-platform/pioneer-coins';
+//@ts-ignore
+import * as coinSelect from 'coinselect';
 
 interface ProviderRpcError extends Error {
   code: number;
@@ -66,68 +69,149 @@ export const handleBitcoinRequest = async (
 
     case 'transfer': {
       const caip = shortListSymbolToCaip['BTC'];
+      console.log(tag, 'caip: ', caip);
       const networkId = caipToNetworkId(caip);
       requestInfo.id = uuidv4();
+      console.log(tag, 'assetContext: ', KEEPKEY_WALLET);
+      // eslint-disable-next-line no-constant-condition
       if (!KEEPKEY_WALLET.assetContext) {
+        // Set context to the chain, defaults to ETH
         await KEEPKEY_WALLET.setAssetContext({ caip });
       }
-
       const pubkeys = KEEPKEY_WALLET.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.Bitcoin]));
-      const accounts = pubkeys.map((pubkey: any) => pubkey.master || pubkey.address);
+      console.log(tag, 'pubkeys: ', pubkeys);
+      if (!pubkeys || pubkeys.length === 0) throw Error('Failed to locate pubkeys for chain ' + Chain.Bitcoin);
 
+      console.log(tag, 'params[0]: ', params[0]);
       const assetString = 'BTC.BTC';
       await AssetValue.loadStaticAssets();
+      console.log(tag, 'params[0].amount.amount: ', params[0].amount.amount);
+      const assetValue = await AssetValue.fromString(assetString, parseFloat(params[0].amount.amount));
 
-      const assetValue = await AssetValue.fromString(assetString, parseFloat(params[0].amount.amount) / 100000000);
+      const wallet = await KEEPKEY_WALLET.swapKit.getWallet(Chain.Bitcoin);
+      if (!wallet) throw new Error('Failed to init swapkit');
+      const walletAddress = await wallet.getAddress();
+      console.log(tag, 'walletAddress: ', walletAddress);
+
       const sendPayload = {
-        from: accounts[0], // Select preference change address
+        from: walletAddress, // Select preference change address
         assetValue,
         memo: params[0].memo || '',
         recipient: params[0].recipient,
       };
 
-      // Start building the transaction but don't wait for it to finish
-      const wallet = await KEEPKEY_WALLET.swapKit.getWallet(Chain.Bitcoin);
-      if (!wallet) throw new Error('Failed to init swapkit');
+      const buildTx = async function () {
+        try {
+          const utxos = [];
+          for (let i = 0; i < pubkeys.length; i++) {
+            const pubkey = pubkeys[i];
+            let utxosResp = await KEEPKEY_WALLET.pioneer.ListUnspent({ network: 'BTC', xpub: pubkey.pubkey });
+            utxosResp = utxosResp.data;
+            console.log('utxosResp: ', utxosResp);
+            utxos.push(...utxosResp);
+          }
+          console.log(tag, 'utxos: ', utxos);
 
-      const pubkeysLocal = await wallet.getPubkeys();
-      console.log(tag, 'pubkeysLocal: ', pubkeysLocal);
+          //get new change address
+          let changeAddressIndex = await KEEPKEY_WALLET.pioneer.GetChangeAddress({
+            network: 'BTC',
+            xpub: pubkeys[0].pubkey || pubkeys[0].xpub,
+          });
+          changeAddressIndex = changeAddressIndex.data.changeIndex;
+          console.log(tag, 'changeAddressIndex: ', changeAddressIndex);
 
-      const buildTxPromise = wallet
-        .buildTx(sendPayload)
-        .then(async unsignedTx => {
-          console.log(tag, 'unsignedTx', unsignedTx);
-          // Update requestInfo with transaction details after buildTx resolves
-          requestInfo.inputs = unsignedTx.inputs;
-          requestInfo.outputs = unsignedTx.outputs;
-          requestInfo.memo = unsignedTx.memo;
+          const path = DerivationPath['BTC'].replace('/0/0', `/1/${changeAddressIndex}`);
+          console.log(tag, 'path: ', path);
+          const customAddressInfo = {
+            coin: 'Bitcoin',
+            script_type: 'p2pkh',
+            address_n: bip32ToAddressNList(path),
+          };
+          const address = await wallet.getAddress(customAddressInfo);
+          console.log('address: ', address);
+          const changeAddress = {
+            address: address,
+            path: path,
+            index: changeAddressIndex,
+            addressNList: bip32ToAddressNList(path),
+          };
+
+          for (let i = 0; i < utxos.length; i++) {
+            const utxo = utxos[i];
+            //@ts-ignore
+            utxo.value = Number(utxo.value);
+          }
+          console.log('utxos: ', utxos);
+
+          const amountOut: number = Math.floor(Number(params[0].amount.amount) * 1e8);
+
+          console.log(tag, 'amountOut: ', amountOut);
+          const effectiveFeeRate = 10;
+          console.log('utxos: ', utxos);
+          const { inputs, outputs, fee } = coinSelect.default(
+            utxos,
+            [{ address: params[0].recipient, value: amountOut }],
+            effectiveFeeRate,
+          );
+          console.log('inputs: ', inputs);
+          console.log('outputs: ', outputs);
+          console.log('fee: ', fee);
+
+          const unsignedTx = await wallet.buildTx({
+            inputs,
+            outputs,
+            memo: 'test',
+            changeAddress,
+          });
+          //push to front
 
           chrome.runtime.sendMessage({
             action: 'utxo_build_tx',
-            unsignedTx: unsignedTx,
+            unsignedTx: requestInfo,
           });
-          const response = await requestStorage.getEventById(requestInfo.id);
-          response.unsignedTx = unsignedTx;
-          await requestStorage.updateEventById(requestInfo.id, response);
 
-          // Push an event to the front-end that UTXOs are found
-          // This could be something like: sendUpdateToFrontend('UTXOs found', unsignedTx);
-        })
-        .catch(error => {
-          console.error('Error building the transaction:', error);
-          // Handle buildTx failure appropriately, such as notifying the user
-        });
+          const storedEvent = await requestStorage.getEventById(requestInfo.id);
+          console.log(tag, 'storedEvent: ', storedEvent);
+          storedEvent.utxos = utxos;
+          storedEvent.changeAddress = changeAddress;
+          storedEvent.unsignedTx = unsignedTx;
+          await requestStorage.updateEventById(requestInfo.id, storedEvent);
+        } catch (e) {
+          console.error(e);
+        }
+      };
+
+      buildTx();
 
       // Proceed with requiring approval without waiting for buildTx to resolve
       const result = await requireApproval(networkId, requestInfo, 'bitcoin', method, params[0]);
+      console.log(tag, 'result:', result);
 
-      // Wait for the buildTx to complete (if not already completed) before signing
-      const unsignedTx = await buildTxPromise;
+      const response = await requestStorage.getEventById(requestInfo.id);
+      console.log(tag, 'response: ', response);
 
-      if (result.success && unsignedTx) {
-        const signedTx = await wallet.signTransaction(unsignedTx.psbt, unsignedTx.inputs, unsignedTx.memo);
-        const txid = await wallet.broadcastTx(signedTx);
-        return txid;
+      if (result.success && response.unsignedTx) {
+        const signedTx = await wallet.signTx(
+          response.unsignedTx.inputs,
+          response.unsignedTx.outputs,
+          response.unsignedTx.memo,
+        );
+
+        response.signedTx = signedTx;
+        await requestStorage.updateEventById(requestInfo.id, response);
+
+        const txHash = await wallet.broadcastTx(signedTx);
+
+        response.txid = txHash;
+        await requestStorage.updateEventById(requestInfo.id, response);
+
+        //push event
+        chrome.runtime.sendMessage({
+          action: 'transaction_complete',
+          txHash: txHash,
+        });
+
+        return txHash;
       } else {
         throw createProviderRpcError(4200, 'User denied transaction');
       }

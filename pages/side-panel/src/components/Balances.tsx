@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Flex, Spinner, Avatar, Box, Text, Badge, Card, Stack, Button } from '@chakra-ui/react';
 import AssetSelect from './AssetSelect'; // Import AssetSelect component
 
-const Balances = () => {
+const Balances = ({ setShowBack }: any) => {
   const [balances, setBalances] = useState<any[]>([]);
   const [assets, setAssets] = useState<any[]>([]);
   const [assetContext, setAssetContext] = useState<any | null>(null);
@@ -65,6 +65,7 @@ const Balances = () => {
         }
         if (response && response.assetContext) {
           setAssetContext(response.assetContext);
+          setShowBack(true);
         }
       });
     };

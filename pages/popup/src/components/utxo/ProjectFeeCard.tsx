@@ -10,7 +10,6 @@ import {
   Card,
   CardBody,
   Divider,
-  Badge,
   Table,
   Tbody,
   Tr,
@@ -88,8 +87,8 @@ const ProjectFeeCard = ({ transaction }) => {
 
   const toast = useToast();
   const recommendedFees = getRecommendedFees();
-  const inputs = transaction.unsignedTx.inputs;
-  const outputs = transaction.unsignedTx.outputs;
+  const inputs = transaction?.unsignedTx?.inputs || [];
+  const outputs = transaction?.unsignedTx?.outputs || [];
 
   // Calculate estimated transaction size
   useEffect(() => {
@@ -180,7 +179,7 @@ const ProjectFeeCard = ({ transaction }) => {
   };
 
   return (
-    <Card maxW="400px" mx="auto" mt={4}>
+    <Card mx="auto">
       <CardBody>
         <VStack align="stretch" mb={4}>
           <Text fontSize="lg" fontWeight="bold" mb={2}>
@@ -222,10 +221,10 @@ const ProjectFeeCard = ({ transaction }) => {
         <Divider />
 
         <TableContainer>
-          <Table variant="simple" size="sm">
+          <Table variant="simple" size="xs">
             <Tbody>
               <Tr>
-                <Td>Bitcoin Price</Td>
+                <Td>Asset Price</Td>
                 <Td isNumeric>${btcPrice.toLocaleString()} USD</Td>
               </Tr>
               <Tr>

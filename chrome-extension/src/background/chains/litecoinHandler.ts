@@ -1,6 +1,8 @@
+import { bip32ToAddressNList } from '@pioneer-platform/pioneer-coins';
+
 const TAG = ' | litecoinHandler | ';
 import { JsonRpcProvider } from 'ethers';
-import { Chain } from '@coinmasters/types';
+import { Chain, DerivationPath } from '@coinmasters/types';
 import { AssetValue } from '@pioneer-platform/helpers';
 import { EIP155_CHAINS } from '../chains';
 // @ts-ignore
@@ -11,6 +13,8 @@ import { ChainToNetworkId, shortListSymbolToCaip, caipToNetworkId } from '@pione
 // @ts-expect-error
 import { v4 as uuidv4 } from 'uuid';
 import { requestStorage, web3ProviderStorage, assetContextStorage } from '@extension/storage';
+// @ts-ignore
+import * as coinSelect from 'coinselect';
 
 interface ProviderRpcError extends Error {
   code: number;
@@ -57,29 +61,141 @@ export const handleLitecoinRequest = async (
       const caip = shortListSymbolToCaip['LTC'];
       console.log(tag, 'caip: ', caip);
       const networkId = caipToNetworkId(caip);
-      //verify context is bitcoin
+      requestInfo.id = uuidv4();
+      //push event to ux
+      chrome.runtime.sendMessage({
+        action: 'TRANSACTION_CONTEXT_UPDATED',
+        id: requestInfo.id,
+      });
+
+      // eslint-disable-next-line no-constant-condition
       if (!KEEPKEY_WALLET.assetContext) {
+        // Set context to the chain, defaults to ETH
         await KEEPKEY_WALLET.setAssetContext({ caip });
       }
-      // Require user approval
-      const result = await requireApproval(networkId, requestInfo, 'bitcoin', method, params[0]);
-      console.log(tag, 'result:', result);
-      //send tx
-      console.log(tag, 'params[0]: ', params[0]);
-      const assetString = 'LTC.LTC';
-      await AssetValue.loadStaticAssets();
-      console.log(tag, 'params[0].amount.amount: ', params[0].amount.amount);
-      const assetValue = await AssetValue.fromString(assetString, parseFloat(params[0].amount.amount));
-      const sendPayload = {
-        from: params[0].from,
-        assetValue,
-        memo: params[0].memo || '',
-        recipient: params[0].recipient,
+      const pubkeys = KEEPKEY_WALLET.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.Litecoin]));
+      console.log(tag, 'pubkeys: ', pubkeys);
+      if (!pubkeys || pubkeys.length === 0) throw Error('Failed to locate pubkeys for chain ' + Chain.Litecoin);
+
+      const wallet = await KEEPKEY_WALLET.swapKit.getWallet(Chain.Litecoin);
+      if (!wallet) throw new Error('Failed to init swapkit');
+      const walletAddress = await wallet.getAddress();
+      console.log(tag, 'walletAddress: ', walletAddress);
+
+      const buildTx = async function () {
+        try {
+          const utxos = [];
+          for (let i = 0; i < pubkeys.length; i++) {
+            const pubkey = pubkeys[i];
+            let utxosResp = await KEEPKEY_WALLET.pioneer.ListUnspent({ network: 'LTC', xpub: pubkey.pubkey });
+            utxosResp = utxosResp.data;
+            console.log('utxosResp: ', utxosResp);
+            utxos.push(...utxosResp);
+          }
+          console.log(tag, 'utxos: ', utxos);
+
+          //get new change address
+          let changeAddressIndex = await KEEPKEY_WALLET.pioneer.GetChangeAddress({
+            network: 'LTC',
+            xpub: pubkeys[0].pubkey || pubkeys[0].xpub,
+          });
+          changeAddressIndex = changeAddressIndex.data.changeIndex;
+          console.log(tag, 'changeAddressIndex: ', changeAddressIndex);
+
+          const path = DerivationPath['LTC'].replace('/0/0', `/1/${changeAddressIndex}`);
+          console.log(tag, 'path: ', path);
+          const customAddressInfo = {
+            coin: 'Litecoin',
+            script_type: 'p2pkh',
+            address_n: bip32ToAddressNList(path),
+          };
+          const address = await wallet.getAddress(customAddressInfo);
+          console.log('address: ', address);
+          const changeAddress = {
+            address: address,
+            path: path,
+            index: changeAddressIndex,
+            addressNList: bip32ToAddressNList(path),
+          };
+
+          for (let i = 0; i < utxos.length; i++) {
+            const utxo = utxos[i];
+            //@ts-ignore
+            utxo.value = Number(utxo.value);
+          }
+          console.log('utxos: ', utxos);
+
+          const amountOut: number = Math.floor(Number(params[0].amount.amount) * 1e8);
+
+          console.log(tag, 'amountOut: ', amountOut);
+          const effectiveFeeRate = 10;
+          console.log('utxos: ', utxos);
+          const { inputs, outputs, fee } = coinSelect.default(
+            utxos,
+            [{ address: params[0].recipient, value: amountOut }],
+            effectiveFeeRate,
+          );
+          console.log('inputs: ', inputs);
+          console.log('outputs: ', outputs);
+          console.log('fee: ', fee);
+
+          const unsignedTx = await wallet.buildTx({
+            inputs,
+            outputs,
+            memo: 'test',
+            changeAddress,
+          });
+          //push to front
+          chrome.runtime.sendMessage({
+            action: 'utxo_build_tx',
+            unsignedTx: requestInfo,
+          });
+
+          const storedEvent = await requestStorage.getEventById(requestInfo.id);
+          console.log(tag, 'storedEvent: ', storedEvent);
+          storedEvent.utxos = utxos;
+          storedEvent.changeAddress = changeAddress;
+          storedEvent.unsignedTx = unsignedTx;
+          await requestStorage.updateEventById(requestInfo.id, storedEvent);
+        } catch (e) {
+          console.error(e);
+        }
       };
-      console.log(tag, 'sendPayload: ', sendPayload);
-      const txHash = await KEEPKEY_WALLET.swapKit.transfer(sendPayload);
-      console.log(tag, 'txHash: ', txHash);
-      return txHash;
+
+      buildTx();
+
+      // Proceed with requiring approval without waiting for buildTx to resolve
+      const result = await requireApproval(networkId, requestInfo, 'litecoin', method, params[0]);
+      console.log(tag, 'result:', result);
+
+      const response = await requestStorage.getEventById(requestInfo.id);
+      console.log(tag, 'response: ', response);
+
+      if (result.success && response.unsignedTx) {
+        const signedTx = await wallet.signTx(
+          response.unsignedTx.inputs,
+          response.unsignedTx.outputs,
+          response.unsignedTx.memo,
+        );
+
+        response.signedTx = signedTx;
+        await requestStorage.updateEventById(requestInfo.id, response);
+
+        const txHash = await wallet.broadcastTx(signedTx);
+
+        response.txid = txHash;
+        await requestStorage.updateEventById(requestInfo.id, response);
+
+        //push event
+        chrome.runtime.sendMessage({
+          action: 'transaction_complete',
+          txHash: txHash,
+        });
+
+        return txHash;
+      } else {
+        throw createProviderRpcError(4200, 'User denied transaction');
+      }
     }
     default: {
       console.log(tag, `Method ${method} not supported`);

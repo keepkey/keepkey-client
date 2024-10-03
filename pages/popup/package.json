@@ -30,7 +30,8 @@
     "ethers": "^6.13.2",
     "framer-motion": "^11.5.4",
     "react-code-blocks": "^0.1.6",
-    "react-confetti": "^6.1.0"
+    "react-confetti": "^6.1.0",
+    "react-json-view": "^1.21.3"
   },
   "devDependencies": {
     "@extension/tailwindcss-config": "workspace:*",

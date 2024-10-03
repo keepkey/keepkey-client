@@ -24,60 +24,74 @@ import RequestMethodCard from './RequestMethodCard';
 import ProjectFeeCard from './ProjectFeeCard';
 import ProjectInfoCard from './ProjectInfoCard';
 
+const openSidebar = () => {
+  chrome.runtime.sendMessage({ type: 'OPEN_SIDEBAR' }, response => {
+    if (response?.success) {
+      console.log('Sidebar opened successfully');
+    } else {
+      console.error('Failed to open sidebar:', response?.error);
+    }
+  });
+};
+
+const triggerTransactionContextUpdate = (transactionId: string) => {
+  chrome.runtime.sendMessage({ type: 'TRANSACTION_CONTEXT_UPDATED', id: transactionId }, response => {
+    if (response?.success) {
+      console.log(`Transaction context updated for ID: ${transactionId}`);
+    } else {
+      console.error('Failed to update transaction context:', response?.error);
+    }
+  });
+};
+
 export function UtxoTransaction({ transaction: initialTransaction, handleResponse }: any) {
-  // Initialize transaction state from prop
   const [transaction, setTransaction] = useState(initialTransaction);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showMessage1, setShowMessage1] = useState(false);
   const [showMessage2, setShowMessage2] = useState(false);
 
-  // Delay the appearance of messages
   useEffect(() => {
-    setTimeout(() => setShowMessage1(true), 3000); // Show first message after 3 seconds
-    setTimeout(() => setShowMessage2(true), 6000); // Show second message after 6 seconds
+    setTimeout(() => setShowMessage1(true), 3000);
+    setTimeout(() => setShowMessage2(true), 6000);
   }, []);
 
-  // Fetch the unsigned transaction and stop loading when it's populated
   const fetchTransactionData = async (id: string) => {
     try {
       console.log(`Fetching transaction with id: ${id}`);
       const data = await requestStorage.getEventById(id);
-      console.log('Fetched transaction data:', data); // Log the data for debugging
+      console.log('Fetched transaction data:', data);
 
       if (data.utxos) {
-        setTransaction(data); // Update transaction state
-        setIsLoading(false); // Stop spinner when data is populated
+        setTransaction(data);
+        setIsLoading(false);
       } else {
         console.log('No unsigned transaction found in data.');
       }
     } catch (error: any) {
       console.error('Error fetching transaction from storage:', error);
       setErrorMessage('Error loading transaction: ' + error.message);
-      setIsLoading(false); // Stop spinner if there is an error
+      setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    // Fetch transaction data when the component mounts
     fetchTransactionData(transaction.id);
   }, [transaction.id]);
 
-  // Listen for events that update the transaction state
   useEffect(() => {
     const handleMessage = (message: any) => {
       console.log('Message received:', message);
       if (message.action === 'utxo_build_tx') {
         console.log('Received utxo_build_tx event:', message);
 
-        // Add 1-second delay before fetching updated transaction data
         setTimeout(async () => {
-          await fetchTransactionData(transaction.id); // Fetch updated transaction
+          await fetchTransactionData(transaction.id);
         }, 1000);
       } else if (message.action === 'transaction_error') {
         const errorDetails = message.e?.message || JSON.stringify(message.e);
         setErrorMessage('Transaction failed: ' + errorDetails);
-        setIsLoading(false); // Stop spinner in case of error
+        setIsLoading(false);
       }
     };
 
@@ -88,11 +102,12 @@ export function UtxoTransaction({ transaction: initialTransaction, handleRespons
     };
   }, [transaction.id]);
 
-  // Reload function to refetch the transaction without refreshing the page
   const handleReload = () => {
     console.log('Reloading transaction with id:', transaction.id);
-    setIsLoading(true); // Show the loading spinner again
+    setIsLoading(true);
     fetchTransactionData(transaction.id);
+    openSidebar();
+    triggerTransactionContextUpdate(transaction.id); // Force the sidebar into the transaction history tab
   };
 
   if (isLoading) {
@@ -101,16 +116,16 @@ export function UtxoTransaction({ transaction: initialTransaction, handleRespons
         <Card padding="4" boxShadow="lg" borderRadius="md">
           <Flex direction="column" alignItems="center">
             <Spinner size="xl" />
-            <p>Transaction ID: {transaction.id}</p> {/* Show transaction ID while loading */}
+            <p>Transaction ID: {transaction.id}</p>
             {showMessage1 && <p>Building transaction...</p>}
             {showMessage2 && <p>Applying UTXO selection method blackjack...</p>}
             <Button mt={4} onClick={handleReload}>
-              Reload
+              View in Sidebar
             </Button>
             {errorMessage && <p style={{ color: 'red' }}>{errorMessage}</p>}
           </Flex>
         </Card>
-        <Box height="400px" /> {/* Add bottom buffer */}
+        <Box height="400px" />
       </Flex>
     );
   }
@@ -120,44 +135,29 @@ export function UtxoTransaction({ transaction: initialTransaction, handleRespons
       <Card padding="4" boxShadow="lg" borderRadius="md" width="100%" maxWidth="600px">
         <Stack>
           <ProjectInfoCard transaction={transaction} />
-
           <Divider />
           <RequestMethodCard transaction={transaction} />
           <Divider />
           <Tabs>
             <TabList defaultIndex={1}>
               <Tab>Basic</Tab>
-              {/*<Tab>Fees</Tab>*/}
-              {/*<Tab>Coin Control</Tab>*/}
-              <Tab>raw</Tab>
-              {/*<Tab>UTXO</Tab>*/}
+              <Tab>Fees</Tab>
+              <Tab>Raw</Tab>
             </TabList>
 
             <TabPanels>
               <TabPanel>
                 <RequestDetailsCard transaction={transaction} />
               </TabPanel>
-
-              {/*<TabPanel>*/}
-              {/*  <ProjectFeeCard transaction={transaction} />*/}
-              {/*</TabPanel>*/}
-
-              {/*<TabPanel>*/}
-              {/*  <CoinControl transaction={transaction} />*/}
-              {/*</TabPanel>*/}
-
-              {/*<TabPanel>*/}
-              {/*  <RequestDataCard transaction={transaction} />*/}
-              {/*</TabPanel>*/}
-
+              <TabPanel>
+                <ProjectFeeCard transaction={transaction} />
+              </TabPanel>
               <TabPanel>
                 <RequestDataCard transaction={transaction} />
               </TabPanel>
             </TabPanels>
           </Tabs>
-
           <Divider />
-
           <Flex justifyContent="center" alignItems="center">
             <Button colorScheme="green" onClick={() => handleResponse('accept')} mr={2}>
               Approve
