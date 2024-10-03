@@ -712,13 +712,14 @@ const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string) 
     console.log(tag, '**** params: ', params);
     const typedData = params[1];
     const { domain, types, message, primaryType } = JSON.parse(typedData);
-    const signedMessage = await KEEPKEY_WALLET.keepKeySdk.eth.ethSignTypedData({
+    const HDWalletPayload = {
       address: ADDRESS,
-      domain,
-      types,
-      message,
-      primaryType,
-    });
+      addressNList: [2147483692, 2147483708, 2147483648, 0, 0],
+      typedData: { domain, types, message, primaryType },
+    };
+    console.log(tag, '**** HDWalletPayload: ', HDWalletPayload);
+    console.log(tag, '**** HDWalletPayload: ', JSON.stringify(HDWalletPayload));
+    const signedMessage = await KEEPKEY_WALLET.keepKeySdk.eth.ethSignTypedData(HDWalletPayload);
     console.log(tag, '**** signedMessage: ', signedMessage);
     return signedMessage;
   } catch (e) {

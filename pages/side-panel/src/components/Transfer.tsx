@@ -25,7 +25,7 @@ import {
 } from '@chakra-ui/react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { NetworkIdToChain } from '@pioneer-platform/pioneer-caip';
-import { COIN_MAP_KEEPKEY_LONG } from '@pioneer-platform/pioneer-coins';
+import { COIN_MAP_LONG } from '@pioneer-platform/pioneer-coins';
 //@ts-ignore
 import confetti from 'canvas-confetti'; // Make sure to install the confetti package
 
@@ -162,7 +162,9 @@ export function Transfer({}: any): JSX.Element {
           const chainFromNetworkId = NetworkIdToChain[assetContext.networkId];
           if (chainFromNetworkId) {
             chain = chainFromNetworkId.toLowerCase();
-            const coinMapEntry = COIN_MAP_KEEPKEY_LONG[chain.toUpperCase()];
+            console.log('chain2: ', chain.toUpperCase());
+            const coinMapEntry = COIN_MAP_LONG[chain.toUpperCase()];
+            console.log('coinMapEntry: ', coinMapEntry);
             if (coinMapEntry) {
               chain = coinMapEntry.toLowerCase();
             } else {
