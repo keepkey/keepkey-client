@@ -207,6 +207,7 @@ const handleWalletAddEthereumChain = async (params, KEEPKEY_WALLET) => {
   if (!params || !params[0] || !params[0].chainId) throw new Error('Invalid chainId (Required)');
   let chainId = 'eip155:' + convertHexToDecimalChainId(params[0].chainId);
   chainId = sanitizeChainId(chainId);
+  console.log(tag, 'Switching Chain chainId: ', chainId);
 
   let currentProvider = await web3ProviderStorage.getWeb3Provider();
 
@@ -231,8 +232,9 @@ const handleWalletAddEthereumChain = async (params, KEEPKEY_WALLET) => {
     };
     console.log('currentProvider', currentProvider);
   } else {
-    const chainIdToFind = sanitizeChainId(params[0].chainId);
+    let chainIdToFind = sanitizeChainId(params[0].chainId);
     let chainFound = false;
+    chainIdToFind = parseInt(sanitizedChainId, 16).toString();
 
     for (const key of Object.keys(EIP155_CHAINS)) {
       if (EIP155_CHAINS[key].chainId === chainIdToFind) {
@@ -253,6 +255,7 @@ const handleWalletAddEthereumChain = async (params, KEEPKEY_WALLET) => {
   }
   assetContextStorage.updateContext(currentProvider);
   // Save the updated provider to storage
+  // @ts-ignore
   await web3ProviderStorage.saveWeb3Provider(currentProvider);
 
   console.log('changing context to ', currentProvider.caip);

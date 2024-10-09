@@ -19,6 +19,7 @@ import { requestStorage } from '@extension/storage';
 
 import RequestDetailsCard from './RequestDetailsCard';
 import RequestDataCard from './RequestDataCard';
+//@ts-ignore
 import CoinControl from './CoinControlCard';
 import RequestMethodCard from './RequestMethodCard';
 import ProjectFeeCard from './ProjectFeeCard';
