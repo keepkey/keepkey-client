@@ -63,6 +63,7 @@ export const handleCosmosRequest = async (
     case 'transfer': {
       const caip = shortListSymbolToCaip['ATOM'];
       console.log(tag, 'caip: ', caip);
+      await KEEPKEY_WALLET.setAssetContext({ caip });
       const networkId = caipToNetworkId(caip);
       requestInfo.id = uuidv4();
       console.log(tag, 'requestInfo: ', requestInfo);
@@ -71,11 +72,6 @@ export const handleCosmosRequest = async (
         action: 'TRANSACTION_CONTEXT_UPDATED',
         id: requestInfo.id,
       });
-      //verify context is bitcoin
-      if (!KEEPKEY_WALLET.assetContext) {
-        // Set context to the chain, defaults to ETH
-        await KEEPKEY_WALLET.setAssetContext({ caip });
-      }
 
       let assetString = 'GAIA.ATOM';
       await AssetValue.loadStaticAssets();

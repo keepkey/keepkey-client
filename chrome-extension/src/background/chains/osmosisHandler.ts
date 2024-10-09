@@ -56,6 +56,7 @@ export const handleOsmosisRequest = async (
     case 'transfer': {
       const caip = shortListSymbolToCaip['OSMO'];
       console.log(tag, 'caip: ', caip);
+      await KEEPKEY_WALLET.setAssetContext({ caip });
       const networkId = caipToNetworkId(caip);
       requestInfo.id = uuidv4();
       //push event to ux

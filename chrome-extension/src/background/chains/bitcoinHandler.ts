@@ -72,6 +72,7 @@ export const handleBitcoinRequest = async (
     case 'transfer': {
       const caip = shortListSymbolToCaip['BTC'];
       console.log(tag, 'caip: ', caip);
+      await KEEPKEY_WALLET.setAssetContext({ caip });
       const networkId = caipToNetworkId(caip);
       requestInfo.id = uuidv4();
       //push event to ux
@@ -79,11 +80,6 @@ export const handleBitcoinRequest = async (
         action: 'TRANSACTION_CONTEXT_UPDATED',
         id: requestInfo.id,
       });
-      // eslint-disable-next-line no-constant-condition
-      if (!KEEPKEY_WALLET.assetContext) {
-        // Set context to the chain, defaults to ETH
-        await KEEPKEY_WALLET.setAssetContext({ caip });
-      }
       const pubkeys = KEEPKEY_WALLET.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.Bitcoin]));
       console.log(tag, 'pubkeys: ', pubkeys);
       if (!pubkeys || pubkeys.length === 0) throw Error('Failed to locate pubkeys for chain ' + Chain.Bitcoin);

@@ -59,6 +59,7 @@ export const handleMayaRequest = async (
       const caip = shortListSymbolToCaip['MAYA'];
       console.log(tag, 'caip: ', caip);
       await KEEPKEY_WALLET.setAssetContext({ caip });
+      await KEEPKEY_WALLET.setAssetContext({ caip });
       const networkId = caipToNetworkId(caip);
       requestInfo.id = uuidv4();
       console.log(tag, 'requestInfo: ', requestInfo);

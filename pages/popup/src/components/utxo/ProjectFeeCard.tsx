@@ -137,9 +137,9 @@ const ProjectFeeCard = ({ transaction }) => {
         setCustomFeeRate(feeRate.toString());
         setIsFeeRateInvalid(true);
         toast({
-          id: 'fee-too-high',
-          title: 'Fee too high',
-          description: 'The fee rate has been adjusted to the maximum possible value.',
+          id: 'fee-adjusted-warning',
+          title: 'Fee adjusted',
+          description: 'The fee rate has been adjusted.',
           status: 'warning',
           duration: 5000,
           isClosable: true,
