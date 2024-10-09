@@ -9,6 +9,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { bip32ToAddressNList } from '@pioneer-platform/pioneer-coins';
 //@ts-ignore
 import * as coinSelect from 'coinselect';
+//@ts-ignore
+import * as coinSelectSplit from 'coinselect/split';
 
 interface ProviderRpcError extends Error {
   code: number;
@@ -139,11 +141,24 @@ export const handleBitcoinRequest = async (
           console.log(tag, 'amountOut: ', amountOut);
           const effectiveFeeRate = 10;
           console.log('utxos: ', utxos);
-          const { inputs, outputs, fee } = coinSelect.default(
+          let { inputs, outputs, fee } = coinSelect.default(
             utxos,
             [{ address: params[0].recipient, value: amountOut }],
             effectiveFeeRate,
           );
+          if (!inputs || !outputs) {
+            ({ inputs, outputs, fee } = coinSelectSplit.default(
+              utxos,
+              [{ address: params[0].recipient }], // No 'value' field for send-max
+              effectiveFeeRate,
+            ));
+          }
+          if (!inputs || !outputs || !fee) {
+            chrome.runtime.sendMessage({
+              action: 'utxo_build_tx_error',
+              error: 'coinselect failed to find a solution. (OUT OF INPUTS) try a lower amount',
+            });
+          }
           console.log('inputs: ', inputs);
           console.log('outputs: ', outputs);
           console.log('fee: ', fee);
@@ -151,7 +166,7 @@ export const handleBitcoinRequest = async (
           const unsignedTx = await wallet.buildTx({
             inputs,
             outputs,
-            memo: 'test',
+            memo: params[0].memo || '',
             changeAddress,
           });
           //push to front

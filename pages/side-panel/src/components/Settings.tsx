@@ -27,13 +27,44 @@ const Settings = () => {
     });
   };
 
+  const handleAnnounceProvider = () => {
+    // Send a postMessage for "ANNOUNCE_REQUEST"
+    window.postMessage(
+      {
+        type: 'ANNOUNCE_REQUEST',
+        provider: {
+          name: 'KeepKey',
+          uuid: '350670db-19fa-4704-a166-e52e178b59d4',
+          icon: 'https://pioneers.dev/coins/keepkey.png',
+          rdns: 'com.keepkey',
+        },
+      },
+      '*',
+    );
+    toast({
+      title: 'Provider Announced',
+      description: 'KeepKey provider has been announced.',
+      status: 'info',
+      duration: 3000,
+      isClosable: true,
+    });
+  };
+
   return (
     <VStack spacing={4}>
+      {/* More Docs Link - Prominent and on top */}
+      <Link href="https://keepkey-docs-repo.vercel.app" isExternal>
+        <Button variant="solid" colorScheme="teal" size="lg" w="100%" mt={4} mb={6}>
+          📖 Visit KeepKey Docs
+        </Button>
+      </Link>
+
       <Link href="https://www.keepkey.com" isExternal w="100%">
         <Button variant="ghost" w="100%">
           About KeepKey
         </Button>
       </Link>
+
       <Image src={'https://i.ibb.co/jR8WcJM/kk.gif'} alt="KeepKey" />
       <VStack spacing={4} align="stretch">
         <Text fontSize="md" fontWeight="bold">
@@ -118,6 +149,11 @@ const Settings = () => {
         {/* Force Reset Button */}
         <Button colorScheme="red" variant="solid" w="100%" onClick={handleForceReset}>
           Force Reset App
+        </Button>
+
+        {/* Announce Provider Button */}
+        <Button colorScheme="blue" variant="solid" w="100%" onClick={handleAnnounceProvider}>
+          Announce Provider
         </Button>
       </VStack>
     </VStack>

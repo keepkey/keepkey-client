@@ -59,7 +59,7 @@ const SidePanel = () => {
     } catch (e) {
       console.error(e);
     } finally {
-      setTimeout(() => setIsRefreshing(false), 2000); // Stop the spinner after 2 seconds
+      setTimeout(() => setIsRefreshing(false), 12000); // Stop the spinner after 2 seconds
     }
   };
 

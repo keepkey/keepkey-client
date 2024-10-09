@@ -5,6 +5,9 @@ import { Chain, DerivationPath } from '@coinmasters/types';
 import { AssetValue } from '@pioneer-platform/helpers';
 //@ts-ignore
 import * as coinSelect from 'coinselect';
+//@ts-ignore
+import * as coinSelectSplit from 'coinselect/split';
+
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-expect-error
 import { ChainToNetworkId, shortListSymbolToCaip, caipToNetworkId } from '@pioneer-platform/pioneer-caip';
@@ -139,11 +142,24 @@ export const handleDashRequest = async (
           console.log(tag, 'amountOut: ', amountOut);
           const effectiveFeeRate = 10;
           console.log('utxos: ', utxos);
-          const { inputs, outputs, fee } = coinSelect.default(
+          let { inputs, outputs, fee } = coinSelect.default(
             utxos,
             [{ address: params[0].recipient, value: amountOut }],
             effectiveFeeRate,
           );
+          if (!inputs || !outputs) {
+            ({ inputs, outputs, fee } = coinSelectSplit.default(
+              utxos,
+              [{ address: params[0].recipient }], // No 'value' field for send-max
+              effectiveFeeRate,
+            ));
+          }
+          if (!inputs || !outputs || !fee) {
+            chrome.runtime.sendMessage({
+              action: 'utxo_build_tx_error',
+              error: 'coinselect failed to find a solution. (OUT OF INPUTS) try a lower amount',
+            });
+          }
           console.log('inputs: ', inputs);
           console.log('outputs: ', outputs);
           console.log('fee: ', fee);
@@ -151,7 +167,7 @@ export const handleDashRequest = async (
           const unsignedTx = await wallet.buildTx({
             inputs,
             outputs,
-            memo: 'test',
+            memo: params[0].memo || '',
             changeAddress,
           });
 

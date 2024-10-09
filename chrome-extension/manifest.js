@@ -23,7 +23,7 @@ const manifest = deepmerge(
     version: packageJson.version,
     description: '__MSG_extensionDescription__',
     host_permissions: ['<all_urls>'],
-    permissions: ['storage', 'scripting', 'tabs', 'notifications', 'commands'],
+    permissions: ['storage', 'tabs', 'commands'],
     options_page: 'options/index.html',
     background: {
       service_worker: 'background.iife.js',
@@ -40,6 +40,7 @@ const manifest = deepmerge(
       {
         matches: ['http://*/*', 'https://*/*', '<all_urls>'],
         js: ['content/index.iife.js'],
+        run_at: 'document_start',
       },
       {
         matches: ['http://*/*', 'https://*/*', '<all_urls>'],
