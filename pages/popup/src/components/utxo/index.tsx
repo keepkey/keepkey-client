@@ -1,9 +1,6 @@
 import {
-  Avatar,
   Button,
   Card,
-  Box,
-  CardHeader,
   Flex,
   Spinner,
   Stack,
@@ -13,7 +10,10 @@ import {
   Tab,
   TabPanel,
   Divider,
+  Text,
+  Icon,
 } from '@chakra-ui/react';
+import { WarningIcon } from '@chakra-ui/icons';
 import React, { useEffect, useState } from 'react';
 import { requestStorage } from '@extension/storage';
 
@@ -48,49 +48,16 @@ export function UtxoTransaction({ transaction: initialTransaction, handleRespons
   const [transaction, setTransaction] = useState(initialTransaction);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [showMessage1, setShowMessage1] = useState(false);
-  const [showMessage2, setShowMessage2] = useState(false);
-
-  useEffect(() => {
-    setTimeout(() => setShowMessage1(true), 3000);
-    setTimeout(() => setShowMessage2(true), 6000);
-  }, []);
-
-  const fetchTransactionData = async (id: string) => {
-    try {
-      console.log(`Fetching transaction with id: ${id}`);
-      const data = await requestStorage.getEventById(id);
-      console.log('Fetched transaction data:', data);
-
-      if (data.utxos) {
-        setTransaction(data);
-        setIsLoading(false);
-      } else {
-        console.log('No unsigned transaction found in data.');
-      }
-    } catch (error: any) {
-      console.error('Error fetching transaction from storage:', error);
-      setErrorMessage('Error loading transaction: ' + error.message);
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchTransactionData(transaction.id);
-  }, [transaction.id]);
 
   useEffect(() => {
     const handleMessage = (message: any) => {
       console.log('Message received:', message);
       if (message.action === 'utxo_build_tx') {
-        console.log('Received utxo_build_tx event:', message);
-
         setTimeout(async () => {
           await fetchTransactionData(transaction.id);
         }, 1000);
-      } else if (message.action === 'transaction_error') {
-        const errorDetails = message.e?.message || JSON.stringify(message.e);
-        setErrorMessage('Transaction failed: ' + errorDetails);
+      } else if (message.action === 'utxo_build_tx_error') {
+        setErrorMessage('Not enough funds');
         setIsLoading(false);
       }
     };
@@ -102,30 +69,57 @@ export function UtxoTransaction({ transaction: initialTransaction, handleRespons
     };
   }, [transaction.id]);
 
+  const fetchTransactionData = async (id: string) => {
+    try {
+      const data = await requestStorage.getEventById(id);
+
+      if (data.utxos) {
+        setTransaction(data);
+        setIsLoading(false);
+      }
+    } catch (error: any) {
+      setErrorMessage('Error loading transaction: ' + error.message);
+      setIsLoading(false);
+    }
+  };
+
   const handleReload = () => {
-    console.log('Reloading transaction with id:', transaction.id);
     setIsLoading(true);
     fetchTransactionData(transaction.id);
     openSidebar();
-    triggerTransactionContextUpdate(transaction.id); // Force the sidebar into the transaction history tab
+    triggerTransactionContextUpdate(transaction.id);
   };
+
+  if (errorMessage) {
+    return (
+      <Flex direction="column" alignItems="center" justifyContent="center" height="100vh">
+        <Card padding="6" boxShadow="lg" borderRadius="md">
+          <Flex direction="column" alignItems="center" justifyContent="center">
+            <Icon as={WarningIcon} w={8} h={8} color="yellow.400" />
+            <Text fontSize="xl" fontWeight="bold" mt={4}>
+              {errorMessage}
+            </Text>
+            <Button mt={4} onClick={handleReload}>
+              Exit
+            </Button>
+          </Flex>
+        </Card>
+      </Flex>
+    );
+  }
 
   if (isLoading) {
     return (
-      <Flex direction="column" alignItems="center" justifyContent="center" height="100vh" pt="400px">
+      <Flex direction="column" alignItems="center" justifyContent="center" height="100vh">
         <Card padding="4" boxShadow="lg" borderRadius="md">
           <Flex direction="column" alignItems="center">
             <Spinner size="xl" />
             <p>Transaction ID: {transaction.id}</p>
-            {showMessage1 && <p>Building transaction...</p>}
-            {showMessage2 && <p>Applying UTXO selection method blackjack...</p>}
             <Button mt={4} onClick={handleReload}>
               View in Sidebar
             </Button>
-            {errorMessage && <p style={{ color: 'red' }}>{errorMessage}</p>}
           </Flex>
         </Card>
-        <Box height="400px" />
       </Flex>
     );
   }

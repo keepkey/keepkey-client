@@ -74,6 +74,8 @@ export const handleDashRequest = async (
       const caip = shortListSymbolToCaip['DASH'];
       console.log(tag, 'caip: ', caip);
       await KEEPKEY_WALLET.setAssetContext({ caip });
+      chrome.runtime.sendMessage({ type: 'ASSET_CONTEXT_UPDATED', assetContext: KEEPKEY_WALLET.assetContext });
+
       const networkId = caipToNetworkId(caip);
       requestInfo.id = uuidv4();
       //push event to ux

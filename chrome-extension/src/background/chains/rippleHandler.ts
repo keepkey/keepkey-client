@@ -58,6 +58,7 @@ export const handleRippleRequest = async (
     case 'transfer': {
       const caip = shortListSymbolToCaip['XRP'];
       await KEEPKEY_WALLET.setAssetContext({ caip });
+      chrome.runtime.sendMessage({ type: 'ASSET_CONTEXT_UPDATED', assetContext: KEEPKEY_WALLET.assetContext });
       console.log(tag, 'caip: ', caip);
       const networkId = caipToNetworkId(caip);
       requestInfo.id = uuidv4();

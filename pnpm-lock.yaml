@@ -19,8 +19,8 @@ importers:
         specifier: ^0.0.270
         version: 0.0.270
       '@types/node':
-        specifier: ^20.16.10
-        version: 20.16.10
+        specifier: ^20.16.11
+        version: 20.16.11
       '@types/react':
         specifier: ^18.3.11
         version: 18.3.11
@@ -98,7 +98,7 @@ importers:
         version: 5.5.4
       vite:
         specifier: 5.4.3
-        version: 5.4.3(@types/node@20.16.10)
+        version: 5.4.3(@types/node@20.16.11)
 
   chrome-extension:
     dependencies:
@@ -106,14 +106,14 @@ importers:
         specifier: ^4.7.65
         version: 4.7.65
       '@coinmasters/pioneer-sdk':
-        specifier: ^4.7.70
-        version: 4.7.70(@pioneer-platform/helpers@4.0.12)(@types/node@20.16.10)
+        specifier: ^4.7.72
+        version: 4.7.72(@pioneer-platform/helpers@4.0.12)(@types/node@22.7.5)
       '@coinmasters/types':
-        specifier: ^4.7.66
-        version: 4.7.66
+        specifier: ^4.7.71
+        version: 4.7.71
       '@coinmasters/wallet-keepkey':
-        specifier: ^13.0.70
-        version: 13.0.70(@coinmasters/toolbox-cosmos@11.0.70)(@coinmasters/toolbox-evm@11.0.70)(@coinmasters/toolbox-ripple@11.0.70)(@coinmasters/toolbox-utxo@11.0.70)(@keepkey/keepkey-sdk@0.2.57)(@types/node@20.16.10)(bitcoinjs-lib@5.2.0)
+        specifier: ^13.0.72
+        version: 13.0.72(@coinmasters/toolbox-cosmos@11.0.72)(@coinmasters/toolbox-evm@11.0.72)(@coinmasters/toolbox-ripple@11.0.72)(@coinmasters/toolbox-utxo@11.0.72)(@keepkey/keepkey-sdk@0.2.57)(@types/node@22.7.5)(bitcoinjs-lib@5.2.0)
       '@extension/shared':
         specifier: workspace:*
         version: link:../packages/shared
@@ -128,7 +128,7 @@ importers:
         version: 9.2.32
       '@pioneer-platform/pioneer-coins':
         specifier: ^9.2.23
-        version: 9.2.23(@types/node@20.16.10)
+        version: 9.2.23(@types/node@22.7.5)
       axios:
         specifier: ^1.7.7
         version: 1.7.7
@@ -159,7 +159,7 @@ importers:
         version: link:../packages/vite-config
       '@laynezh/vite-plugin-lib-assets':
         specifier: ^0.5.24
-        version: 0.5.24(vite@5.4.3)
+        version: 0.5.24(vite@5.4.8)
       '@types/ws':
         specifier: ^8.5.12
         version: 8.5.12
@@ -174,7 +174,7 @@ importers:
         version: 0.30.11
       ts-loader:
         specifier: ^9.5.1
-        version: 9.5.1(typescript@5.5.4)(webpack@5.95.0)
+        version: 9.5.1(typescript@5.6.3)(webpack@5.95.0)
 
   packages/dev-utils:
     devDependencies:
@@ -207,7 +207,7 @@ importers:
         version: 4.21.3
       ts-node:
         specifier: ^10.9.2
-        version: 10.9.2(@types/node@20.16.10)(typescript@5.5.4)
+        version: 10.9.2(@types/node@22.7.5)(typescript@5.6.3)
       ws:
         specifier: 8.18.0
         version: 8.18.0
@@ -266,7 +266,7 @@ importers:
         version: link:../tsconfig
       '@vitejs/plugin-react-swc':
         specifier: ^3.6.0
-        version: 3.7.0(vite@5.4.3)
+        version: 3.7.0(vite@5.4.8)
       deepmerge:
         specifier: ^4.3.1
         version: 4.3.1
@@ -509,7 +509,7 @@ importers:
         version: 9.2.32
       '@pioneer-platform/pioneer-coins':
         specifier: ^9.2.23
-        version: 9.2.23(@types/node@20.16.10)
+        version: 9.2.23(@types/node@22.7.5)
       axios:
         specifier: ^1.7.7
         version: 1.7.7
@@ -552,7 +552,7 @@ importers:
         version: 9.0.9
       '@wdio/globals':
         specifier: ^9.0.9
-        version: 9.0.9(@wdio/logger@9.1.0)
+        version: 9.0.9(@wdio/logger@9.1.3)
       '@wdio/local-runner':
         specifier: ^9.0.9
         version: 9.0.9
@@ -1784,28 +1784,28 @@ packages:
       react: 18.3.1
     dev: false
 
-  /@coinmasters/api@3.7.70:
-    resolution: {integrity: sha512-14v4hHbVkXhF+3ko4icxs15pPTQHuqgMybxrCKcXp2sXZoRKsvnWfdOeUr7+8RpBAba/pU7xshraSDKgPJHvuQ==}
+  /@coinmasters/api@3.7.72:
+    resolution: {integrity: sha512-CC2FYBKyNuhh3BTR8VBqAMS4zixBSoQWt4VHjVkvX0UElAOnMLbS7+j5ctEl7cGSa+zXOaCSfUCcKI1C5ahMmg==}
     dependencies:
-      '@coinmasters/types': 4.7.70
+      '@coinmasters/types': 4.7.72
       ky: 1.1.3
     dev: false
 
-  /@coinmasters/core@11.0.70(@coinmasters/api@3.7.70)(@coinmasters/toolbox-cosmos@11.0.70)(@coinmasters/toolbox-evm@11.0.70)(@coinmasters/toolbox-utxo@11.0.70)(@types/node@20.16.10):
-    resolution: {integrity: sha512-UheiAR8c8UczYSDyQOAbbAb6KDGKDIA5TW9C1BuckDrtlfGc7Pcmj9FaAO8TcsDMlpKhNn/ngH1NhR/PDI4k2A==}
+  /@coinmasters/core@11.0.72(@coinmasters/api@3.7.72)(@coinmasters/toolbox-cosmos@11.0.72)(@coinmasters/toolbox-evm@11.0.72)(@coinmasters/toolbox-utxo@11.0.72)(@types/node@22.7.5):
+    resolution: {integrity: sha512-0vLZDoSUlavtNJwttxJBuVF7ah2vCIBWg2OEFD7nngVikkNRRy6rWRjPjJjQUUT5EFnhjwlwOODvKvDt657jBg==}
     peerDependencies:
-      '@coinmasters/api': 3.7.70
-      '@coinmasters/toolbox-cosmos': 11.0.70
-      '@coinmasters/toolbox-evm': 11.0.70
-      '@coinmasters/toolbox-utxo': 11.0.70
+      '@coinmasters/api': 3.7.72
+      '@coinmasters/toolbox-cosmos': 11.0.72
+      '@coinmasters/toolbox-evm': 11.0.72
+      '@coinmasters/toolbox-utxo': 11.0.72
     dependencies:
-      '@coinmasters/api': 3.7.70
-      '@coinmasters/toolbox-cosmos': 11.0.70(@pioneer-platform/helpers@4.0.12)
-      '@coinmasters/toolbox-evm': 11.0.70(@pioneer-platform/helpers@4.0.12)
-      '@coinmasters/toolbox-utxo': 11.0.70
-      '@coinmasters/types': 4.7.70
+      '@coinmasters/api': 3.7.72
+      '@coinmasters/toolbox-cosmos': 11.0.72(@pioneer-platform/helpers@4.0.12)
+      '@coinmasters/toolbox-evm': 11.0.72(@pioneer-platform/helpers@4.0.12)
+      '@coinmasters/toolbox-utxo': 11.0.72
+      '@coinmasters/types': 4.7.72
       '@pioneer-platform/helpers': 4.0.12
-      '@pioneer-platform/loggerdog': 8.3.1(@types/node@20.16.10)
+      '@pioneer-platform/loggerdog': 8.3.1(@types/node@22.7.5)
       '@pioneer-platform/pioneer-caip': 9.2.32
     transitivePeerDependencies:
       - '@swc/core'
@@ -1819,22 +1819,22 @@ packages:
       idb: 8.0.0
     dev: false
 
-  /@coinmasters/pioneer-sdk@4.7.70(@pioneer-platform/helpers@4.0.12)(@types/node@20.16.10):
-    resolution: {integrity: sha512-5qlFmEYhMRt3uNg8re9bdejVORuBdAdYHidqtcTeHX/XhqQvfQgOMDHX1fAqfWPYVpa4eIpuFB6g94Rz/nPlJQ==}
+  /@coinmasters/pioneer-sdk@4.7.72(@pioneer-platform/helpers@4.0.12)(@types/node@22.7.5):
+    resolution: {integrity: sha512-IsXP/X6MgQzgY/cnnDLree0LF/UKmardvjUw8uhTSpvPdJk5I1Eelo3PGh8g4lx3cyvrvNPrxp7Aamg6nrb9LQ==}
     dependencies:
-      '@coinmasters/api': 3.7.70
-      '@coinmasters/core': 11.0.70(@coinmasters/api@3.7.70)(@coinmasters/toolbox-cosmos@11.0.70)(@coinmasters/toolbox-evm@11.0.70)(@coinmasters/toolbox-utxo@11.0.70)(@types/node@20.16.10)
-      '@coinmasters/tokens': 3.7.70
-      '@coinmasters/toolbox-cosmos': 11.0.70(@pioneer-platform/helpers@4.0.12)
-      '@coinmasters/toolbox-evm': 11.0.70(@pioneer-platform/helpers@4.0.12)
-      '@coinmasters/toolbox-ripple': 11.0.70(@pioneer-platform/helpers@4.0.12)
-      '@coinmasters/toolbox-utxo': 11.0.70
-      '@coinmasters/types': 4.7.70
-      '@pioneer-platform/loggerdog': 8.3.1(@types/node@20.16.10)
+      '@coinmasters/api': 3.7.72
+      '@coinmasters/core': 11.0.72(@coinmasters/api@3.7.72)(@coinmasters/toolbox-cosmos@11.0.72)(@coinmasters/toolbox-evm@11.0.72)(@coinmasters/toolbox-utxo@11.0.72)(@types/node@22.7.5)
+      '@coinmasters/tokens': 3.7.72
+      '@coinmasters/toolbox-cosmos': 11.0.72(@pioneer-platform/helpers@4.0.12)
+      '@coinmasters/toolbox-evm': 11.0.72(@pioneer-platform/helpers@4.0.12)
+      '@coinmasters/toolbox-ripple': 11.0.72(@pioneer-platform/helpers@4.0.12)
+      '@coinmasters/toolbox-utxo': 11.0.72
+      '@coinmasters/types': 4.7.72
+      '@pioneer-platform/loggerdog': 8.3.1(@types/node@22.7.5)
       '@pioneer-platform/pioneer-caip': 9.2.32
       '@pioneer-platform/pioneer-client': 9.2.5
-      '@pioneer-platform/pioneer-coins': 9.2.23(@types/node@20.16.10)
-      '@pioneer-platform/pioneer-discovery': 0.0.15(@types/node@20.16.10)
+      '@pioneer-platform/pioneer-coins': 9.2.23(@types/node@22.7.5)
+      '@pioneer-platform/pioneer-discovery': 0.0.15(@types/node@22.7.5)
     transitivePeerDependencies:
       - '@pioneer-platform/helpers'
       - '@swc/core'
@@ -1849,17 +1849,17 @@ packages:
     resolution: {integrity: sha512-nJRA0c7NZ5qPQinYQUvPv/SUioe+SjyaDbN0nTEhO85ntixjMXL0zQAHTK68JOkb1a26hLco0Io16DZvmfb8GQ==}
     dev: false
 
-  /@coinmasters/tokens@3.7.70:
-    resolution: {integrity: sha512-RO8qxujlGIwy5zm61RCeDCF0SFaUz1KCG+3i2zlYNNGoKtr1rRrUwdwGvp7X7itXbVGbz8ggaRsmua1/WVckGQ==}
+  /@coinmasters/tokens@3.7.72:
+    resolution: {integrity: sha512-nBBxy/lNseIqt7fMbtW4a6C0gnRLju5wFoktyhX/Ab1rAXimBkQPil5jY2EvFpqLYhayKfpdPrDVMXiWbWB4EQ==}
     dev: false
 
-  /@coinmasters/toolbox-cosmos@11.0.70(@pioneer-platform/helpers@4.0.12):
-    resolution: {integrity: sha512-6nddCJMf4pedHE09OILxVTO5zGWnSQnDSHljLSDx//IOSFyjKlh+jEgBSTTbuzerVVJCjGoVHPL/cfNI2xenCA==}
+  /@coinmasters/toolbox-cosmos@11.0.72(@pioneer-platform/helpers@4.0.12):
+    resolution: {integrity: sha512-/Ll0BAHun9w774xnw38ZGWuUNQs+ItvYuMMcnPRLSl1k9e8RWc2+O4z9GIgfqMs37puNJVYd551Nq3YtS5411Q==}
     peerDependencies:
       '@pioneer-platform/helpers': ^4.0.12
     dependencies:
-      '@coinmasters/api': 3.7.70
-      '@coinmasters/types': 4.7.70
+      '@coinmasters/api': 3.7.72
+      '@coinmasters/types': 4.7.72
       '@cosmjs/amino': 0.32.0
       '@cosmjs/crypto': 0.32.0
       '@cosmjs/encoding': 0.32.0
@@ -1883,12 +1883,12 @@ packages:
       - utf-8-validate
     dev: false
 
-  /@coinmasters/toolbox-evm@11.0.70(@pioneer-platform/helpers@4.0.12):
-    resolution: {integrity: sha512-JZzWDCjWY0HA9wQVkKQeMOvaB/TyS7P9y3cuW+gQuqdNi3sMqRcmam+2EsJ7ykrEgrLJwntAFQthxr1CH/zSIA==}
+  /@coinmasters/toolbox-evm@11.0.72(@pioneer-platform/helpers@4.0.12):
+    resolution: {integrity: sha512-33bWdy5jsI3TOM6LQoe2UmvVmCdp2QpGZ4AKMsPSO08WlIyY6VDsT8JIvf9HH0GMDPViWLj0BmN9zm/QK/vl/g==}
     peerDependencies:
       '@pioneer-platform/helpers': ^4.0.12
     dependencies:
-      '@coinmasters/types': 4.7.70
+      '@coinmasters/types': 4.7.72
       '@pioneer-platform/helpers': 4.0.12
       '@pioneer-platform/pioneer-caip': 9.2.32
       ethers: 6.9.0
@@ -1897,13 +1897,13 @@ packages:
       - utf-8-validate
     dev: false
 
-  /@coinmasters/toolbox-ripple@11.0.70(@pioneer-platform/helpers@4.0.12):
-    resolution: {integrity: sha512-91jbKvOd7T5utDDI+8UBL4pSHamD/8FSZEW5uVYBDqUmLz3ccyMbSxj8sQcTD8ruWS5/7kvLbhYodvMI4MBJUA==}
+  /@coinmasters/toolbox-ripple@11.0.72(@pioneer-platform/helpers@4.0.12):
+    resolution: {integrity: sha512-4FBioKH/yn5k7pchDMTf+A5Tn/SOXhNMUk0cSaHdqqpXCneIGWHs9Yk9lNLV7jorYDg3D3YXnVA/Ug+66viyLg==}
     peerDependencies:
       '@pioneer-platform/helpers': latest
     dependencies:
-      '@coinmasters/api': 3.7.70
-      '@coinmasters/types': 4.7.70
+      '@coinmasters/api': 3.7.72
+      '@coinmasters/types': 4.7.72
       '@cosmjs/amino': 0.31.1
       '@cosmjs/crypto': 0.31.1
       '@cosmjs/encoding': 0.31.1
@@ -1927,10 +1927,10 @@ packages:
       - utf-8-validate
     dev: false
 
-  /@coinmasters/toolbox-utxo@11.0.70:
-    resolution: {integrity: sha512-a4BSernn+LbW70AEDF3+RT/yexiwALY4+iyoD5dFO8D/xksHmLypZsUeeHAgoVeQDpGgRC3x+snPebxqPnJbBA==}
+  /@coinmasters/toolbox-utxo@11.0.72:
+    resolution: {integrity: sha512-F+b1O+PCpPtZ0uZ5urerz5h0Vy0tgH2bytBzziHToZTYkYxheL1RzYD/yPQQfyquEuYaIyN7wUnatPgitauuCQ==}
     dependencies:
-      '@coinmasters/types': 4.7.70
+      '@coinmasters/types': 4.7.72
       '@pioneer-platform/helpers': 4.0.12
       '@pioneer-platform/pioneer-caip': 9.2.32
       '@psf/bitcoincashjs-lib': 4.0.3
@@ -1951,36 +1951,36 @@ packages:
     resolution: {integrity: sha512-EJRwnzJgNWRjYhMFXX78nERBCQSAQPK+7bVblwi8xlzRgDfeY/i7vxsLNpCj2IhVrVBW2KpT7TX1jUU2uggb/A==}
     dev: false
 
-  /@coinmasters/types@4.7.66:
-    resolution: {integrity: sha512-XEv71gZz49ILwePIeuz8eo5gVJ7zdXTAzuzISjZ3gldrXVpfloDHdUb8m3hJPFez1/kAcuNlyEh7dBdNS1BwzA==}
+  /@coinmasters/types@4.7.71:
+    resolution: {integrity: sha512-jdwe+YW42ZWw1T35WwBl8EXq9oFm2l7+TocSd5qfEKvwXyzj1pGiTBH2IzbH3+GSpcdZgQ1lWsjYGTjaffb88g==}
     dev: false
 
-  /@coinmasters/types@4.7.70:
-    resolution: {integrity: sha512-qdL9V69/XneqRzXI0Hx23tnBQcEC/fGDntVXe5jwxTnnBYKeztY14SyHxSlh+PNUZe87ZHfVzObCWHbAIrUr2A==}
+  /@coinmasters/types@4.7.72:
+    resolution: {integrity: sha512-NqJ8SJfVKA3PPtzV3Ok/h6hmzx+Z5Zz0JUN66N2SIOlBlpefLqDaX9/OYkuxvPdIrxpY2wovi3CnbAc7R0xRtg==}
     dev: false
 
-  /@coinmasters/wallet-keepkey@13.0.70(@coinmasters/toolbox-cosmos@11.0.70)(@coinmasters/toolbox-evm@11.0.70)(@coinmasters/toolbox-ripple@11.0.70)(@coinmasters/toolbox-utxo@11.0.70)(@keepkey/keepkey-sdk@0.2.57)(@types/node@20.16.10)(bitcoinjs-lib@5.2.0):
-    resolution: {integrity: sha512-rw5oe9gBmF8SK9sxlJ7jRnUq53lVtXfO6CA7RVjIU+m5arrgS35BtBGn+ef3UJGXEY9dJhZhhsKvj8OyyZkAUw==}
+  /@coinmasters/wallet-keepkey@13.0.72(@coinmasters/toolbox-cosmos@11.0.72)(@coinmasters/toolbox-evm@11.0.72)(@coinmasters/toolbox-ripple@11.0.72)(@coinmasters/toolbox-utxo@11.0.72)(@keepkey/keepkey-sdk@0.2.57)(@types/node@22.7.5)(bitcoinjs-lib@5.2.0):
+    resolution: {integrity: sha512-/D1KVkMk38i6gKxMR4HQ11Fl/h3q0oFKb3BMfH1Yy3AC+BrFGQXdkP7xERSzdTuF4r/OPby5AlF1PDqvPuo4GA==}
     peerDependencies:
-      '@coinmasters/toolbox-cosmos': 11.0.70
-      '@coinmasters/toolbox-evm': 11.0.70
-      '@coinmasters/toolbox-ripple': 11.0.70
-      '@coinmasters/toolbox-utxo': 11.0.70
+      '@coinmasters/toolbox-cosmos': 11.0.72
+      '@coinmasters/toolbox-evm': 11.0.72
+      '@coinmasters/toolbox-ripple': 11.0.72
+      '@coinmasters/toolbox-utxo': 11.0.72
       '@keepkey/keepkey-sdk': ^0.2.57
       bitcoinjs-lib: 5.2.0
     dependencies:
-      '@coinmasters/tokens': 3.7.70
-      '@coinmasters/toolbox-cosmos': 11.0.70(@pioneer-platform/helpers@4.0.12)
-      '@coinmasters/toolbox-evm': 11.0.70(@pioneer-platform/helpers@4.0.12)
-      '@coinmasters/toolbox-ripple': 11.0.70(@pioneer-platform/helpers@4.0.12)
-      '@coinmasters/toolbox-utxo': 11.0.70
-      '@coinmasters/types': 4.7.70
+      '@coinmasters/tokens': 3.7.72
+      '@coinmasters/toolbox-cosmos': 11.0.72(@pioneer-platform/helpers@4.0.12)
+      '@coinmasters/toolbox-evm': 11.0.72(@pioneer-platform/helpers@4.0.12)
+      '@coinmasters/toolbox-ripple': 11.0.72(@pioneer-platform/helpers@4.0.12)
+      '@coinmasters/toolbox-utxo': 11.0.72
+      '@coinmasters/types': 4.7.72
       '@cosmjs/math': 0.32.4
       '@cosmjs/stargate': 0.31.1
       '@keepkey/keepkey-sdk': 0.2.57
-      '@pioneer-platform/loggerdog': 8.3.1(@types/node@20.16.10)
+      '@pioneer-platform/loggerdog': 8.3.1(@types/node@22.7.5)
       '@pioneer-platform/pioneer-caip': 9.2.32
-      '@pioneer-platform/pioneer-coins': 9.2.23(@types/node@20.16.10)
+      '@pioneer-platform/pioneer-coins': 9.2.23(@types/node@22.7.5)
       '@types/bchaddrjs': 0.4.0
       bchaddrjs: 0.5.2
       bitcoinjs-lib: 5.2.0
@@ -2004,9 +2004,9 @@ packages:
   /@cosmjs/amino@0.31.1:
     resolution: {integrity: sha512-kkB9IAkNEUFtjp/uwHv95TgM8VGJ4VWfZwrTyLNqBDD1EpSX2dsNrmUe7k8OMPzKlZUFcKmD4iA0qGvIwzjbGA==}
     dependencies:
-      '@cosmjs/crypto': 0.31.1
-      '@cosmjs/encoding': 0.31.1
-      '@cosmjs/math': 0.31.1
+      '@cosmjs/crypto': 0.31.3
+      '@cosmjs/encoding': 0.31.3
+      '@cosmjs/math': 0.31.3
       '@cosmjs/utils': 0.31.3
     dev: false
 
@@ -2022,21 +2022,21 @@ packages:
   /@cosmjs/amino@0.32.0:
     resolution: {integrity: sha512-i1ehEZLQo8HUGY78eum+1ZrDQ48QSkHKy0zOTBOMqce6TiwACIC5kOjRSOWdRQDILcPFzPVrbS2dIgtrdd0ykg==}
     dependencies:
-      '@cosmjs/crypto': 0.32.0
-      '@cosmjs/encoding': 0.32.0
-      '@cosmjs/math': 0.32.0
+      '@cosmjs/crypto': 0.32.4
+      '@cosmjs/encoding': 0.32.4
+      '@cosmjs/math': 0.32.4
       '@cosmjs/utils': 0.32.4
     dev: false
 
   /@cosmjs/crypto@0.31.1:
     resolution: {integrity: sha512-4R/SqdzdVzd4E5dpyEh1IKm5GbTqwDogutyIyyb1bcOXiX/x3CrvPI9Tb4WSIMDLvlb5TVzu2YnUV51Q1+6mMA==}
     dependencies:
-      '@cosmjs/encoding': 0.31.1
-      '@cosmjs/math': 0.31.1
+      '@cosmjs/encoding': 0.31.3
+      '@cosmjs/math': 0.31.3
       '@cosmjs/utils': 0.31.3
       '@noble/hashes': 1.5.0
       bn.js: 5.2.1
-      elliptic: 6.5.4
+      elliptic: 6.5.7
       libsodium-wrappers-sumo: 0.7.15
     dev: false
 
@@ -2055,12 +2055,12 @@ packages:
   /@cosmjs/crypto@0.32.0:
     resolution: {integrity: sha512-h8Fuff9QtHeHAZXB8Mjpk8sYQSqOd484GtD1NAJRCqfXifanNUeZOaXAQkcHbA0eg/IYa+ev7+gOPxm9HkSshQ==}
     dependencies:
-      '@cosmjs/encoding': 0.32.0
-      '@cosmjs/math': 0.32.0
+      '@cosmjs/encoding': 0.32.4
+      '@cosmjs/math': 0.32.4
       '@cosmjs/utils': 0.32.4
       '@noble/hashes': 1.5.0
       bn.js: 5.2.1
-      elliptic: 6.5.4
+      elliptic: 6.5.7
       libsodium-wrappers-sumo: 0.7.15
     dev: false
 
@@ -2072,7 +2072,7 @@ packages:
       '@cosmjs/utils': 0.32.4
       '@noble/hashes': 1.5.0
       bn.js: 5.2.1
-      elliptic: 6.5.4
+      elliptic: 6.5.7
       libsodium-wrappers-sumo: 0.7.15
     dev: false
 
@@ -2149,10 +2149,10 @@ packages:
   /@cosmjs/proto-signing@0.31.1:
     resolution: {integrity: sha512-hipbBVrssPu+jnmRzQRP5hhS/mbz2nU7RvxG/B1ZcdNhr1AtZC5DN09OTUoEpMSRgyQvScXmk/NTbyf+xmCgYg==}
     dependencies:
-      '@cosmjs/amino': 0.31.1
-      '@cosmjs/crypto': 0.31.1
-      '@cosmjs/encoding': 0.31.1
-      '@cosmjs/math': 0.31.1
+      '@cosmjs/amino': 0.31.3
+      '@cosmjs/crypto': 0.31.3
+      '@cosmjs/encoding': 0.31.3
+      '@cosmjs/math': 0.31.3
       '@cosmjs/utils': 0.31.3
       cosmjs-types: 0.8.0
       long: 4.0.0
@@ -2174,9 +2174,9 @@ packages:
     resolution: {integrity: sha512-9401CI0U5rvKMmYrEN4DAl7wvRd5PwfOTPgxoee+O0d3LzK4FUbTjnNIM7DeUi0zaQw/qU3vSbA3ZcMqPifSbQ==}
     dependencies:
       '@cosmjs/amino': 0.32.0
-      '@cosmjs/crypto': 0.32.0
-      '@cosmjs/encoding': 0.32.0
-      '@cosmjs/math': 0.32.0
+      '@cosmjs/crypto': 0.32.4
+      '@cosmjs/encoding': 0.32.4
+      '@cosmjs/math': 0.32.4
       '@cosmjs/utils': 0.32.4
       cosmjs-types: 0.9.0
     dev: false
@@ -2231,8 +2231,8 @@ packages:
     dependencies:
       '@confio/ics23': 0.6.8
       '@cosmjs/amino': 0.32.0
-      '@cosmjs/encoding': 0.32.0
-      '@cosmjs/math': 0.32.0
+      '@cosmjs/encoding': 0.32.4
+      '@cosmjs/math': 0.32.4
       '@cosmjs/proto-signing': 0.32.0
       '@cosmjs/stream': 0.32.4
       '@cosmjs/tendermint-rpc': 0.32.4
@@ -2953,7 +2953,7 @@ packages:
       '@inquirer/figures': 1.0.6
       '@inquirer/type': 2.0.0
       '@types/mute-stream': 0.0.4
-      '@types/node': 22.7.4
+      '@types/node': 22.7.5
       '@types/wrap-ansi': 3.0.0
       ansi-escapes: 4.3.2
       cli-width: 4.1.0
@@ -3108,7 +3108,7 @@ packages:
       '@jest/schemas': 29.6.3
       '@types/istanbul-lib-coverage': 2.0.6
       '@types/istanbul-reports': 3.0.4
-      '@types/node': 22.7.4
+      '@types/node': 22.7.5
       '@types/yargs': 17.0.33
       chalk: 4.1.2
     dev: true
@@ -3155,7 +3155,7 @@ packages:
     resolution: {integrity: sha512-II6FT7CDuvp0LxIrwMyGRNvR5bxxxtgVzNrHvDrlJj1c+tzF3yK7Mkgz+rUO/KKhm3NSgRaEUVdph8sgj6XYng==}
     dev: false
 
-  /@laynezh/vite-plugin-lib-assets@0.5.24(vite@5.4.3):
+  /@laynezh/vite-plugin-lib-assets@0.5.24(vite@5.4.8):
     resolution: {integrity: sha512-z1M8reWte/xP7xw+aFN0Euh9OinCjCzJ8HhLkvpz+6h6MSTyyA54xrxGmECx5QNd3bCwQlkGd7WAgkozjublCg==}
     peerDependencies:
       vite: ^3.0.0 || ^4.0.0 || ^5.0.0
@@ -3164,7 +3164,7 @@ packages:
       loader-utils: 3.3.1
       mrmime: 1.0.1
       semver: 7.6.3
-      vite: 5.4.3(@types/node@20.16.10)
+      vite: 5.4.8(@types/node@22.7.5)
     dev: true
 
   /@noble/curves@1.2.0:
@@ -3213,10 +3213,10 @@ packages:
     resolution: {integrity: sha512-yR2QxRsPxMQwict54SXB4l5Q33y4zgEv4ikGxwe+fyK/tSasK1lE44NyyhkDtT/5aLSFJ9Y6y2pBU8Ln0BsyCw==}
     dependencies:
       '@coinmasters/tokens': 3.7.66
-      '@coinmasters/types': 4.7.70
+      '@coinmasters/types': 4.7.72
       '@noble/hashes': 1.5.0
-      '@pioneer-platform/loggerdog': 8.3.1(@types/node@18.19.54)
-      '@types/node': 18.19.54
+      '@pioneer-platform/loggerdog': 8.3.1(@types/node@18.19.55)
+      '@types/node': 18.19.55
       ts-node: 8.10.2(typescript@5.6.2)
       typescript: 5.6.2
     transitivePeerDependencies:
@@ -3224,11 +3224,11 @@ packages:
       - '@swc/wasm'
     dev: false
 
-  /@pioneer-platform/loggerdog@8.3.1(@types/node@18.19.54):
+  /@pioneer-platform/loggerdog@8.3.1(@types/node@18.19.55):
     resolution: {integrity: sha512-0JTucwEb1nG+MrPBRaIEdj9ptzjKatphh75/Zc3rJ19qJI9gUUZVx6PgjMYIF9cdi0saqytz291WRgge7qOW5g==}
     dependencies:
       os: 0.1.2
-      ts-node: 10.9.2(@types/node@18.19.54)(typescript@5.6.2)
+      ts-node: 10.9.2(@types/node@18.19.55)(typescript@5.6.2)
       typescript: 5.6.2
     transitivePeerDependencies:
       - '@swc/core'
@@ -3236,11 +3236,11 @@ packages:
       - '@types/node'
     dev: false
 
-  /@pioneer-platform/loggerdog@8.3.1(@types/node@20.16.10):
+  /@pioneer-platform/loggerdog@8.3.1(@types/node@22.7.5):
     resolution: {integrity: sha512-0JTucwEb1nG+MrPBRaIEdj9ptzjKatphh75/Zc3rJ19qJI9gUUZVx6PgjMYIF9cdi0saqytz291WRgge7qOW5g==}
     dependencies:
       os: 0.1.2
-      ts-node: 10.9.2(@types/node@20.16.10)(typescript@5.6.2)
+      ts-node: 10.9.2(@types/node@22.7.5)(typescript@5.6.2)
       typescript: 5.6.2
     transitivePeerDependencies:
       - '@swc/core'
@@ -3260,10 +3260,10 @@ packages:
       - debug
     dev: false
 
-  /@pioneer-platform/pioneer-coins@9.2.23(@types/node@20.16.10):
+  /@pioneer-platform/pioneer-coins@9.2.23(@types/node@22.7.5):
     resolution: {integrity: sha512-4UET5BANaOcMaYOhr9I//+6iIl2ffryljoxhqZDS6wb0HWPOqj/46oOcJ1/dt24JEr8+jJJxGWTVX36nCzwvyQ==}
     dependencies:
-      '@pioneer-platform/loggerdog': 8.3.1(@types/node@20.16.10)
+      '@pioneer-platform/loggerdog': 8.3.1(@types/node@22.7.5)
       bignumber.js: 9.1.2
       bs58check: 3.0.1
     transitivePeerDependencies:
@@ -3272,12 +3272,12 @@ packages:
       - '@types/node'
     dev: false
 
-  /@pioneer-platform/pioneer-discovery@0.0.15(@types/node@20.16.10):
+  /@pioneer-platform/pioneer-discovery@0.0.15(@types/node@22.7.5):
     resolution: {integrity: sha512-4o5g7cmf/bx+pzE9i+qC/QyCRv5oyqO9KzH199hr2fXwcpsfiMAjIXMWC0akasVXjsSWdJ6EnWeY6fWifwpDLg==}
     dependencies:
-      '@coinmasters/tokens': 3.7.70
-      '@coinmasters/types': 4.7.66
-      '@pioneer-platform/loggerdog': 8.3.1(@types/node@20.16.10)
+      '@coinmasters/tokens': 3.7.72
+      '@coinmasters/types': 4.7.72
+      '@pioneer-platform/loggerdog': 8.3.1(@types/node@22.7.5)
       '@pioneer-platform/pioneer-caip': 9.2.32
     transitivePeerDependencies:
       - '@swc/core'
@@ -3696,7 +3696,7 @@ packages:
     dependencies:
       '@noble/curves': 1.2.0
       '@noble/hashes': 1.3.3
-      '@scure/base': 1.1.3
+      '@scure/base': 1.1.9
     dev: false
 
   /@scure/bip39@1.2.1:
@@ -4357,7 +4357,7 @@ packages:
   /@types/mute-stream@0.0.4:
     resolution: {integrity: sha512-CPM9nzrCPPJHQNA9keH9CVkVI+WR5kMa+7XEs5jcGQ0VoAGnLv242w8lIVgwAEfmE4oufJRaTc9PNLQl0ioAow==}
     dependencies:
-      '@types/node': 20.16.10
+      '@types/node': 20.16.11
     dev: true
 
   /@types/node@10.12.18:
@@ -4368,19 +4368,19 @@ packages:
     resolution: {integrity: sha512-N+0kuo9KgrUQ1Sn/ifDXsvg0TTleP7rIy4zOBGECxAljqvqfqpTfzx0Q1NUedOixRMBfe2Whhb056a42cWs26Q==}
     dev: false
 
-  /@types/node@18.19.54:
-    resolution: {integrity: sha512-+BRgt0G5gYjTvdLac9sIeE0iZcJxi4Jc4PV5EUzqi+88jmQLr+fRZdv2tCTV7IHKSGxM6SaLoOXQWWUiLUItMw==}
+  /@types/node@18.19.55:
+    resolution: {integrity: sha512-zzw5Vw52205Zr/nmErSEkN5FLqXPuKX/k5d1D7RKHATGqU7y6YfX9QxZraUzUrFGqH6XzOzG196BC35ltJC4Cw==}
     dependencies:
       undici-types: 5.26.5
     dev: false
 
-  /@types/node@20.16.10:
-    resolution: {integrity: sha512-vQUKgWTjEIRFCvK6CyriPH3MZYiYlNy0fKiEYHWbcoWLEgs4opurGGKlebrTLqdSMIbXImH6XExNiIyNUv3WpA==}
+  /@types/node@20.16.11:
+    resolution: {integrity: sha512-y+cTCACu92FyA5fgQSAI8A1H429g7aSK2HsO7K4XYUWc4dY5IUz55JSDIYT6/VsOLfGy8vmvQYC2hfb0iF16Uw==}
     dependencies:
       undici-types: 6.19.8
 
-  /@types/node@22.7.4:
-    resolution: {integrity: sha512-y+NPi1rFzDs1NdQHHToqeiX2TIS79SWEAw9GYhkkx8bD0ChpfqC+n2j5OXOCpzfojBEBt6DnEnnG9MY0zk1XLg==}
+  /@types/node@22.7.5:
+    resolution: {integrity: sha512-jML7s2NAzMWc//QSJ1a3prpk78cOPchGvXJsC3C6R6PSMoooztvRVQEz89gmBTBY1SPMaqo5teB4uNHPdetShQ==}
     dependencies:
       undici-types: 6.19.8
 
@@ -4442,7 +4442,7 @@ packages:
   /@types/ws@8.5.12:
     resolution: {integrity: sha512-3tPRkv1EtkDpzlgyKyI8pGsGZAGPEaXeu0DOj5DI25Ja91bdAYddYHbADRYVrZMRbfW+1l5YwXVDKohDJNQxkQ==}
     dependencies:
-      '@types/node': 22.7.4
+      '@types/node': 22.7.5
     dev: true
 
   /@types/yargs-parser@21.0.3:
@@ -4461,7 +4461,7 @@ packages:
     resolution: {integrity: sha512-oJoftv0LSuaDZE3Le4DbKX+KS9G36NzOeSap90UIK0yMA/NhKJhqlSGtNDORNRaIbQfzjXDrQa0ytJ6mNRGz/Q==}
     requiresBuild: true
     dependencies:
-      '@types/node': 20.16.10
+      '@types/node': 20.16.11
     dev: true
     optional: true
 
@@ -4596,13 +4596,13 @@ packages:
     resolution: {integrity: sha512-zuVdFrMJiuCDQUMCzQaD6KL28MjnqqN8XnAqiEq9PNm/hCPTSGfrXCOfwj1ow4LFb/tNymJPwsNbVePc1xFqrQ==}
     dev: true
 
-  /@vitejs/plugin-react-swc@3.7.0(vite@5.4.3):
+  /@vitejs/plugin-react-swc@3.7.0(vite@5.4.8):
     resolution: {integrity: sha512-yrknSb3Dci6svCd/qhHqhFPDSw0QtjumcqdKMoNNzmOl5lMXTTiqzjWtG4Qask2HdvvzaNgSunbQGet8/GrKdA==}
     peerDependencies:
       vite: ^4 || ^5
     dependencies:
       '@swc/core': 1.7.26
-      vite: 5.4.3(@types/node@20.16.10)
+      vite: 5.4.8(@types/node@20.16.11)
     transitivePeerDependencies:
       - '@swc/helpers'
     dev: true
@@ -4636,7 +4636,7 @@ packages:
     engines: {node: '>=18.20.0'}
     hasBin: true
     dependencies:
-      '@types/node': 20.16.10
+      '@types/node': 20.16.11
       '@vitest/snapshot': 1.6.0
       '@wdio/config': 9.0.8
       '@wdio/globals': 9.0.9(@wdio/logger@9.0.8)
@@ -4697,11 +4697,11 @@ packages:
       - utf-8-validate
     dev: true
 
-  /@wdio/globals@9.0.9(@wdio/logger@9.1.0):
+  /@wdio/globals@9.0.9(@wdio/logger@9.1.3):
     resolution: {integrity: sha512-Lmzf82NoNK+i+Z6slt/Ueu0iOfHMLMNxxWnvoC+en3g8A1xj2JxAinC4ymrc0iFC3uvG0SxMWlpVmGTk78wp2Q==}
     engines: {node: '>=18.20.0'}
     optionalDependencies:
-      expect-webdriverio: 5.0.3(@wdio/globals@9.0.9)(@wdio/logger@9.1.0)(webdriverio@9.0.9)
+      expect-webdriverio: 5.0.3(@wdio/globals@9.0.9)(@wdio/logger@9.1.3)(webdriverio@9.0.9)
       webdriverio: 9.0.9
     transitivePeerDependencies:
       - '@wdio/logger'
@@ -4715,7 +4715,7 @@ packages:
     resolution: {integrity: sha512-cqhCqHHO9PnH51+buvXd0ck3FB0HCnqPQLe/SLZuGI5tzywK1X7wFKlcAHkmqCPyu3xdV2mh8QZTEL4k8ayzsw==}
     engines: {node: '>=18.20.0'}
     dependencies:
-      '@types/node': 20.16.10
+      '@types/node': 20.16.11
       '@wdio/logger': 9.0.8
       '@wdio/repl': 9.0.8
       '@wdio/runner': 9.0.9
@@ -4750,8 +4750,8 @@ packages:
       strip-ansi: 7.1.0
     dev: true
 
-  /@wdio/logger@9.1.0:
-    resolution: {integrity: sha512-1Rfg9VCy87I9IrViA1ned1Rqa66JwhCzdEo8rA8T3Ro6lBfOEwDbK1XW8ETKLWcweddzGeFalfVnvUlNgPmFdA==}
+  /@wdio/logger@9.1.3:
+    resolution: {integrity: sha512-cumRMK/gE1uedBUw3WmWXOQ7HtB6DR8EyKQioUz2P0IJtRRpglMBdZV7Svr3b++WWawOuzZHMfbTkJQmaVt8Gw==}
     engines: {node: '>=18.20.0'}
     dependencies:
       chalk: 5.3.0
@@ -4766,7 +4766,7 @@ packages:
     engines: {node: '>=18.20.0'}
     dependencies:
       '@types/mocha': 10.0.8
-      '@types/node': 20.16.10
+      '@types/node': 20.16.11
       '@wdio/logger': 9.0.8
       '@wdio/types': 9.0.8
       '@wdio/utils': 9.0.8
@@ -4783,14 +4783,14 @@ packages:
     resolution: {integrity: sha512-3iubjl4JX5zD21aFxZwQghqC3lgu+mSs8c3NaiYYNCC+IT5cI/8QuKlgh9s59bu+N3gG988jqMJeCYlKuUv/iw==}
     engines: {node: '>=18.20.0'}
     dependencies:
-      '@types/node': 20.16.10
+      '@types/node': 20.16.11
     dev: true
 
   /@wdio/reporter@9.0.8:
     resolution: {integrity: sha512-2T2XmCL31bLVkHN0UvHagg4KkkUHwzbXnHm1wjlWtd90BdVZ3lJyMhDh3TkKsyyDxPaZZJEhyDp9g/COwuF/bw==}
     engines: {node: '>=18.20.0'}
     dependencies:
-      '@types/node': 20.16.10
+      '@types/node': 20.16.11
       '@wdio/logger': 9.0.8
       '@wdio/types': 9.0.8
       diff: 5.2.0
@@ -4801,7 +4801,7 @@ packages:
     resolution: {integrity: sha512-DIyFSt/mF7EVyFvgKztVAzf7lfunXsMxfYm3Hqjxgh0IQXJfjvOFKmT+R/T61tTHyzHHsx0JBQTu12WqHkNQtA==}
     engines: {node: '>=18.20.0'}
     dependencies:
-      '@types/node': 20.16.10
+      '@types/node': 20.16.11
       '@wdio/config': 9.0.8
       '@wdio/globals': 9.0.9(@wdio/logger@9.0.8)
       '@wdio/logger': 9.0.8
@@ -4834,7 +4834,7 @@ packages:
     resolution: {integrity: sha512-pmz2iRWddTanrv8JC7v3wUGm17KRv2WyyJhQfklMSANn9V1ep6pw1RJG2WJnKq4NojMvH1nVv1sMZxXrYPhpYw==}
     engines: {node: '>=18.20.0'}
     dependencies:
-      '@types/node': 20.16.10
+      '@types/node': 20.16.11
     dev: true
 
   /@wdio/utils@9.0.8:
@@ -5311,7 +5311,7 @@ packages:
       postcss: ^8.1.0
     dependencies:
       browserslist: 4.24.0
-      caniuse-lite: 1.0.30001666
+      caniuse-lite: 1.0.30001667
       fraction.js: 4.3.7
       normalize-range: 0.1.2
       picocolors: 1.1.0
@@ -5595,8 +5595,8 @@ packages:
     engines: {node: ^6 || ^7 || ^8 || ^9 || ^10 || ^11 || ^12 || >=13.7}
     hasBin: true
     dependencies:
-      caniuse-lite: 1.0.30001666
-      electron-to-chromium: 1.5.31
+      caniuse-lite: 1.0.30001667
+      electron-to-chromium: 1.5.34
       node-releases: 2.0.18
       update-browserslist-db: 1.1.1(browserslist@4.24.0)
     dev: true
@@ -5687,8 +5687,8 @@ packages:
     resolution: {integrity: sha512-dU+Tx2fsypxTgtLoE36npi3UqcjSSMNYfkqgmoEhtZrraP5VWq0K7FkWVTYa8eMPtnU/G2txVsfdCJTn9uzpuQ==}
     dev: false
 
-  /caniuse-lite@1.0.30001666:
-    resolution: {integrity: sha512-gD14ICmoV5ZZM1OdzPWmpx+q4GyefaK06zi8hmfHV5xe4/2nOQX3+Dw5o+fSqOws2xVwL9j+anOPFwHzdEdV4g==}
+  /caniuse-lite@1.0.30001667:
+    resolution: {integrity: sha512-7LTwJjcRkzKFmtqGsibMeuXmvFDfZq/nzIjnmgCGzKKRVzjD72selLDK1oPF/Oxzmt4fNcPvTDvGqSDG4tCALw==}
     dev: true
 
   /canvas-confetti@1.9.3:
@@ -6268,7 +6268,7 @@ packages:
       object-is: 1.1.6
       object-keys: 1.1.1
       object.assign: 4.1.5
-      regexp.prototype.flags: 1.5.2
+      regexp.prototype.flags: 1.5.3
       side-channel: 1.0.6
       which-boxed-primitive: 1.0.2
       which-collection: 1.0.2
@@ -6486,8 +6486,8 @@ packages:
       jake: 10.9.2
     dev: true
 
-  /electron-to-chromium@1.5.31:
-    resolution: {integrity: sha512-QcDoBbQeYt0+3CWcK/rEbuHvwpbT/8SV9T3OSgs6cX1FlcUAkgrkqbg9zLnDrMM/rLamzQwal4LYFCiWk861Tg==}
+  /electron-to-chromium@1.5.34:
+    resolution: {integrity: sha512-/TZAiChbAflBNjCg+VvstbcwAtIL/VdMFO3NgRFIzBjpvPzWOTIbbO8kNb6RwU4bt9TP7K+3KqBKw/lOU+Y+GA==}
     dev: true
 
   /elliptic@6.5.4:
@@ -6600,7 +6600,7 @@ packages:
       object-inspect: 1.13.2
       object-keys: 1.1.1
       object.assign: 4.1.5
-      regexp.prototype.flags: 1.5.2
+      regexp.prototype.flags: 1.5.3
       safe-array-concat: 1.1.2
       safe-regex-test: 1.0.3
       string.prototype.trim: 1.2.9
@@ -6638,8 +6638,8 @@ packages:
       stop-iteration-iterator: 1.0.0
     dev: true
 
-  /es-iterator-helpers@1.0.19:
-    resolution: {integrity: sha512-zoMwbCcH5hwUkKJkT8kDIBZSz9I6mVG//+lDCinLCGov4+r7NIy0ld8o03M0cJxl2spVf6ESYVS6/gpIfq1FFw==}
+  /es-iterator-helpers@1.1.0:
+    resolution: {integrity: sha512-/SurEfycdyssORP/E+bj4sEu1CWw4EmLDsHynHwSXQ7utgbrMRWW195pTrCjFgFCddf/UkYm3oqKPRq5i8bJbw==}
     engines: {node: '>= 0.4'}
     dependencies:
       call-bind: 1.0.7
@@ -6654,7 +6654,7 @@ packages:
       has-proto: 1.0.3
       has-symbols: 1.0.3
       internal-slot: 1.0.7
-      iterator.prototype: 1.1.2
+      iterator.prototype: 1.1.3
       safe-array-concat: 1.1.2
     dev: true
 
@@ -6915,7 +6915,7 @@ packages:
       axobject-query: 3.1.1
       damerau-levenshtein: 1.0.8
       emoji-regex: 9.2.2
-      es-iterator-helpers: 1.0.19
+      es-iterator-helpers: 1.1.0
       eslint: 8.57.0
       hasown: 2.0.2
       jsx-ast-utils: 3.3.5
@@ -6944,7 +6944,7 @@ packages:
       eslint-config-prettier: 9.1.0(eslint@8.57.0)
       prettier: 3.3.3
       prettier-linter-helpers: 1.0.0
-      synckit: 0.9.1
+      synckit: 0.9.2
     dev: true
 
   /eslint-plugin-react-hooks@4.6.2(eslint@8.57.0):
@@ -6967,7 +6967,7 @@ packages:
       array.prototype.flatmap: 1.3.2
       array.prototype.tosorted: 1.1.4
       doctrine: 2.1.0
-      es-iterator-helpers: 1.0.19
+      es-iterator-helpers: 1.1.0
       eslint: 8.57.0
       estraverse: 5.3.0
       hasown: 2.0.2
@@ -7227,7 +7227,7 @@ packages:
     dev: true
     optional: true
 
-  /expect-webdriverio@5.0.3(@wdio/globals@9.0.9)(@wdio/logger@9.1.0)(webdriverio@9.0.9):
+  /expect-webdriverio@5.0.3(@wdio/globals@9.0.9)(@wdio/logger@9.1.3)(webdriverio@9.0.9):
     resolution: {integrity: sha512-0RHsFZX1856qCWZsXcvacFZpdZc7UAVD9wAglzf3KMWO1AoXt5EorjsNp1H9StGysxhJuVXJxRWKeXnD4LKtjQ==}
     engines: {node: '>=18 || >=20 || >=22'}
     requiresBuild: true
@@ -7237,8 +7237,8 @@ packages:
       webdriverio: ^9.0.0
     dependencies:
       '@vitest/snapshot': 2.1.1
-      '@wdio/globals': 9.0.9(@wdio/logger@9.1.0)
-      '@wdio/logger': 9.1.0
+      '@wdio/globals': 9.0.9(@wdio/logger@9.1.3)
+      '@wdio/logger': 9.1.3
       expect: 29.7.0
       jest-matcher-utils: 29.7.0
       lodash.isequal: 4.5.0
@@ -8376,8 +8376,9 @@ packages:
       ws: 7.5.10
     dev: false
 
-  /iterator.prototype@1.1.2:
-    resolution: {integrity: sha512-DR33HMMr8EzwuRL8Y9D3u2BMj8+RqSE850jfGu59kS7tbmPLzGkZmVSfyCFSDxuZiEY6Rzt3T2NA/qU+NwVj1w==}
+  /iterator.prototype@1.1.3:
+    resolution: {integrity: sha512-FW5iMbeQ6rBGm/oKgzq2aW4KvAGpxPzYES8N4g4xNXUKpL1mclMvOe+76AcLDTvD+Ze+sOpVhgdAQEKF4L9iGQ==}
+    engines: {node: '>= 0.4'}
     dependencies:
       define-properties: 1.2.1
       get-intrinsic: 1.2.4
@@ -8462,7 +8463,7 @@ packages:
     requiresBuild: true
     dependencies:
       '@jest/types': 29.6.3
-      '@types/node': 22.7.4
+      '@types/node': 22.7.5
       chalk: 4.1.2
       ci-info: 3.9.0
       graceful-fs: 4.2.11
@@ -8473,7 +8474,7 @@ packages:
     resolution: {integrity: sha512-7vuh85V5cdDofPyxn58nrPjBktZo0u9x1g8WtjQol+jZDaE+fhN+cIvTj11GndBnMnyfrUOG1sZQxCdjKh+DKg==}
     engines: {node: '>= 10.13.0'}
     dependencies:
-      '@types/node': 20.16.10
+      '@types/node': 22.7.5
       merge-stream: 2.0.0
       supports-color: 8.1.1
     dev: true
@@ -8640,7 +8641,7 @@ packages:
       debug: 4.3.7(supports-color@8.1.1)
       execa: 8.0.1
       lilconfig: 3.1.2
-      listr2: 8.2.4
+      listr2: 8.2.5
       micromatch: 4.0.8
       pidtree: 0.6.0
       string-argv: 0.3.2
@@ -8649,8 +8650,8 @@ packages:
       - supports-color
     dev: true
 
-  /listr2@8.2.4:
-    resolution: {integrity: sha512-opevsywziHd3zHCVQGAj8zu+Z3yHNkkoYhWIGnq54RrCVwLz0MozotJEDnKsIBLvkfLGN6BLOyAeRrYI0pKA4g==}
+  /listr2@8.2.5:
+    resolution: {integrity: sha512-iyAZCeyD+c1gPyE9qpFu8af0Y+MRtmKOncdGoA2S5EY8iFq99dmmvkNnHiWo+pj0s7yH7l3KPIgee77tKpXPWQ==}
     engines: {node: '>=18.0.0'}
     dependencies:
       cli-truncate: 4.0.0
@@ -9682,7 +9683,7 @@ packages:
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.0
       '@types/long': 4.0.2
-      '@types/node': 22.7.4
+      '@types/node': 20.16.11
       long: 4.0.0
     dev: false
 
@@ -9701,7 +9702,7 @@ packages:
       '@protobufjs/path': 1.1.2
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.0
-      '@types/node': 22.7.4
+      '@types/node': 20.16.11
       long: 5.2.3
     dev: false
 
@@ -10106,8 +10107,8 @@ packages:
   /regenerator-runtime@0.14.1:
     resolution: {integrity: sha512-dYnhHh0nJoMfnkZs6GmmhFknAGRrLznOu5nc9ML+EJxGvrx6H7teuevqVqCuPcPK//3eDrrjQhehXVx9cnkGdw==}
 
-  /regexp.prototype.flags@1.5.2:
-    resolution: {integrity: sha512-NcDiDkTLuPR+++OCKB0nWafEmhg/Da8aUPLPMQbK+bxKKCm1/S5he+AqYa4PlMCVBalb4/yxIRub6qkEx5yJbw==}
+  /regexp.prototype.flags@1.5.3:
+    resolution: {integrity: sha512-vqlC04+RQoFalODCbCumG2xIOvapzVMHwsyIGM/SIE8fRhFFsXeH8/QQ+s0T0kDAhKc4k30s73/0ydkHQz6HlQ==}
     engines: {node: '>= 0.4'}
     dependencies:
       call-bind: 1.0.7
@@ -10651,7 +10652,7 @@ packages:
       gopd: 1.0.1
       has-symbols: 1.0.3
       internal-slot: 1.0.7
-      regexp.prototype.flags: 1.5.2
+      regexp.prototype.flags: 1.5.3
       set-function-name: 2.0.2
       side-channel: 1.0.6
     dev: true
@@ -10841,8 +10842,8 @@ packages:
     engines: {node: '>=0.10'}
     dev: false
 
-  /synckit@0.9.1:
-    resolution: {integrity: sha512-7gr8p9TQP6RAHusBOSLs46F4564ZrjV8xFmw5zCmgmhGUcw2hxsShhJ6CEiHQMgPDwAQ1fWHPM0ypc4RMAig4A==}
+  /synckit@0.9.2:
+    resolution: {integrity: sha512-vrozgXDQwYO72vHjUb/HnFbQx1exDjoKzqx23aXEg2a9VIg2TSFZ8FmeZpTjUCFMYw7mpX4BE2SFu8wI7asYsw==}
     engines: {node: ^14.18.0 || >=16.0.0}
     dependencies:
       '@pkgr/core': 0.1.1
@@ -11007,7 +11008,7 @@ packages:
       bindings: 1.5.0
       bn.js: 4.12.0
       create-hmac: 1.1.7
-      elliptic: 6.5.4
+      elliptic: 6.5.7
       nan: 2.20.0
     dev: false
 
@@ -11087,7 +11088,7 @@ packages:
     resolution: {integrity: sha512-Y/arvbn+rrz3JCKl9C4kVNfTfSm2/mEp5FSz5EsZSANGPSlQrpRI5M4PKF+mJnE52jOO90PnPSc3Ur3bTQw0gA==}
     dev: true
 
-  /ts-loader@9.5.1(typescript@5.5.4)(webpack@5.95.0):
+  /ts-loader@9.5.1(typescript@5.6.3)(webpack@5.95.0):
     resolution: {integrity: sha512-rNH3sK9kGZcH9dYzC7CewQm4NtxJTjSEVRJ2DyBZR7f8/wcta+iV44UPCXc5+nzDzivKtlzV6c9P4e+oFhDLYg==}
     engines: {node: '>=12.0.0'}
     peerDependencies:
@@ -11099,7 +11100,7 @@ packages:
       micromatch: 4.0.8
       semver: 7.6.3
       source-map: 0.7.4
-      typescript: 5.5.4
+      typescript: 5.6.3
       webpack: 5.95.0(esbuild@0.23.1)
     dev: true
 
@@ -11107,7 +11108,7 @@ packages:
     resolution: {integrity: sha512-ufKpbmrugz5Aou4wcr5Wc1UUFWOLhq+Fm6qa6P0w0K5Qw2yhaUoiWszhCVuNQyNwrlGiscHOmqYoAox1PtvgjA==}
     dev: false
 
-  /ts-node@10.9.2(@types/node@18.19.54)(typescript@5.6.2):
+  /ts-node@10.9.2(@types/node@18.19.55)(typescript@5.6.2):
     resolution: {integrity: sha512-f0FFpIdcHgn8zcPSbf1dRevwt047YMnaiJM3u2w2RewrB+fob/zePZcrOyQoLMMO7aBIddLcQIEK5dYjkLnGrQ==}
     hasBin: true
     peerDependencies:
@@ -11126,7 +11127,7 @@ packages:
       '@tsconfig/node12': 1.0.11
       '@tsconfig/node14': 1.0.3
       '@tsconfig/node16': 1.0.4
-      '@types/node': 18.19.54
+      '@types/node': 18.19.55
       acorn: 8.12.1
       acorn-walk: 8.3.4
       arg: 4.1.3
@@ -11138,7 +11139,7 @@ packages:
       yn: 3.1.1
     dev: false
 
-  /ts-node@10.9.2(@types/node@20.16.10)(typescript@5.5.4):
+  /ts-node@10.9.2(@types/node@22.7.5)(typescript@5.6.2):
     resolution: {integrity: sha512-f0FFpIdcHgn8zcPSbf1dRevwt047YMnaiJM3u2w2RewrB+fob/zePZcrOyQoLMMO7aBIddLcQIEK5dYjkLnGrQ==}
     hasBin: true
     peerDependencies:
@@ -11157,48 +11158,48 @@ packages:
       '@tsconfig/node12': 1.0.11
       '@tsconfig/node14': 1.0.3
       '@tsconfig/node16': 1.0.4
-      '@types/node': 20.16.10
+      '@types/node': 22.7.5
       acorn: 8.12.1
       acorn-walk: 8.3.4
       arg: 4.1.3
       create-require: 1.1.1
       diff: 4.0.2
       make-error: 1.3.6
-      typescript: 5.5.4
+      typescript: 5.6.2
+      v8-compile-cache-lib: 3.0.1
+      yn: 3.1.1
+    dev: false
+
+  /ts-node@10.9.2(@types/node@22.7.5)(typescript@5.6.3):
+    resolution: {integrity: sha512-f0FFpIdcHgn8zcPSbf1dRevwt047YMnaiJM3u2w2RewrB+fob/zePZcrOyQoLMMO7aBIddLcQIEK5dYjkLnGrQ==}
+    hasBin: true
+    peerDependencies:
+      '@swc/core': '>=1.2.50'
+      '@swc/wasm': '>=1.2.50'
+      '@types/node': '*'
+      typescript: '>=2.7'
+    peerDependenciesMeta:
+      '@swc/core':
+        optional: true
+      '@swc/wasm':
+        optional: true
+    dependencies:
+      '@cspotcode/source-map-support': 0.8.1
+      '@tsconfig/node10': 1.0.11
+      '@tsconfig/node12': 1.0.11
+      '@tsconfig/node14': 1.0.3
+      '@tsconfig/node16': 1.0.4
+      '@types/node': 22.7.5
+      acorn: 8.12.1
+      acorn-walk: 8.3.4
+      arg: 4.1.3
+      create-require: 1.1.1
+      diff: 4.0.2
+      make-error: 1.3.6
+      typescript: 5.6.3
       v8-compile-cache-lib: 3.0.1
       yn: 3.1.1
     dev: true
-
-  /ts-node@10.9.2(@types/node@20.16.10)(typescript@5.6.2):
-    resolution: {integrity: sha512-f0FFpIdcHgn8zcPSbf1dRevwt047YMnaiJM3u2w2RewrB+fob/zePZcrOyQoLMMO7aBIddLcQIEK5dYjkLnGrQ==}
-    hasBin: true
-    peerDependencies:
-      '@swc/core': '>=1.2.50'
-      '@swc/wasm': '>=1.2.50'
-      '@types/node': '*'
-      typescript: '>=2.7'
-    peerDependenciesMeta:
-      '@swc/core':
-        optional: true
-      '@swc/wasm':
-        optional: true
-    dependencies:
-      '@cspotcode/source-map-support': 0.8.1
-      '@tsconfig/node10': 1.0.11
-      '@tsconfig/node12': 1.0.11
-      '@tsconfig/node14': 1.0.3
-      '@tsconfig/node16': 1.0.4
-      '@types/node': 20.16.10
-      acorn: 8.12.1
-      acorn-walk: 8.3.4
-      arg: 4.1.3
-      create-require: 1.1.1
-      diff: 4.0.2
-      make-error: 1.3.6
-      typescript: 5.6.2
-      v8-compile-cache-lib: 3.0.1
-      yn: 3.1.1
-    dev: false
 
   /ts-node@8.10.2(typescript@5.6.2):
     resolution: {integrity: sha512-ISJJGgkIpDdBhWVu3jufsWpK3Rzo7bdiIXJjQc0ynKxVOVcg2oIrf2H2cejminGrptVc6q6/uynAHNCuWGbpVA==}
@@ -11426,6 +11427,12 @@ packages:
     hasBin: true
     dev: false
 
+  /typescript@5.6.3:
+    resolution: {integrity: sha512-hjcS1mhfuyi4WW8IWtjP7brDrG2cuDZukyrYrSauoXGNgx0S7zceP07adYkJycEr56BOUTNPzbInooiN3fn1qw==}
+    engines: {node: '>=14.17'}
+    hasBin: true
+    dev: true
+
   /ua-parser-js@1.0.39:
     resolution: {integrity: sha512-k24RCVWlEcjkdOxYmVJgeD/0a1TiSpqLg+ZalVGV9lsnr4yqu0w7tX/x2xX6G4zpkgQnRf89lxuZ1wsbjXM8lw==}
     hasBin: true
@@ -11590,7 +11597,7 @@ packages:
       safe-buffer: 5.2.1
     dev: false
 
-  /vite@5.4.3(@types/node@20.16.10):
+  /vite@5.4.3(@types/node@20.16.11):
     resolution: {integrity: sha512-IH+nl64eq9lJjFqU+/yrRnrHPVTlgy42/+IzbOdaFDVlyLgI/wDlf+FCobXLX1cT0X5+7LMyH1mIy2xJdLfo8Q==}
     engines: {node: ^18.0.0 || >=20.0.0}
     hasBin: true
@@ -11621,7 +11628,85 @@ packages:
       terser:
         optional: true
     dependencies:
-      '@types/node': 20.16.10
+      '@types/node': 20.16.11
+      esbuild: 0.21.5
+      postcss: 8.4.47
+      rollup: 4.24.0
+    optionalDependencies:
+      fsevents: 2.3.3
+    dev: true
+
+  /vite@5.4.8(@types/node@20.16.11):
+    resolution: {integrity: sha512-FqrItQ4DT1NC4zCUqMB4c4AZORMKIa0m8/URVCZ77OZ/QSNeJ54bU1vrFADbDsuwfIPcgknRkmqakQcgnL4GiQ==}
+    engines: {node: ^18.0.0 || >=20.0.0}
+    hasBin: true
+    peerDependencies:
+      '@types/node': ^18.0.0 || >=20.0.0
+      less: '*'
+      lightningcss: ^1.21.0
+      sass: '*'
+      sass-embedded: '*'
+      stylus: '*'
+      sugarss: '*'
+      terser: ^5.4.0
+    peerDependenciesMeta:
+      '@types/node':
+        optional: true
+      less:
+        optional: true
+      lightningcss:
+        optional: true
+      sass:
+        optional: true
+      sass-embedded:
+        optional: true
+      stylus:
+        optional: true
+      sugarss:
+        optional: true
+      terser:
+        optional: true
+    dependencies:
+      '@types/node': 20.16.11
+      esbuild: 0.21.5
+      postcss: 8.4.47
+      rollup: 4.24.0
+    optionalDependencies:
+      fsevents: 2.3.3
+    dev: true
+
+  /vite@5.4.8(@types/node@22.7.5):
+    resolution: {integrity: sha512-FqrItQ4DT1NC4zCUqMB4c4AZORMKIa0m8/URVCZ77OZ/QSNeJ54bU1vrFADbDsuwfIPcgknRkmqakQcgnL4GiQ==}
+    engines: {node: ^18.0.0 || >=20.0.0}
+    hasBin: true
+    peerDependencies:
+      '@types/node': ^18.0.0 || >=20.0.0
+      less: '*'
+      lightningcss: ^1.21.0
+      sass: '*'
+      sass-embedded: '*'
+      stylus: '*'
+      sugarss: '*'
+      terser: ^5.4.0
+    peerDependenciesMeta:
+      '@types/node':
+        optional: true
+      less:
+        optional: true
+      lightningcss:
+        optional: true
+      sass:
+        optional: true
+      sass-embedded:
+        optional: true
+      stylus:
+        optional: true
+      sugarss:
+        optional: true
+      terser:
+        optional: true
+    dependencies:
+      '@types/node': 22.7.5
       esbuild: 0.21.5
       postcss: 8.4.47
       rollup: 4.24.0
@@ -11671,7 +11756,7 @@ packages:
     resolution: {integrity: sha512-UnV0ANriSTUgypGk0pz8lApeQuHt+72WEDQG5hFwkkSvggtKLyWdT7+PQkNoXvDajTmiLIqUOq8XPI/Pm71rtw==}
     engines: {node: '>=18.20.0'}
     dependencies:
-      '@types/node': 20.16.10
+      '@types/node': 20.16.11
       '@types/ws': 8.5.12
       '@wdio/config': 9.0.8
       '@wdio/logger': 9.0.8
@@ -11695,7 +11780,7 @@ packages:
       puppeteer-core:
         optional: true
     dependencies:
-      '@types/node': 20.16.10
+      '@types/node': 20.16.11
       '@types/sinonjs__fake-timers': 8.1.5
       '@wdio/config': 9.0.8
       '@wdio/logger': 9.0.8

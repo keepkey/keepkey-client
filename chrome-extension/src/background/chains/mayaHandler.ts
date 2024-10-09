@@ -59,7 +59,7 @@ export const handleMayaRequest = async (
       const caip = shortListSymbolToCaip['MAYA'];
       console.log(tag, 'caip: ', caip);
       await KEEPKEY_WALLET.setAssetContext({ caip });
-      await KEEPKEY_WALLET.setAssetContext({ caip });
+      chrome.runtime.sendMessage({ type: 'ASSET_CONTEXT_UPDATED', assetContext: KEEPKEY_WALLET.assetContext });
       const networkId = caipToNetworkId(caip);
       requestInfo.id = uuidv4();
       console.log(tag, 'requestInfo: ', requestInfo);

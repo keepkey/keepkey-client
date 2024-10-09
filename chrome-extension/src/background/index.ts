@@ -153,6 +153,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           break;
         }
         //OPEN_SIDEBAR
+        case 'open_sidebar':
         case 'OPEN_SIDEBAR': {
           console.log(tag, 'Opening sidebar ** ');
           // Query all tabs across all windows
