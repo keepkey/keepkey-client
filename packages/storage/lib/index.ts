@@ -7,6 +7,7 @@ import {
   completedStorage,
   assetContextStorage,
   web3ProviderStorage,
+  maskingSettingsStorage,
 } from './customStorage';
 import { chainIdStorage } from './providerStorage';
 import { exampleThemeStorage, exampleSidebarStorage } from './exampleThemeStorage';
@@ -19,6 +20,7 @@ export {
   requestStorage,
   approvalStorage,
   completedStorage,
+  maskingSettingsStorage,
   createStorage,
   StorageType,
   SessionAccessLevel,

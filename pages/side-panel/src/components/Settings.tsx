@@ -1,9 +1,50 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { VStack, HStack, Avatar, Text, Switch, Link, Button, Image, Box, useToast } from '@chakra-ui/react';
+import { maskingSettingsStorage } from '@extension/storage'; // Import your custom storage
 
 const Settings = () => {
-  const isComingSoon = (name: string) => ['XDEFI', 'Keplr'].includes(name);
   const toast = useToast(); // For showing a success/failure message
+  const [maskingSettings, setMaskingSettings] = useState({
+    enableMetaMaskMasking: false,
+    enableXfiMasking: false,
+    enableKeplrMasking: false,
+  });
+
+  // Fetch initial masking settings from storage
+  useEffect(() => {
+    const loadSettings = async () => {
+      const metaMaskSetting = await maskingSettingsStorage.getEnableMetaMaskMasking();
+      const xfiSetting = await maskingSettingsStorage.getEnableXfiMasking();
+      const keplrSetting = await maskingSettingsStorage.getEnableKeplrMasking();
+
+      setMaskingSettings({
+        enableMetaMaskMasking: metaMaskSetting,
+        enableXfiMasking: xfiSetting,
+        enableKeplrMasking: keplrSetting,
+      });
+    };
+
+    loadSettings();
+  }, []);
+
+  // Toggle functions
+  const toggleMetaMaskMasking = async () => {
+    const newValue = !maskingSettings.enableMetaMaskMasking;
+    await maskingSettingsStorage.setEnableMetaMaskMasking(newValue);
+    setMaskingSettings(prev => ({ ...prev, enableMetaMaskMasking: newValue }));
+  };
+
+  const toggleXfiMasking = async () => {
+    const newValue = !maskingSettings.enableXfiMasking;
+    await maskingSettingsStorage.setEnableXfiMasking(newValue);
+    setMaskingSettings(prev => ({ ...prev, enableXfiMasking: newValue }));
+  };
+
+  const toggleKeplrMasking = async () => {
+    const newValue = !maskingSettings.enableKeplrMasking;
+    await maskingSettingsStorage.setEnableKeplrMasking(newValue);
+    setMaskingSettings(prev => ({ ...prev, enableKeplrMasking: newValue }));
+  };
 
   const handleForceReset = () => {
     chrome.runtime.sendMessage({ type: 'RESET_APP' }, response => {
@@ -50,6 +91,9 @@ const Settings = () => {
     });
   };
 
+  // Helper function to determine if an option is coming soon
+  const isComingSoon = name => ['Xfi', 'Keplr'].includes(name);
+
   return (
     <VStack spacing={4}>
       {/* More Docs Link - Prominent and on top */}
@@ -66,36 +110,40 @@ const Settings = () => {
       </Link>
 
       <Image src={'https://i.ibb.co/jR8WcJM/kk.gif'} alt="KeepKey" />
+
       <VStack spacing={4} align="stretch">
         <Text fontSize="md" fontWeight="bold">
           Enable Masking
         </Text>
 
-        {/* Firefox Option - Enabled */}
+        {/* MetaMask Masking */}
         <HStack w="100%" justifyContent="space-between">
           <HStack>
             <Avatar
               size="md"
-              name="Firefox"
-              src="https://forum.zeroqode.com/uploads/default/original/2X/4/401498d7adfbb383fea695394f4f653ea4e7c9a7.png"
+              name="MetaMask"
+              src="https://upload.wikimedia.org/wikipedia/commons/thumb/3/36/MetaMask_Fox.svg/1200px-MetaMask_Fox.svg.png"
             />
-            <Text>Enable Firefox</Text>
+            <Text>Enable MetaMask Masking</Text>
           </HStack>
-          <Switch size="md" />
+          <Switch size="md" isChecked={maskingSettings.enableMetaMaskMasking} onChange={toggleMetaMaskMasking} />
         </HStack>
 
-        {/* XDEFI Option - Coming Soon */}
-        <HStack w="100%" justifyContent="space-between" position="relative" opacity={isComingSoon('XDEFI') ? 0.5 : 1}>
-          <HStack>
-            <Avatar
+        {/* Xfi Masking - Coming Soon */}
+        <Box position="relative" w="100%">
+          <HStack w="100%" justifyContent="space-between" opacity={isComingSoon('Xfi') ? 0.5 : 1}>
+            <HStack>
+              <Avatar size="md" name="Xfi" src="https://cdn.iconscout.com/icon/free/png-512/binance-67-433984.png" />
+              <Text>Enable Xfi Masking</Text>
+            </HStack>
+            <Switch
               size="md"
-              name="XDEFI"
-              src="https://images.crunchbase.com/image/upload/c_pad,f_auto,q_auto:eco,dpr_1/cs5s7reskl2onltpd7gw"
+              isChecked={maskingSettings.enableXfiMasking}
+              onChange={toggleXfiMasking}
+              isDisabled={isComingSoon('Xfi')}
             />
-            <Text>Enable XDEFI</Text>
           </HStack>
-          <Switch size="md" isDisabled={isComingSoon('XDEFI')} />
-          {isComingSoon('XDEFI') && (
+          {isComingSoon('Xfi') && (
             <Box
               position="absolute"
               top="0"
@@ -111,19 +159,26 @@ const Settings = () => {
               Coming Soon
             </Box>
           )}
-        </HStack>
+        </Box>
 
-        {/* Keplr Option - Coming Soon */}
-        <HStack w="100%" justifyContent="space-between" position="relative" opacity={isComingSoon('Keplr') ? 0.5 : 1}>
-          <HStack>
-            <Avatar
+        {/* Keplr Masking - Coming Soon */}
+        <Box position="relative" w="100%">
+          <HStack w="100%" justifyContent="space-between" opacity={isComingSoon('Keplr') ? 0.5 : 1}>
+            <HStack>
+              <Avatar
+                size="md"
+                name="Keplr"
+                src="https://cdn.dealspotr.com/io-images/logo/keplr.jpg?fit=contain&trim=true&flatten=true&extend=10&width=500&height=500"
+              />
+              <Text>Enable Keplr Masking</Text>
+            </HStack>
+            <Switch
               size="md"
-              name="Keplr"
-              src="https://cdn.dealspotr.com/io-images/logo/keplr.jpg?fit=contain&trim=true&flatten=true&extend=10&width=500&height=500"
+              isChecked={maskingSettings.enableKeplrMasking}
+              onChange={toggleKeplrMasking}
+              isDisabled={isComingSoon('Keplr')}
             />
-            <Text>Enable Keplr</Text>
           </HStack>
-          <Switch size="md" isDisabled={isComingSoon('Keplr')} />
           {isComingSoon('Keplr') && (
             <Box
               position="absolute"
@@ -140,7 +195,7 @@ const Settings = () => {
               Coming Soon
             </Box>
           )}
-        </HStack>
+        </Box>
 
         <Text fontSize="sm" color="gray.500">
           This setting may conflict with these apps if also enabled.

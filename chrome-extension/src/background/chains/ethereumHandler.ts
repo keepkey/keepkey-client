@@ -205,69 +205,245 @@ const handleWalletAddEthereumChain = async (params, KEEPKEY_WALLET) => {
   const tag = TAG + ' | handleWalletAddEthereumChain | ';
   console.log(tag, 'Switching Chain params: ', params);
   if (!params || !params[0] || !params[0].chainId) throw new Error('Invalid chainId (Required)');
-  let chainId = 'eip155:' + convertHexToDecimalChainId(params[0].chainId);
-  chainId = sanitizeChainId(chainId);
-  console.log(tag, 'Switching Chain chainId: ', chainId);
 
-  let currentProvider = await web3ProviderStorage.getWeb3Provider();
+  const chainIdHex = params[0].chainId;
+  const chainIdDecimal = parseInt(chainIdHex, 16);
+  const chainId = chainIdDecimal.toString();
+  const networkId = 'eip155:' + chainIdDecimal;
+  console.log(tag, 'Switching Chain networkId: ', networkId);
 
-  if (params && params[0] && params[0].rpcUrls && params[0].rpcUrls[0]) {
+  let currentProvider: any = await web3ProviderStorage.getWeb3Provider();
+
+  if (params[0].rpcUrls && params[0].rpcUrls[0]) {
     const name = params[0].chainName;
     console.log(tag, 'Switching Chain name: ', name);
     currentProvider = {
       explorer: params[0].blockExplorerUrls[0],
       explorerAddressLink: params[0].blockExplorerUrls[0] + '/address/',
       explorerTxLink: params[0].blockExplorerUrls[0] + '/tx/',
-      networkId: `eip155:${parseInt(params[0].chainId, 16)}`,
-      chainId: sanitizeChainId(params[0].chainId),
-      caip: `eip155:${parseInt(params[0].chainId, 16)}/slip44:60`,
+      networkId: `eip155:${chainIdDecimal}`,
+      chainId: chainId,
+      caip: `eip155:${chainIdDecimal}/slip44:60`,
       name: params[0].chainName,
       type: 'evm',
       identifier: params[0].chainName,
       nativeCurrency: params[0].nativeCurrency,
-      symbol: params[0].nativeCurrency.symbol, // Native currency symbol
-      precision: params[0].nativeCurrency.decimals, // Currency precision
+      symbol: params[0].nativeCurrency.symbol,
+      precision: params[0].nativeCurrency.decimals,
       providerUrl: params[0].rpcUrls[0],
       providers: params[0].rpcUrls,
     };
-    console.log('currentProvider', currentProvider);
+    console.log(tag, 'currentProvider', currentProvider);
   } else {
-    let chainIdToFind = sanitizeChainId(params[0].chainId);
-    let chainFound = false;
-    chainIdToFind = parseInt(sanitizedChainId, 16).toString();
+    console.log(tag, 'Switching to network without loading provider!: networkId', networkId);
 
-    for (const key of Object.keys(EIP155_CHAINS)) {
-      if (EIP155_CHAINS[key].chainId === chainIdToFind) {
-        currentProvider = {
-          chainId: chainIdToFind,
-          caip: EIP155_CHAINS[key].caip,
-          name: EIP155_CHAINS[key].name,
-          providerUrl: EIP155_CHAINS[key].rpc,
-        };
-        chainFound = true;
-        break;
+    let chainFound = false;
+
+    if (EIP155_CHAINS[networkId]) {
+      console.log(tag, 'Chain found in defaults');
+      currentProvider = {
+        chainId: chainId,
+        caip: EIP155_CHAINS[networkId].caip,
+        name: EIP155_CHAINS[networkId].name,
+        providerUrl: EIP155_CHAINS[networkId].rpc,
+      };
+      chainFound = true;
+    } else {
+      console.log(tag, 'Chain not found in defaults');
+      const nodeInfoResponse = await KEEPKEY_WALLET.pioneer.SearchNodesByNetworkId({ chainId });
+      const nodeInfo = nodeInfoResponse.data;
+      console.log(tag, 'nodeInfo', nodeInfo);
+      if (!nodeInfo[0] || !nodeInfo[0].service) throw new Error('Node not found! Unable to change networks!');
+
+      let allProviders = [];
+      for (let i = 0; i < nodeInfo.length; i++) {
+        allProviders = allProviders.concat(nodeInfo[i].network);
       }
+
+      currentProvider = {
+        explorer: nodeInfo[0].infoURL,
+        explorerAddressLink: nodeInfo[0].infoURL + '/address/',
+        explorerTxLink: nodeInfo[0].infoURL + '/tx/',
+        chainId: chainId,
+        networkId: networkId,
+        symbol: nodeInfo[0].nativeCurrency.symbol,
+        name: nodeInfo[0].name,
+        icon: nodeInfo[0].image,
+        logo: nodeInfo[0].image,
+        image: nodeInfo[0].image,
+        type: nodeInfo[0].type.toLowerCase(),
+        caip: nodeInfo[0].caip,
+        rpc: nodeInfo[0].service,
+        providerUrl: nodeInfo[0].service,
+        providers: allProviders,
+      };
+      chainFound = true;
     }
 
     if (!chainFound) {
-      throw new Error(`Chain with chainId ${chainIdToFind} not found.`);
+      throw new Error(`Chain with chainId ${chainId} not found.`);
     }
   }
-  assetContextStorage.updateContext(currentProvider);
-  // Save the updated provider to storage
-  // @ts-ignore
-  await web3ProviderStorage.saveWeb3Provider(currentProvider);
 
-  console.log('changing context to ', currentProvider.caip);
+  assetContextStorage.updateContext(currentProvider);
+  if (currentProvider != null) {
+    await web3ProviderStorage.saveWeb3Provider(currentProvider);
+  } else {
+    throw Error('Failed to set provider! empty provider!');
+  }
+
+  console.log('Changing context to ', currentProvider.caip);
   const result = await KEEPKEY_WALLET.setAssetContext(currentProvider);
-  console.log('result ', result);
+  console.log('Result ', result);
   console.log('KEEPKEY_WALLET.assetContext ', KEEPKEY_WALLET.assetContext);
-  // Update context and notify changes
+
   chrome.runtime.sendMessage({ type: 'PROVIDER_CHANGED', provider: currentProvider });
   chrome.runtime.sendMessage({ type: 'ASSET_CONTEXT_UPDATED', assetContext: KEEPKEY_WALLET.assetContext });
 
   return true;
 };
+
+// const handleWalletAddEthereumChain = async (params, KEEPKEY_WALLET) => {
+//   const tag = TAG + ' | handleWalletAddEthereumChain | ';
+//   console.log(tag, 'Switching Chain params: ', params);
+//   if (!params || !params[0] || !params[0].chainId) throw new Error('Invalid chainId (Required)');
+//   let chainId = params[0].chainId
+//   let networkId = 'eip155:' + convertHexToDecimalChainId(params[0].chainId);
+//   networkId = sanitizeChainId(networkId);
+//   console.log(tag, 'Switching Chain networkId: ', networkId);
+//
+//   let currentProvider = await web3ProviderStorage.getWeb3Provider();
+//
+//   if (params && params[0] && params[0].rpcUrls && params[0].rpcUrls[0]) {
+//     const name = params[0].chainName;
+//     console.log(tag, 'Switching Chain name: ', name);
+//     currentProvider = {
+//       explorer: params[0].blockExplorerUrls[0],
+//       explorerAddressLink: params[0].blockExplorerUrls[0] + '/address/',
+//       explorerTxLink: params[0].blockExplorerUrls[0] + '/tx/',
+//       networkId: `eip155:${parseInt(params[0].chainId, 16)}`,
+//       chainId: sanitizeChainId(params[0].chainId),
+//       caip: `eip155:${parseInt(params[0].chainId, 16)}/slip44:60`,
+//       name: params[0].chainName,
+//       type: 'evm',
+//       identifier: params[0].chainName,
+//       nativeCurrency: params[0].nativeCurrency,
+//       symbol: params[0].nativeCurrency.symbol, // Native currency symbol
+//       precision: params[0].nativeCurrency.decimals, // Currency precision
+//       providerUrl: params[0].rpcUrls[0],
+//       providers: params[0].rpcUrls,
+//     };
+//     console.log(tag,'currentProvider', currentProvider);
+//   } else {
+//     console.log(tag,'Switching to network without Loading provider!: networkId', networkId);
+//
+//     if(EIP155_CHAINS[chainId]){
+//       console.log(tag,'Chain found in defaults')
+//       //@TODO test! if fail, get from Pioneer
+//       currentProvider = {
+//         chainId: chainIdToFind,
+//         caip: EIP155_CHAINS[key].caip,
+//         name: EIP155_CHAINS[key].name,
+//         providerUrl: EIP155_CHAINS[key].rpc,
+//       };
+//       chainFound = true;
+//     }else{
+//       //get from Pioneer
+//       console.log(tag,'Chain not found in defaults')
+//       /* Example Data
+//        [
+//         {
+//           _id: '642f357f5b5d79001316d6b9',
+//           name: 'avalanche-c-chain',
+//           type: 'EVM',
+//           tags: [
+//             'KeepKeySupport',
+//             'WalletConnectSupport',
+//             'DappSupport',
+//             'avalanche-c-chain',
+//             'Avalanche',
+//             'AVAX'
+//           ],
+//           image: 'https://pioneers.dev/coins/avalanche-c-chain.png',
+//           blockchain: 'avalanche-c-chain',
+//           symbol: 'AVAX',
+//           service: 'https://api.avax.network/ext/bc/C/rpc',
+//           chainId: 43114,
+//           network: [ 'https://api.avax.network/ext/bc/C/rpc' ],
+//           facts: [ [Object] ],
+//           infoURL: 'https://www.avax.network/',
+//           shortName: 'Avalanche',
+//           nativeCurrency: { name: 'Avalanche', symbol: 'AVAX', decimals: 18 },
+//           faucets: [ 'https://free-online-app.com/faucet-for-eth-evm-chains/' ],
+//           caip: 'eip155:43114/slip44:60',
+//           isOffline: true
+//         } .... more nodes
+//       ]
+//
+//        */
+//       let nodeInfo = await KEEPKEY_WALLET.pioneer.SearchNodesByNetworkId({chainId:"43114"})
+//       nodeInfo = nodeInfo.data
+//       console.log(tag,'nodeInfo', nodeInfo);
+//       if(!nodeInfo[0]) throw Error('Node not found! unable to change networks!')
+//       if(!nodeInfo[0].service) throw Error('Node not found! unable to change networks!')
+//
+//       let allProviders = []
+//       for(let i = 0; i < nodeInfo.length; i++){
+//         allProviders.concat(nodeInfo[i].network)
+//       }
+//
+//       currentProvider = {
+//         explorer:nodeInfo[0].infoURL,
+//         chainId,
+//         networkId,
+//         symbol: nodeInfo[0].nativeCurrency.symbol,
+//         name: nodeInfo[0].name,
+//         icon: nodeInfo[0].image,
+//         logo: nodeInfo[0].image,
+//         image: nodeInfo[0].image,
+//         type: nodeInfo[0].type,
+//         caip: nodeInfo[0].caip,
+//         rpc: nodeInfo[0].service,
+//         providerUrl: nodeInfo[0].service,
+//         providers: allProviders,
+//       };
+//       /*
+//       explorer: params[0].blockExplorerUrls[0],
+//       explorerAddressLink: params[0].blockExplorerUrls[0] + '/address/',
+//       explorerTxLink: params[0].blockExplorerUrls[0] + '/tx/',
+//       networkId: `eip155:${parseInt(params[0].chainId, 16)}`,
+//       chainId: sanitizeChainId(params[0].chainId),
+//       caip: `eip155:${parseInt(params[0].chainId, 16)}/slip44:60`,
+//       name: params[0].chainName,
+//       type: 'evm',
+//       identifier: params[0].chainName,
+//       nativeCurrency: params[0].nativeCurrency,
+//       symbol: params[0].nativeCurrency.symbol, // Native currency symbol
+//       precision: params[0].nativeCurrency.decimals, // Currency precision
+//       providerUrl: params[0].rpcUrls[0],
+//       providers: params[0].rpcUrls,
+//        */
+//     }
+//
+//     if (!chainFound) {
+//       throw new Error(`Chain with chainId ${chainIdToFind} not found.`);
+//     }
+//   }
+//   assetContextStorage.updateContext(currentProvider);
+//   // Save the updated provider to storage
+//   // @ts-ignore
+//   await web3ProviderStorage.saveWeb3Provider(currentProvider);
+//
+//   console.log('changing context to ', currentProvider.caip);
+//   const result = await KEEPKEY_WALLET.setAssetContext(currentProvider);
+//   console.log('result ', result);
+//   console.log('KEEPKEY_WALLET.assetContext ', KEEPKEY_WALLET.assetContext);
+//   // Update context and notify changes
+//   chrome.runtime.sendMessage({ type: 'PROVIDER_CHANGED', provider: currentProvider });
+//   chrome.runtime.sendMessage({ type: 'ASSET_CONTEXT_UPDATED', assetContext: KEEPKEY_WALLET.assetContext });
+//
+//   return true;
+// };
 
 const handleWalletGetSnaps = async () => {
   return [];
@@ -293,11 +469,13 @@ const handleEthRequestAccounts = async ADDRESS => {
 };
 
 const handleSigningMethods = async (method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval) => {
-  const tag = TAG + ` | handle${method} | `;
+  const tag = TAG + ` | handleSigningMethods | `;
   console.log(tag, 'method:', method);
   console.log(tag, 'params:', params);
+  const currentProvider = await web3ProviderStorage.getWeb3Provider();
+  console.log(tag, 'currentProvider:', currentProvider);
 
-  if (!KEEPKEY_WALLET.assetContext) {
+  if (!KEEPKEY_WALLET.assetContext || currentProvider.caip !== KEEPKEY_WALLET.assetContext.caip) {
     // Set context to the chain, defaults to ETH
     const currentProvider = await web3ProviderStorage.getWeb3Provider();
     await KEEPKEY_WALLET.setAssetContext({ caip: currentProvider.caip });

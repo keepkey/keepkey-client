@@ -1,6 +1,6 @@
 (function () {
   const TAG = ' | InjectedScript | ';
-  const VERSION = '1.0.11';
+  const VERSION = '1.0.17';
   console.log('**** KeepKey Injection script ****:', VERSION);
 
   // Prevent multiple injections
@@ -141,7 +141,7 @@
     let wallet = {
       network: 'mainnet',
       isKeepKey: true,
-      isMetaMask: false,
+      isMetaMask: true,
       isConnected: true,
       request: ({ method, params }) => {
         return new Promise((resolve, reject) => {
@@ -259,30 +259,42 @@
     if (userOverrideSetting) {
       if (typeof window.ethereum === 'undefined') {
         console.log('Mounting window.ethereum');
-        Object.defineProperty(window, 'ethereum', {
-          value: proxyEthereum,
-          writable: false,
-          configurable: false,
-        });
+        try {
+          Object.defineProperty(window, 'ethereum', {
+            value: proxyEthereum,
+            writable: false,
+            configurable: false,
+          });
+        } catch (e) {
+          console.error('Failed to mount window.ethereum');
+        }
       }
     }
 
     if (userOverrideSetting) {
       if (typeof window.xfi === 'undefined') {
-        Object.defineProperty(window, 'xfi', {
-          value: proxyXfi,
-          writable: false,
-          configurable: false,
-        });
+        try {
+          Object.defineProperty(window, 'xfi', {
+            value: proxyXfi,
+            writable: false,
+            configurable: false,
+          });
+        } catch (e) {
+          console.error('Failed to mount xfi');
+        }
       }
     }
 
     if (typeof window.keepkey === 'undefined') {
-      Object.defineProperty(window, 'keepkey', {
-        value: proxyKeepKey,
-        writable: false,
-        configurable: false,
-      });
+      try {
+        Object.defineProperty(window, 'keepkey', {
+          value: proxyKeepKey,
+          writable: false,
+          configurable: false,
+        });
+      } catch (e) {
+        console.error('Failed to mount keepkey');
+      }
     }
 
     console.log(tag, 'window.ethereum and window.keepkey have been mounted');

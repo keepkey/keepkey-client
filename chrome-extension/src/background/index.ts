@@ -414,3 +414,13 @@ exampleSidebarStorage
   .catch(error => {
     console.error('Error fetching sidebar storage:', error);
   });
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'getMaskingSettings') {
+    chrome.storage.local.get(['enableMetaMaskMasking', 'enableXfiMasking', 'enableKeplrMasking'], result => {
+      console.log('getMaskingSettings result: ', result);
+      sendResponse(result);
+    });
+    return true; // To indicate asynchronous response
+  }
+});

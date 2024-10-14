@@ -49,6 +49,21 @@ type AssetContextStorage = BaseStorage<AssetContext> & {
   clearContext: () => Promise<void>;
 };
 
+type MaskingSettings = {
+  enableMetaMaskMasking: boolean;
+  enableXfiMasking: boolean;
+  enableKeplrMasking: boolean;
+};
+
+type MaskingSettingsStorage = BaseStorage<MaskingSettings> & {
+  setEnableMetaMaskMasking: (value: boolean) => Promise<void>;
+  getEnableMetaMaskMasking: () => Promise<boolean>;
+  setEnableXfiMasking: (value: boolean) => Promise<void>;
+  getEnableXfiMasking: () => Promise<boolean>;
+  setEnableKeplrMasking: (value: boolean) => Promise<void>;
+  getEnableKeplrMasking: () => Promise<boolean>;
+};
+
 const TAG = ' | customStorage | ';
 
 // Create Pioneer Storage
@@ -258,6 +273,58 @@ const createAssetContextStorage = (): AssetContextStorage => {
 };
 
 export const assetContextStorage = createAssetContextStorage();
+
+// Create Masking Settings Storage
+const createMaskingSettingsStorage = (): MaskingSettingsStorage => {
+  const storage = createStorage<MaskingSettings>(
+    'masking-settings',
+    {
+      enableMetaMaskMasking: false,
+      enableXfiMasking: false,
+      enableKeplrMasking: false,
+    },
+    {
+      storageType: StorageType.Local,
+      liveUpdate: true,
+    },
+  );
+
+  return {
+    ...storage,
+    setEnableMetaMaskMasking: async (value: boolean) => {
+      await storage.set(prev => ({
+        ...prev,
+        enableMetaMaskMasking: value,
+      }));
+    },
+    getEnableMetaMaskMasking: async () => {
+      const settings = await storage.get();
+      return settings.enableMetaMaskMasking;
+    },
+    setEnableXfiMasking: async (value: boolean) => {
+      await storage.set(prev => ({
+        ...prev,
+        enableXfiMasking: value,
+      }));
+    },
+    getEnableXfiMasking: async () => {
+      const settings = await storage.get();
+      return settings.enableXfiMasking;
+    },
+    setEnableKeplrMasking: async (value: boolean) => {
+      await storage.set(prev => ({
+        ...prev,
+        enableKeplrMasking: value,
+      }));
+    },
+    getEnableKeplrMasking: async () => {
+      const settings = await storage.get();
+      return settings.enableKeplrMasking;
+    },
+  };
+};
+
+export const maskingSettingsStorage = createMaskingSettingsStorage();
 
 // Utility function to move an event between storages
 const moveEvent = async (
