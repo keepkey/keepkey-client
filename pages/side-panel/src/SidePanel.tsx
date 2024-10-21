@@ -102,8 +102,9 @@ const SidePanel = () => {
       case 5:
         if (assetContext) {
           return <Asset asset={assetContext} onClose={() => setAssetContext(null)} />;
+        } else {
+          return <Balances balances={balances} loading={loading} />;
         }
-        return <Balances balances={balances} loading={loading} />;
       default:
         return (
           <Flex direction="column" justifyContent="center" alignItems="center" height="100%">

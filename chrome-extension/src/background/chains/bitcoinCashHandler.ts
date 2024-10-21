@@ -172,6 +172,7 @@ export const handleBitcoinCashRequest = async (
 
           const storedEvent = await requestStorage.getEventById(requestInfo.id);
           console.log(tag, 'storedEvent: ', storedEvent);
+          storedEvent.assetContext = KEEPKEY_WALLET.assetContext;
           storedEvent.utxos = utxos;
           storedEvent.changeAddress = changeAddress;
           storedEvent.unsignedTx = unsignedTx;

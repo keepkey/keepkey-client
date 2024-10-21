@@ -275,7 +275,7 @@ const History: React.FC<HistoryProps> = ({ transactionContext }) => {
                       <Box
                         mt={4}
                         p={4}
-                        bg="gray.50"
+                        bg="black"
                         borderRadius="md"
                         overflow="auto"
                         maxHeight="200px"

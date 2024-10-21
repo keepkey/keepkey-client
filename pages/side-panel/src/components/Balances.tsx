@@ -111,7 +111,7 @@ const Balances = ({ setShowBack }: any) => {
 
   if (showAssetSelect) {
     // If showAssetSelect is true, render the AssetSelect component
-    return <AssetSelect modalSelected={() => setShowAssetSelect(false)} />;
+    return <AssetSelect setShowAssetSelect={setShowAssetSelect} />;
   }
 
   return (

@@ -8,7 +8,7 @@ import { createProviderRpcError } from '../utils';
 import { requestStorage, web3ProviderStorage, assetContextStorage } from '@extension/storage';
 import { EIP155_CHAINS } from '../chains';
 import { v4 as uuidv4 } from 'uuid';
-import { AssetValue } from '@pioneer-platform/helpers';
+import { blockchainStorage } from '@extension/storage';
 
 const TAG = ' | ethereumHandler | ';
 const DOMAIN_WHITE_LIST = [];
@@ -233,6 +233,7 @@ const handleWalletAddEthereumChain = async (params, KEEPKEY_WALLET) => {
       providerUrl: params[0].rpcUrls[0],
       providers: params[0].rpcUrls,
     };
+    blockchainStorage.addBlockchain(currentProvider.networkId);
     console.log(tag, 'currentProvider', currentProvider);
   } else {
     console.log(tag, 'Switching to network without loading provider!: networkId', networkId);
@@ -265,7 +266,7 @@ const handleWalletAddEthereumChain = async (params, KEEPKEY_WALLET) => {
         explorerAddressLink: nodeInfo[0].infoURL + '/address/',
         explorerTxLink: nodeInfo[0].infoURL + '/tx/',
         chainId: chainId,
-        networkId: networkId,
+        networkId,
         symbol: nodeInfo[0].nativeCurrency.symbol,
         name: nodeInfo[0].name,
         icon: nodeInfo[0].image,
@@ -278,6 +279,7 @@ const handleWalletAddEthereumChain = async (params, KEEPKEY_WALLET) => {
         providers: allProviders,
       };
       chainFound = true;
+      blockchainStorage.addBlockchain(currentProvider.networkId);
     }
 
     if (!chainFound) {
@@ -620,6 +622,7 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
 
     //push hash to front end
     response.txid = txHash;
+    response.assetContext = KEEPKEY_WALLET.assetContext;
     await requestStorage.updateEventById(requestInfo.id, response);
 
     //push event

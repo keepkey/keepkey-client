@@ -8,6 +8,7 @@ import {
   assetContextStorage,
   web3ProviderStorage,
   maskingSettingsStorage,
+  blockchainStorage,
 } from './customStorage';
 import { chainIdStorage } from './providerStorage';
 import { exampleThemeStorage, exampleSidebarStorage } from './exampleThemeStorage';
@@ -21,6 +22,7 @@ export {
   approvalStorage,
   completedStorage,
   maskingSettingsStorage,
+  blockchainStorage,
   createStorage,
   StorageType,
   SessionAccessLevel,

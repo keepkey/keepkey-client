@@ -82,6 +82,10 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
 
   const handleResponse = async (decision: 'accept' | 'reject') => {
     try {
+      //play sound /sounds/send.mp3
+      const sendSound = new Audio('../../public/sounds/send.mp3');
+      sendSound.play();
+
       chrome.runtime.sendMessage({ action: 'eth_sign_response', response: { decision, eventId: event.id } });
 
       if (decision === 'reject') {

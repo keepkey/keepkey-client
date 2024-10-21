@@ -93,6 +93,7 @@ export const handleThorchainRequest = async (
         const response = await requestStorage.getEventById(requestInfo.id);
         console.log(tag, 'response: ', response);
         response.txid = txHash;
+        response.assetContext = KEEPKEY_WALLET.assetContext;
         await requestStorage.updateEventById(requestInfo.id, response);
         chrome.runtime.sendMessage({
           action: 'transaction_complete',

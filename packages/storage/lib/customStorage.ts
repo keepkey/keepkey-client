@@ -274,6 +274,48 @@ const createAssetContextStorage = (): AssetContextStorage => {
 
 export const assetContextStorage = createAssetContextStorage();
 
+// Create Blockchain Storage
+type BlockchainStorage = BaseStorage<string[]> & {
+  getAllBlockchains: () => Promise<string[] | null>;
+  addBlockchain: (blockchain: string) => Promise<void>;
+  removeBlockchain: (blockchain: string) => Promise<void>;
+};
+
+const createBlockchainStorage = (): BlockchainStorage => {
+  const storage = createStorage<string[]>('blockchains', [], {
+    storageType: StorageType.Local,
+    liveUpdate: true,
+  });
+
+  return {
+    ...storage,
+    getAllBlockchains: async () => {
+      const blockchains = await storage.get();
+      console.log(TAG, 'Retrieved blockchains:', blockchains);
+      return blockchains;
+    },
+    addBlockchain: async (blockchain: string) => {
+      const blockchains = await storage.get();
+      if (!blockchains) {
+        await storage.set(() => [blockchain]);
+      } else if (!blockchains.includes(blockchain)) {
+        await storage.set(prev => [...prev, blockchain]);
+      }
+      console.log(TAG, 'Added blockchain:', blockchain);
+    },
+    removeBlockchain: async (blockchain: string) => {
+      const blockchains = await storage.get();
+      if (blockchains && blockchains.includes(blockchain)) {
+        const updatedBlockchains = blockchains.filter(b => b !== blockchain);
+        await storage.set(() => updatedBlockchains);
+        console.log(TAG, 'Removed blockchain:', blockchain);
+      }
+    },
+  };
+};
+
+export const blockchainStorage = createBlockchainStorage();
+
 // Create Masking Settings Storage
 const createMaskingSettingsStorage = (): MaskingSettingsStorage => {
   const storage = createStorage<MaskingSettings>(

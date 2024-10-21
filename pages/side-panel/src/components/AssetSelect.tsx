@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Button, Flex, Switch, Text, Avatar, Select, useToast, Badge } from '@chakra-ui/react';
+import { Box, Button, Flex, Switch, Text, Avatar, useToast, Badge } from '@chakra-ui/react';
 import { availableChainsByWallet, ChainToNetworkId, getChainEnumValue, NetworkIdToChain } from '@coinmasters/types';
 //@ts-ignore
 import { COIN_MAP_LONG } from '@pioneer-platform/pioneer-coins';
+import { blockchainStorage } from '@extension/storage';
 
 const middleEllipsisStyle = {
   whiteSpace: 'nowrap',
@@ -11,21 +12,20 @@ const middleEllipsisStyle = {
   maxWidth: '100px', // Adjust the width as needed
 };
 
-export function AssetSelect({ onSelect, modalSelected }: any) {
+export function AssetSelect({ setShowAssetSelect }: any) {
   const [allChains, setAllChains] = useState<string[]>([]);
   const [wallet, setWallet] = useState<string>('KEEPKEY');
   const [walletOptions, setWalletOptions] = useState<string[]>(Object.keys(availableChainsByWallet));
   const [enabledChains, setEnabledChains] = useState<string[]>([]);
   const toast = useToast();
 
-  // Simulate fetching from backend (bex backend)
   useEffect(() => {
     onStart();
   }, [wallet]);
 
   useEffect(() => {
-    // Fetch the saved enabled chains from the backend
-    fetchEnabledChains();
+    // Load saved blockchains from storage
+    loadEnabledChains();
   }, []);
 
   const onStart = async function () {
@@ -40,65 +40,43 @@ export function AssetSelect({ onSelect, modalSelected }: any) {
     }
   };
 
-  const fetchEnabledChains = async () => {
-    // Simulate fetching from bex backend
-    const savedChains = await fetch(`/api/blockchains?wallet=${wallet}`).then(res => res.json());
-    setEnabledChains(savedChains || []);
-  };
-
-  const handleWalletChange = async (event: React.ChangeEvent<HTMLSelectElement>) => {
-    setWallet(event.target.value);
-    const walletType = event.target.value.split(':')[0];
-    onStart();
-  };
-
-  const selectAllChains = () => {
-    setEnabledChains(allChains);
-  };
-
-  const unselectAllChains = () => {
-    setEnabledChains([]);
-  };
-
-  const toggleChain = (chain: string) => {
-    setEnabledChains(prev => (prev.includes(chain) ? prev.filter(c => c !== chain) : [...prev, chain]));
-  };
-
-  const saveEnabledChains = async () => {
-    if (enabledChains.length === 0) {
-      toast({
-        title: 'Error',
-        description: 'At least one blockchain must be selected.',
-        status: 'error',
-        duration: 5000,
-        isClosable: true,
-      });
-      return;
-    }
+  const loadEnabledChains = async () => {
     try {
-      // Save the enabled chains to the backend
-      await fetch(`/api/blockchains`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wallet, enabledChains }),
-      });
-      toast({
-        title: 'Success',
-        description: 'Enabled blockchains updated.',
-        status: 'success',
-        duration: 3000,
-        isClosable: true,
-      });
-    } catch (e) {
-      console.error(e);
-      toast({
-        title: 'Error',
-        description: 'Failed to update blockchains.',
-        status: 'error',
-        duration: 5000,
-        isClosable: true,
-      });
+      const savedChains = await blockchainStorage.getAllBlockchains();
+      setEnabledChains(savedChains || []);
+    } catch (error) {
+      console.error('Failed to load enabled chains from storage', error);
     }
+  };
+
+  const toggleChain = async (chain: string) => {
+    if (enabledChains.includes(chain)) {
+      await blockchainStorage.removeBlockchain(chain);
+      setEnabledChains(prev => prev.filter(c => c !== chain));
+    } else {
+      await blockchainStorage.addBlockchain(chain);
+      setEnabledChains(prev => [...prev, chain]);
+    }
+  };
+
+  const selectAllChains = async () => {
+    setEnabledChains(allChains);
+    for (const chain of allChains) {
+      await blockchainStorage.addBlockchain(chain);
+    }
+  };
+
+  const unselectAllChains = async () => {
+    setEnabledChains([]);
+    for (const chain of allChains) {
+      await blockchainStorage.removeBlockchain(chain);
+    }
+  };
+
+  const handleContinue = async () => {
+    // Perform any save operation here if needed
+    await loadEnabledChains(); // Reload the enabled chains, in case of updates
+    setShowAssetSelect(false); // Close the modal or asset selection view
   };
 
   const renderChain = (chain: string) => (
@@ -176,7 +154,7 @@ export function AssetSelect({ onSelect, modalSelected }: any) {
           {others.map(renderChain)}
         </>
       )}
-      <Button colorScheme="blue" onClick={saveEnabledChains} mt={4}>
+      <Button colorScheme="blue" onClick={handleContinue} mt={4}>
         Continue/Update
       </Button>
     </Box>
