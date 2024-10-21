@@ -9,6 +9,7 @@ import {
   web3ProviderStorage,
   maskingSettingsStorage,
   blockchainStorage,
+  blockchainDataStorage,
 } from './customStorage';
 import { chainIdStorage } from './providerStorage';
 import { exampleThemeStorage, exampleSidebarStorage } from './exampleThemeStorage';
@@ -23,6 +24,7 @@ export {
   completedStorage,
   maskingSettingsStorage,
   blockchainStorage,
+  blockchainDataStorage,
   createStorage,
   StorageType,
   SessionAccessLevel,

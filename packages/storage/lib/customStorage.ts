@@ -222,29 +222,6 @@ const createEventStorage = (key: string): EventStorage => {
   };
 };
 
-// Create Web3 Provider Storage
-const createWeb3ProviderStorage = (): Web3ProviderStorage => {
-  const storage = createStorage<string>('web3-provider', '', {
-    storageType: StorageType.Local,
-    liveUpdate: true,
-  });
-
-  return {
-    ...storage,
-    saveWeb3Provider: async (provider: string) => {
-      await storage.set(() => provider);
-    },
-    getWeb3Provider: async () => {
-      return await storage.get();
-    },
-    clearWeb3Provider: async () => {
-      await storage.set(() => '');
-    },
-  };
-};
-
-export const web3ProviderStorage = createWeb3ProviderStorage();
-
 // Export Event Storages
 export const requestStorage = createEventStorage('keepkey-requests');
 export const approvalStorage = createEventStorage('keepkey-approvals');
@@ -315,6 +292,86 @@ const createBlockchainStorage = (): BlockchainStorage => {
 };
 
 export const blockchainStorage = createBlockchainStorage();
+
+// Blockchain Data Storage for Storing Additional Blockchain Metadata
+type BlockchainData = {
+  [chainId: string]: {
+    name: string;
+    symbol: string;
+    decimals: number;
+    explorerUrl: string;
+    image: string;
+    // Add any additional properties you need here
+  };
+};
+
+// Define the extended type for BlockchainDataStorage
+type BlockchainDataStorage = BaseStorage<BlockchainData> & {
+  addBlockchainData: (chainId: string, data: BlockchainData[string]) => Promise<void>;
+  getBlockchainData: (chainId: string) => Promise<BlockchainData[string] | null>;
+  getBlockchainDataByArray: (chainIds: string[]) => Promise<(BlockchainData[string] | null)[]>;
+};
+
+const createBlockchainDataStorage = (): BlockchainDataStorage => {
+  const storage = createStorage<BlockchainData>(
+    'blockchainData',
+    {},
+    {
+      storageType: StorageType.Local,
+      liveUpdate: true,
+    },
+  );
+
+  return {
+    ...storage,
+    addBlockchainData: async (chainId: string, data: BlockchainData[string]) => {
+      const blockchainData = await storage.get();
+      await storage.set(() => ({
+        ...blockchainData,
+        [chainId]: data,
+      }));
+      console.log(TAG, 'Added blockchain data for:', chainId);
+    },
+    getBlockchainData: async (chainId: string) => {
+      const blockchainData = await storage.get();
+      const data = blockchainData[chainId] || null;
+      console.log(TAG, `Retrieved blockchain data for ${chainId}:`, data);
+      return data;
+    },
+    getBlockchainDataByArray: async (chainIds: string[]) => {
+      const blockchainData = await storage.get();
+      const data = chainIds.map(chainId => blockchainData[chainId] || null);
+      console.log(TAG, 'Retrieved blockchain data for chain array:', data);
+      return data;
+    },
+    subscribe: storage.subscribe, // Ensure subscribe is included if needed
+  };
+};
+
+export const blockchainDataStorage = createBlockchainDataStorage();
+
+// Create Web3 Provider Storage
+const createWeb3ProviderStorage = (): Web3ProviderStorage => {
+  const storage = createStorage<string>('web3-provider', '', {
+    storageType: StorageType.Local,
+    liveUpdate: true,
+  });
+
+  return {
+    ...storage,
+    saveWeb3Provider: async (provider: string) => {
+      await storage.set(() => provider);
+    },
+    getWeb3Provider: async () => {
+      return await storage.get();
+    },
+    clearWeb3Provider: async () => {
+      await storage.set(() => '');
+    },
+  };
+};
+
+export const web3ProviderStorage = createWeb3ProviderStorage();
 
 // Create Masking Settings Storage
 const createMaskingSettingsStorage = (): MaskingSettingsStorage => {

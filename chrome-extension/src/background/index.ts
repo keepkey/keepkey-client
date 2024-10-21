@@ -346,6 +346,23 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           break;
         }
 
+        case 'GET_ASSETS_INFO': {
+          if (APP) {
+            try {
+              const { chainId } = message;
+              const nodeInfoResponse = await APP.pioneer.SearchNodesByNetworkId({ chainId });
+              console.log('nodeInfoResponse fetched:', nodeInfoResponse);
+              sendResponse(nodeInfoResponse);
+            } catch (error) {
+              console.error('Error fetching assets:', error);
+              sendResponse({ error: 'Failed to fetch assets' });
+            }
+          } else {
+            sendResponse({ error: 'APP not initialized' });
+          }
+          break;
+        }
+
         case 'GET_ASSETS': {
           if (APP) {
             try {

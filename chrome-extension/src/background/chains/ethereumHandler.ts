@@ -5,7 +5,7 @@
 import { Chain } from '@coinmasters/types';
 import { JsonRpcProvider } from 'ethers';
 import { createProviderRpcError } from '../utils';
-import { requestStorage, web3ProviderStorage, assetContextStorage } from '@extension/storage';
+import { requestStorage, web3ProviderStorage, assetContextStorage, blockchainDataStorage } from '@extension/storage';
 import { EIP155_CHAINS } from '../chains';
 import { v4 as uuidv4 } from 'uuid';
 import { blockchainStorage } from '@extension/storage';
@@ -234,6 +234,7 @@ const handleWalletAddEthereumChain = async (params, KEEPKEY_WALLET) => {
       providers: params[0].rpcUrls,
     };
     blockchainStorage.addBlockchain(currentProvider.networkId);
+    blockchainDataStorage.saveBlockchainData(currentProvider.networkId, currentProvider);
     console.log(tag, 'currentProvider', currentProvider);
   } else {
     console.log(tag, 'Switching to network without loading provider!: networkId', networkId);
@@ -280,6 +281,7 @@ const handleWalletAddEthereumChain = async (params, KEEPKEY_WALLET) => {
       };
       chainFound = true;
       blockchainStorage.addBlockchain(currentProvider.networkId);
+      blockchainDataStorage.saveBlockchainData(currentProvider.networkId, currentProvider);
     }
 
     if (!chainFound) {
