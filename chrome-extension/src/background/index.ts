@@ -346,6 +346,26 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           break;
         }
 
+        case 'GET_DAPPS_BY_NETWORKID': {
+          if (APP) {
+            try {
+              //Assumed EVM*
+              const { networkId } = message;
+
+              const dappsResponse = await APP.pioneer.SearchDappsByNetworkId({ networkId });
+              console.log('dappsResponse:', dappsResponse.data);
+
+              sendResponse(dappsResponse.data);
+            } catch (error) {
+              console.error('Error fetching assets:', error);
+              sendResponse({ error: 'Failed to fetch assets' });
+            }
+          } else {
+            sendResponse({ error: 'APP not initialized' });
+          }
+          break;
+        }
+
         case 'GET_ASSETS_INFO': {
           if (APP) {
             try {

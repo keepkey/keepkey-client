@@ -1,14 +1,32 @@
 import React, { useState, useEffect } from 'react';
-import { VStack, Avatar, Box, Stack, Flex, Text, Button, Spinner, Badge, Card, CardBody } from '@chakra-ui/react';
+import {
+  VStack,
+  Avatar,
+  Box,
+  Stack,
+  Flex,
+  Text,
+  Button,
+  Spinner,
+  Badge,
+  Card,
+  CardBody,
+  Tabs,
+  TabList,
+  TabPanels,
+  Tab,
+  TabPanel,
+} from '@chakra-ui/react';
 import { Transfer } from './Transfer';
 import { Receive } from './Receive';
+import AppStore from './AppStore'; // Import the new AppStore component
 
 export function Asset() {
   const [activeTab, setActiveTab] = useState<'send' | 'receive' | null>(null);
   const [loading, setLoading] = useState(true);
   const [balances, setBalances] = useState<any[]>([]);
   const [pubkeys, setPubkeys] = useState<any[]>([]);
-  const [asset, setAsset] = useState<any>(null); // Define asset state
+  const [asset, setAsset] = useState<any>(null);
 
   // Fetch asset context on initial load
   useEffect(() => {
@@ -20,7 +38,7 @@ export function Asset() {
     const messageListener = (message: any) => {
       if (message.type === 'ASSET_CONTEXT_UPDATED' && message.assetContext) {
         console.log('ASSET_CONTEXT_UPDATED:', message.assetContext);
-        setAsset(message.assetContext); // Update asset state
+        setAsset(message.assetContext);
       }
     };
 
@@ -38,34 +56,32 @@ export function Asset() {
   }, [asset]);
 
   const fetchAssetContext = () => {
-    setLoading(true); // Start loading when fetching asset context
+    setLoading(true);
     chrome.runtime.sendMessage({ type: 'GET_ASSET_CONTEXT' }, response => {
       if (chrome.runtime.lastError) {
         console.error('Error fetching asset context:', chrome.runtime.lastError.message);
-        setLoading(false); // Stop loading on error
+        setLoading(false);
         return;
       }
       if (response && response.assets) {
         console.log('response.assets:', response.assets);
-        setAsset(response.assets); // Set asset state
+        setAsset(response.assets);
       } else {
-        setLoading(false); // Stop loading if no asset is returned
+        setLoading(false);
       }
     });
   };
 
   const fetchBalancesAndPubkeys = (assetLoaded: any) => {
-    // If the asset is an eip155 chain, fetch the balance manually
     if (assetLoaded.caip.includes('eip155')) {
       fetchEthereumBalance(assetLoaded);
     } else {
-      // For other chains, fetch balances via GET_APP_BALANCES and filter by asset
       fetchAppBalances(assetLoaded);
     }
   };
 
   const fetchEthereumBalance = (assetLoaded: any) => {
-    setLoading(true); // Start loading
+    setLoading(true);
     const addressEth = assetLoaded.pubkeys[0]?.address;
     if (!addressEth) {
       console.error('No Ethereum address found');
@@ -89,21 +105,21 @@ export function Asset() {
           return;
         }
         if (response && response.result) {
-          const balanceWei = BigInt(response.result); // Fetching balance as BigInt
-          const balanceEth = Number(balanceWei) / 1e18; // Convert from Wei to Ether
-          const formattedBalance = formatBalance(balanceEth); // Format the balance here
+          const balanceWei = BigInt(response.result);
+          const balanceEth = Number(balanceWei) / 1e18;
+          const formattedBalance = formatBalance(balanceEth);
 
           setBalances([{ balance: formattedBalance, symbol: assetLoaded.symbol }]);
         } else {
           console.error('Invalid response for balance:', response);
         }
-        setLoading(false); // Stop loading after fetching balance
+        setLoading(false);
       },
     );
   };
 
   const fetchAppBalances = (assetLoaded: any) => {
-    setLoading(true); // Start loading
+    setLoading(true);
     chrome.runtime.sendMessage({ type: 'GET_APP_BALANCES' }, response => {
       if (chrome.runtime.lastError) {
         console.error('Error fetching balances:', chrome.runtime.lastError.message);
@@ -111,22 +127,19 @@ export function Asset() {
         return;
       }
       if (response && response.balances) {
-        // Filter balances by selected asset
         const filteredBalances = response.balances.filter((balance: any) => balance.caip === assetLoaded.caip);
         setBalances(filteredBalances);
       } else {
         console.error('Invalid response for balances:', response);
       }
-      setLoading(false); // Stop loading after fetching balances
+      setLoading(false);
     });
   };
 
-  // Updated function to format balance with 4 sigfigs or show 0.0000 if balance is zero
   const formatBalance = (balance: number) => {
     if (balance === 0) {
       return '0.0000';
     }
-    // Convert the number to a string and ensure 4 significant figures
     return balance.toFixed(4);
   };
 
@@ -135,7 +148,7 @@ export function Asset() {
   };
 
   return (
-    <Stack spacing={4} width="100%">
+    <Flex direction="column" minHeight="100vh" width="100%">
       <Card>
         <CardBody>
           {loading ? (
@@ -178,6 +191,7 @@ export function Asset() {
                   )}
                 </Box>
               </Flex>
+
               <Flex direction="column" align="center" mb={4} width="100%">
                 <Button my={2} size="md" variant="outline" width="100%" onClick={() => setActiveTab('send')}>
                   Send {asset.name}
@@ -185,7 +199,6 @@ export function Asset() {
                 <Button my={2} size="md" variant="outline" width="100%" onClick={() => setActiveTab('receive')}>
                   Receive {asset.name}
                 </Button>
-                {/* Transaction History Buttons */}
                 {pubkeys
                   .filter((pubkey: any) => {
                     if (asset?.networkId?.startsWith('eip155')) {
@@ -228,7 +241,23 @@ export function Asset() {
           )}
         </CardBody>
       </Card>
-    </Stack>
+
+      {/* Push AppStore to the bottom */}
+      <Box flexGrow={1} />
+
+      <Box mt={4}>
+        <Tabs variant="enclosed" mt={4}>
+          <TabList>
+            <Tab>Dapps</Tab>
+          </TabList>
+          <TabPanels>
+            <TabPanel>
+              <AppStore networkId={asset?.networkId} /> {/* The AppStore is now in its own component */}
+            </TabPanel>
+          </TabPanels>
+        </Tabs>
+      </Box>
+    </Flex>
   );
 }
 
