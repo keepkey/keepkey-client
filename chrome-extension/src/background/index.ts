@@ -349,8 +349,17 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         case 'GET_ASSETS_INFO': {
           if (APP) {
             try {
-              const { chainId } = message;
+              //Assumed EVM*
+              const { networkId } = message;
+              const chainId = networkId.replace('eip155:', '');
+              console.log('chainId:', chainId);
               const nodeInfoResponse = await APP.pioneer.SearchNodesByNetworkId({ chainId });
+              console.log('nodeInfoResponse:', nodeInfoResponse.data);
+              const caip = networkId + '/slip44:60';
+              console.log('caip:', caip);
+              const marketInfoResponse = await APP.pioneer.MarketInfo({ caip });
+              console.log('marketInfoResponse:', marketInfoResponse.data);
+
               console.log('nodeInfoResponse fetched:', nodeInfoResponse);
               sendResponse(nodeInfoResponse);
             } catch (error) {

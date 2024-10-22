@@ -14,24 +14,24 @@ const middleEllipsisStyle = {
 };
 
 // Function to fetch asset data from the backend via Chrome runtime
-// async function getAssetData(networkId: string): Promise<any> {
-//   return new Promise((resolve, reject) => {
-//     chrome.runtime.sendMessage({ type: 'GET_ASSETS_INFO', networkId }, response => {
-//       if (chrome.runtime.lastError) {
-//         console.error('Error fetching assets:', chrome.runtime.lastError.message);
-//         reject(chrome.runtime.lastError);
-//         return;
-//       }
-//       if (response) {
-//         console.log('Assets response:', response);
-//         resolve(response);
-//       } else {
-//         console.error('Error: No assets found in the response');
-//         reject(new Error('No assets found'));
-//       }
-//     });
-//   });
-// }
+async function getAssetData(networkId: string): Promise<any> {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({ type: 'GET_ASSETS_INFO', networkId }, response => {
+      if (chrome.runtime.lastError) {
+        console.error('Error fetching assets:', chrome.runtime.lastError.message);
+        reject(chrome.runtime.lastError);
+        return;
+      }
+      if (response) {
+        console.log('Assets response:', response);
+        resolve(response);
+      } else {
+        console.error('Error: No assets found in the response');
+        reject(new Error('No assets found'));
+      }
+    });
+  });
+}
 
 interface Chain {
   name: string;
@@ -108,19 +108,53 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
         console.log(tag, 'savedChains:', savedChains);
 
         if (!savedChains) {
-          console.warn(tag, 'No saved chains found.');
+          // Map chain strings to chain IDs
+          const allByCaip = blockchainsForContext
+            .map((chainStr: any) => {
+              const chainEnum = getChainEnumValue(chainStr);
+              const networkId = chainEnum ? ChainToNetworkId[chainEnum] : undefined;
+              return networkId;
+            })
+            .filter((networkId: string | undefined): networkId is string => networkId !== undefined);
+          console.log('allByCaip:', allByCaip); //Should be networkId????
+
+          //TODO save to storage?
+
+          //TODO mark as available but not enabled???
         }
 
         const blockchains = [];
         for (let i = 0; i < savedChains.length; i++) {
           const blockchain = {};
-          blockchain.networkId = savedChains[i];
-          blockchain.name = (COIN_MAP_LONG as any)[(NetworkIdToChain as any)[savedChains[i]]] || 'unknown';
-          blockchain.image = `https://pioneers.dev/coins/${(COIN_MAP_LONG as any)[(NetworkIdToChain as any)[savedChains[i]]] || 'unknown'}.png`;
+          const networkId = savedChains[i];
+          const chainName = (COIN_MAP_LONG as any)[(NetworkIdToChain as any)[networkId]] || 'unknown';
+
+          blockchain.networkId = networkId;
+          blockchain.name = chainName;
+          blockchain.image = `https://pioneers.dev/coins/${chainName}.png`;
           blockchain.isEnabled = true;
+
+          // If the name is "unknown", fetch additional asset data
+          if (chainName === 'unknown') {
+            try {
+              // const assetData = await getAssetData(networkId);
+              // console.log('assetData:', assetData);
+
+              //get from storage
+              const assetData = await blockchainDataStorage.getBlockchainData(networkId);
+              console.log('storage assetData:', assetData);
+
+              if (assetData && assetData.name) {
+                blockchain.name = assetData.name;
+                blockchain.image = assetData.image || `https://pioneers.dev/coins/${assetData.name.toLowerCase()}.png`;
+              }
+            } catch (error) {
+              console.error(`Error fetching asset data for networkId ${networkId}:`, error);
+            }
+          }
+
           blockchains.push(blockchain);
         }
-
         // Update isEnabled status based on savedChains
         // const updatedBlockchainsData = blockchainsData.map((chain) => ({
         //   ...chain,
