@@ -14,29 +14,29 @@ const middleEllipsisStyle = {
 };
 
 // Function to fetch asset data from the backend via Chrome runtime
-async function getAssetData(chainId: string): Promise<any> {
-  return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage({ type: 'GET_ASSETS_INFO', chainId }, response => {
-      if (chrome.runtime.lastError) {
-        console.error('Error fetching assets:', chrome.runtime.lastError.message);
-        reject(chrome.runtime.lastError);
-        return;
-      }
-      if (response) {
-        console.log('Assets response:', response);
-        resolve(response);
-      } else {
-        console.error('Error: No assets found in the response');
-        reject(new Error('No assets found'));
-      }
-    });
-  });
-}
+// async function getAssetData(networkId: string): Promise<any> {
+//   return new Promise((resolve, reject) => {
+//     chrome.runtime.sendMessage({ type: 'GET_ASSETS_INFO', networkId }, response => {
+//       if (chrome.runtime.lastError) {
+//         console.error('Error fetching assets:', chrome.runtime.lastError.message);
+//         reject(chrome.runtime.lastError);
+//         return;
+//       }
+//       if (response) {
+//         console.log('Assets response:', response);
+//         resolve(response);
+//       } else {
+//         console.error('Error: No assets found in the response');
+//         reject(new Error('No assets found'));
+//       }
+//     });
+//   });
+// }
 
 interface Chain {
   name: string;
   image: string;
-  chainId: string;
+  networkId: string;
   isEnabled: boolean;
 }
 
@@ -67,59 +67,97 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
    * Fetches missing data from the backend and updates the storage and state.
    */
   const onStart = async () => {
+    const tag = ' | onStart | ';
     if (wallet) {
-      const walletType = wallet.split(':')[0].toUpperCase();
-      const blockchainsForContext = availableChainsByWallet[walletType] || [];
-
-      // Map chain strings to chain IDs
-      const allByCaip = blockchainsForContext
-        .map((chainStr: any) => {
-          const chainEnum = getChainEnumValue(chainStr);
-          const chainId = chainEnum ? ChainToNetworkId[chainEnum] : undefined;
-          return chainId;
-        })
-        .filter((chainId: string | undefined): chainId is string => chainId !== undefined);
-
-      // Create initial blockchains data
-      const blockchainsData: Chain[] = allByCaip.map((chainId: string) => ({
-        name: (COIN_MAP_LONG as any)[(NetworkIdToChain as any)[chainId]] || 'Unknown',
-        image: `https://pioneers.dev/coins/${(COIN_MAP_LONG as any)[(NetworkIdToChain as any)[chainId]]}.png`,
-        chainId,
-        isEnabled: false, // Initially false, will be updated based on storage
-      }));
+      // const walletType = wallet.split(':')[0].toUpperCase();
+      // const blockchainsForContext = availableChainsByWallet[walletType] || [];
+      //
+      // // Map chain strings to chain IDs
+      // const allByCaip = blockchainsForContext
+      //     .map((chainStr: any) => {
+      //       const chainEnum = getChainEnumValue(chainStr);
+      //       const networkId = chainEnum ? ChainToNetworkId[chainEnum] : undefined;
+      //       return networkId;
+      //     })
+      //     .filter((networkId: string | undefined): networkId is string => networkId !== undefined);
+      //
+      // console.log(tag, 'allByCaip:', allByCaip);
+      //
+      // // Create initial blockchains data
+      // const blockchainsData: Chain[] = allByCaip.map((networkId: string) => {
+      //   const network = (NetworkIdToChain as any)[networkId];
+      //   const coinInfo = (COIN_MAP_LONG as any)[network];
+      //   const name = coinInfo ? coinInfo.name : 'Unknown';
+      //   const image = coinInfo
+      //       ? `https://pioneers.dev/coins/${coinInfo.image || 'unknown'}.png`
+      //       : `https://pioneers.dev/coins/unknown.png`;
+      //
+      //   return {
+      //     name,
+      //     image,
+      //     networkId,
+      //     isEnabled: false, // Initially false, will be updated based on storage
+      //   };
+      // });
+      //
+      // console.log(tag, 'blockchainsData:', blockchainsData);
 
       try {
         // Get saved chains from storage
         const savedChains = await blockchainStorage.getAllBlockchains();
+        console.log(tag, 'savedChains:', savedChains);
 
-        // Update isEnabled status based on savedChains
-        const updatedBlockchainsData = blockchainsData.map(chain => ({
-          ...chain,
-          isEnabled: savedChains.includes(chain.chainId),
-        }));
-
-        // Identify missing chains that are not in storage
-        const missingChainIds = allByCaip.filter(chainId => !savedChains.includes(chainId));
-
-        // Fetch and store missing blockchain data
-        for (const chainId of missingChainIds) {
-          try {
-            const assetData = await getAssetData(chainId);
-            await blockchainDataStorage.addBlockchainData(chainId, assetData);
-          } catch (error) {
-            console.error(`Failed to fetch data for chainId ${chainId}`, error);
-            toast({
-              title: 'Error',
-              description: `Failed to fetch data for chain ${chainId}`,
-              status: 'error',
-              duration: 5000,
-              isClosable: true,
-            });
-          }
+        if (!savedChains) {
+          console.warn(tag, 'No saved chains found.');
         }
 
+        const blockchains = [];
+        for (let i = 0; i < savedChains.length; i++) {
+          const blockchain = {};
+          blockchain.networkId = savedChains[i];
+          blockchain.name = (COIN_MAP_LONG as any)[(NetworkIdToChain as any)[savedChains[i]]] || 'unknown';
+          blockchain.image = `https://pioneers.dev/coins/${(COIN_MAP_LONG as any)[(NetworkIdToChain as any)[savedChains[i]]] || 'unknown'}.png`;
+          blockchain.isEnabled = true;
+          blockchains.push(blockchain);
+        }
+
+        // Update isEnabled status based on savedChains
+        // const updatedBlockchainsData = blockchainsData.map((chain) => ({
+        //   ...chain,
+        //   isEnabled: savedChains ? savedChains.includes(chain.networkId) : false,
+        // }));
+        //
+        // console.log(tag, 'updatedBlockchainsData:', updatedBlockchainsData);
+        //
+        // // Identify missing chains that are not in storage
+        // const missingnetworkIds = allByCaip.filter(
+        //     (networkId) => !savedChains?.includes(networkId)
+        // );
+
+        // console.log(tag, 'missingnetworkIds:', missingnetworkIds);
+
+        // Fetch and store missing blockchain data
+        // for (const networkId of missingnetworkIds) {
+        //   try {
+        //     const assetData = await getAssetData(networkId);
+        //     console.log(tag, 'assetData:', assetData);
+        //
+        //     await blockchainDataStorage.addBlockchainData(networkId, assetData);
+        //     console.log(tag, `Blockchain data added for ${networkId}`);
+        //   } catch (error) {
+        //     console.error(`Failed to fetch data for networkId ${networkId}`, error);
+        //     toast({
+        //       title: 'Error',
+        //       description: `Failed to fetch data for chain ${networkId}`,
+        //       status: 'error',
+        //       duration: 5000,
+        //       isClosable: true,
+        //     });
+        //   }
+        // }
+
         // Update the state with the updated blockchains data
-        setBlockchains(updatedBlockchainsData);
+        setBlockchains(blockchains);
       } catch (error) {
         console.error('Error initializing blockchains:', error);
         toast({
@@ -137,12 +175,19 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
    * Loads enabled chains from storage and updates the state.
    */
   const loadEnabledChains = async () => {
+    const tag = ' | loadEnabledChains | ';
     try {
       const savedChains = await blockchainStorage.getAllBlockchains();
+      console.log(tag, 'savedChains:', savedChains);
+
+      if (!savedChains) {
+        console.warn(tag, 'No saved chains found.');
+      }
+
       setBlockchains(prevBlockchains =>
         prevBlockchains.map(chain => ({
           ...chain,
-          isEnabled: savedChains.includes(chain.chainId),
+          isEnabled: savedChains ? savedChains.includes(chain.networkId) : false,
         })),
       );
     } catch (error) {
@@ -159,10 +204,10 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
 
   /**
    * Toggles the enabled status of a blockchain.
-   * @param chainId - The ID of the chain to toggle.
+   * @param networkId - The ID of the chain to toggle.
    */
-  const toggleChain = async (chainId: string) => {
-    const chain = blockchains.find(c => c.chainId === chainId);
+  const toggleChain = async (networkId: string) => {
+    const chain = blockchains.find(c => c.networkId === networkId);
     if (!chain) return;
 
     const isCurrentlyEnabled = chain.isEnabled;
@@ -170,8 +215,8 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
     if (isCurrentlyEnabled) {
       // Disable the chain
       try {
-        await blockchainStorage.removeBlockchain(chainId);
-        await blockchainDataStorage.removeBlockchainData(chainId);
+        await blockchainStorage.removeBlockchain(networkId);
+        await blockchainDataStorage.removeBlockchainData(networkId);
         toast({
           title: 'Chain Disabled',
           description: `${chain.name} has been disabled.`,
@@ -180,7 +225,7 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
           isClosable: true,
         });
       } catch (error) {
-        console.error(`Failed to disable chain ${chainId}`, error);
+        console.error(`Failed to disable chain ${networkId}`, error);
         toast({
           title: 'Error',
           description: `Failed to disable ${chain.name}.`,
@@ -193,9 +238,10 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
     } else {
       // Enable the chain
       try {
-        await blockchainStorage.addBlockchain(chainId);
-        const assetData = await getAssetData(chainId);
-        await blockchainDataStorage.addBlockchainData(chainId, assetData);
+        await blockchainStorage.addBlockchain(networkId);
+        const assetData = await getAssetData(networkId);
+        console.log('assetData:', assetData);
+        await blockchainDataStorage.addBlockchainData(networkId, assetData);
         toast({
           title: 'Chain Enabled',
           description: `${chain.name} has been enabled.`,
@@ -204,7 +250,7 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
           isClosable: true,
         });
       } catch (error) {
-        console.error(`Failed to enable chain ${chainId}`, error);
+        console.error(`Failed to enable chain ${networkId}`, error);
         toast({
           title: 'Error',
           description: `Failed to enable ${chain.name}.`,
@@ -218,7 +264,7 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
 
     // Update the state
     setBlockchains(prevBlockchains =>
-      prevBlockchains.map(c => (c.chainId === chainId ? { ...c, isEnabled: !c.isEnabled } : c)),
+      prevBlockchains.map(c => (c.networkId === networkId ? { ...c, isEnabled: !c.isEnabled } : c)),
     );
   };
 
@@ -226,21 +272,25 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
    * Selects all chains by enabling them and updating storage.
    */
   const selectAllChains = async () => {
+    const tag = ' | selectAllChains | ';
     try {
       // Enable all chains in storage
-      const allChainIds = blockchains.map(chain => chain.chainId);
-      await blockchainStorage.addBlockchains(allChainIds);
+
+      const allnetworkIds = blockchains.map(chain => chain.networkId);
+      await blockchainStorage.addBlockchains(allnetworkIds);
+      console.log(tag, 'All chains added to storage:', allnetworkIds);
 
       // Fetch and store data for all chains
-      for (const chainId of allChainIds) {
+      for (const networkId of allnetworkIds) {
         try {
-          const assetData = await getAssetData(chainId);
-          await blockchainDataStorage.addBlockchainData(chainId, assetData);
+          const assetData = await getAssetData(networkId);
+          await blockchainDataStorage.addBlockchainData(networkId, assetData);
+          console.log(tag, `Blockchain data added for ${networkId}`);
         } catch (error) {
-          console.error(`Failed to fetch data for chainId ${chainId}`, error);
+          console.error(`Failed to fetch data for networkId ${networkId}`, error);
           toast({
             title: 'Error',
-            description: `Failed to fetch data for chain ${chainId}`,
+            description: `Failed to fetch data for chain ${networkId}`,
             status: 'error',
             duration: 5000,
             isClosable: true,
@@ -279,20 +329,24 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
    * Unselects all chains by disabling them and updating storage.
    */
   const unselectAllChains = async () => {
+    const tag = ' | unselectAllChains | ';
     try {
       // Disable all chains in storage
-      const allChainIds = blockchains.map(chain => chain.chainId);
-      await blockchainStorage.removeBlockchains(allChainIds);
+
+      const allnetworkIds = blockchains.map(chain => chain.networkId);
+      await blockchainStorage.removeBlockchains(allnetworkIds);
+      console.log(tag, 'All chains removed from storage:', allnetworkIds);
 
       // Remove blockchain data for all chains
-      for (const chainId of allChainIds) {
+      for (const networkId of allnetworkIds) {
         try {
-          await blockchainDataStorage.removeBlockchainData(chainId);
+          await blockchainDataStorage.removeBlockchainData(networkId);
+          console.log(tag, `Blockchain data removed for ${networkId}`);
         } catch (error) {
-          console.error(`Failed to remove data for chainId ${chainId}`, error);
+          console.error(`Failed to remove data for networkId ${networkId}`, error);
           toast({
             title: 'Error',
-            description: `Failed to remove data for chain ${chainId}`,
+            description: `Failed to remove data for chain ${networkId}`,
             status: 'error',
             duration: 5000,
             isClosable: true,
@@ -348,7 +402,7 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
    */
   const renderChain = (chain: Chain) => (
     <Flex
-      key={chain.chainId}
+      key={chain.networkId}
       alignItems="center"
       justifyContent="space-between"
       p={2}
@@ -361,10 +415,10 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
       <Flex alignItems="center">
         <Badge mr={4}>
           <Text fontSize="xs" style={middleEllipsisStyle}>
-            {chain.chainId}
+            {chain.networkId}
           </Text>
         </Badge>
-        <Switch isChecked={chain.isEnabled} onChange={() => toggleChain(chain.chainId)} />
+        <Switch isChecked={chain.isEnabled} onChange={() => toggleChain(chain.networkId)} />
       </Flex>
     </Flex>
   );
@@ -372,8 +426,8 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
   // Group and sort chains by type
   const { UTXO, EVM, others } = blockchains.reduce(
     (acc: any, chain: Chain) => {
-      if (chain.chainId.startsWith('bip122:')) acc.UTXO.push(chain);
-      else if (chain.chainId.startsWith('eip155:')) acc.EVM.push(chain);
+      if (chain.networkId.startsWith('bip122:')) acc.UTXO.push(chain);
+      else if (chain.networkId.startsWith('eip155:')) acc.EVM.push(chain);
       else acc.others.push(chain);
       return acc;
     },
@@ -392,21 +446,33 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
    * Handles the refresh action to reload blockchains.
    */
   const handleRefresh = async () => {
-    toast({
-      title: 'Refreshing',
-      description: 'Refreshing the blockchain list...',
-      status: 'info',
-      duration: 2000,
-      isClosable: true,
-    });
-    await onStart();
-    toast({
-      title: 'Refreshed',
-      description: 'Blockchain list has been refreshed.',
-      status: 'success',
-      duration: 3000,
-      isClosable: true,
-    });
+    const tag = ' | handleRefresh | ';
+    try {
+      toast({
+        title: 'Refreshing',
+        description: 'Refreshing the blockchain list...',
+        status: 'info',
+        duration: 2000,
+        isClosable: true,
+      });
+      await onStart();
+      toast({
+        title: 'Refreshed',
+        description: 'Blockchain list has been refreshed.',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
+    } catch (error) {
+      console.error(tag, 'Error during refresh:', error);
+      toast({
+        title: 'Refresh Error',
+        description: 'Failed to refresh blockchain list.',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+    }
   };
 
   return (
