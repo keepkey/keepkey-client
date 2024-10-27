@@ -102,12 +102,14 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
       //
       // console.log(tag, 'blockchainsData:', blockchainsData);
 
+      let blockchainsEnabled = [];
       try {
         // Get saved chains from storage
         const savedChains = await blockchainStorage.getAllBlockchains();
         console.log(tag, 'savedChains:', savedChains);
 
-        if (!savedChains) {
+        if (!savedChains || savedChains.length === 0) {
+          const blockchainsForContext = availableChainsByWallet['KEEPKEY'];
           // Map chain strings to chain IDs
           const allByCaip = blockchainsForContext
             .map((chainStr: any) => {
@@ -121,12 +123,14 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
           //TODO save to storage?
 
           //TODO mark as available but not enabled???
+          blockchainsEnabled = allByCaip;
+        } else {
+          blockchainsEnabled = savedChains;
         }
 
-        const blockchains = [];
-        for (let i = 0; i < savedChains.length; i++) {
+        for (let i = 0; i < blockchainsEnabled.length; i++) {
           const blockchain = {};
-          const networkId = savedChains[i];
+          const networkId = blockchainsEnabled[i];
           const chainName = (COIN_MAP_LONG as any)[(NetworkIdToChain as any)[networkId]] || 'unknown';
 
           blockchain.networkId = networkId;
@@ -155,6 +159,7 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
 
           blockchains.push(blockchain);
         }
+
         // Update isEnabled status based on savedChains
         // const updatedBlockchainsData = blockchainsData.map((chain) => ({
         //   ...chain,
