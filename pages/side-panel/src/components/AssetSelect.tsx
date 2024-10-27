@@ -69,63 +69,25 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
   const onStart = async () => {
     const tag = ' | onStart | ';
     if (wallet) {
-      // const walletType = wallet.split(':')[0].toUpperCase();
-      // const blockchainsForContext = availableChainsByWallet[walletType] || [];
-      //
-      // // Map chain strings to chain IDs
-      // const allByCaip = blockchainsForContext
-      //     .map((chainStr: any) => {
-      //       const chainEnum = getChainEnumValue(chainStr);
-      //       const networkId = chainEnum ? ChainToNetworkId[chainEnum] : undefined;
-      //       return networkId;
-      //     })
-      //     .filter((networkId: string | undefined): networkId is string => networkId !== undefined);
-      //
-      // console.log(tag, 'allByCaip:', allByCaip);
-      //
-      // // Create initial blockchains data
-      // const blockchainsData: Chain[] = allByCaip.map((networkId: string) => {
-      //   const network = (NetworkIdToChain as any)[networkId];
-      //   const coinInfo = (COIN_MAP_LONG as any)[network];
-      //   const name = coinInfo ? coinInfo.name : 'Unknown';
-      //   const image = coinInfo
-      //       ? `https://pioneers.dev/coins/${coinInfo.image || 'unknown'}.png`
-      //       : `https://pioneers.dev/coins/unknown.png`;
-      //
-      //   return {
-      //     name,
-      //     image,
-      //     networkId,
-      //     isEnabled: false, // Initially false, will be updated based on storage
-      //   };
-      // });
-      //
-      // console.log(tag, 'blockchainsData:', blockchainsData);
+      const blockchainsForContext = availableChainsByWallet['KEEPKEY'];
+      // Map chain strings to chain IDs
+      const allByCaip = blockchainsForContext
+        .map((chainStr: any) => {
+          const chainEnum = getChainEnumValue(chainStr);
+          const networkId = chainEnum ? ChainToNetworkId[chainEnum] : undefined;
+          return networkId;
+        })
+        .filter((networkId: string | undefined): networkId is string => networkId !== undefined);
+      console.log('allByCaip:', allByCaip); //Should be networkId????
 
-      let blockchainsEnabled = [];
+      let blockchainsEnabled = allByCaip;
       try {
         // Get saved chains from storage
         const savedChains = await blockchainStorage.getAllBlockchains();
         console.log(tag, 'savedChains:', savedChains);
 
-        if (!savedChains || savedChains.length === 0) {
-          const blockchainsForContext = availableChainsByWallet['KEEPKEY'];
-          // Map chain strings to chain IDs
-          const allByCaip = blockchainsForContext
-            .map((chainStr: any) => {
-              const chainEnum = getChainEnumValue(chainStr);
-              const networkId = chainEnum ? ChainToNetworkId[chainEnum] : undefined;
-              return networkId;
-            })
-            .filter((networkId: string | undefined): networkId is string => networkId !== undefined);
-          console.log('allByCaip:', allByCaip); //Should be networkId????
-
-          //TODO save to storage?
-
-          //TODO mark as available but not enabled???
-          blockchainsEnabled = allByCaip;
-        } else {
-          blockchainsEnabled = savedChains;
+        if (savedChains && savedChains.length > 0) {
+          blockchainsEnabled = [...new Set([...blockchainsEnabled, ...savedChains])];
         }
 
         for (let i = 0; i < blockchainsEnabled.length; i++) {
@@ -159,41 +121,6 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
 
           blockchains.push(blockchain);
         }
-
-        // Update isEnabled status based on savedChains
-        // const updatedBlockchainsData = blockchainsData.map((chain) => ({
-        //   ...chain,
-        //   isEnabled: savedChains ? savedChains.includes(chain.networkId) : false,
-        // }));
-        //
-        // console.log(tag, 'updatedBlockchainsData:', updatedBlockchainsData);
-        //
-        // // Identify missing chains that are not in storage
-        // const missingnetworkIds = allByCaip.filter(
-        //     (networkId) => !savedChains?.includes(networkId)
-        // );
-
-        // console.log(tag, 'missingnetworkIds:', missingnetworkIds);
-
-        // Fetch and store missing blockchain data
-        // for (const networkId of missingnetworkIds) {
-        //   try {
-        //     const assetData = await getAssetData(networkId);
-        //     console.log(tag, 'assetData:', assetData);
-        //
-        //     await blockchainDataStorage.addBlockchainData(networkId, assetData);
-        //     console.log(tag, `Blockchain data added for ${networkId}`);
-        //   } catch (error) {
-        //     console.error(`Failed to fetch data for networkId ${networkId}`, error);
-        //     toast({
-        //       title: 'Error',
-        //       description: `Failed to fetch data for chain ${networkId}`,
-        //       status: 'error',
-        //       duration: 5000,
-        //       isClosable: true,
-        //     });
-        //   }
-        // }
 
         // Update the state with the updated blockchains data
         setBlockchains(blockchains);

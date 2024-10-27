@@ -52,10 +52,7 @@ export const AppStore: React.FC<AppStoreProps> = ({ networkId }) => {
     setLoading(true);
 
     try {
-      // Fetch dApps from both sources
       const [lookedUpDapps, storedDapps] = await Promise.all([getLookedUpDapps(networkId), getStoredDapps(networkId)]);
-
-      // Combine and filter out duplicates
       const combinedDapps = [...lookedUpDapps, ...storedDapps];
       const uniqueDapps = Array.from(new Map(combinedDapps.map(dapp => [dapp.url, dapp])).values());
 
@@ -103,21 +100,31 @@ export const AppStore: React.FC<AppStoreProps> = ({ networkId }) => {
           <Spinner size="xl" />
           <Text ml={3}>Loading dApps...</Text>
         </Flex>
-      ) : dapps.length === 0 ? (
-        <Flex justifyContent="center" alignItems="center" minHeight="200px">
-          <Text>No dApps found for this network</Text>
-        </Flex>
       ) : (
         <>
           <Grid templateColumns="repeat(3, 1fr)" gap={4}>
-            {currentDapps.map((dapp, index) => (
-              <Box key={index} textAlign="center" cursor="pointer" onClick={() => openUrl(dapp.url)}>
-                <Image src={dapp.icon} alt={dapp.name} boxSize="60px" objectFit="contain" mx="auto" />
-                <Text mt={1} fontSize="sm">
-                  {dapp.name}
-                </Text>
+            {dapps.length === 0 ? (
+              <Box
+                textAlign="center"
+                cursor="pointer"
+                onClick={onOpen}
+                display="flex"
+                flexDirection="column"
+                alignItems="center"
+                justifyContent="center"
+                height="80px">
+                <Text>No dApps found for this network</Text>
               </Box>
-            ))}
+            ) : (
+              currentDapps.map((dapp, index) => (
+                <Box key={index} textAlign="center" cursor="pointer" onClick={() => openUrl(dapp.url)}>
+                  <Image src={dapp.icon} alt={dapp.name} boxSize="60px" objectFit="contain" mx="auto" />
+                  <Text mt={1} fontSize="sm">
+                    {dapp.name}
+                  </Text>
+                </Box>
+              ))
+            )}
             <Box
               key="add-dapp"
               textAlign="center"
