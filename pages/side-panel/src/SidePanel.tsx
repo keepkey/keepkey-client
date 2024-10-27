@@ -103,7 +103,7 @@ const SidePanel = () => {
         if (assetContext) {
           return <Asset asset={assetContext} onClose={() => setAssetContext(null)} />;
         } else {
-          return <Balances balances={balances} loading={loading} />;
+          return <Balances balances={balances} loading={loading} setShowBack={setShowBack} />;
         }
       default:
         return (
