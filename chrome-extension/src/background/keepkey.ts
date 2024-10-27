@@ -45,10 +45,12 @@ export const onStartKeepkey = async function () {
       'DASH',
       'ETH',
       'LTC',
-      'OP',
       'MATIC',
       'THOR',
       'MAYA',
+      // 'GNO',
+      'BASE',
+      'OP',
     ];
 
     await db.init({});
