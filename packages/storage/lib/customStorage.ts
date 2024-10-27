@@ -350,6 +350,49 @@ const createBlockchainDataStorage = (): BlockchainDataStorage => {
 
 export const blockchainDataStorage = createBlockchainDataStorage();
 
+type Dapp = {
+  name: string;
+  icon: string;
+  url: string;
+  networks: string[];
+};
+
+type DappStorage = BaseStorage<Dapp[]> & {
+  addDapp: (dapp: Dapp) => Promise<void>;
+  getDapps: () => Promise<Dapp[] | null>;
+  getDappsByNetwork: (network: string) => Promise<Dapp[]>;
+};
+
+// Create Dapp Storage
+const createDappStorage = (): DappStorage => {
+  const storage = createStorage<Dapp[]>('dapps', [], {
+    storageType: StorageType.Local,
+    liveUpdate: true,
+  });
+
+  return {
+    ...storage,
+    addDapp: async (dapp: Dapp) => {
+      const currentDapps = await storage.get();
+      await storage.set(() => [...(currentDapps || []), dapp]);
+      console.log(TAG, 'Added dapp:', dapp);
+    },
+    getDapps: async () => {
+      const dapps = await storage.get();
+      console.log(TAG, 'Retrieved dapps:', dapps);
+      return dapps;
+    },
+    getDappsByNetwork: async (network: string) => {
+      const dapps = await storage.get();
+      const filteredDapps = dapps ? dapps.filter(dapp => dapp.networks.includes(network)) : [];
+      console.log(TAG, `Dapps with network ${network}:`, filteredDapps);
+      return filteredDapps;
+    },
+  };
+};
+
+export const dappStorage = createDappStorage();
+
 // Create Web3 Provider Storage
 const createWeb3ProviderStorage = (): Web3ProviderStorage => {
   const storage = createStorage<string>('web3-provider', '', {

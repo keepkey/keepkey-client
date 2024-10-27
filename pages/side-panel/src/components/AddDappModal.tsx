@@ -11,51 +11,69 @@ import {
   Input,
   Button,
   Text,
+  Avatar,
+  Flex,
   useToast,
 } from '@chakra-ui/react';
+import { dappStorage } from '@extension/storage';
 
 interface AddDappModalProps {
   isOpen: boolean;
   onClose: () => void;
+  networkId: string;
+  onSave: () => void;
 }
 
-export function AddDappModal({ isOpen, onClose }: AddDappModalProps) {
+export function AddDappModal({ networkId, isOpen, onClose, onSave }: AddDappModalProps) {
   const [url, setUrl] = useState('');
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
   const toast = useToast();
+  const defaultIcon = 'https://pioneers.dev/coins/ethereum.png';
 
-  const handleSave = () => {
-    const urlPattern = new RegExp(
-      '^(https?:\\/\\/)?' + // protocol
-        '((([a-z\\d]([a-z\\d-]*[a-z\\d])*))+' + // domain name
-        '(\\.[a-z]{2,})' + // dot-something
-        '(\\:\\d+)?(\\/[-a-z\\d%_.~+]*)*' + // port and path
-        '(\\?[;&a-z\\d%_.~+=-]*)?' + // query string
-        '(\\#[-a-z\\d_]*)?$',
-      'i',
-    );
-    if (!urlPattern.test(url)) {
-      toast({ title: 'Invalid URL format', status: 'error', duration: 3000 });
+  const handleSave = async () => {
+    if (!url || !name) {
+      toast({ title: 'Name and URL are required', status: 'error', duration: 3000 });
       return;
     }
-    // Mock saving to localStorage with a chainId
-    const chainId = 'mockedChainId';
-    const dapps = JSON.parse(localStorage.getItem('dapps') || '[]');
-    dapps.push({ url, chainId });
-    localStorage.setItem('dapps', JSON.stringify(dapps));
 
-    toast({ title: 'Dapp added successfully', status: 'success', duration: 3000 });
-    setUrl('');
-    onClose();
+    try {
+      // Create new dApp with default icon
+      const newDapp = { name, icon: defaultIcon, url, networks: [networkId] };
+      await dappStorage.addDapp(newDapp);
+
+      // Notify parent component and reset form
+      onSave();
+      setUrl('');
+      setName('');
+      setDescription('');
+      onClose();
+      toast({ title: 'Dapp added successfully', status: 'success', duration: 3000 });
+    } catch (error) {
+      toast({ title: 'Failed to add dApp', status: 'error', duration: 3000 });
+    }
   };
 
   return (
     <Modal isOpen={isOpen} onClose={onClose}>
       <ModalOverlay />
       <ModalContent>
-        <ModalHeader>Add a Dapp</ModalHeader>
+        <ModalHeader>
+          <Flex align="center">
+            <Avatar src="https://pioneers.dev/coins/pioneerMan.png" size="sm" mr={2} />
+            <Text>Discovery</Text>
+          </Flex>
+        </ModalHeader>
         <ModalCloseButton />
         <ModalBody>
-          <Input placeholder="Enter dApp URL" value={url} onChange={e => setUrl(e.target.value)} type="url" />
+          <Input placeholder="Enter dApp Name" value={name} onChange={e => setName(e.target.value)} mb={3} />
+          <Input placeholder="Enter dApp URL" value={url} onChange={e => setUrl(e.target.value)} type="url" mb={3} />
+          <Input
+            placeholder="Sample description"
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            mb={3}
+          />
         </ModalBody>
         <ModalFooter>
           <Button colorScheme="blue" mr={3} onClick={handleSave}>

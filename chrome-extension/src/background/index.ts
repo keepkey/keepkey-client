@@ -366,6 +366,31 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           break;
         }
 
+        case 'DISCOVERY_DAPP': {
+          if (APP) {
+            try {
+              //Assumed EVM*
+              const { networkId, url, name, description } = message;
+              const body = {
+                networks: [networkId],
+                url,
+                name,
+                description,
+              };
+              const dappsResponse = await APP.pioneer.DiscoverDapp(body);
+              console.log('dappsResponse:', dappsResponse.data);
+
+              sendResponse(dappsResponse.data);
+            } catch (error) {
+              console.error('Error fetching assets:', error);
+              sendResponse({ error: 'Failed to fetch assets' });
+            }
+          } else {
+            sendResponse({ error: 'APP not initialized' });
+          }
+          break;
+        }
+
         case 'GET_ASSETS_INFO': {
           if (APP) {
             try {

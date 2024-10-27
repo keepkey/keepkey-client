@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Box, Grid, Image, Text, IconButton, Flex, HStack, Spinner, Button, useDisclosure } from '@chakra-ui/react';
 import { ChevronLeftIcon, ChevronRightIcon } from '@chakra-ui/icons';
 import { AddDappModal } from './AddDappModal';
+import { dappStorage } from '@extension/storage';
 
 interface Dapp {
   name: string;
@@ -13,7 +14,7 @@ interface AppStoreProps {
   networkId: string;
 }
 
-async function getDapps(networkId: string): Promise<Dapp[]> {
+async function getLookedUpDapps(networkId: string): Promise<Dapp[]> {
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage({ type: 'GET_DAPPS_BY_NETWORKID', networkId }, response => {
       if (chrome.runtime.lastError) {
@@ -35,36 +36,49 @@ async function getDapps(networkId: string): Promise<Dapp[]> {
   });
 }
 
+async function getStoredDapps(networkId: string): Promise<Dapp[]> {
+  const allDapps = await dappStorage.getDapps();
+  return allDapps.filter(dapp => dapp.networks.includes(networkId));
+}
+
 export const AppStore: React.FC<AppStoreProps> = ({ networkId }) => {
-  const [currentPage, setCurrentPage] = useState(1);
   const [dapps, setDapps] = useState<Dapp[]>([]);
   const [loading, setLoading] = useState(true);
   const dappsPerPage = 9;
-
   const { isOpen, onOpen, onClose } = useDisclosure();
+  const [currentPage, setCurrentPage] = useState(1);
 
-  useEffect(() => {
+  const fetchDapps = async () => {
     setLoading(true);
-    getDapps(networkId)
-      .then(fetchedDapps => {
-        setDapps(fetchedDapps);
-        setLoading(false);
-      })
-      .catch(error => {
-        console.error('Error fetching dapps:', error);
-        setLoading(false);
-      });
-  }, [networkId]);
 
-  const addDapp = (newDapp: Dapp) => {
-    setDapps(prevDapps => [...prevDapps, newDapp]);
+    try {
+      // Fetch dApps from both sources
+      const [lookedUpDapps, storedDapps] = await Promise.all([getLookedUpDapps(networkId), getStoredDapps(networkId)]);
+
+      // Combine and filter out duplicates
+      const combinedDapps = [...lookedUpDapps, ...storedDapps];
+      const uniqueDapps = Array.from(new Map(combinedDapps.map(dapp => [dapp.url, dapp])).values());
+
+      setDapps(uniqueDapps);
+    } catch (error) {
+      console.error('Error fetching dapps:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const totalPages = Math.ceil((dapps.length + 1) / dappsPerPage);
+  useEffect(() => {
+    fetchDapps();
+  }, [networkId]);
 
+  const handleDappAdded = () => {
+    fetchDapps(); // Reload dApps after adding a new one
+  };
+
+  const totalPages = Math.ceil(dapps.length / dappsPerPage);
   const indexOfLastDapp = currentPage * dappsPerPage;
   const indexOfFirstDapp = indexOfLastDapp - dappsPerPage;
-  const currentDapps = [...dapps.slice(indexOfFirstDapp, indexOfLastDapp - 1), { name: 'Add DApp', icon: '', url: '' }];
+  const currentDapps = dapps.slice(indexOfFirstDapp, indexOfLastDapp);
 
   const openUrl = (url: string) => {
     window.open(url, '_blank');
@@ -82,27 +96,6 @@ export const AppStore: React.FC<AppStoreProps> = ({ networkId }) => {
     }
   };
 
-  const handlePageClick = (pageNumber: number) => {
-    setCurrentPage(pageNumber);
-  };
-
-  const renderPageNumbers = () => {
-    const pageNumbers = [];
-    for (let i = 1; i <= totalPages; i++) {
-      pageNumbers.push(
-        <Button
-          key={i}
-          size="sm"
-          variant={i === currentPage ? 'solid' : 'outline'}
-          onClick={() => handlePageClick(i)}
-          mx={1}>
-          {i}
-        </Button>,
-      );
-    }
-    return pageNumbers;
-  };
-
   return (
     <Box>
       {loading ? (
@@ -117,36 +110,32 @@ export const AppStore: React.FC<AppStoreProps> = ({ networkId }) => {
       ) : (
         <>
           <Grid templateColumns="repeat(3, 1fr)" gap={4}>
-            {currentDapps.map((dapp, index) =>
-              dapp.name === 'Add DApp' ? (
-                <Box
-                  key="add-dapp"
-                  textAlign="center"
-                  cursor="pointer"
-                  border="1px dashed gray"
-                  onClick={onOpen}
-                  display="flex"
-                  flexDirection="column"
-                  alignItems="center"
-                  justifyContent="center"
-                  height="80px" // Reduced height
-                >
-                  <Text fontSize="xl" color="gray.500">
-                    +
-                  </Text>
-                  <Text mt={1} fontSize="sm">
-                    Add DApp
-                  </Text>
-                </Box>
-              ) : (
-                <Box key={index} textAlign="center" cursor="pointer" onClick={() => openUrl(dapp.url)}>
-                  <Image src={dapp.icon} alt={dapp.name} boxSize="60px" objectFit="contain" mx="auto" />
-                  <Text mt={1} fontSize="sm">
-                    {dapp.name}
-                  </Text>
-                </Box>
-              ),
-            )}
+            {currentDapps.map((dapp, index) => (
+              <Box key={index} textAlign="center" cursor="pointer" onClick={() => openUrl(dapp.url)}>
+                <Image src={dapp.icon} alt={dapp.name} boxSize="60px" objectFit="contain" mx="auto" />
+                <Text mt={1} fontSize="sm">
+                  {dapp.name}
+                </Text>
+              </Box>
+            ))}
+            <Box
+              key="add-dapp"
+              textAlign="center"
+              cursor="pointer"
+              border="1px dashed gray"
+              onClick={onOpen}
+              display="flex"
+              flexDirection="column"
+              alignItems="center"
+              justifyContent="center"
+              height="80px">
+              <Text fontSize="xl" color="gray.500">
+                +
+              </Text>
+              <Text mt={1} fontSize="sm">
+                Add DApp
+              </Text>
+            </Box>
           </Grid>
           <Flex justifyContent="center" alignItems="center" mt={4}>
             <IconButton
@@ -156,7 +145,15 @@ export const AppStore: React.FC<AppStoreProps> = ({ networkId }) => {
               isDisabled={currentPage === 1}
             />
             <HStack spacing={1} mx={2}>
-              {renderPageNumbers()}
+              {[...Array(totalPages).keys()].map(i => (
+                <Button
+                  key={i}
+                  size="sm"
+                  variant={i + 1 === currentPage ? 'solid' : 'outline'}
+                  onClick={() => setCurrentPage(i + 1)}>
+                  {i + 1}
+                </Button>
+              ))}
             </HStack>
             <IconButton
               icon={<ChevronRightIcon />}
@@ -167,8 +164,7 @@ export const AppStore: React.FC<AppStoreProps> = ({ networkId }) => {
           </Flex>
         </>
       )}
-
-      <AddDappModal isOpen={isOpen} onClose={onClose} onSave={addDapp} />
+      <AddDappModal networkId={networkId} isOpen={isOpen} onClose={onClose} onSave={handleDappAdded} />
     </Box>
   );
 };

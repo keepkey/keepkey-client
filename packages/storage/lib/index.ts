@@ -10,6 +10,7 @@ import {
   maskingSettingsStorage,
   blockchainStorage,
   blockchainDataStorage,
+  dappStorage,
 } from './customStorage';
 import { chainIdStorage } from './providerStorage';
 import { exampleThemeStorage, exampleSidebarStorage } from './exampleThemeStorage';
@@ -25,6 +26,7 @@ export {
   maskingSettingsStorage,
   blockchainStorage,
   blockchainDataStorage,
+  dappStorage,
   createStorage,
   StorageType,
   SessionAccessLevel,
