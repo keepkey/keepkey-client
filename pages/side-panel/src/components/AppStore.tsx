@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Grid, Image, Text, IconButton, Flex, HStack, Button, Spinner } from '@chakra-ui/react';
+import { Box, Grid, Image, Text, IconButton, Flex, HStack, Spinner, Button, useDisclosure } from '@chakra-ui/react';
 import { ChevronLeftIcon, ChevronRightIcon } from '@chakra-ui/icons';
+import { AddDappModal } from './AddDappModal';
 
 interface Dapp {
   name: string;
@@ -9,10 +10,9 @@ interface Dapp {
 }
 
 interface AppStoreProps {
-  networkId: string; // Pass the networkId as a prop
+  networkId: string;
 }
 
-// Function to fetch dApps data from the backend via Chrome runtime
 async function getDapps(networkId: string): Promise<Dapp[]> {
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage({ type: 'GET_DAPPS_BY_NETWORKID', networkId }, response => {
@@ -22,7 +22,6 @@ async function getDapps(networkId: string): Promise<Dapp[]> {
         return;
       }
       if (response) {
-        console.log('dapps response:', response);
         const formattedDapps = response.map((dapp: any) => ({
           name: dapp.name,
           icon: dapp.image,
@@ -30,7 +29,6 @@ async function getDapps(networkId: string): Promise<Dapp[]> {
         }));
         resolve(formattedDapps || []);
       } else {
-        console.error('Error: No dapps found in the response');
         reject(new Error('No dapps found'));
       }
     });
@@ -41,9 +39,10 @@ export const AppStore: React.FC<AppStoreProps> = ({ networkId }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [dapps, setDapps] = useState<Dapp[]>([]);
   const [loading, setLoading] = useState(true);
-  const dappsPerPage = 6;
+  const dappsPerPage = 9;
 
-  // Fetch dApps on component mount or when networkId changes
+  const { isOpen, onOpen, onClose } = useDisclosure();
+
   useEffect(() => {
     setLoading(true);
     getDapps(networkId)
@@ -57,13 +56,15 @@ export const AppStore: React.FC<AppStoreProps> = ({ networkId }) => {
       });
   }, [networkId]);
 
-  // Calculate total pages
-  const totalPages = Math.ceil(dapps.length / dappsPerPage);
+  const addDapp = (newDapp: Dapp) => {
+    setDapps(prevDapps => [...prevDapps, newDapp]);
+  };
 
-  // Get current dApps for the page
+  const totalPages = Math.ceil((dapps.length + 1) / dappsPerPage);
+
   const indexOfLastDapp = currentPage * dappsPerPage;
   const indexOfFirstDapp = indexOfLastDapp - dappsPerPage;
-  const currentDapps = dapps.slice(indexOfFirstDapp, indexOfLastDapp);
+  const currentDapps = [...dapps.slice(indexOfFirstDapp, indexOfLastDapp - 1), { name: 'Add DApp', icon: '', url: '' }];
 
   const openUrl = (url: string) => {
     window.open(url, '_blank');
@@ -115,15 +116,38 @@ export const AppStore: React.FC<AppStoreProps> = ({ networkId }) => {
         </Flex>
       ) : (
         <>
-          <Grid templateColumns="repeat(2, 1fr)" gap={6}>
-            {currentDapps.map((dapp, index) => (
-              <Box key={index} textAlign="center" cursor="pointer" onClick={() => openUrl(dapp.url)}>
-                <Image src={dapp.icon} alt={dapp.name} boxSize="80px" objectFit="contain" mx="auto" />
-                <Text mt={2}>{dapp.name}</Text>
-              </Box>
-            ))}
+          <Grid templateColumns="repeat(3, 1fr)" gap={4}>
+            {currentDapps.map((dapp, index) =>
+              dapp.name === 'Add DApp' ? (
+                <Box
+                  key="add-dapp"
+                  textAlign="center"
+                  cursor="pointer"
+                  border="1px dashed gray"
+                  onClick={onOpen}
+                  display="flex"
+                  flexDirection="column"
+                  alignItems="center"
+                  justifyContent="center"
+                  height="80px" // Reduced height
+                >
+                  <Text fontSize="xl" color="gray.500">
+                    +
+                  </Text>
+                  <Text mt={1} fontSize="sm">
+                    Add DApp
+                  </Text>
+                </Box>
+              ) : (
+                <Box key={index} textAlign="center" cursor="pointer" onClick={() => openUrl(dapp.url)}>
+                  <Image src={dapp.icon} alt={dapp.name} boxSize="60px" objectFit="contain" mx="auto" />
+                  <Text mt={1} fontSize="sm">
+                    {dapp.name}
+                  </Text>
+                </Box>
+              ),
+            )}
           </Grid>
-          {/* Pagination Controls */}
           <Flex justifyContent="center" alignItems="center" mt={4}>
             <IconButton
               icon={<ChevronLeftIcon />}
@@ -143,6 +167,8 @@ export const AppStore: React.FC<AppStoreProps> = ({ networkId }) => {
           </Flex>
         </>
       )}
+
+      <AddDappModal isOpen={isOpen} onClose={onClose} onSave={addDapp} />
     </Box>
   );
 };
