@@ -391,6 +391,46 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           break;
         }
 
+        case 'GET_ASSET_BALANCE': {
+          if (APP) {
+            try {
+              console.log(tag, 'GET_ASSET_BALANCE');
+              //Assumed EVM*
+              const { networkId } = message;
+              const chainId = networkId.replace('eip155:', '');
+              console.log('chainId:', chainId);
+              const nodeInfoResponse = await APP.pioneer.SearchNodesByNetworkId({ chainId });
+              console.log('nodeInfoResponse:', nodeInfoResponse.data);
+
+              //TODO
+              //test all services
+              //give ping
+              //remmove broken services
+              //TODO push broken to api
+
+              const service = nodeInfoResponse?.data[0]?.service;
+              if (service) {
+                console.log(tag, 'service:', service);
+                if (!ADDRESS) throw new Error('ADDRESS not set');
+                const provider = new JsonRpcProvider(nodeInfoResponse.data[0].service);
+                const params = [ADDRESS, 'latest'];
+                //get balance
+                const balance = await provider.getBalance(params[0], params[1]);
+                console.log('balance:', balance);
+                sendResponse('0x' + balance.toString(16));
+              } else {
+                sendResponse('0');
+              }
+            } catch (error) {
+              console.error('Error fetching assets:', error);
+              sendResponse({ error: 'Failed to fetch balances' });
+            }
+          } else {
+            sendResponse({ error: 'APP not initialized' });
+          }
+          break;
+        }
+
         case 'GET_ASSETS_INFO': {
           if (APP) {
             try {

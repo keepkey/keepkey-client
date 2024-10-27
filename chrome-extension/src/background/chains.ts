@@ -62,13 +62,4 @@ export const EIP155_CHAINS: any = {
     namespace: 'eip155',
     caip: 'eip155:42161/slip44:60',
   },
-  'eip155:100': {
-    chainId: '0x64',
-    name: 'Gnosis',
-    logo: '/chain-logos/gnosis.png',
-    rgb: '33, 186, 69',
-    rpc: 'https://api.zan.top/node/v1/arb/one/public',
-    namespace: 'eip155',
-    caip: 'eip155:100/slip44:60',
-  },
 };
