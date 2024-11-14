@@ -137,7 +137,31 @@ export const handleBitcoinRequest = async (
           const amountOut: number = Math.floor(Number(params[0].amount.amount) * 1e8);
 
           console.log(tag, 'amountOut: ', amountOut);
-          const effectiveFeeRate = 10;
+          console.log(tag, 'KEEPKEY_WALLET1: ', KEEPKEY_WALLET.pioneer);
+          console.log(tag, 'KEEPKEY_WALLET2: ', KEEPKEY_WALLET.pioneer);
+          console.log(tag, 'KEEPKEY_WALLET3: ', KEEPKEY_WALLET.pioneer.GetFeeRate);
+          //get feeRateFromNode
+          let feeRateFromNode = await KEEPKEY_WALLET.pioneer.GetFeeRate({ networkId });
+          feeRateFromNode = feeRateFromNode.data;
+          console.log(tag, 'feeRateFromNode:', feeRateFromNode);
+          if (!feeRateFromNode) throw Error('Failed to get feeRateFromNode');
+          const feeLevel = 5;
+          let effectiveFeeRate;
+          if (feeLevel > 3) {
+            effectiveFeeRate = feeRateFromNode.fastest;
+          } else if (feeLevel > 2) {
+            effectiveFeeRate = feeRateFromNode.fast;
+          } else if (feeLevel > 0) {
+            effectiveFeeRate = feeRateFromNode.average;
+          }
+          if (!effectiveFeeRate) {
+            throw Error('Unable to get fee rate for network ' + networkId);
+          }
+          console.log('effectiveFeeRate: ', effectiveFeeRate);
+          effectiveFeeRate = effectiveFeeRate * 1.2;
+          console.log('effectiveFeeRate: ', effectiveFeeRate);
+          effectiveFeeRate = Math.round(effectiveFeeRate / 1000);
+          console.log('effectiveFeeRate: ', effectiveFeeRate);
           console.log('utxos: ', utxos);
           let { inputs, outputs, fee } = coinSelect.default(
             utxos,
@@ -157,9 +181,9 @@ export const handleBitcoinRequest = async (
               error: 'coinselect failed to find a solution. (OUT OF INPUTS) try a lower amount',
             });
           }
-          console.log('inputs: ', inputs);
-          console.log('outputs: ', outputs);
-          console.log('fee: ', fee);
+          console.log(tag, 'inputs: ', inputs);
+          console.log(tag, 'outputs: ', outputs);
+          console.log(tag, 'fee: ', fee);
 
           const unsignedTx = await wallet.buildTx({
             inputs,

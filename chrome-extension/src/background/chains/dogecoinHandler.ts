@@ -130,7 +130,29 @@ export const handleDogecoinRequest = async (
           const amountOut: number = Math.floor(Number(params[0].amount.amount) * 1e8);
 
           console.log(tag, 'amountOut: ', amountOut);
-          const effectiveFeeRate = 10;
+          //get feeRateFromNode
+          let feeRateFromNode = await KEEPKEY_WALLET.pioneer.GetFeeRate({ networkId });
+          feeRateFromNode = feeRateFromNode.data;
+          console.log(tag, 'feeRateFromNode:', feeRateFromNode);
+          if (!feeRateFromNode) throw Error('Failed to get feeRateFromNode');
+          let feeLevel = 5;
+          let effectiveFeeRate;
+          if (feeLevel > 3) {
+            effectiveFeeRate = feeRateFromNode.fastest;
+          } else if (feeLevel > 2) {
+            effectiveFeeRate = feeRateFromNode.fast;
+          } else if (feeLevel > 0) {
+            effectiveFeeRate = feeRateFromNode.average;
+          }
+          if (!effectiveFeeRate) {
+            throw Error('Unable to get fee rate for network ' + networkId);
+          }
+          console.log('effectiveFeeRate: ', effectiveFeeRate);
+          effectiveFeeRate = effectiveFeeRate * 1.2;
+          console.log('effectiveFeeRate: ', effectiveFeeRate);
+          effectiveFeeRate = Math.round(effectiveFeeRate / 1000);
+          console.log('effectiveFeeRate: ', effectiveFeeRate);
+
           console.log('utxos: ', utxos);
           let { inputs, outputs, fee } = coinSelect.default(
             utxos,
