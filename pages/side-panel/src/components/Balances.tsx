@@ -108,6 +108,7 @@ const Balances = ({ setShowBack }: any) => {
           return;
         }
         if (response && response.balances) {
+          console.log('Balances: ', response.balances.length);
           setBalances(response.balances);
         } else {
           console.error('Error: No balances found in the response');

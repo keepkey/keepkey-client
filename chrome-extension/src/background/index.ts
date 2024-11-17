@@ -79,10 +79,12 @@ const onStart = async function () {
     console.log(tag, 'APP:', APP);
     if (!APP) throw Error('Failed to INIT!');
 
-    await APP.getAssets();
-    await APP.getPubkeys();
-    await APP.getBalances();
-    APP.getCharts();
+    console.log(tag, 'APP.balances: ', APP.balances);
+
+    // await APP.getAssets();
+    // await APP.getPubkeys();
+    // await APP.getBalances();
+    // APP.getCharts();
 
     const pubkeysEth = APP.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.Ethereum]));
     if (pubkeysEth.length > 0) {
@@ -222,6 +224,16 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           setTimeout(() => {
             sendResponse({ state: KEEPKEY_STATE });
           }, 15000);
+          break;
+        }
+
+        case 'CLEAR_CACHE': {
+          if (APP) {
+            APP.clearCache();
+            sendResponse(true);
+          } else {
+            sendResponse({ error: 'APP not initialized' });
+          }
           break;
         }
 

@@ -49,6 +49,13 @@ const SidePanel = () => {
     try {
       setIsRefreshing(true);
       setKeepkeyState(null);
+      chrome.runtime.sendMessage({ type: 'CLEAR_CACHE' }, response => {
+        if (response?.success) {
+          console.log('Sidebar opened successfully');
+        } else {
+          console.error('Failed to open sidebar:', response?.error);
+        }
+      });
       chrome.runtime.sendMessage({ type: 'ON_START' }, response => {
         if (response?.success) {
           console.log('Sidebar opened successfully');
