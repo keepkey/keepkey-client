@@ -15,7 +15,7 @@ const Balances = ({ setShowBack }: any) => {
   // Function to add custom (added) assets
   const addAddedAssets = async () => {
     try {
-      let addedAssets = [];
+      const addedAssets = [];
       // Get enabled chains
       const savedChains = await blockchainStorage.getAllBlockchains();
 
@@ -23,7 +23,7 @@ const Balances = ({ setShowBack }: any) => {
         const networkId = savedChains[i];
         const chainName = (COIN_MAP_LONG as any)[(NetworkIdToChain as any)[networkId]] || 'unknown';
 
-        let blockchain = {
+        const blockchain = {
           networkId: networkId,
           name: chainName,
           image: `https://pioneers.dev/coins/${chainName}.png`,
@@ -46,7 +46,7 @@ const Balances = ({ setShowBack }: any) => {
           }
         }
 
-        let asset = {
+        const asset = {
           networkId: networkId,
           caip: networkId + '/slip44:60',
           name: blockchain.name,
@@ -92,8 +92,8 @@ const Balances = ({ setShowBack }: any) => {
         if (response && response.assets) {
           console.log(response.assets);
 
-          let addedAssets = await addAddedAssets();
-          let combined = response.assets.concat(addedAssets);
+          const addedAssets = await addAddedAssets();
+          const combined = response.assets.concat(addedAssets);
           setAssets(combined);
         } else {
           console.error('Error: No assets found in the response');

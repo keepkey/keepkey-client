@@ -16,10 +16,9 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@coinmasters/pioneer-db": "^4.7.65",
-    "@coinmasters/pioneer-sdk": "^4.7.72",
-    "@coinmasters/types": "^4.7.71",
-    "@coinmasters/wallet-keepkey": "^13.0.72",
+    "@coinmasters/pioneer-db": "^4.8.3",
+    "@coinmasters/pioneer-sdk": "^4.8.3",
+    "@coinmasters/types": "^4.8.3",
     "@extension/shared": "workspace:*",
     "@extension/storage": "workspace:*",
     "@pioneer-platform/helpers": "^4.0.12",

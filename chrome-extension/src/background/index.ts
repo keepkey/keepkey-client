@@ -82,6 +82,8 @@ const onStart = async function () {
     await APP.getAssets();
     await APP.getPubkeys();
     await APP.getBalances();
+    APP.getCharts();
+
     const pubkeysEth = APP.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.Ethereum]));
     if (pubkeysEth.length > 0) {
       console.log(tag, 'pubkeys:', pubkeysEth);
@@ -462,7 +464,13 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             try {
               const assets = await APP.getAssets();
               console.log('Assets fetched:', assets);
-              sendResponse({ assets });
+              let assetsArray;
+              if (assets instanceof Map) {
+                assetsArray = Array.from(assets.values()); // Extract only the values if it's a Map
+              } else {
+                assetsArray = assets; // Leave it as-is if it's not a Map
+              }
+              sendResponse({ assets: assetsArray });
             } catch (error) {
               console.error('Error fetching assets:', error);
               sendResponse({ error: 'Failed to fetch assets' });

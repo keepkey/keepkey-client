@@ -11,6 +11,7 @@ import { SDK } from '@coinmasters/pioneer-sdk';
 import DB from '@coinmasters/pioneer-db';
 const db = new DB({});
 import { v4 as uuidv4 } from 'uuid';
+import assert from 'assert';
 
 const TAG = ' | KeepKey | ';
 interface KeepKeyWallet {
@@ -30,9 +31,9 @@ const connectKeepKey = async function () {
 };
 
 export const onStartKeepkey = async function () {
-  let tag = TAG + ' | onStartKeepkey | ';
+  const tag = TAG + ' | onStartKeepkey | ';
   try {
-    let chains = [
+    const chains = [
       'ARB',
       'AVAX',
       'BSC',
@@ -55,13 +56,13 @@ export const onStartKeepkey = async function () {
 
     await db.init({});
     //console.log(tag, 'Database initialized');
-    let txs = await db.getAllTransactions();
+    const txs = await db.getAllTransactions();
     console.log(tag, 'txs: ', txs);
 
-    let pubkeys = await db.getPubkeys({});
+    const pubkeys = await db.getPubkeys({});
     console.log(tag, 'pubkeys: ', pubkeys);
 
-    let balances = await db.getBalances({});
+    const balances = await db.getBalances({});
     console.log(tag, 'balances: ', balances);
 
     const allByCaip = chains.map(chainStr => {
@@ -72,6 +73,10 @@ export const onStartKeepkey = async function () {
       return undefined;
     });
     console.log(tag, 'allByCaip: ', allByCaip);
+
+    //if chains undefined, default to all!
+    //Rules must always be at least 1 chain enabled, else it defaults to all
+
     const paths = getPaths(allByCaip);
 
     //add paths to keepkey
@@ -176,11 +181,11 @@ export const onStartKeepkey = async function () {
     });
 
     //get username from storage
-    let keepkeyApiKey = (await keepKeyApiKeyStorage.getApiKey()) || 'key:123';
+    const keepkeyApiKey = (await keepKeyApiKeyStorage.getApiKey()) || 'key:123';
     let username = await pioneerKeyStorage.getUsername();
     let queryKey = await pioneerKeyStorage.getUsername();
-    let spec = (await pioneerKeyStorage.getPioneerSpec()) || 'https://pioneers.dev/spec/swagger.json';
-    let wss = (await pioneerKeyStorage.getPioneerWss()) || 'wss://pioneers.dev';
+    const spec = (await pioneerKeyStorage.getPioneerSpec()) || 'https://pioneers.dev/spec/swagger.json';
+    const wss = (await pioneerKeyStorage.getPioneerWss()) || 'wss://pioneers.dev';
     if (!queryKey) {
       queryKey = `key:${uuidv4()}`;
       pioneerKeyStorage.saveQueryKey(queryKey);
@@ -197,51 +202,31 @@ export const onStartKeepkey = async function () {
     console.log(tag, 'wss:', wss);
     //let spec = 'https://pioneers.dev/spec/swagger.json'
 
-    let config: any = {
+    const config: any = {
       appName: 'KeepKey Client',
       appIcon: 'https://pioneers.dev/coins/keepkey.png',
       username,
       queryKey,
       spec,
       keepkeyApiKey,
-      wss,
       paths,
       blockchains: allByCaip,
-      // @ts-ignore
-      ethplorerApiKey: 'EK-xs8Hj-qG4HbLY-LoAu7',
-      // @ts-ignore
-      covalentApiKey: 'cqt_rQ6333MVWCVJFVX3DbCCGMVqRH4q',
-      // @ts-ignore
-      utxoApiKey: 'B_s9XK926uwmQSGTDEcZB3vSAmt5t2',
-      // @ts-ignore
-      walletConnectProjectId: '18224df5f72924a5f6b3569fbd56ae16',
+      nodes: [],
+      pubkeys: [],
+      balances: [],
     };
 
-    let app = new SDK(spec, config);
-
-    const walletsVerbose: any = [];
-    const { keepkeyWallet } = await import('@coinmasters/wallet-keepkey');
-    const walletKeepKey = {
-      type: WalletOption.KEEPKEY,
-      icon: 'https://pioneers.dev/coins/keepkey.png',
-      chains: availableChainsByWallet[WalletOption.KEEPKEY],
-      wallet: keepkeyWallet,
-      status: 'offline',
-      isConnected: false,
-    };
-    walletsVerbose.push(walletKeepKey);
-    let resultInit = await app.init(walletsVerbose, {});
+    const app = new SDK(spec, config);
+    const resultInit = await app.init([], {});
     console.log(tag, 'resultInit:', resultInit);
-    console.log(tag, 'wallets: ', app.wallets.length);
+    console.log(tag, 'app.assetsMap: ', app.assetsMap);
+    const assets = app.assetsMap;
 
-    let pairObject = {
-      type: WalletOption.KEEPKEY,
-      blockchains: allByCaip,
-    };
-    resultInit = await app.pairWallet(pairObject);
-    console.log(tag, 'result pair wallet: ', resultInit);
-    console.log(tag, 'app.keepkeyApiKey:', app.keepkeyApiKey);
-    console.log(tag, 'keepkeyApiKey:', keepkeyApiKey);
+    for (const [caip, asset] of assets) {
+      console.log(tag, 'asset: ', asset);
+      console.log(tag, 'caip: ', caip);
+    }
+
     if (app.keepkeyApiKey !== keepkeyApiKey) {
       console.log('SAVING API KEY. ');
       keepKeyApiKeyStorage.saveApiKey(app.keepkeyApiKey);
