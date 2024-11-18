@@ -66,10 +66,23 @@ const Balances = ({ setShowBack }: any) => {
 
   // Function to format the balance
   const formatBalance = (balance: string) => {
-    const [integer, decimal] = balance.split('.');
-    const largePart = decimal?.slice(0, 4) || '0000';
-    const smallPart = decimal?.slice(4, 6) || '00';
-    return { integer, largePart, smallPart };
+    try {
+      // Parse the balance to ensure it's a valid number
+      const numericBalance = parseFloat(balance);
+
+      // If balance is NaN, use 0
+      const safeBalance = isNaN(numericBalance) ? '0' : balance;
+
+      const [integer, decimal] = safeBalance.split('.');
+      const largePart = decimal?.slice(0, 4) || '0000';
+      const smallPart = decimal?.slice(4, 6) || '00';
+
+      return { integer, largePart, smallPart };
+    } catch (error) {
+      console.error('Error in formatBalance:', error);
+      // Fallback to zeroed format
+      return { integer: '0', largePart: '0000', smallPart: '00' };
+    }
   };
 
   // Function to format USD value
