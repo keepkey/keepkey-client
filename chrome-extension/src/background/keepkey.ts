@@ -11,24 +11,24 @@ import { SDK } from '@coinmasters/pioneer-sdk';
 import DB from '@coinmasters/pioneer-db';
 const db = new DB({});
 import { v4 as uuidv4 } from 'uuid';
-import assert from 'assert';
+// import assert from 'assert';
 
 const TAG = ' | KeepKey | ';
-interface KeepKeyWallet {
-  type: string;
-  icon: string;
-  chains: string[];
-  wallet: any;
-  status: string;
-  isConnected: boolean;
-}
-
-const connectKeepKey = async function () {
-  try {
-  } catch (e) {
-    console.error(e);
-  }
-};
+// interface KeepKeyWallet {
+//   type: string;
+//   icon: string;
+//   chains: string[];
+//   wallet: any;
+//   status: string;
+//   isConnected: boolean;
+// }
+//
+// const connectKeepKey = async function () {
+//   try {
+//   } catch (e) {
+//     console.error(e);
+//   }
+// };
 
 export const onStartKeepkey = async function () {
   const tag = TAG + ' | onStartKeepkey | ';
@@ -223,7 +223,7 @@ export const onStartKeepkey = async function () {
     const assets = app.assetsMap;
 
     for (const [caip, asset] of assets) {
-      console.log(tag, 'asset: ', asset);
+      // console.log(tag, 'asset: ', asset);
       console.log(tag, 'caip: ', caip);
     }
 

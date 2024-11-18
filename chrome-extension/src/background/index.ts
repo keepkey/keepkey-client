@@ -80,11 +80,7 @@ const onStart = async function () {
     if (!APP) throw Error('Failed to INIT!');
 
     console.log(tag, 'APP.balances: ', APP.balances);
-
-    // await APP.getAssets();
-    // await APP.getPubkeys();
-    // await APP.getBalances();
-    // APP.getCharts();
+    console.log(tag, 'APP.pubkeys: ', APP.pubkeys);
 
     const pubkeysEth = APP.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.Ethereum]));
     if (pubkeysEth.length > 0) {
@@ -115,6 +111,10 @@ const onStart = async function () {
       //if not set, set it to eth mainnet
     } else {
       console.error(tag, 'FAILED TO INIT, No Ethereum address found');
+      await APP.getAssets();
+      await APP.getPubkeys();
+      await APP.getBalances();
+      APP.getCharts();
       //TODO retry?
       // setTimeout(() => {
       //   onStart();
