@@ -50,8 +50,6 @@ export function Transfer({}: any): JSX.Element {
   const [recipient, setRecipient] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
   const [priceUsd, setPriceUsd] = useState<number | null>(null);
-  const [maxSpendable, setMaxSpendable] = useState('');
-  const [loadingMaxSpendable, setLoadingMaxSpendable] = useState(true);
   const [useUsdInput, setUseUsdInput] = useState(false);
   const [isMax, setIsMax] = useState(false);
 
@@ -69,23 +67,7 @@ export function Transfer({}: any): JSX.Element {
     });
   }, []);
 
-  const onStart = async function () {
-    chrome.runtime.sendMessage({ type: 'GET_MAX_SPENDABLE' }, maxSpendableResponse => {
-      if (maxSpendableResponse && maxSpendableResponse.maxSpendable) {
-        setMaxSpendable(maxSpendableResponse.maxSpendable);
-        setLoadingMaxSpendable(false);
-      } else {
-        toast({
-          title: 'Error',
-          description: 'Failed to fetch max spendable amount.',
-          status: 'error',
-          duration: 5000,
-          isClosable: true,
-        });
-        setLoadingMaxSpendable(false);
-      }
-    });
-  };
+  const onStart = async function () {};
 
   useEffect(() => {
     onStart();
@@ -227,30 +209,6 @@ export function Transfer({}: any): JSX.Element {
     }
   }, [inputAmount, recipient, memo, isMax, assetContext?.networkId, toast]);
 
-  const setMaxAmount = () => {
-    const maxAmount = maxSpendable;
-    setInputAmount(parseFloat(maxAmount).toFixed(4)); // 4 decimal places for NATIVE
-    setInputAmountUsd((parseFloat(maxAmount) * (priceUsd || 1)).toFixed(2)); // 2 decimal places for USD
-    setIsMax(true); // Set isMax to true when Max button is clicked
-  };
-
-  const formatMaxSpendable = (amount: string) => {
-    return parseFloat(amount).toFixed(4);
-  };
-
-  if (loadingMaxSpendable) {
-    return (
-      <Flex align="center" justify="center" height="100vh">
-        <Box p={10} borderRadius="md" boxShadow="lg" bg={bgColor}>
-          <Flex align="center" justify="center">
-            <Spinner size="xl" />
-            <Text ml={4}>Calculating max spendable amount...</Text>
-          </Flex>
-        </Box>
-      </Flex>
-    );
-  }
-
   return (
     <>
       <VStack align="start" borderRadius="md" p={4} spacing={4} bg={bgColor} margin="0 auto">
@@ -270,12 +228,6 @@ export function Transfer({}: any): JSX.Element {
             <Text mb={1}>
               Symbol: <Badge colorScheme="green">{assetContext?.symbol}</Badge>
             </Text>
-            <Text mb={1}>
-              Max Spendable: {formatMaxSpendable(maxSpendable)} {assetContext?.symbol || 'Symbol'}
-            </Text>
-            <Badge colorScheme="teal" fontSize="sm">
-              ${(parseFloat(maxSpendable) * (priceUsd || 1)).toFixed(2)} USD
-            </Badge>
           </Box>
         </Flex>
 
@@ -297,9 +249,9 @@ export function Transfer({}: any): JSX.Element {
               <Button ml={2} onClick={() => setUseUsdInput(!useUsdInput)}>
                 {useUsdInput ? 'USD' : assetContext?.symbol || 'Symbol'}
               </Button>
-              <Button ml={2} onClick={setMaxAmount}>
-                Max
-              </Button>
+              {/*<Button ml={2} onClick={setMaxAmount}>*/}
+              {/*  Max*/}
+              {/*</Button>*/}
             </Flex>
           </FormControl>
         </Grid>

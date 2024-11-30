@@ -1,6 +1,6 @@
 {
   "name": "chrome-extension",
-  "version": "0.3.9",
+  "version": "0.3.10",
   "description": "chrome extension - core settings",
   "type": "module",
   "scripts": {
@@ -16,8 +16,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@coinmasters/pioneer-db": "^4.8.6",
-    "@coinmasters/pioneer-sdk": "^4.8.6",
+    "@coinmasters/pioneer-sdk": "^4.8.11",
     "@coinmasters/types": "^4.8.5",
     "@extension/shared": "workspace:*",
     "@extension/storage": "workspace:*",

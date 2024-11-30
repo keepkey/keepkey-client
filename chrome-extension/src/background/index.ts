@@ -111,10 +111,7 @@ const onStart = async function () {
       //if not set, set it to eth mainnet
     } else {
       console.error(tag, 'FAILED TO INIT, No Ethereum address found');
-      await APP.getAssets();
-      await APP.getPubkeys();
-      await APP.getBalances();
-      APP.getCharts();
+      // APP.getCharts();
       //TODO retry?
       // setTimeout(() => {
       //   onStart();
@@ -334,6 +331,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             const { asset } = message;
             if (asset && asset.caip) {
               try {
+                console.log(tag, 'Setting asset context:', asset);
                 const response = await APP.setAssetContext(asset);
                 console.log('Asset context set:', response);
                 chrome.runtime.sendMessage({

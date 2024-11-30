@@ -71,10 +71,11 @@ export function UtxoTransaction({ transaction: initialTransaction, handleRespons
   }, [transaction.id]);
 
   const fetchTransactionData = async (id: string) => {
+    let tag = ' | fetchTransactionData | ';
     try {
       const data = await requestStorage.getEventById(id);
-
-      if (data.utxos) {
+      console.log(tag, 'data: ', data);
+      if (data.unsignedTx) {
         setTransaction(data);
         setIsLoading(false);
       }
@@ -115,7 +116,11 @@ export function UtxoTransaction({ transaction: initialTransaction, handleRespons
         <Card padding="4" boxShadow="lg" borderRadius="md">
           <Flex direction="column" alignItems="center">
             <Spinner size="xl" />
+            {JSON.stringify(transaction.unsignedTx)}
             <p>Transaction ID: {transaction.id}</p>
+            <Button mt={4} onClick={() => fetchTransactionData(transaction.id)}>
+              Update
+            </Button>
             <Button mt={4} onClick={handleReload}>
               View in Sidebar
             </Button>

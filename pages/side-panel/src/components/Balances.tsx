@@ -209,6 +209,10 @@ const Balances = ({ setShowBack }: any) => {
                 const balance = balances.find(b => b.caip === asset.caip);
                 const { integer, largePart, smallPart } = formatBalance(balance?.balance || '0.00');
 
+                const chainBalances = balances.filter(b => b.networkId === asset.networkId);
+                const totalUsdValue = chainBalances.reduce((sum, b) => sum + parseFloat(b.valueUsd || '0'), 0);
+                const tokenCount = chainBalances.filter(b => !b.isNative).length;
+
                 return (
                   <Card key={index} borderRadius="md" p={4} mb={1} width="100%">
                     <Flex align="center" width="100%">
@@ -240,7 +244,10 @@ const Balances = ({ setShowBack }: any) => {
                                 {asset.symbol}
                               </Badge>
                               <br />
-                              <Badge colorScheme="green">USD {formatUsd(balance?.valueUsd || '0.00')}</Badge>
+                              {/*<Badge colorScheme="green">USD {formatUsd(balance?.valueUsd || '0.00')}</Badge>*/}
+                              <Badge colorScheme="green">USD {formatUsd(totalUsdValue.toString())}</Badge>
+                              {tokenCount > 1 && <Text fontSize="sm">Tokens: {tokenCount}</Text>}
+                              {/*{tokenCount > 1 && <Text fontSize="sm" color="gray.500">Tokens: {tokenCount}</Text>}*/}
                             </Text>
                           </>
                         )}

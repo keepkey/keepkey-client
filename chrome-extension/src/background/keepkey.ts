@@ -7,9 +7,6 @@ import { getPaths } from '@pioneer-platform/pioneer-coins';
 import { keepKeyApiKeyStorage, pioneerKeyStorage } from '@extension/storage'; // Re-import the storage
 // @ts-ignore
 import { SDK } from '@coinmasters/pioneer-sdk';
-// @ts-ignore
-import DB from '@coinmasters/pioneer-db';
-const db = new DB({});
 import { v4 as uuidv4 } from 'uuid';
 // import assert from 'assert';
 
@@ -53,17 +50,6 @@ export const onStartKeepkey = async function () {
       'BASE',
       'OP',
     ];
-
-    await db.init({});
-    //console.log(tag, 'Database initialized');
-    const txs = await db.getAllTransactions();
-    console.log(tag, 'txs: ', txs);
-
-    const pubkeys = await db.getPubkeys({});
-    console.log(tag, 'pubkeys: ', pubkeys);
-
-    const balances = await db.getBalances({});
-    console.log(tag, 'balances: ', balances);
 
     const allByCaip = chains.map(chainStr => {
       const chain = getChainEnumValue(chainStr);
@@ -217,15 +203,7 @@ export const onStartKeepkey = async function () {
     };
 
     const app = new SDK(spec, config);
-    const resultInit = await app.init([], {});
-    console.log(tag, 'resultInit:', resultInit);
-    console.log(tag, 'app.assetsMap: ', app.assetsMap);
-    const assets = app.assetsMap;
-
-    for (const [caip, asset] of assets) {
-      // console.log(tag, 'asset: ', asset);
-      console.log(tag, 'caip: ', caip);
-    }
+    await app.init([], {});
 
     if (app.keepkeyApiKey !== keepkeyApiKey) {
       console.log('SAVING API KEY. ');

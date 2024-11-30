@@ -694,13 +694,13 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
         console.log(tag, 'Estimated gas: ', estimatedGas.toString());
 
         // If estimated gas is less than 115,000, set a warning and adjust
-        if (estimatedGas < 315000) {
+        if (estimatedGas < 615000) {
           console.warn(tag, `Estimated gas too low (${estimatedGas.toString()}). Using minimum of 115000.`);
-          estimatedGas = 315000;
+          estimatedGas = 615000;
         }
 
         // If estimated gas exceeds 115,000, apply 25% bump
-        if (estimatedGas > 315000) {
+        if (estimatedGas > 615000) {
           estimatedGas = BigInt(estimatedGas) + BigInt(estimatedGas) / BigInt(4); // Adds 25%
           console.log(tag, `Increased gas by 25%: ${estimatedGas.toString()}`);
         }
