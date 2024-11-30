@@ -92,12 +92,12 @@ export const handleCosmosRequest = async (
       console.log(tag, 'params[0]: ', params[0]);
 
       if (result.success) {
-        const txHash = await KEEPKEY_WALLET.swapKit.transfer(sendPayload);
-        console.log(tag, 'txHash: ', txHash);
+        const resultSend = await KEEPKEY_WALLET.transfer(sendPayload);
+        console.log(tag, 'resultSend: ', resultSend);
 
         const response = await requestStorage.getEventById(requestInfo.id);
         console.log(tag, 'response: ', response);
-        response.txid = txHash;
+        response.txid = resultSend.txid;
         response.assetContext = KEEPKEY_WALLET.assetContext;
         await requestStorage.updateEventById(requestInfo.id, response);
         chrome.runtime.sendMessage({

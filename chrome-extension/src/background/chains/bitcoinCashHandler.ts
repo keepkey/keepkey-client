@@ -81,125 +81,33 @@ export const handleBitcoinCashRequest = async (
       console.log(tag, 'pubkeys: ', pubkeys);
       if (!pubkeys || pubkeys.length === 0) throw Error('Failed to locate pubkeys for chain ' + Chain.BitcoinCash);
 
-      const wallet = await KEEPKEY_WALLET.swapKit.getWallet(Chain.BitcoinCash);
-      if (!wallet) throw new Error('Failed to init swapkit');
-      const walletAddress = await wallet.getAddress();
-      console.log(tag, 'walletAddress: ', walletAddress);
+      const sendPayload = {
+        caip,
+        to: params[0].recipient,
+        amount: params[0].amount.amount,
+        feeLevel: 5, //@TODO Options
+      };
+      console.log(tag, 'Send Payload: ', sendPayload);
 
       const buildTx = async function () {
+        let tag = TAG + ' | buildTx | ';
         try {
-          const utxos = [];
-          for (let i = 0; i < pubkeys.length; i++) {
-            const pubkey = pubkeys[i];
-            let utxosResp = await KEEPKEY_WALLET.pioneer.ListUnspent({ network: 'BCH', xpub: pubkey.pubkey });
-            utxosResp = utxosResp.data;
-            console.log('utxosResp: ', utxosResp);
-            utxos.push(...utxosResp);
-          }
-          console.log(tag, 'utxos: ', utxos);
-
-          //get new change address
-          let changeAddressIndex = await KEEPKEY_WALLET.pioneer.GetChangeAddress({
-            network: 'BCH',
-            xpub: pubkeys[0].pubkey || pubkeys[0].xpub,
-          });
-          changeAddressIndex = changeAddressIndex.data.changeIndex;
-          console.log(tag, 'changeAddressIndex: ', changeAddressIndex);
-
-          const path = DerivationPath['BCH'].replace('/0/0', `/1/${changeAddressIndex}`);
-          console.log(tag, 'path: ', path);
-          const customAddressInfo = {
-            coin: 'BitcoinCash',
-            script_type: 'p2pkh',
-            address_n: bip32ToAddressNList(path),
-          };
-          const address = await wallet.getAddress(customAddressInfo);
-          console.log('address: ', address);
-          const changeAddress = {
-            address: address,
-            path: path,
-            index: changeAddressIndex,
-            addressNList: bip32ToAddressNList(path),
-          };
-
-          for (let i = 0; i < utxos.length; i++) {
-            const utxo = utxos[i];
-            //@ts-ignore
-            utxo.value = Number(utxo.value);
-          }
-          console.log('utxos: ', utxos);
-
-          const amountOut: number = Math.floor(Number(params[0].amount.amount) * 1e8);
-
-          console.log(tag, 'amountOut: ', amountOut);
-
-          //get feeRateFromNode
-          let feeRateFromNode = await KEEPKEY_WALLET.pioneer.GetFeeRate({ networkId });
-          feeRateFromNode = feeRateFromNode.data;
-          console.log(tag, 'feeRateFromNode:', feeRateFromNode);
-          if (!feeRateFromNode) throw Error('Failed to get feeRateFromNode');
-          let feeLevel = 5;
-          let effectiveFeeRate;
-          if (feeLevel > 3) {
-            effectiveFeeRate = feeRateFromNode.fastest;
-          } else if (feeLevel > 2) {
-            effectiveFeeRate = feeRateFromNode.fast;
-          } else if (feeLevel > 0) {
-            effectiveFeeRate = feeRateFromNode.average;
-          }
-          if (!effectiveFeeRate) {
-            throw Error('Unable to get fee rate for network ' + networkId);
-          }
-          console.log('effectiveFeeRate: ', effectiveFeeRate);
-          effectiveFeeRate = effectiveFeeRate * 1.2;
-          console.log('effectiveFeeRate: ', effectiveFeeRate);
-          effectiveFeeRate = Math.round(effectiveFeeRate / 1000);
-          console.log('effectiveFeeRate: ', effectiveFeeRate);
-          console.log('utxos: ', utxos);
-
-          let { inputs, outputs, fee } = coinSelect.default(
-            utxos,
-            [{ address: params[0].recipient, value: amountOut }],
-            effectiveFeeRate,
-          );
-          if (!inputs || !outputs) {
-            ({ inputs, outputs, fee } = coinSelectSplit.default(
-              utxos,
-              [{ address: params[0].recipient }], // No 'value' field for send-max
-              effectiveFeeRate,
-            ));
-          }
-          if (!inputs || !outputs || !fee) {
-            chrome.runtime.sendMessage({
-              action: 'utxo_build_tx_error',
-              error: 'coinselect failed to find a solution. (OUT OF INPUTS) try a lower amount',
-            });
-            throw Error('Failed to build! out of funds!');
-          }
-          console.log('inputs: ', inputs);
-          console.log('outputs: ', outputs);
-          console.log('fee: ', fee);
-
-          const unsignedTx = await wallet.buildTx({
-            inputs,
-            outputs,
-            memo: params[0].memo || '',
-            changeAddress,
-          });
-
-          //push to front
-          chrome.runtime.sendMessage({
-            action: 'utxo_build_tx',
-            unsignedTx: requestInfo,
-          });
+          //test as BEX (multi-set)
+          const unsignedTx = await KEEPKEY_WALLET.buildTx(sendPayload);
+          console.log(tag, 'unsignedTx: ', unsignedTx);
 
           const storedEvent = await requestStorage.getEventById(requestInfo.id);
           console.log(tag, 'storedEvent: ', storedEvent);
           storedEvent.assetContext = KEEPKEY_WALLET.assetContext;
-          storedEvent.utxos = utxos;
-          storedEvent.changeAddress = changeAddress;
           storedEvent.unsignedTx = unsignedTx;
+          console.log(tag, 'storedEvent: ', storedEvent);
+          console.log(tag, 'requestInfo.id: ', requestInfo.id);
           await requestStorage.updateEventById(requestInfo.id, storedEvent);
+
+          chrome.runtime.sendMessage({
+            action: 'utxo_build_tx',
+            unsignedTx: requestInfo,
+          });
         } catch (e) {
           console.error(e);
         }
@@ -215,11 +123,7 @@ export const handleBitcoinCashRequest = async (
       console.log(tag, 'response: ', response);
 
       if (result.success && response.unsignedTx) {
-        const signedTx = await wallet.signTx(
-          response.unsignedTx.inputs,
-          response.unsignedTx.outputs,
-          response.unsignedTx.memo,
-        );
+        const signedTx = await KEEPKEY_WALLET.signTx({ caip, unsignedTx: response.unsignedTx });
 
         response.signedTx = signedTx;
         await requestStorage.updateEventById(requestInfo.id, response);

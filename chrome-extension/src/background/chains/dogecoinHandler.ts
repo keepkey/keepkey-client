@@ -99,8 +99,6 @@ export const handleDogecoinRequest = async (
           const storedEvent = await requestStorage.getEventById(requestInfo.id);
           console.log(tag, 'storedEvent: ', storedEvent);
           storedEvent.assetContext = KEEPKEY_WALLET.assetContext;
-          storedEvent.utxos = [{ foo: 'bar' }];
-          storedEvent.changeAddress = 'placeholder';
           storedEvent.unsignedTx = unsignedTx;
           console.log(tag, 'storedEvent: ', storedEvent);
           console.log(tag, 'requestInfo.id: ', requestInfo.id);

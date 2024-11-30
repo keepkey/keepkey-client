@@ -76,18 +76,14 @@ export const handleOsmosisRequest = async (
       if (result.success) {
         //send tx
         console.log(tag, 'params[0]: ', params[0]);
-        const assetString = 'OSMO.OSMO';
-        await AssetValue.loadStaticAssets();
-        console.log(tag, 'params[0].amount.amount: ', params[0].amount.amount);
-        const assetValue = await AssetValue.fromString(assetString, parseFloat(params[0].amount.amount));
         const sendPayload = {
-          from: params[0].from,
-          assetValue,
+          caip,
+          amount: params[0].amount.amount,
           memo: params[0].memo || '',
-          recipient: params[0].recipient,
+          to: params[0].recipient,
         };
         console.log(tag, 'sendPayload: ', sendPayload);
-        const txHash = await KEEPKEY_WALLET.swapKit.transfer(sendPayload);
+        const txHash = await KEEPKEY_WALLET.transfer(sendPayload);
         console.log(tag, 'txHash: ', txHash);
         response.txid = txHash;
         response.assetContext = KEEPKEY_WALLET.assetContext;
