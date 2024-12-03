@@ -55,45 +55,82 @@ export const handleOsmosisRequest = async (
     }
     case 'transfer': {
       const caip = shortListSymbolToCaip['OSMO'];
-      console.log(tag, 'caip: ', caip);
+      console.log(tag, 'caip:', caip);
+
       await KEEPKEY_WALLET.setAssetContext({ caip });
-      chrome.runtime.sendMessage({ type: 'ASSET_CONTEXT_UPDATED', assetContext: KEEPKEY_WALLET.assetContext });
+      chrome.runtime.sendMessage({
+        type: 'ASSET_CONTEXT_UPDATED',
+        assetContext: KEEPKEY_WALLET.assetContext,
+      });
+
       const networkId = caipToNetworkId(caip);
       requestInfo.id = uuidv4();
-      //push event to ux
+
+      // Push event to UX
       chrome.runtime.sendMessage({
         action: 'TRANSACTION_CONTEXT_UPDATED',
         id: requestInfo.id,
       });
-      //verify context is bitcoin
+
+      // Verify context is set
       if (!KEEPKEY_WALLET.assetContext) {
         await KEEPKEY_WALLET.setAssetContext({ caip });
       }
-      // Require user approval
-      const result = await requireApproval(networkId, requestInfo, 'osmosis', method, params[0]);
-      console.log(tag, 'result:', result);
 
-      if (result.success) {
-        //send tx
-        console.log(tag, 'params[0]: ', params[0]);
-        const sendPayload = {
+      const sendPayload = {
+        caip,
+        isMax: params[0].isMax,
+        to: params[0].recipient,
+        amount: params[0].amount.amount,
+        feeLevel: 5, // Options
+      };
+      console.log(tag, 'Send Payload:', sendPayload);
+
+      // Start building the transaction asynchronously
+      const buildTx = async function () {
+        try {
+          const unsignedTx = await KEEPKEY_WALLET.buildTx(sendPayload);
+          console.log(tag, 'unsignedTx:', unsignedTx);
+          requestInfo.unsignedTx = unsignedTx;
+          await requestStorage.updateEventById(requestInfo.id, requestInfo);
+        } catch (e) {
+          console.error(e);
+          // Optionally, you might want to update storage to reflect the error
+        }
+      };
+      buildTx(); // Note: Not awaited to preserve the race flow
+
+      // Require user approval
+      const approvalResponse = await requireApproval(networkId, requestInfo, 'osmosis', method, params[0]);
+      console.log(tag, 'approvalResponse:', approvalResponse);
+
+      if (approvalResponse.success && requestInfo.unsignedTx) {
+        // Sign the transaction
+        const signedTx = await KEEPKEY_WALLET.signTx({
           caip,
-          amount: params[0].amount.amount,
-          memo: params[0].memo || '',
-          to: params[0].recipient,
-        };
-        console.log(tag, 'sendPayload: ', sendPayload);
-        const txHash = await KEEPKEY_WALLET.transfer(sendPayload);
-        console.log(tag, 'txHash: ', txHash);
-        response.txid = txHash;
-        response.assetContext = KEEPKEY_WALLET.assetContext;
-        await requestStorage.updateEventById(requestInfo.id, response);
+          unsignedTx: requestInfo.unsignedTx,
+        });
+        console.log(tag, 'signedTx:', signedTx);
+
+        // Update storage with signed transaction
+        requestInfo.signedTx = signedTx;
+        await requestStorage.updateEventById(requestInfo.id, requestInfo);
+
+        // Broadcast the transaction
+        const txid = await KEEPKEY_WALLET.broadcastTx(caipToNetworkId(caip), signedTx);
+        console.log(tag, 'txid:', txid);
+
+        // Update storage with transaction hash
+        requestInfo.txid = txid;
+        await requestStorage.updateEventById(requestInfo.id, requestInfo);
+
+        // Notify transaction completion
         chrome.runtime.sendMessage({
           action: 'transaction_complete',
-          txHash: txHash,
+          txHash: txid,
         });
 
-        return txHash;
+        return txid;
       } else {
         throw createProviderRpcError(4200, 'User denied transaction');
       }

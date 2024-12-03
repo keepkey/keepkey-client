@@ -26,9 +26,9 @@ export default function LegacyTx({ transaction }: any) {
             </Tr>
             <Tr>
               <Td>
-                <Badge>to:</Badge>
+                <Badge>recipient:</Badge>
               </Td>
-              <Td>{transaction?.request?.to}</Td>
+              <Td>{transaction?.request?.to || transaction?.request?.recipient}</Td>
             </Tr>
             <Tr>
               <Td>

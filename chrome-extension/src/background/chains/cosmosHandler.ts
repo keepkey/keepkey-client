@@ -37,11 +37,11 @@ export const handleCosmosRequest = async (
   switch (method) {
     case 'request_accounts': {
       //Unsigned TX
-      let pubkeys = KEEPKEY_WALLET.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.Cosmos]));
-      let accounts = [];
+      const pubkeys = KEEPKEY_WALLET.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.Cosmos]));
+      const accounts = [];
       for (let i = 0; i < pubkeys.length; i++) {
-        let pubkey = pubkeys[i];
-        let address = pubkey.master || pubkey.address;
+        const pubkey = pubkeys[i];
+        const address = pubkey.master || pubkey.address;
         accounts.push(address);
       }
       console.log(tag, 'accounts: ', accounts);
@@ -54,7 +54,7 @@ export const handleCosmosRequest = async (
       console.log(tag, 'KEEPKEY_WALLET: ', KEEPKEY_WALLET);
       console.log(tag, 'KEEPKEY_WALLET.swapKit: ', KEEPKEY_WALLET.swapKit);
       console.log(tag, 'KEEPKEY_WALLET.swapKit: ', KEEPKEY_WALLET.balances);
-      let balance = KEEPKEY_WALLET.balances.find((balance: any) => balance.caip === shortListSymbolToCaip['ATOM']);
+      const balance = KEEPKEY_WALLET.balances.find((balance: any) => balance.caip === shortListSymbolToCaip['ATOM']);
 
       //let pubkeys = await KEEPKEY_WALLET.swapKit.getBalance(Chain.Bitcoin);
       console.log(tag, 'balance: ', balance);
@@ -73,38 +73,63 @@ export const handleCosmosRequest = async (
         id: requestInfo.id,
       });
 
-      let assetString = 'GAIA.ATOM';
-      await AssetValue.loadStaticAssets();
-      console.log(tag, 'params[0].amount.amount: ', params[0].amount.amount);
-      let assetValue = await AssetValue.fromString(assetString, parseFloat(params[0].amount.amount));
-      let sendPayload = {
-        from: params[0].from,
-        assetValue,
-        memo: params[0].memo || '',
-        recipient: params[0].recipient,
+      const sendPayload = {
+        caip,
+        isMax: params[0].isMax,
+        to: params[0].recipient,
+        amount: params[0].amount.amount,
+        feeLevel: 5, // Options
       };
-      console.log(tag, 'sendPayload: ', sendPayload);
-      requestInfo.unsignedTx = sendPayload;
+      console.log(tag, 'Send Payload:', sendPayload);
+
+      // Start building the transaction asynchronously
+      const buildTx = async function () {
+        try {
+          const unsignedTx = await KEEPKEY_WALLET.buildTx(sendPayload);
+          console.log(tag, 'unsignedTx:', unsignedTx);
+          requestInfo.unsignedTx = unsignedTx;
+          await requestStorage.updateEventById(requestInfo.id, requestInfo);
+        } catch (e) {
+          console.error(e);
+          // Optionally, you might want to update storage to reflect the error
+        }
+      };
+      buildTx(); // Note: Not awaited to preserve the race flow
+
       // Require user approval
       const result = await requireApproval(networkId, requestInfo, 'cosmos', method, params[0]);
       console.log(tag, 'result:', result);
       //send tx
       console.log(tag, 'params[0]: ', params[0]);
 
-      if (result.success) {
-        const resultSend = await KEEPKEY_WALLET.transfer(sendPayload);
-        console.log(tag, 'resultSend: ', resultSend);
+      if (approvalResponse.success && requestInfo.unsignedTx) {
+        //send tx
+        // Sign the transaction
+        const signedTx = await KEEPKEY_WALLET.signTx({
+          caip,
+          unsignedTx: requestInfo.unsignedTx,
+        });
+        console.log(tag, 'signedTx:', signedTx);
 
-        const response = await requestStorage.getEventById(requestInfo.id);
-        console.log(tag, 'response: ', response);
-        response.txid = resultSend.txid;
-        response.assetContext = KEEPKEY_WALLET.assetContext;
-        await requestStorage.updateEventById(requestInfo.id, response);
+        // Update storage with signed transaction
+        requestInfo.signedTx = signedTx;
+        await requestStorage.updateEventById(requestInfo.id, requestInfo);
+
+        // Broadcast the transaction
+        const txid = await KEEPKEY_WALLET.broadcastTx(caipToNetworkId(caip), signedTx);
+        console.log(tag, 'txid:', txid);
+
+        // Update storage with transaction hash
+        requestInfo.txid = txid;
+        await requestStorage.updateEventById(requestInfo.id, requestInfo);
+
+        // Notify transaction completion
         chrome.runtime.sendMessage({
           action: 'transaction_complete',
-          txHash: txHash,
+          txHash: txid,
         });
-        return txHash;
+
+        return txid;
       } else {
         throw createProviderRpcError(4200, 'User denied transaction');
       }

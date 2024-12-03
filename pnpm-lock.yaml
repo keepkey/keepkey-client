@@ -103,8 +103,8 @@ importers:
   chrome-extension:
     dependencies:
       '@coinmasters/pioneer-sdk':
-        specifier: ^4.8.11
-        version: 4.8.11(@swc/core@1.7.26)(@types/node@18.19.55)
+        specifier: ^4.8.16
+        version: 4.8.16(@swc/core@1.7.26)(@types/node@18.19.55)
       '@coinmasters/types':
         specifier: ^4.8.5
         version: 4.8.5
@@ -1103,8 +1103,8 @@ packages:
   '@coinmasters/api@3.8.10':
     resolution: {integrity: sha512-3OCGiwdMP6JZ7Y7oTh5q5OdjI8vSHgTyrDBacSPfFd6ulRVsskReDXefRJE8RzNyxESD3QcEtW0GNGEe+tIovw==}
 
-  '@coinmasters/pioneer-sdk@4.8.11':
-    resolution: {integrity: sha512-saxRcg4winmQ141IaD74qI9JEVYrNqdHLqu06l6C3/yUFNK2eYXzYvqiWF530bRRu1sudxwxGe8lGX82/zWjyA==}
+  '@coinmasters/pioneer-sdk@4.8.16':
+    resolution: {integrity: sha512-GTzWXtfv++ssQzYuluDLetyfkqZQW0t9bgDZykr9y7N4VnYKfhUbkXSzmy/0G7bgZqgykm0ePhUZiO5FQZE3DQ==}
 
   '@coinmasters/tokens@3.7.66':
     resolution: {integrity: sha512-nJRA0c7NZ5qPQinYQUvPv/SUioe+SjyaDbN0nTEhO85ntixjMXL0zQAHTK68JOkb1a26hLco0Io16DZvmfb8GQ==}
@@ -6761,7 +6761,7 @@ snapshots:
       '@coinmasters/types': 4.8.10
       ky: 1.1.3
 
-  '@coinmasters/pioneer-sdk@4.8.11(@swc/core@1.7.26)(@types/node@18.19.55)':
+  '@coinmasters/pioneer-sdk@4.8.16(@swc/core@1.7.26)(@types/node@18.19.55)':
     dependencies:
       '@coinmasters/api': 3.8.10
       '@coinmasters/tokens': 3.8.10

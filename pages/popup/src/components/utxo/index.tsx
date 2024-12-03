@@ -71,7 +71,7 @@ export function UtxoTransaction({ transaction: initialTransaction, handleRespons
   }, [transaction.id]);
 
   const fetchTransactionData = async (id: string) => {
-    let tag = ' | fetchTransactionData | ';
+    const tag = ' | fetchTransactionData | ';
     try {
       const data = await requestStorage.getEventById(id);
       console.log(tag, 'data: ', data);

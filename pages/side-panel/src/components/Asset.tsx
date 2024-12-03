@@ -127,7 +127,14 @@ export function Asset() {
         return;
       }
       if (response && response.balances) {
-        const filteredBalances = response.balances.filter((balance: any) => balance.caip === assetLoaded.caip);
+        let filteredBalances = response.balances.filter((balance: any) => balance.caip === assetLoaded.caip);
+
+        //if balances > 1 then sum all balances
+        if (filteredBalances.length > 1) {
+          const totalBalance = filteredBalances.reduce((acc, balance) => acc + Number(balance.balance), 0);
+          filteredBalances = [{ balance: totalBalance, symbol: assetLoaded.symbol }];
+        }
+
         setBalances(filteredBalances);
       } else {
         console.error('Invalid response for balances:', response);

@@ -458,9 +458,10 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
       gasLimit: response.request.gasLimit,
       gas: response.request.gasLimit,
       value: response.request.value || '0x0',
-      to: response.request.to,
+      to: response.request.to || response.request.recipient,
       chainId,
     };
+    if (!input.to) throw Error('Invalid, unable to determine recipient');
     if (response.request.gasPrice) input.gasPrice = response.request.gasPrice;
     if (response.request.maxFeePerGas) input.maxFeePerGas = response.request.maxFeePerGas;
     if (response.request.maxPriorityFeePerGas) input.maxPriorityFeePerGas = response.request.maxPriorityFeePerGas;
