@@ -6,6 +6,7 @@ type Event = {
   request: any;
   status: 'request' | 'approval' | 'completed';
   timestamp: string;
+  unsignedTx: any;
   [key: string]: any; // Allow additional properties
 };
 

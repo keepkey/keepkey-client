@@ -13,27 +13,53 @@ import {
   CardBody,
   Tabs,
   TabList,
-  TabPanels,
   Tab,
+  TabPanels,
   TabPanel,
 } from '@chakra-ui/react';
 import { Transfer } from './Transfer';
 import { Receive } from './Receive';
-import AppStore from './AppStore'; // Import the new AppStore component
+import AppStore from './AppStore';
+import TransactionHistoryModal from './TransactionHistoryModal';
+
+interface Pubkey {
+  note: string;
+  url: string;
+  type: string;
+  pubkey: string;
+  address?: string;
+  networks: string[];
+}
 
 export function Asset() {
   const [activeTab, setActiveTab] = useState<'send' | 'receive' | null>(null);
   const [loading, setLoading] = useState(true);
   const [balances, setBalances] = useState<any[]>([]);
-  const [pubkeys, setPubkeys] = useState<any[]>([]);
+  const [pubkeys, setPubkeys] = useState<Pubkey[]>([]);
   const [asset, setAsset] = useState<any>(null);
+  const [isEvm, setIsEvm] = useState<boolean>(false);
+  const [assetType, setAssetType] = useState<string>(''); // EVM TENDERMINT UTXO OTHER
+  const [showHistoryButton, setShowHistoryButton] = useState<boolean>(false);
+  const [showAllPubkeys, setShowAllPubkeys] = useState(false);
 
-  // Fetch asset context on initial load
+  // Modal state
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+
+  const fetchTxHistory = (networkId: any) => {
+    console.log('GET_TX_HISTORY');
+    chrome.runtime.sendMessage({ type: 'GET_TX_HISTORY', networkId }, response => {
+      if (chrome.runtime.lastError) {
+        console.error('Error fetching transaction history:', chrome.runtime.lastError.message);
+        return;
+      }
+      console.log('Transaction history response:', response);
+    });
+  };
+
   useEffect(() => {
     fetchAssetContext();
   }, []);
 
-  // Subscribe to asset context updates
   useEffect(() => {
     const messageListener = (message: any) => {
       if (message.type === 'ASSET_CONTEXT_UPDATED' && message.assetContext) {
@@ -43,12 +69,8 @@ export function Asset() {
     };
 
     chrome.runtime.onMessage.addListener(messageListener);
-    return () => {
-      chrome.runtime.onMessage.removeListener(messageListener);
-    };
   }, []);
 
-  // Fetch balances and pubkeys when asset changes
   useEffect(() => {
     if (asset) {
       fetchBalancesAndPubkeys(asset);
@@ -64,8 +86,16 @@ export function Asset() {
         return;
       }
       if (response && response.assets) {
-        console.log('response.assets:', response.assets);
         setAsset(response.assets);
+        console.log('assetContext: ', response.assets);
+
+        if (response.assets.pubkeys) {
+          setPubkeys(response.assets.pubkeys);
+        }
+
+        if (response.assets.networkId.indexOf('eip155') !== -1) {
+          fetchTxHistory(response.assets.networkId);
+        }
       } else {
         setLoading(false);
       }
@@ -150,9 +180,28 @@ export function Asset() {
     return balance.toFixed(4);
   };
 
-  const openUrl = (url: string) => {
-    window.open(url, '_blank');
+  const openUrl = (pubkey: Pubkey) => {
+    console.log('asset:  ', asset);
+    console.log('pubkey:  ', pubkey);
+    if (asset.explorerXpubLink) {
+      console.log('xpub detected!');
+      //use this
+      const url = `${asset.explorerXpubLink}${pubkey.pubkey}`;
+      window.open(url, '_blank');
+    } else {
+      console.log('address detected!');
+      //use this
+      const url = `${asset.explorerAddressLink}${pubkey.address || pubkey.pubkey}`;
+      window.open(url, '_blank');
+    }
   };
+
+  const filteredPubkeys = pubkeys.filter((pubkey: Pubkey) => {
+    if (asset?.networkId?.startsWith('eip155')) {
+      return pubkey.networks.some((networkId: any) => networkId.startsWith('eip155'));
+    }
+    return pubkey.networks.includes(asset.networkId);
+  });
 
   return (
     <Flex direction="column" minHeight="100vh" width="100%">
@@ -186,7 +235,7 @@ export function Asset() {
                         <Text as="span" fontSize="lg">
                           {formatBalance(Number(balance.balance))}
                         </Text>
-                        <Box ml={3} flex="1">
+                        <Box ml={3} display="inline">
                           <Badge ml={2} colorScheme="teal">
                             ({balance.symbol || asset.symbol})
                           </Badge>
@@ -206,35 +255,10 @@ export function Asset() {
                 <Button my={2} size="md" variant="outline" width="100%" onClick={() => setActiveTab('receive')}>
                   Receive {asset.name}
                 </Button>
-                {pubkeys
-                  .filter((pubkey: any) => {
-                    if (asset?.networkId?.startsWith('eip155')) {
-                      return pubkey.networks.some((networkId: any) => networkId.startsWith('eip155'));
-                    }
-                    return pubkey.networks.includes(asset.networkId);
-                  })
-                  .map((pubkey: any, index: any) => (
-                    <Button
-                      key={index}
-                      my={2}
-                      size="md"
-                      variant="outline"
-                      width="100%"
-                      onClick={() =>
-                        openUrl(
-                          pubkey.type === 'address'
-                            ? asset.explorerAddressLink + '/' + pubkey.address
-                            : asset.explorerXpubLink + '/' + pubkey.pubkey,
-                        )
-                      }>
-                      <Box>
-                        <Text>View Transaction History</Text>
-                        <Badge>
-                          <Text size="sm">({pubkey.note})</Text>
-                        </Badge>
-                      </Box>
-                    </Button>
-                  ))}
+
+                <Button my={2} size="md" variant="outline" width="100%" onClick={() => setIsHistoryModalOpen(true)}>
+                  View History
+                </Button>
               </Flex>
             </>
           ) : activeTab === 'send' ? (
@@ -249,17 +273,27 @@ export function Asset() {
         </CardBody>
       </Card>
 
-      {/* Push AppStore to the bottom */}
-      <Box flexGrow={1} />
-
+      <TransactionHistoryModal
+        isOpen={isHistoryModalOpen}
+        onClose={() => setIsHistoryModalOpen(false)}
+        pubkeys={filteredPubkeys}
+        asset={asset}
+        openUrl={openUrl}
+      />
       <Box mt={4}>
         <Tabs variant="enclosed" mt={4}>
           <TabList>
             <Tab>Dapps</Tab>
+            <Tab>Recent</Tab>
           </TabList>
           <TabPanels>
             <TabPanel>
-              <AppStore networkId={asset?.networkId} /> {/* The AppStore is now in its own component */}
+              <AppStore networkId={asset?.networkId} />
+            </TabPanel>
+            <TabPanel>
+              <Text>Support</Text>
+              <Button></Button>
+              Stuck TX? Build a cancel TX
             </TabPanel>
           </TabPanels>
         </Tabs>

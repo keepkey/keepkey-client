@@ -17,6 +17,7 @@ import {
   InputGroup,
   InputLeftAddon,
 } from '@chakra-ui/react';
+import { requestStorage } from '@extension/storage';
 const TAG = ' | RequestFeeCard | ';
 
 const requestFeeData = () => {
@@ -41,19 +42,19 @@ const requestAssetContext = () => {
   });
 };
 
-const updateEventById = async (id, updatedTransaction) => {
-  return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage(
-      { type: 'UPDATE_EVENT_BY_ID', payload: { id, updatedEvent: updatedTransaction } },
-      response => {
-        if (chrome.runtime.lastError) {
-          return reject(chrome.runtime.lastError);
-        }
-        resolve(response);
-      },
-    );
-  });
-};
+// const updateEventById = async (id, updatedTransaction) => {
+//   return new Promise((resolve, reject) => {
+//     chrome.runtime.sendMessage(
+//       { type: 'UPDATE_EVENT_BY_ID', payload: { id, updatedEvent: updatedTransaction } },
+//       response => {
+//         if (chrome.runtime.lastError) {
+//           return reject(chrome.runtime.lastError);
+//         }
+//         resolve(response);
+//       },
+//     );
+//   });
+// };
 
 const hexToDecimal = hex => {
   return parseInt(hex, 16);
@@ -107,7 +108,7 @@ const RequestFeeCard = ({ transaction }) => {
   };
 
   const getFee = async () => {
-    let tag = TAG + ' | getFee | ';
+    const tag = TAG + ' | getFee | ';
     setLoading(true);
     try {
       const feeData = await requestFeeData();
@@ -126,7 +127,7 @@ const RequestFeeCard = ({ transaction }) => {
       console.log(tag, ' highGasPrice: ', highGasPrice);
 
       // Convert from wei to gwei (1e9)
-      let feeSettings = {
+      const feeSettings = {
         dappSuggested: fees.dappSuggested,
         low: Math.floor(Number(lowGasPrice) / 1e6).toString(), // Low gas price in gwei, rounded down
         medium: Math.floor(Number(mediumGasPrice) / 1e6).toString(), // Medium gas price in gwei, rounded down
@@ -255,14 +256,15 @@ const RequestFeeCard = ({ transaction }) => {
       delete transaction.requestInfo.params[0].maxPriorityFeePerGas;
 
       // Set gasPrice in top-level transaction
-      transaction.gasPrice = selectedFeeData.gasPrice;
+      transaction.request.gasPrice = selectedFeeData.gasPrice;
 
       // Remove maxFeePerGas and maxPriorityFeePerGas from top-level transaction
       delete transaction.maxFeePerGas;
       delete transaction.maxPriorityFeePerGas;
     }
 
-    await updateEventById(transaction.id, transaction);
+    //
+    requestStorage.updateEventById(transaction.id, transaction);
   };
 
   return (

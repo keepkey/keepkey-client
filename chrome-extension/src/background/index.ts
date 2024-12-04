@@ -326,6 +326,15 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           break;
         }
 
+        case 'CLEAR_ASSET_CONTEXT': {
+          if (APP) {
+            APP.setAssetContext();
+          } else {
+            sendResponse({ error: 'APP not initialized' });
+          }
+          break;
+        }
+
         case 'SET_ASSET_CONTEXT': {
           if (APP) {
             const { asset } = message;
@@ -351,6 +360,34 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                 console.error('Error setting asset context:', error);
                 sendResponse({ error: 'Failed to fetch assets' });
               }
+            }
+          } else {
+            sendResponse({ error: 'APP not initialized' });
+          }
+          break;
+        }
+
+        case 'GET_TX_HISTORY': {
+          if (APP) {
+            try {
+              console.log(tag, 'GET_TX_HISTORY');
+              //Assumed EVM*
+              // eslint-disable-next-line prefer-const
+              let { networkId, fromBlock, toBlock } = message;
+              if (!toBlock) toBlock = 'latest';
+              if (!fromBlock) fromBlock = 'latest';
+              const dappsResponse = await APP.pioneer.GetTransactionsByNetwork({
+                networkId,
+                address: ADDRESS,
+                fromBlock,
+                toBlock,
+              });
+              console.log('dappsResponse:', dappsResponse.data);
+
+              sendResponse(dappsResponse.data);
+            } catch (error) {
+              console.error('Error fetching assets:', error);
+              sendResponse({ error: 'Failed to fetch assets' });
             }
           } else {
             sendResponse({ error: 'APP not initialized' });
@@ -510,7 +547,8 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         }
 
         default:
-          sendResponse({ error: 'Unknown message type' });
+          console.error('Unknown message:', message);
+          sendResponse({ error: 'Unknown message type: ' + message.type });
       }
     } catch (error) {
       console.error('Error handling message:', error);

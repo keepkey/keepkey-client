@@ -180,13 +180,13 @@ const SidePanel = () => {
           />
 
           {/* Center-aligned Activity button */}
-          <Box mx="auto">
-            <IconButton
-              icon={<CalendarIcon />} // Activity Icon
-              aria-label="Activity"
-              onClick={handleTransactionsClick} // Handle transaction context
-            />
-          </Box>
+          {/*<Box mx="auto">*/}
+          {/*  <IconButton*/}
+          {/*    icon={<CalendarIcon />} // Activity Icon*/}
+          {/*    aria-label="Activity"*/}
+          {/*    onClick={handleTransactionsClick} // Handle transaction context*/}
+          {/*  />*/}
+          {/*</Box>*/}
 
           {/* Right-aligned button (Refresh) */}
           <IconButton icon={<RepeatIcon />} aria-label="Refresh" onClick={() => refreshBalances()} />

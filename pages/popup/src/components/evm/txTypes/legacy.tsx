@@ -16,26 +16,26 @@ export default function LegacyTx({ transaction }: any) {
               <Td>
                 <Badge>chainid:</Badge>
               </Td>
-              <Td>{transaction?.networkId}</Td>
+              <Td>{transaction?.unsignedTx.chainId}</Td>
             </Tr>
             <Tr>
               <Td>
                 <Badge>from:</Badge>
               </Td>
-              <Td>{transaction?.request?.from}</Td>
+              <Td>{transaction?.unsignedTx?.addressNList}</Td>
             </Tr>
             <Tr>
               <Td>
                 <Badge>recipient:</Badge>
               </Td>
-              <Td>{transaction?.request?.to || transaction?.request?.recipient}</Td>
+              <Td>{transaction?.unsignedTx?.to}</Td>
             </Tr>
             <Tr>
               <Td>
                 <Badge>value:</Badge>
               </Td>
               <Td>
-                {isNative ? `${nativeValue} ETH` : `${transaction?.request?.value} (Hex)`}
+                {isNative ? `${nativeValue} ETH` : `${transaction?.unsignedTx?.value} (Hex)`}
 
                 {/* If you have price data and isNative is true, display equivalent USD */}
                 {transaction?.price && isNative && (
@@ -52,7 +52,7 @@ export default function LegacyTx({ transaction }: any) {
               <Td>
                 {/* Display a non-editable Textarea for large data payloads */}
                 <Textarea
-                  value={transaction?.request?.data || 'No data provided'}
+                  value={transaction?.unsignedTx?.data || 'No data provided'}
                   isReadOnly
                   size="sm"
                   resize="vertical"

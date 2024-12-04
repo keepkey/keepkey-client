@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Box, Divider, Flex, Table, Tbody, Tr, Td, Badge, Switch, Text, HStack, Textarea } from '@chakra-ui/react';
+import { Box, Spinner, Flex } from '@chakra-ui/react';
 import React, { Fragment } from 'react';
 import LegacyTx from './txTypes/legacy';
 import Eip712Tx from './txTypes/eip712';
@@ -31,18 +31,9 @@ export default function RequestDetailsCard({ transaction }: any) {
       .catch(err => console.error(err));
   }, []);
 
-  // Function to format ETH to USD value
-  const formatUsd = (ethValue: string, price: number) => {
-    const usd = parseFloat(ethValue) * price;
-    return usd.toFixed(2); // Format to 2 decimals
-  };
-
   const toggleHexNative = () => {
     setIsNative(!isNative);
   };
-
-  const ethValue = transaction?.request?.value; // Assume this is in hex
-  const nativeValue = parseFloat(parseInt(ethValue, 16).toString()) / 1e18; // Convert from wei to ETH
 
   const renderTx = () => {
     switch (transaction?.type) {
@@ -54,6 +45,15 @@ export default function RequestDetailsCard({ transaction }: any) {
         return <LegacyTx transaction={transaction} />;
     }
   };
+
+  if (!transaction?.unsignedTx) {
+    // Show spinner if transaction.unsignedTx is not set
+    return (
+      <Flex justifyContent="center" alignItems="center" height="100%">
+        <Spinner size="xl" />
+      </Flex>
+    );
+  }
 
   return <Fragment>{renderTx()}</Fragment>;
 }

@@ -114,7 +114,7 @@ const openPopup = function () {
 
  */
 
-const requireApproval = async function (networkId, requestInfo, chain, method, params, KEEPKEY_WALLET) {
+const requireApproval = async function (networkId, requestInfo) {
   const tag = TAG + ' | requireApproval | ';
   try {
     isPopupOpen = true;
@@ -133,42 +133,45 @@ const requireApproval = async function (networkId, requestInfo, chain, method, p
 
     //set assetContext
 
-    const event = {
-      id: requestInfo.id || uuidv4(),
-      networkId,
-      chain,
-      href: requestInfo.href,
-      language: requestInfo.language,
-      platform: requestInfo.platform,
-      referrer: requestInfo.referrer,
-      requestTime: requestInfo.requestTime,
-      scriptSource: requestInfo.scriptSource,
-      siteUrl: requestInfo.siteUrl,
-      userAgent: requestInfo.userAgent,
-      injectScriptVersion: requestInfo.version,
-      requestInfo,
-      type: method,
-      request: params,
-      status: 'request',
-      timestamp: new Date().toISOString(),
-    };
-    console.log(tag, 'Requesting approval for event:', event);
-    const eventSaved = await requestStorage.addEvent(event);
-    if (eventSaved) {
-      chrome.runtime.sendMessage({
-        action: 'TRANSACTION_CONTEXT_UPDATED',
-        id: event.id,
-      });
-      console.log(tag, 'Event saved:', event);
-    } else {
-      throw new Error('Event not saved');
-    }
+    // const event = {
+    //   id: requestInfo.id || uuidv4(),
+    //   networkId,
+    //   chain,
+    //   href: requestInfo.href,
+    //   language: requestInfo.language,
+    //   platform: requestInfo.platform,
+    //   referrer: requestInfo.referrer,
+    //   requestTime: requestInfo.requestTime,
+    //   scriptSource: requestInfo.scriptSource,
+    //   siteUrl: requestInfo.siteUrl,
+    //   userAgent: requestInfo.userAgent,
+    //   injectScriptVersion: requestInfo.version,
+    //   requestInfo,
+    //   unsignedTx: requestInfo.transaction,
+    //   type: method,
+    //   request: params,
+    //   status: 'request',
+    //   timestamp: new Date().toISOString(),
+    // };
+    // console.log(tag, 'Requesting approval for event:', event);
+    // //@ts-expect-error
+    // const eventSaved = await requestStorage.addEvent(event);
+    // if (eventSaved) {
+    //   chrome.runtime.sendMessage({
+    //     action: 'TRANSACTION_CONTEXT_UPDATED',
+    //     id: event.id,
+    //   });
+    //   console.log(tag, 'Event saved:', event);
+    // } else {
+    //   throw new Error('Event not saved');
+    // }
+
     openPopup();
 
     // Wait for user's decision and return the result
     return new Promise(resolve => {
       const listener = (message, sender, sendResponse) => {
-        if (message.action === 'eth_sign_response' && message.response.eventId === event.id) {
+        if (message.action === 'eth_sign_response' && message.response.eventId === requestInfo.id) {
           console.log(tag, 'Received eth_sign_response for event:', message.response.eventId);
           chrome.runtime.onMessage.removeListener(listener);
           if (message.response.decision === 'accept') {

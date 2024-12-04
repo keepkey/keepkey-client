@@ -1,7 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { VStack, HStack, Avatar, Text, Switch, Link, Button, Image, Box, useToast } from '@chakra-ui/react';
-import { maskingSettingsStorage } from '@extension/storage'; // Import your custom storage
-
+import {
+  pioneerKeyStorage,
+  maskingSettingsStorage,
+  requestStorage,
+  approvalStorage,
+  completedStorage,
+  assetContextStorage,
+  blockchainStorage,
+  blockchainDataStorage,
+  dappStorage,
+  keepKeyApiKeyStorage,
+  web3ProviderStorage,
+} from '@extension/storage';
 const Settings = () => {
   const toast = useToast(); // For showing a success/failure message
   const [maskingSettings, setMaskingSettings] = useState({
@@ -44,6 +55,54 @@ const Settings = () => {
     const newValue = !maskingSettings.enableKeplrMasking;
     await maskingSettingsStorage.setEnableKeplrMasking(newValue);
     setMaskingSettings(prev => ({ ...prev, enableKeplrMasking: newValue }));
+  };
+
+  const clearCustomStorages = async () => {
+    try {
+      console.log(TAG, 'Clearing all custom storages...');
+
+      // Clear specific storages
+      // await pioneerKeyStorage.set(() => '');
+      // console.log(TAG, 'Cleared Pioneer Key Storage');
+      //
+      // await keepKeyApiKeyStorage.set(() => '');
+      // console.log(TAG, 'Cleared API Key Storage');
+      //
+      // await requestStorage.clearEvents();
+      // console.log(TAG, 'Cleared Request Storage');
+      //
+      // await approvalStorage.clearEvents();
+      // console.log(TAG, 'Cleared Approval Storage');
+      //
+      // await completedStorage.clearEvents();
+      // console.log(TAG, 'Cleared Completed Storage');
+      //
+      // await assetContextStorage.clearContext();
+      // console.log(TAG, 'Cleared Asset Context Storage');
+
+      await blockchainStorage.clear();
+      console.log(TAG, 'Cleared Blockchain Storage');
+
+      // await blockchainDataStorage.set(() => ({}));
+      // console.log(TAG, 'Cleared Blockchain Data Storage');
+      //
+      // await dappStorage.set(() => []);
+      // console.log(TAG, 'Cleared Dapp Storage');
+      //
+      // await web3ProviderStorage.clearWeb3Provider();
+      // console.log(TAG, 'Cleared Web3 Provider Storage');
+      //
+      // await maskingSettingsStorage.set(() => ({
+      //   enableMetaMaskMasking: false,
+      //   enableXfiMasking: false,
+      //   enableKeplrMasking: false,
+      // }));
+      console.log(TAG, 'Cleared Masking Settings Storage');
+
+      console.log(TAG, 'All custom storages cleared successfully.');
+    } catch (error) {
+      console.error(TAG, 'Error clearing custom storages:', error);
+    }
   };
 
   const handleForceReset = () => {
@@ -200,6 +259,11 @@ const Settings = () => {
         <Text fontSize="sm" color="gray.500">
           This setting may conflict with these apps if also enabled.
         </Text>
+
+        {/* Force Reset Button */}
+        <Button colorScheme="red" variant="solid" w="100%" onClick={clearCustomStorages}>
+          Clear Storage
+        </Button>
 
         {/* Force Reset Button */}
         <Button colorScheme="red" variant="solid" w="100%" onClick={handleForceReset}>

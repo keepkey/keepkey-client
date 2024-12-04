@@ -9,6 +9,7 @@ import { requestStorage, web3ProviderStorage, assetContextStorage, blockchainDat
 import { EIP155_CHAINS } from '../chains';
 import { v4 as uuidv4 } from 'uuid';
 import { blockchainStorage } from '@extension/storage';
+import { ChainToNetworkId, shortListSymbolToCaip, caipToNetworkId } from '@pioneer-platform/pioneer-caip';
 
 const TAG = ' | ethereumHandler | ';
 const DOMAIN_WHITE_LIST = [];
@@ -388,115 +389,90 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
   console.log(tag, 'networkId:', networkId);
   if (!networkId) throw Error('Failed to set context before sending!');
 
-  // Build transaction info before requireApproval
-  const transaction = params[0];
-  console.log(tag, 'transaction:', transaction);
-  transaction.value = convertToHex(transaction.amount.amount);
-  delete transaction.amount;
-  // Ensure 'from' is set
-  transaction.from = transaction.from || ADDRESS;
+  const caip = KEEPKEY_WALLET.assetContext.caip;
 
-  // Get provider
-  const provider = await getProvider();
-
-  // Get chainId
-  const currentProvider = await web3ProviderStorage.getWeb3Provider();
-  const chainId = currentProvider.chainId;
-
-  transaction.chainId = chainId;
-
-  // Determine if isEIP1559
-  const isEIP1559 = chainId === '1' || chainId === 1 || chainId === '0x1';
-
-  // Get fee data
-  const feeData = await provider.getFeeData();
-
-  // Get nonce
-  const nonce = await provider.getTransactionCount(transaction.from, 'pending');
-  transaction.nonce = '0x' + nonce.toString(16);
-
-  // Estimate gas limit
-  let estimatedGasLimit;
-  try {
-    estimatedGasLimit = await provider.estimateGas({
-      from: transaction.from,
-      to: transaction.to,
-      value: transaction.value,
-      data: transaction.data,
-    });
-    transaction.gasLimit = '0x' + estimatedGasLimit.toString(16);
-  } catch (e) {
-    console.error('Failed to estimate gas limit:', e);
-    // Set default gasLimit if estimation fails
-    transaction.gasLimit = '0x' + BigInt('281000').toString(16); // minimum gas limit for ETH transfer
-  }
-
-  // Set fee data
-  if (isEIP1559 && feeData.maxFeePerGas && feeData.maxPriorityFeePerGas) {
-    transaction.maxFeePerGas = '0x' + feeData.maxFeePerGas.toString(16);
-    transaction.maxPriorityFeePerGas = '0x' + feeData.maxPriorityFeePerGas.toString(16);
-  } else {
-    transaction.gasPrice = feeData.gasPrice ? '0x' + feeData.gasPrice.toString(16) : undefined;
-  }
-  //assign eventId
+  const sendPayload = {
+    caip,
+    isMax: params[0].isMax,
+    to: params[0].recipient,
+    amount: params[0].amount.amount,
+    feeLevel: 5, // Options
+  };
+  console.log(tag, 'Send Payload:', sendPayload);
   requestInfo.id = uuidv4();
+
+  const unsignedTx = await KEEPKEY_WALLET.buildTx(sendPayload);
+  console.log(tag, 'unsignedTx:', unsignedTx);
+  requestInfo.unsignedTx = unsignedTx;
+  await requestStorage.updateEventById(requestInfo.id, requestInfo);
+  unsignedTx.gas = unsignedTx.gasPrice;
+
+  const event = {
+    id: requestInfo.id,
+    networkId,
+    href: requestInfo.href,
+    language: requestInfo.language,
+    platform: requestInfo.platform,
+    referrer: requestInfo.referrer,
+    requestTime: requestInfo.requestTime,
+    scriptSource: requestInfo.scriptSource,
+    siteUrl: requestInfo.siteUrl,
+    userAgent: requestInfo.userAgent,
+    injectScriptVersion: requestInfo.version,
+    chain: 'ethereum', //TODO I dont like this
+    requestInfo,
+    unsignedTx,
+    type: 'transfer',
+    request: params,
+    status: 'request',
+    timestamp: new Date().toISOString(),
+  };
+  console.log(tag, 'Requesting approval for event:', event);
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  //@ts-expect-error
+  const eventSaved = await requestStorage.addEvent(event);
+  console.log(tag, 'eventSaved:', eventSaved);
+  if (!eventSaved) throw Error('Failed to create event!');
+
   // Now call requireApproval with the transaction info
-  const result = await requireApproval(networkId, requestInfo, 'ethereum', 'transfer', transaction);
+  const result = await requireApproval(networkId, requestInfo);
 
   console.log(tag, 'requireApproval result:', result);
   //get payload from storage
   const response = await requestStorage.getEventById(requestInfo.id);
   console.log(tag, 'response:', response);
 
-  if (result.success) {
-    // Prepare transaction input for signing
-    const input: any = {
-      from: response.request.from,
-      addressNList: [2147483692, 2147483708, 2147483648, 0, 0],
-      data: response.request.data || '0x',
-      nonce: response.request.nonce,
-      gasLimit: response.request.gasLimit,
-      gas: response.request.gasLimit,
-      value: response.request.value || '0x0',
-      to: response.request.to || response.request.recipient,
-      chainId,
-    };
-    if (!input.to) throw Error('Invalid, unable to determine recipient');
-    if (response.request.gasPrice) input.gasPrice = response.request.gasPrice;
-    if (response.request.maxFeePerGas) input.maxFeePerGas = response.request.maxFeePerGas;
-    if (response.request.maxPriorityFeePerGas) input.maxPriorityFeePerGas = response.request.maxPriorityFeePerGas;
-
-    if (!input.gasPrice && !input.maxFeePerGas) throw Error('Failed to set gas price');
-    console.log(tag, 'Final transaction input:', input);
-
-    // Sign transaction
-    const signedTx = await KEEPKEY_WALLET.keepKeySdk.eth.ethSignTransaction(input);
-    console.log(tag, 'Signed transaction:', signedTx);
-
-    response.signedTx = signedTx.serialized;
-    await requestStorage.updateEventById(requestInfo.id, response);
-
-    // Broadcast transaction
-    const txHash = await broadcastTransaction(signedTx.serialized);
-
-    //Placeholder for broadcast transaction testing
-    // const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-    // await delay(3000);
-    //
-    // const txHash = '';
-
-    //push hash to front end
-    response.txid = txHash;
-    response.assetContext = KEEPKEY_WALLET.assetContext;
-    await requestStorage.updateEventById(requestInfo.id, response);
-
-    //push event
-    chrome.runtime.sendMessage({
-      action: 'transaction_complete',
-      txHash: txHash,
+  if (result.success && response.unsignedTx) {
+    console.log(tag, 'FINAL: unsignedTx: ', response.unsignedTx);
+    const signedTx = await KEEPKEY_WALLET.signTx({
+      caip,
+      unsignedTx: response.unsignedTx,
     });
+    console.log(tag, 'signedTx:', signedTx);
 
-    return txHash;
+    // Update storage with signed transaction
+    requestInfo.signedTx = signedTx;
+    await requestStorage.updateEventById(requestInfo.id, requestInfo);
+
+    // Broadcast the transaction
+    const txid = await KEEPKEY_WALLET.broadcastTx(caipToNetworkId(caip), signedTx);
+    console.log(tag, 'txid:', txid);
+    if (txid.error) {
+      //Failed to Broadcast!
+      throw createProviderRpcError(4200, txid.error);
+    } else {
+      // Update storage with transaction hash
+      requestInfo.txid = txid;
+      await requestStorage.updateEventById(requestInfo.id, requestInfo);
+
+      // Notify transaction completion
+      chrome.runtime.sendMessage({
+        action: 'transaction_complete',
+        txHash: txid,
+      });
+    }
+
+    return txid;
   } else {
     throw createProviderRpcError(4200, 'User denied transaction');
   }
