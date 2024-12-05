@@ -16,11 +16,20 @@ import {
   Tab,
   TabPanels,
   TabPanel,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalFooter,
+  ModalBody,
+  ModalCloseButton,
+  Input,
 } from '@chakra-ui/react';
 import { Transfer } from './Transfer';
 import { Receive } from './Receive';
 import AppStore from './AppStore';
 import TransactionHistoryModal from './TransactionHistoryModal';
+import { COIN_MAP_LONG } from '@pioneer-platform/pioneer-coins';
 
 interface Pubkey {
   note: string;
@@ -44,6 +53,9 @@ export function Asset() {
 
   // Modal state
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [isReplaceTxModalOpen, setIsReplaceTxModalOpen] = useState(false);
+  const [nonce, setNonce] = useState('');
+  const [fee, setFee] = useState('');
 
   const fetchTxHistory = (networkId: any) => {
     console.log('GET_TX_HISTORY');
@@ -95,6 +107,13 @@ export function Asset() {
 
         if (response.assets.networkId.indexOf('eip155') !== -1) {
           fetchTxHistory(response.assets.networkId);
+        }
+
+        // Set isEvm state based on networkId containing 'evm'
+        if (response.assets.networkId && response.assets.networkId.includes('eip155')) {
+          setIsEvm(true);
+        } else {
+          setIsEvm(false);
         }
       } else {
         setLoading(false);
@@ -203,6 +222,53 @@ export function Asset() {
     return pubkey.networks.includes(asset.networkId);
   });
 
+  const handleReplaceTxClick = () => {
+    setIsReplaceTxModalOpen(true);
+  };
+
+  const handleSubmitCancelTx = () => {
+    // Build and submit the cancel transaction using nonce and fee
+    // Placeholder for actual implementation
+
+    /*
+      Send a 0 amount tx to yourself with a forced nonce and forced 40pct high fee
+     */
+
+    const sendPayload = {
+      amount: { amount: inputAmount, denom: assetContext?.symbol },
+      recipient,
+      memo,
+      isMax,
+    };
+
+    let chain: string | undefined;
+    if (assetContext?.networkId) {
+      chain = assetContext.networkId.includes('eip155')
+        ? 'ethereum'
+        : NetworkIdToChain[assetContext.networkId]?.toLowerCase();
+
+      if (chain && COIN_MAP_LONG[chain.toUpperCase()]) {
+        chain = COIN_MAP_LONG[chain.toUpperCase()].toLowerCase();
+      }
+
+      if (!chain) {
+        throw new Error(`Unsupported chain or network ID: ${assetContext.networkId}`);
+      }
+    } else {
+      throw new Error('Network ID is undefined');
+    }
+
+    const requestInfo = {
+      method: 'transfer',
+      params: [sendPayload],
+      chain,
+      siteUrl: 'KeepKey Browser Extension',
+    };
+
+    // Close the modal
+    setIsReplaceTxModalOpen(false);
+  };
+
   return (
     <Flex direction="column" minHeight="100vh" width="100%">
       <Card>
@@ -280,21 +346,46 @@ export function Asset() {
         asset={asset}
         openUrl={openUrl}
       />
+
+      {/* Replace TX Modal */}
+      <Modal isOpen={isReplaceTxModalOpen} onClose={() => setIsReplaceTxModalOpen(false)}>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Build Cancel TX</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <VStack spacing={4}></VStack>
+          </ModalBody>
+          <ModalFooter>
+            <Button colorScheme="blue" mr={3} onClick={handleSubmitCancelTx}>
+              Submit
+            </Button>
+            <Button variant="ghost" onClick={() => setIsReplaceTxModalOpen(false)}>
+              Cancel
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
       <Box mt={4}>
         <Tabs variant="enclosed" mt={4}>
           <TabList>
             <Tab>Dapps</Tab>
-            <Tab>Recent</Tab>
+            {isEvm && <Tab>Recent</Tab>}
           </TabList>
           <TabPanels>
             <TabPanel>
               <AppStore networkId={asset?.networkId} />
             </TabPanel>
-            <TabPanel>
-              <Text>Support</Text>
-              <Button></Button>
-              Stuck TX? Build a cancel TX
-            </TabPanel>
+            {isEvm && (
+              <TabPanel>
+                <Text>EVM support</Text>
+                <Button my={2} size="md" variant="outline" width="100%" onClick={handleReplaceTxClick}>
+                  Build Cancel TX
+                </Button>
+                <Text mt={2}>Stuck TX? Build a cancel transaction.</Text>
+              </TabPanel>
+            )}
           </TabPanels>
         </Tabs>
       </Box>
