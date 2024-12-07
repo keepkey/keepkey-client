@@ -350,9 +350,35 @@ const handleSigningMethods = async (method, params, requestInfo, ADDRESS, KEEPKE
   const networkId = KEEPKEY_WALLET.assetContext.networkId;
   console.log(tag, 'networkId:', networkId);
   if (!networkId) throw Error('Failed to set context before sending!');
-
   // Require user approval
+  let unsignedTx = params[0];
   requestInfo.id = uuidv4();
+  const event = {
+    id: requestInfo.id,
+    networkId,
+    href: requestInfo.href,
+    language: requestInfo.language,
+    platform: requestInfo.platform,
+    referrer: requestInfo.referrer,
+    requestTime: requestInfo.requestTime,
+    scriptSource: requestInfo.scriptSource,
+    siteUrl: requestInfo.siteUrl,
+    userAgent: requestInfo.userAgent,
+    injectScriptVersion: requestInfo.version,
+    chain: 'ethereum', //TODO I dont like this
+    requestInfo,
+    unsignedTx,
+    type: 'transfer',
+    request: params,
+    status: 'request',
+    timestamp: new Date().toISOString(),
+  };
+  console.log(tag, 'Requesting approval for event:', event);
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  //@ts-expect-error
+  const eventSaved = await requestStorage.addEvent(event);
+  console.log(tag, 'eventSaved:', eventSaved);
+
   const result = await requireApproval(networkId, requestInfo, 'ethereum', method, params[0]);
   console.log(tag, 'requireApproval result:', result);
 

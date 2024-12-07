@@ -66,27 +66,27 @@ export default function RequestDetailsCard({ transaction }: any) {
       {inputs.length > 0 && (
         <VStack spacing={3} align="stretch">
           <Text fontSize="sm" fontWeight="bold">
-            Inputs
+            Inputs {inputs.length}
           </Text>
           <VStack spacing={2} align="stretch" divider={<StackDivider borderColor="gray.200" />}>
-            {inputs.map((input: any, index: number) => (
-              <Box key={index}>
-                <VStack align="stretch" spacing={1}>
-                  <HStack justify="space-between">
-                    <Badge colorScheme="teal">TXID</Badge>
-                    <Text fontSize="xs" color="gray.600" wordBreak="break-all">
-                      {input.txid}
-                    </Text>
-                  </HStack>
-                  <HStack justify="space-between">
-                    <Badge colorScheme="green">Amount</Badge>
-                    <Text fontSize="sm" fontWeight="medium">
-                      {Number(input.amount)}
-                    </Text>
-                  </HStack>
-                </VStack>
-              </Box>
-            ))}
+            {/*{inputs.map((input: any, index: number) => (*/}
+            {/*  <Box key={index}>*/}
+            {/*    <VStack align="stretch" spacing={1}>*/}
+            {/*      <HStack justify="space-between">*/}
+            {/*        <Badge colorScheme="teal">TXID</Badge>*/}
+            {/*        <Text fontSize="xs" color="gray.600" wordBreak="break-all">*/}
+            {/*          {input.txid}*/}
+            {/*        </Text>*/}
+            {/*      </HStack>*/}
+            {/*      <HStack justify="space-between">*/}
+            {/*        <Badge colorScheme="green">Amount</Badge>*/}
+            {/*        <Text fontSize="sm" fontWeight="medium">*/}
+            {/*          {Number(input.amount)}*/}
+            {/*        </Text>*/}
+            {/*      </HStack>*/}
+            {/*    </VStack>*/}
+            {/*  </Box>*/}
+            {/*))}*/}
           </VStack>
         </VStack>
       )}

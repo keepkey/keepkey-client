@@ -100,7 +100,7 @@ export const handleCosmosRequest = async (
         injectScriptVersion: requestInfo.version,
         chain: 'cosmos', //TODO I dont like this
         requestInfo,
-        // unsignedTx,
+        unsignedTx,
         type: 'transfer',
         request: params,
         status: 'request',
@@ -119,7 +119,10 @@ export const handleCosmosRequest = async (
       //send tx
       console.log(tag, 'params[0]: ', params[0]);
 
-      if (approvalResponse.success && requestInfo.unsignedTx) {
+      requestInfo = await requestStorage.getEventById(requestInfo.id);
+      console.log(tag, 'requestInfo: ', requestInfo);
+
+      if (result.success && requestInfo.unsignedTx) {
         //send tx
         // Sign the transaction
         const signedTx = await KEEPKEY_WALLET.signTx({

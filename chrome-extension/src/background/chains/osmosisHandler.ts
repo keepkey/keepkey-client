@@ -120,6 +120,9 @@ export const handleOsmosisRequest = async (
       const approvalResponse = await requireApproval(networkId, requestInfo, 'osmosis', method, params[0]);
       console.log(tag, 'approvalResponse:', approvalResponse);
 
+      requestInfo = await requestStorage.getEventById(requestInfo.id);
+      console.log(tag, 'requestInfo: ', requestInfo);
+
       if (approvalResponse.success && requestInfo.unsignedTx) {
         // Sign the transaction
         const signedTx = await KEEPKEY_WALLET.signTx({
@@ -148,7 +151,7 @@ export const handleOsmosisRequest = async (
 
         return txid;
       } else {
-        throw createProviderRpcError(4200, 'User denied transaction');
+        throw createProviderRpcError(4200, 'Failed to Build Transaction');
       }
     }
     default: {
