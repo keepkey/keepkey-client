@@ -129,9 +129,9 @@ const RequestFeeCard = ({ transaction }) => {
       // Convert from wei to gwei (1e9)
       const feeSettings = {
         dappSuggested: fees.dappSuggested,
-        low: Math.floor(Number(lowGasPrice) / 1e6).toString(), // Low gas price in gwei, rounded down
-        medium: Math.floor(Number(mediumGasPrice) / 1e6).toString(), // Medium gas price in gwei, rounded down
-        high: Math.floor(Number(highGasPrice) / 1e6).toString(), // High gas price in gwei, rounded down
+        low: Math.floor(Number(lowGasPrice) / 1e9).toString(), // Low gas price in gwei, rounded down
+        medium: Math.floor(Number(mediumGasPrice) / 1e9).toString(), // Medium gas price in gwei, rounded down
+        high: Math.floor(Number(highGasPrice) / 1e9).toString(), // High gas price in gwei, rounded down
       };
       console.log(tag, ' feeSettings: ', feeSettings);
       setFees(feeSettings);

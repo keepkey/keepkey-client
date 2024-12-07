@@ -381,15 +381,16 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
   console.log(tag, 'requestInfo:', requestInfo);
 
   if (!KEEPKEY_WALLET.assetContext) {
+    console.log(tag, 'No asset context! Setting context to current provider');
     // Set context to the chain, defaults to ETH
     const currentProvider = await web3ProviderStorage.getWeb3Provider();
+    console.log(tag, 'currentProvider caip:', currentProvider.caip);
     await KEEPKEY_WALLET.setAssetContext({ caip: currentProvider.caip });
   }
+  const caip = KEEPKEY_WALLET.assetContext.caip;
   const networkId = KEEPKEY_WALLET.assetContext.networkId;
   console.log(tag, 'networkId:', networkId);
   if (!networkId) throw Error('Failed to set context before sending!');
-
-  const caip = KEEPKEY_WALLET.assetContext.caip;
 
   const sendPayload = {
     caip,
@@ -405,7 +406,6 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
   console.log(tag, 'unsignedTx:', unsignedTx);
   requestInfo.unsignedTx = unsignedTx;
   await requestStorage.updateEventById(requestInfo.id, requestInfo);
-  unsignedTx.gas = unsignedTx.gasPrice;
 
   const event = {
     id: requestInfo.id,

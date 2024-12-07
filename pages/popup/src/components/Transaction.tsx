@@ -123,6 +123,7 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
   }, []);
 
   useEffect(() => {
+    console.log('event:', event);
     if (event?.networkId) {
       if (event.networkId.includes('eip155')) {
         setTransactionType('evm');

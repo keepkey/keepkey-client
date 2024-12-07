@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Box, Button, Flex, Text, Spinner } from '@chakra-ui/react';
+import { Box, Spinner } from '@chakra-ui/react';
 import { requestStorage } from '@extension/storage';
 import Transaction from './Transaction';
 
@@ -36,9 +36,9 @@ const EventsViewer = () => {
     setLoading(false); // Stop spinner after events are loaded
 
     // If no events are found, close the window
-    if (validEvents.length === 0) {
-      window.close();
-    }
+    // if (validEvents.length === 0) {
+    //   window.close();
+    // }
   }, []);
 
   useEffect(() => {
@@ -92,27 +92,6 @@ const EventsViewer = () => {
       ) : (
         <div>No events</div>
       )}
-
-      {/* Navigation buttons */}
-      {/*<Flex mt={4} justify="space-between">*/}
-      {/*  <Button onClick={previousEvent} disabled={currentIndex === 0}>*/}
-      {/*    Previous*/}
-      {/*  </Button>*/}
-      {/*  <Button onClick={nextEvent} disabled={currentIndex === events.length - 1}>*/}
-      {/*    Next*/}
-      {/*  </Button>*/}
-      {/*  <Button onClick={clearRequestEvents}>Clear Events</Button>*/}
-      {/*</Flex>*/}
-
-      {/* Open Sidebar button */}
-      {/*<Flex mt={4} justify="center">*/}
-      {/*  <Button onClick={openSidebar}>Open Sidebar</Button>*/}
-      {/*</Flex>*/}
-
-      {/* Show event count at the top */}
-      {/*<Text fontSize="lg" fontWeight="bold">*/}
-      {/*  Event Count: {events.length}*/}
-      {/*</Text>*/}
     </Box>
   );
 };

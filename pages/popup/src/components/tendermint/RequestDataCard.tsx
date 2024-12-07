@@ -72,7 +72,7 @@ export default function RequestDataCard({ transaction }: any) {
           <Box mt={2}>
             <CodeBlock
               showLineNumbers={false}
-              text={JSON.stringify(fetchedTransaction, null, 2)}
+              text={JSON.stringify(fetchedTransaction.unsignedTx, null, 2)}
               theme={codepen}
               language="json"
             />

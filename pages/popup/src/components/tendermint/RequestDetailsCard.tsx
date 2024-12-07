@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Box, Divider, Flex, Table, Tbody, Tr, Td, Badge, Avatar } from '@chakra-ui/react';
+import { Box, Divider, Flex, Table, Tbody, Tr, Td, Badge, Avatar, Thead, Th } from '@chakra-ui/react';
 
 export default function RequestDetailsCard({ transaction }: any) {
   const [isNative, setIsNative] = useState(true); // Toggle for hex/native
@@ -31,6 +31,11 @@ export default function RequestDetailsCard({ transaction }: any) {
     fetchAssetContext();
   }, []);
 
+  // Extract necessary transaction details
+  const signDoc = transaction?.unsignedTx?.signDoc || {};
+  const { fee, memo, msgs, account_number, chain_id, sequence } = signDoc;
+  const message = msgs?.[0]?.value || {}; // Assuming single message for simplicity
+
   return (
     <div>
       <Flex direction="column" mb={4}>
@@ -42,24 +47,82 @@ export default function RequestDetailsCard({ transaction }: any) {
         )}
         <Box mb={2}>
           <Table variant="simple" size="sm">
+            <Thead>
+              <Tr>
+                <Th>Parameter</Th>
+                <Th>Value</Th>
+              </Tr>
+            </Thead>
             <Tbody>
               <Tr>
                 <Td>
-                  <Badge>To:</Badge>
+                  <Badge>Account Number:</Badge>
                 </Td>
-                <Td>{transaction?.request?.recipient || 'N/A'}</Td>
+                <Td>{account_number || 'N/A'}</Td>
               </Tr>
               <Tr>
                 <Td>
-                  <Badge>Amount:</Badge>
+                  <Badge>Chain ID:</Badge>
                 </Td>
-                <Td>{transaction?.request?.amount.amount || 'N/A'}</Td>
+                <Td>{chain_id || 'N/A'}</Td>
+              </Tr>
+              <Tr>
+                <Td>
+                  <Badge>Gas:</Badge>
+                </Td>
+                <Td>{fee?.gas || 'N/A'}</Td>
+              </Tr>
+              <Tr>
+                <Td>
+                  <Badge>Fee Amount:</Badge>
+                </Td>
+                <Td>
+                  {fee?.amount?.map((amt, index) => (
+                    <span key={index}>
+                      {amt.amount} {amt.denom}
+                    </span>
+                  )) || 'N/A'}
+                </Td>
               </Tr>
               <Tr>
                 <Td>
                   <Badge>Memo:</Badge>
                 </Td>
-                <Td>{transaction?.request?.memo || 'none'}</Td>
+                <Td>{memo || 'None'}</Td>
+              </Tr>
+              <Tr>
+                <Td>
+                  <Badge>Sequence:</Badge>
+                </Td>
+                <Td>{sequence || 'N/A'}</Td>
+              </Tr>
+              <Tr>
+                <Td>
+                  <Badge>From Address:</Badge>
+                </Td>
+                <Td>{message.from_address || 'N/A'}</Td>
+              </Tr>
+              <Tr>
+                <Td>
+                  <Badge>To Address:</Badge>
+                </Td>
+                <Td>{message.to_address || 'N/A'}</Td>
+              </Tr>
+              <Tr>
+                <Td>
+                  <Badge>Amount:</Badge>
+                </Td>
+                <Td>
+                  {message.amount?.map((amt, index) => (
+                    <span key={index}>
+                      {(amt.amount / 1000000).toLocaleString('en', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 6,
+                      })}{' '}
+                      {amt.denom}
+                    </span>
+                  )) || 'N/A'}
+                </Td>
               </Tr>
             </Tbody>
           </Table>

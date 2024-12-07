@@ -100,8 +100,34 @@ export const handleLitecoinRequest = async (
           console.error(e);
         }
       };
-
       buildTx();
+
+      const event = {
+        id: requestInfo.id,
+        networkId,
+        href: requestInfo.href,
+        language: requestInfo.language,
+        platform: requestInfo.platform,
+        referrer: requestInfo.referrer,
+        requestTime: requestInfo.requestTime,
+        scriptSource: requestInfo.scriptSource,
+        siteUrl: requestInfo.siteUrl,
+        userAgent: requestInfo.userAgent,
+        injectScriptVersion: requestInfo.version,
+        chain: 'ethereum', //TODO I dont like this
+        requestInfo,
+        // unsignedTx,
+        type: 'transfer',
+        request: params,
+        status: 'request',
+        timestamp: new Date().toISOString(),
+      };
+      console.log(tag, 'Requesting approval for event:', event);
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      //@ts-expect-error
+      const eventSaved = await requestStorage.addEvent(event);
+      console.log(tag, 'eventSaved:', eventSaved);
+      if (!eventSaved) throw Error('Failed to create event!');
 
       // Proceed with requiring approval without waiting for buildTx to resolve
       const result = await requireApproval(networkId, requestInfo, 'litecoin', method, params[0]);

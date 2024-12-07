@@ -61,14 +61,16 @@ export function Transfer(): JSX.Element {
     try {
       let totalBalanceCalc = 0;
       console.log(tag, 'balances: ', assetContext?.balances);
-      // Loop through balances to calculate total balance
-      for (let i = 0; i < assetContext?.balances.length; i++) {
-        console.log(tag, assetContext?.balances[i]);
+      if (assetContext?.balances) {
+        // Loop through balances to calculate total balance
+        for (let i = 0; i < assetContext?.balances.length; i++) {
+          console.log(tag, assetContext?.balances[i]);
 
-        const balance = assetContext?.balances[i]?.balance || 0; // Safely handle undefined balances
-        totalBalanceCalc += balance; // Accumulate total balance
+          const balance = assetContext?.balances[i]?.balance || 0; // Safely handle undefined balances
+          totalBalanceCalc += balance; // Accumulate total balance
+        }
+        setTotalBalance(totalBalanceCalc);
       }
-      setTotalBalance(totalBalanceCalc);
     } catch (e) {
       console.error(e);
     }
@@ -92,20 +94,21 @@ export function Transfer(): JSX.Element {
 
       // Initialize total balance
       let totalBalance = 0;
+      if (assetContext?.balances) {
+        // Loop through balances to calculate total balance
+        for (let i = 0; i < assetContext?.balances.length; i++) {
+          console.log(tag, assetContext?.balances[i]);
 
-      // Loop through balances to calculate total balance
-      for (let i = 0; i < assetContext?.balances.length; i++) {
-        console.log(tag, assetContext?.balances[i]);
+          const balance = assetContext?.balances[i]?.balance || 0; // Safely handle undefined balances
+          totalBalance += balance; // Accumulate total balance
+        }
+        setInputAmount(totalBalance.toString());
+        console.log(tag, 'Total Balance:', totalBalance);
 
-        const balance = assetContext?.balances[i]?.balance || 0; // Safely handle undefined balances
-        totalBalance += balance; // Accumulate total balance
+        // Set the max amount and mark as max
+
+        setIsMax(true);
       }
-      setInputAmount(totalBalance.toString());
-      console.log(tag, 'Total Balance:', totalBalance);
-
-      // Set the max amount and mark as max
-
-      setIsMax(true);
     } catch (error) {
       console.error(`${TAG} setMaxAmount error:`, error);
     }
@@ -150,6 +153,7 @@ export function Transfer(): JSX.Element {
       setIsSubmitting(true);
 
       const sendPayload = {
+        caip: assetContext?.caip,
         amount: { amount: inputAmount, denom: assetContext?.symbol },
         recipient,
         memo,
