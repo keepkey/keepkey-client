@@ -117,10 +117,10 @@ export function Receive({ onClose }: { onClose: () => void }) {
         <Tbody>
           <Tr>
             <Td>
-              <Text fontWeight="bold">Chain</Text>
+              <Text fontWeight="bold">network</Text>
             </Td>
             <Td>
-              <Badge>{assetContext?.chain}</Badge>
+              <Badge>{assetContext?.networkId}</Badge>
             </Td>
           </Tr>
           <Tr>

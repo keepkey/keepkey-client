@@ -84,19 +84,8 @@ export const handleMayaRequest = async (
       };
       console.log(tag, 'Send Payload:', sendPayload);
 
-      // Start building the transaction asynchronously
-      const buildTx = async function () {
-        try {
-          const unsignedTx = await KEEPKEY_WALLET.buildTx(sendPayload);
-          console.log(tag, 'unsignedTx:', unsignedTx);
-          requestInfo.unsignedTx = unsignedTx;
-          await requestStorage.updateEventById(requestInfo.id, requestInfo);
-        } catch (e) {
-          console.error(e);
-          // Optionally, you might want to update storage to reflect the error
-        }
-      };
-      buildTx(); // Note: Not awaited to preserve the race flow
+      console.log(tag, 'unsignedTx:', unsignedTx);
+      requestInfo.unsignedTx = unsignedTx;
 
       const event = {
         id: requestInfo.id,
@@ -110,9 +99,9 @@ export const handleMayaRequest = async (
         siteUrl: requestInfo.siteUrl,
         userAgent: requestInfo.userAgent,
         injectScriptVersion: requestInfo.version,
-        chain: 'ethereum', //TODO I dont like this
+        chain: 'mayachain', //TODO I dont like this
         requestInfo,
-        // unsignedTx,
+        unsignedTx,
         type: 'transfer',
         request: params,
         status: 'request',

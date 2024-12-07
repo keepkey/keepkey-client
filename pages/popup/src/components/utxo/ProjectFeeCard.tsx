@@ -128,7 +128,8 @@ const ProjectFeeCard = ({ transaction }) => {
     if (!isNaN(txSizeInBytes) && txSizeInBytes > 0 && feeRate > 0) {
       let newFee = Math.ceil(txSizeInBytes * feeRate); // Fee in sats
       const totalInputs = inputs.reduce((sum, input) => sum + Number(input.amount), 0);
-      const amountToSend = Number(transaction.request.amount.amount) * 1e8;
+      const amountToSend = 0;
+      // const amountToSend = Number(transaction.request.amount) * 1e8;
       const maxAvailableFee = totalInputs - amountToSend;
 
       if (newFee > maxAvailableFee) {
@@ -154,7 +155,7 @@ const ProjectFeeCard = ({ transaction }) => {
       setAdjustedFee(0);
       setUsdFee('0.00');
     }
-  }, [feeOption, customFeeRate, txSizeInBytes, btcPrice, inputs, transaction.request.amount.amount, toast]);
+  }, [feeOption, customFeeRate, txSizeInBytes, btcPrice, inputs, toast]);
 
   const handleCustomFeeRateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newCustomFeeRate = e.target.value;

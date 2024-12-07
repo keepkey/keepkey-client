@@ -78,17 +78,8 @@ export const handleRippleRequest = async (
       };
       console.log(tag, 'Send Payload: ', sendPayload);
 
-      const buildTx = async function () {
-        try {
-          const unsignedTx = await KEEPKEY_WALLET.buildTx(sendPayload);
-          console.log(tag, 'unsignedTx: ', unsignedTx);
-          requestInfo.unsignedTx = unsignedTx;
-          await requestStorage.updateEventById(requestInfo.id, requestInfo);
-        } catch (e) {
-          console.error(e);
-        }
-      };
-      buildTx();
+      const unsignedTx = await KEEPKEY_WALLET.buildTx(sendPayload);
+      console.log(tag, 'unsignedTx: ', unsignedTx);
 
       const event = {
         id: requestInfo.id,
@@ -104,8 +95,8 @@ export const handleRippleRequest = async (
         injectScriptVersion: requestInfo.version,
         chain: 'ethereum', //TODO I dont like this
         requestInfo,
-        // unsignedTx,
-        type: 'transfer',
+        unsignedTx,
+        type: 'ripple',
         request: params,
         status: 'request',
         timestamp: new Date().toISOString(),

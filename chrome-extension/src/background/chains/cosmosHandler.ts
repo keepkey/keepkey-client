@@ -83,18 +83,8 @@ export const handleCosmosRequest = async (
       console.log(tag, 'Send Payload:', sendPayload);
 
       // Start building the transaction asynchronously
-      const buildTx = async function () {
-        try {
-          const unsignedTx = await KEEPKEY_WALLET.buildTx(sendPayload);
-          console.log(tag, 'unsignedTx:', unsignedTx);
-          requestInfo.unsignedTx = unsignedTx;
-          await requestStorage.updateEventById(requestInfo.id, requestInfo);
-        } catch (e) {
-          console.error(e);
-          // Optionally, you might want to update storage to reflect the error
-        }
-      };
-      buildTx(); // Note: Not awaited to preserve the race flow
+      const unsignedTx = await KEEPKEY_WALLET.buildTx(sendPayload);
+      console.log(tag, 'unsignedTx:', unsignedTx);
 
       const event = {
         id: requestInfo.id,
@@ -108,7 +98,7 @@ export const handleCosmosRequest = async (
         siteUrl: requestInfo.siteUrl,
         userAgent: requestInfo.userAgent,
         injectScriptVersion: requestInfo.version,
-        chain: 'ethereum', //TODO I dont like this
+        chain: 'cosmos', //TODO I dont like this
         requestInfo,
         // unsignedTx,
         type: 'transfer',

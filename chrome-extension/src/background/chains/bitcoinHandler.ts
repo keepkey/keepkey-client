@@ -130,7 +130,7 @@ export const handleBitcoinRequest = async (
         siteUrl: requestInfo.siteUrl,
         userAgent: requestInfo.userAgent,
         injectScriptVersion: requestInfo.version,
-        chain: 'ethereum', //TODO I dont like this
+        chain: 'bitcoin', //TODO I dont like this
         requestInfo,
         // unsignedTx,
         type: 'transfer',

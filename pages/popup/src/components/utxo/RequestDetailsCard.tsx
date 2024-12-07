@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Box, Divider, Flex, Table, Tbody, Tr, Td, Badge, Avatar } from '@chakra-ui/react';
+import { Box, Divider, Flex, VStack, HStack, Text, Badge, Avatar, StackDivider } from '@chakra-ui/react';
 
 export default function RequestDetailsCard({ transaction }: any) {
   const [isNative, setIsNative] = useState(true); // Toggle for hex/native
@@ -31,41 +31,126 @@ export default function RequestDetailsCard({ transaction }: any) {
     fetchAssetContext();
   }, []);
 
+  // Safely handle cases where transaction might be undefined
+  const inputs = transaction?.unsignedTx?.inputs || [];
+  const outputs = transaction?.unsignedTx?.outputs || [];
+  const memo = transaction?.unsignedTx?.memo || 'none';
+
+  // Calculate totals
+  const totalInput = inputs.reduce((sum: number, input: any) => sum + Number(input.amount), 0);
+  const totalOutput = outputs.reduce((sum: number, output: any) => sum + Number(output.amount), 0);
+  const fee = totalInput - totalOutput;
+
   return (
-    <div>
-      <Flex direction="column" mb={4}>
-        {/* Display the Avatar for the asset */}
-        {assetContext && (
-          <Flex justify="center" mb={4}>
-            <Avatar size="md" src={assetContext?.assets?.icon} alt="Asset Icon" />
-          </Flex>
-        )}
-        <Box mb={2}>
-          <Table variant="simple" size="sm">
-            <Tbody>
-              <Tr>
-                <Td>
-                  <Badge>To:</Badge>
-                </Td>
-                {/*<Td>{transaction?.request?.recipient || 'N/A'}</Td>*/}
-              </Tr>
-              <Tr>
-                <Td>
-                  <Badge>Amount:</Badge>
-                </Td>
-                {/*<Td>{transaction?.request?.amount.amount || 'N/A'}</Td>*/}
-              </Tr>
-              <Tr>
-                <Td>
-                  <Badge>Memo:</Badge>
-                </Td>
-                {/*<Td>{transaction?.unsignedTx.memo || 'none'}</Td>*/}
-              </Tr>
-            </Tbody>
-          </Table>
-        </Box>
-        <Divider my={2} />
-      </Flex>
-    </div>
+    <VStack spacing={4} align="stretch" width="100%" maxW="300px" mx="auto" p={4} borderRadius="lg" boxShadow="md">
+      {/* Asset Icon */}
+      {assetContext && (
+        <Flex justify="center">
+          <Avatar size="lg" src={assetContext?.assets?.icon} alt="Asset Icon" />
+        </Flex>
+      )}
+
+      {/* Memo */}
+      <Box textAlign="center">
+        <Badge colorScheme="blue" variant="outline" fontSize="0.8em" mb={1}>
+          Memo
+        </Badge>
+        <Text fontSize="sm" fontWeight="medium" wordBreak="break-word">
+          {memo}
+        </Text>
+      </Box>
+
+      <Divider />
+
+      {/* Inputs Section */}
+      {inputs.length > 0 && (
+        <VStack spacing={3} align="stretch">
+          <Text fontSize="sm" fontWeight="bold">
+            Inputs
+          </Text>
+          <VStack spacing={2} align="stretch" divider={<StackDivider borderColor="gray.200" />}>
+            {inputs.map((input: any, index: number) => (
+              <Box key={index}>
+                <VStack align="stretch" spacing={1}>
+                  <HStack justify="space-between">
+                    <Badge colorScheme="teal">TXID</Badge>
+                    <Text fontSize="xs" color="gray.600" wordBreak="break-all">
+                      {input.txid}
+                    </Text>
+                  </HStack>
+                  <HStack justify="space-between">
+                    <Badge colorScheme="green">Amount</Badge>
+                    <Text fontSize="sm" fontWeight="medium">
+                      {Number(input.amount)}
+                    </Text>
+                  </HStack>
+                </VStack>
+              </Box>
+            ))}
+          </VStack>
+        </VStack>
+      )}
+
+      {/* Outputs Section */}
+      {outputs.length > 0 && (
+        <VStack spacing={3} align="stretch">
+          <Text fontSize="sm" fontWeight="bold">
+            Outputs
+          </Text>
+          <VStack spacing={2} align="stretch" divider={<StackDivider borderColor="gray.200" />}>
+            {outputs.map((output: any, index: number) => (
+              <Box key={index}>
+                <VStack align="stretch" spacing={1}>
+                  <HStack justify="space-between">
+                    <Badge colorScheme={output.isChange ? 'purple' : 'orange'}>
+                      {output.isChange ? 'Change to' : 'To'}
+                    </Badge>
+                    <Text fontSize="xs" color="gray.600" wordBreak="break-all">
+                      {output.address || 'N/A'}
+                    </Text>
+                  </HStack>
+                  <HStack justify="space-between">
+                    <Badge colorScheme="green">Amount</Badge>
+                    <Text fontSize="sm" fontWeight="medium">
+                      {Number(output.amount)}
+                    </Text>
+                  </HStack>
+                </VStack>
+              </Box>
+            ))}
+          </VStack>
+        </VStack>
+      )}
+
+      <Divider />
+
+      {/* Totals Section */}
+      <VStack spacing={2} align="stretch">
+        <HStack justify="space-between">
+          <Text fontSize="sm" fontWeight="semibold">
+            Total Input
+          </Text>
+          <Text fontSize="sm" fontWeight="medium">
+            {totalInput}
+          </Text>
+        </HStack>
+        <HStack justify="space-between">
+          <Text fontSize="sm" fontWeight="semibold">
+            Total Output
+          </Text>
+          <Text fontSize="sm" fontWeight="medium">
+            {totalOutput}
+          </Text>
+        </HStack>
+        <HStack justify="space-between">
+          <Text fontSize="sm" fontWeight="semibold">
+            Fee (Difference)
+          </Text>
+          <Text fontSize="sm" fontWeight="medium">
+            {fee}
+          </Text>
+        </HStack>
+      </VStack>
+    </VStack>
   );
 }

@@ -126,7 +126,7 @@ export const handleBitcoinCashRequest = async (
         siteUrl: requestInfo.siteUrl,
         userAgent: requestInfo.userAgent,
         injectScriptVersion: requestInfo.version,
-        chain: 'ethereum', //TODO I dont like this
+        chain: 'bitcoincash', //TODO I dont like this
         requestInfo,
         // unsignedTx,
         type: 'transfer',

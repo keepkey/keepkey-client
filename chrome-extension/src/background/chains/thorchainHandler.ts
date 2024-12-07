@@ -78,17 +78,8 @@ export const handleThorchainRequest = async (
       };
       console.log(tag, 'Send Payload: ', sendPayload);
 
-      const buildTx = async function () {
-        try {
-          const unsignedTx = await KEEPKEY_WALLET.buildTx(sendPayload);
-          console.log(tag, 'unsignedTx: ', unsignedTx);
-          requestInfo.unsignedTx = unsignedTx;
-          await requestStorage.updateEventById(requestInfo.id, requestInfo);
-        } catch (e) {
-          console.error(e);
-        }
-      };
-      buildTx();
+      const unsignedTx = await KEEPKEY_WALLET.buildTx(sendPayload);
+      console.log(tag, 'unsignedTx: ', unsignedTx);
 
       const event = {
         id: requestInfo.id,
@@ -102,9 +93,9 @@ export const handleThorchainRequest = async (
         siteUrl: requestInfo.siteUrl,
         userAgent: requestInfo.userAgent,
         injectScriptVersion: requestInfo.version,
-        chain: 'ethereum', //TODO I dont like this
+        chain: 'thorchain', //TODO I dont like this
         requestInfo,
-        // unsignedTx,
+        unsignedTx,
         type: 'transfer',
         request: params,
         status: 'request',

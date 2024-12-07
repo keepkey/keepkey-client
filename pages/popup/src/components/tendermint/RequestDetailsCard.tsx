@@ -66,30 +66,24 @@ export default function RequestDetailsCard({ transaction }: any) {
                 </Td>
                 <Td>{chain_id || 'N/A'}</Td>
               </Tr>
-              <Tr>
-                <Td>
-                  <Badge>Gas:</Badge>
-                </Td>
-                <Td>{fee?.gas || 'N/A'}</Td>
-              </Tr>
-              <Tr>
-                <Td>
-                  <Badge>Fee Amount:</Badge>
-                </Td>
-                <Td>
-                  {fee?.amount?.map((amt, index) => (
-                    <span key={index}>
-                      {amt.amount} {amt.denom}
-                    </span>
-                  )) || 'N/A'}
-                </Td>
-              </Tr>
-              <Tr>
-                <Td>
-                  <Badge>Memo:</Badge>
-                </Td>
-                <Td>{memo || 'None'}</Td>
-              </Tr>
+              {/*<Tr>*/}
+              {/*  <Td>*/}
+              {/*    <Badge>Gas:</Badge>*/}
+              {/*  </Td>*/}
+              {/*  <Td>{fee?.gas || 'N/A'}</Td>*/}
+              {/*</Tr>*/}
+              {/*<Tr>*/}
+              {/*  <Td>*/}
+              {/*    <Badge>Fee Amount:</Badge>*/}
+              {/*  </Td>*/}
+              {/*  <Td>*/}
+              {/*    {fee?.amount?.map((amt, index) => (*/}
+              {/*      <span key={index}>*/}
+              {/*        {amt.amount} {amt.denom}*/}
+              {/*      </span>*/}
+              {/*    )) || 'N/A'}*/}
+              {/*  </Td>*/}
+              {/*</Tr>*/}
               <Tr>
                 <Td>
                   <Badge>Sequence:</Badge>
@@ -123,6 +117,12 @@ export default function RequestDetailsCard({ transaction }: any) {
                     </span>
                   )) || 'N/A'}
                 </Td>
+              </Tr>
+              <Tr>
+                <Td>
+                  <Badge>Memo:</Badge>
+                </Td>
+                <Td>{memo || 'None'}</Td>
               </Tr>
             </Tbody>
           </Table>
