@@ -76,6 +76,7 @@ export function Transfer(): JSX.Element {
       console.error(e);
     }
   };
+
   useEffect(() => {
     onStart();
   }, [assetContext]);
@@ -109,7 +110,6 @@ export function Transfer(): JSX.Element {
         console.log(tag, 'Total Balance:', totalBalance);
 
         // Set the max amount and mark as max
-
         setIsMax(true);
       }
     } catch (error) {
@@ -267,9 +267,12 @@ export function Transfer(): JSX.Element {
               <Button ml={2} onClick={() => setUseUsdInput(!useUsdInput)}>
                 {useUsdInput ? 'USD' : assetContext?.symbol || 'Symbol'}
               </Button>
-              <Button ml={2} onClick={setMaxAmount}>
-                Max
-              </Button>
+              {/* Conditionally hide this button if networkId includes "eip155" */}
+              {!assetContext?.networkId?.includes('eip155') && (
+                <Button ml={2} onClick={setMaxAmount}>
+                  Max
+                </Button>
+              )}
             </Flex>
           </FormControl>
         </Grid>

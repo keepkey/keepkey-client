@@ -110,7 +110,7 @@ export function Asset() {
         }
 
         // Set isEvm state based on networkId containing 'evm'
-        if (response.assets.networkId && response.assets.networkId.includes('eip155')) {
+        if (response.assets?.networkId && response.assets?.networkId?.includes('eip155')) {
           setIsEvm(true);
         } else {
           setIsEvm(false);
@@ -290,28 +290,26 @@ export function Asset() {
                   <Text fontSize="lg" fontWeight="bold">
                     {asset.name}
                   </Text>
-                  <Text fontSize="md" color="gray.500">
-                    {asset.symbol}
-                  </Text>
+                  <Text fontSize="md">{asset.symbol}</Text>
                 </Box>
-                <Box>
-                  {balances.length > 0 ? (
-                    balances.map((balance: any, index: any) => (
-                      <Text key={index}>
-                        <Text as="span" fontSize="lg">
-                          {formatBalance(Number(balance.balance))}
-                        </Text>
-                        <Box ml={3} display="inline">
-                          <Badge ml={2} colorScheme="teal">
-                            ({balance.symbol || asset.symbol})
-                          </Badge>
-                        </Box>
-                      </Text>
-                    ))
-                  ) : (
-                    <Text>No balance available</Text>
-                  )}
-                </Box>
+                {/*<Box>*/}
+                {/*  {balances.length > 0 ? (*/}
+                {/*    balances.map((balance: any, index: any) => (*/}
+                {/*      <Text key={index}>*/}
+                {/*        <Text as="span" fontSize="lg">*/}
+                {/*          {formatBalance(Number(balance.balance))}*/}
+                {/*        </Text>*/}
+                {/*        <Box ml={3} display="inline">*/}
+                {/*          <Badge ml={2} colorScheme="teal">*/}
+                {/*            ({balance.symbol || asset.symbol})*/}
+                {/*          </Badge>*/}
+                {/*        </Box>*/}
+                {/*      </Text>*/}
+                {/*    ))*/}
+                {/*  ) : (*/}
+                {/*    <Text>No balance available</Text>*/}
+                {/*  )}*/}
+                {/*</Box>*/}
               </Flex>
 
               <Flex direction="column" align="center" mb={4} width="100%">

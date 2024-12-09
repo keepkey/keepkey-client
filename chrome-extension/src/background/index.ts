@@ -216,6 +216,18 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           break;
         }
 
+        case 'GET_BALANCE': {
+          if (APP) {
+            const { networkId } = message;
+            if (!networkId) throw Error('Network ID not provided');
+            APP.getBalance([networkId]);
+            sendResponse(true);
+          } else {
+            sendResponse({ error: 'APP not initialized' });
+          }
+          break;
+        }
+
         case 'ON_START': {
           onStart();
           setTimeout(() => {
@@ -340,6 +352,10 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             const { asset } = message;
             if (asset && asset.caip) {
               try {
+                //refresh balances for network
+                const networkId = asset.networkId;
+                await APP.getBalance(networkId);
+
                 console.log(tag, 'Setting asset context:', asset);
                 const response = await APP.setAssetContext(asset);
                 console.log('Asset context set:', response);
