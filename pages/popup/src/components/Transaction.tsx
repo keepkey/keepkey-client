@@ -4,7 +4,7 @@ import UtxoTransaction from './utxo';
 import OtherTransaction from './other';
 import TendermintTransaction from './tendermint';
 import { approvalStorage, requestStorage } from '@extension/storage/dist/lib';
-import { Spinner, Alert, AlertIcon, Button, Icon } from '@chakra-ui/react';
+import { Flex, Spinner, Alert, AlertIcon, Button, Icon } from '@chakra-ui/react';
 import { WarningIcon } from '@chakra-ui/icons';
 import AwaitingApproval from './AwaitingApproval';
 import TxidPage from './TxidPage';
@@ -109,7 +109,7 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
         setAwaitingDeviceApproval(false);
         setTransactionInProgress(false);
       } else if (message.action === 'transaction_error') {
-        const errorDetails = message.e?.message || JSON.stringify(message.e);
+        const errorDetails = message.error || message.e?.message || JSON.stringify(message.e);
         setErrorMessage('Transaction failed: ' + errorDetails);
         setTransactionInProgress(false);
       }
@@ -193,12 +193,14 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
     return (
       <Alert status="error">
         <AlertIcon />
-        <div>
-          <h3>Error Occurred</h3>
-          <p>{errorMessage}</p>
-          <Icon as={WarningIcon} color="red.500" />
-          <Button onClick={handleCancel}>Retry</Button>
-        </div>
+        <Flex height="100vh" alignItems="center" justifyContent="center">
+          <div>
+            <h3>Error Occurred</h3>
+            <p>{errorMessage}</p>
+            <Icon as={WarningIcon} color="red.500" />
+            <Button onClick={handleCancel}>Retry</Button>
+          </div>
+        </Flex>
       </Alert>
     );
   }

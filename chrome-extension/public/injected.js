@@ -303,6 +303,10 @@
 
     window.addEventListener('message', event => {
       const tag = TAG + ' | window.message | ';
+      if (event.data.type === 'CHAIN_CHANGED') {
+        console.log(tag, 'Received CHAIN_CHANGED', event);
+        window.ethereum.emit('chainChanged', event.provider.chainId); // Notify dApps
+      }
       if (event.source !== window) return;
       if (event.data.type === 'ANNOUNCE_REQUEST') {
         console.log(tag, 'Received ANNOUNCE_REQUEST');

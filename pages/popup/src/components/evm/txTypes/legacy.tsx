@@ -1,11 +1,55 @@
 import { Badge, Box, Divider, Flex, HStack, Switch, Table, Tbody, Td, Text, Textarea, Tr } from '@chakra-ui/react';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+
+const requestAssetContext = () => {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({ type: 'GET_ASSET_CONTEXT' }, response => {
+      if (chrome.runtime.lastError) {
+        return reject(chrome.runtime.lastError);
+      }
+      resolve(response);
+    });
+  });
+};
 
 export default function LegacyTx({ transaction }: any) {
   const [isNative, setIsNative] = useState(true);
-  const toggleHexNative = () => setIsNative(!isNative);
-  const ethValue = transaction?.request?.value;
-  const nativeValue = parseFloat(parseInt(ethValue, 16).toString()) / 1e18;
+  const [asset, setAsset] = useState<any>(null);
+  const [price, setPrice] = useState<number | null>(null);
+  const [valueUsd, setValueUsd] = useState<string | null>(null);
+
+  // Fetch asset context on mount
+  useEffect(() => {
+    requestAssetContext()
+      .then((response: any) => {
+        console.log('Full response:', response);
+        const retrievedAsset = response?.assets || {};
+        setAsset(retrievedAsset);
+
+        if (retrievedAsset?.priceUsd) {
+          const parsedPrice = parseFloat(retrievedAsset.priceUsd);
+          setPrice(parsedPrice);
+        }
+      })
+      .catch(err => {
+        console.error('Error fetching asset context:', err);
+      });
+  }, []);
+
+  const toggleHexNative = () => setIsNative(prev => !prev);
+
+  // Calculate native value from the hex value in the transaction
+  const ethValueHex = transaction?.unsignedTx?.value || '0x0';
+  const nativeValue = parseFloat(parseInt(ethValueHex, 16).toString()) / 1e18;
+
+  // Whenever price or nativeValue changes, recalculate the USD value
+  useEffect(() => {
+    if (price !== null && !isNaN(nativeValue)) {
+      const usd = (price * nativeValue).toFixed(2);
+      setValueUsd(usd);
+      console.log('Price updated:', price, 'Native Value:', nativeValue, 'USD:', usd);
+    }
+  }, [price, nativeValue]);
 
   return (
     <Flex direction="column" mb={4}>
@@ -16,13 +60,7 @@ export default function LegacyTx({ transaction }: any) {
               <Td>
                 <Badge>chainid:</Badge>
               </Td>
-              <Td>{transaction?.unsignedTx.chainId}</Td>
-            </Tr>
-            <Tr>
-              <Td>
-                <Badge>from:</Badge>
-              </Td>
-              <Td>{transaction?.unsignedTx?.addressNList}</Td>
+              <Td>{transaction?.unsignedTx?.chainId}</Td>
             </Tr>
             <Tr>
               <Td>
@@ -35,14 +73,10 @@ export default function LegacyTx({ transaction }: any) {
                 <Badge>value:</Badge>
               </Td>
               <Td>
-                {isNative ? `${nativeValue} ETH` : `${transaction?.unsignedTx?.value} (Hex)`}
+                {isNative ? `${nativeValue} ETH` : `${ethValueHex} (Hex)`}
 
-                {/* If you have price data and isNative is true, display equivalent USD */}
-                {transaction?.price && isNative && (
-                  <Text fontSize="sm" color="gray.500">
-                    ≈ ${transaction?.price * nativeValue} USD
-                  </Text>
-                )}
+                {/* If price and isNative are set, display equivalent USD */}
+                <Text fontSize="sm">≈ ${valueUsd} USD</Text>
               </Td>
             </Tr>
             <Tr>
@@ -50,7 +84,6 @@ export default function LegacyTx({ transaction }: any) {
                 <Badge>data:</Badge>
               </Td>
               <Td>
-                {/* Display a non-editable Textarea for large data payloads */}
                 <Textarea
                   value={transaction?.unsignedTx?.data || 'No data provided'}
                   isReadOnly

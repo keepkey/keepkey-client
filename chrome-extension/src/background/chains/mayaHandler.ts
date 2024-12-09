@@ -84,6 +84,7 @@ export const handleMayaRequest = async (
       };
       console.log(tag, 'Send Payload:', sendPayload);
 
+      const unsignedTx = await KEEPKEY_WALLET.buildTx(sendPayload);
       console.log(tag, 'unsignedTx:', unsignedTx);
       requestInfo.unsignedTx = unsignedTx;
 

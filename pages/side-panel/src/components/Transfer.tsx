@@ -66,9 +66,10 @@ export function Transfer(): JSX.Element {
         for (let i = 0; i < assetContext?.balances.length; i++) {
           console.log(tag, assetContext?.balances[i]);
 
-          const balance = assetContext?.balances[i]?.balance || 0; // Safely handle undefined balances
+          const balance = parseFloat(assetContext?.balances[i]?.balance) || 0; // Safely handle undefined balances
           totalBalanceCalc += balance; // Accumulate total balance
         }
+        console.log('totalBalanceCalc: ', totalBalanceCalc);
         setTotalBalance(totalBalanceCalc);
       }
     } catch (e) {
@@ -99,9 +100,11 @@ export function Transfer(): JSX.Element {
         for (let i = 0; i < assetContext?.balances.length; i++) {
           console.log(tag, assetContext?.balances[i]);
 
-          const balance = assetContext?.balances[i]?.balance || 0; // Safely handle undefined balances
+          const balance = parseFloat(assetContext?.balances[i]?.balance) || 0; // Safely handle undefined balances
           totalBalance += balance; // Accumulate total balance
         }
+        console.log(tag, 'Total Balance:', totalBalance);
+        console.log(tag, 'Total Balance:', totalBalance.toString());
         setInputAmount(totalBalance.toString());
         console.log(tag, 'Total Balance:', totalBalance);
 

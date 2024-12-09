@@ -103,8 +103,8 @@ importers:
   chrome-extension:
     dependencies:
       '@coinmasters/pioneer-sdk':
-        specifier: ^4.8.17
-        version: 4.8.17(@swc/core@1.7.26)(@types/node@18.19.55)
+        specifier: ^4.8.19
+        version: 4.8.19(@swc/core@1.7.26)(@types/node@18.19.55)
       '@coinmasters/types':
         specifier: ^4.8.5
         version: 4.8.5
@@ -1100,23 +1100,23 @@ packages:
       '@chakra-ui/system': '>=2.0.0'
       react: '>=18'
 
-  '@coinmasters/api@3.8.11':
-    resolution: {integrity: sha512-6Ut5n0kzh9ZYnRBEDY9RkOQ5oKORpm/oV8bKntxx3gIO5nko5wVPOm/TFyQ7ix4wgH7Y2L1od9Ra2rUumhmk/g==}
+  '@coinmasters/api@3.8.13':
+    resolution: {integrity: sha512-RE4eWG+hhXvAwS0LhVNapZMbZQ8KHP2u0MDpjBbODwBJNlfyTPQWD7mvGUGqpNPOk/b5DZogfH8nJyvHhkxUhg==}
 
-  '@coinmasters/pioneer-sdk@4.8.17':
-    resolution: {integrity: sha512-+SuavK3r2jkyakJQB5aHya+w4NaAWQWGc85ZQ61AT+3+8bY6RDk8iUcgs1X0wxzVgEOYuppDT1scubQrRCi7og==}
+  '@coinmasters/pioneer-sdk@4.8.19':
+    resolution: {integrity: sha512-Gko/iM8vQNvssYQ6pv/1lGvm6Va/dq0rWcYKKeCwKZcJ9E5FWEUD6Fhuid8fSJwY2VyljDq8wi3te25+4A/QlA==}
 
   '@coinmasters/tokens@3.7.66':
     resolution: {integrity: sha512-nJRA0c7NZ5qPQinYQUvPv/SUioe+SjyaDbN0nTEhO85ntixjMXL0zQAHTK68JOkb1a26hLco0Io16DZvmfb8GQ==}
 
-  '@coinmasters/tokens@3.8.11':
-    resolution: {integrity: sha512-iHDiJITAOB1Aso3fF30g+e2w6gmpNm1vne6KzG0VBJuVJNpt8pwwA4Te990eyj5JAPfUs2T/mr1p+VhKog96Cw==}
+  '@coinmasters/tokens@3.8.13':
+    resolution: {integrity: sha512-pi8KYYWJOSoLdpsIb0ziw0zpqea1i5KGR0gZlxOSNMotlfRia3B05KYEF/ABtDAA7svaSOcsWF12RjVKX1wlsA==}
 
   '@coinmasters/types@4.7.63':
     resolution: {integrity: sha512-EJRwnzJgNWRjYhMFXX78nERBCQSAQPK+7bVblwi8xlzRgDfeY/i7vxsLNpCj2IhVrVBW2KpT7TX1jUU2uggb/A==}
 
-  '@coinmasters/types@4.8.11':
-    resolution: {integrity: sha512-dXde9odM6ngxZPgZo3Apmds5f6QMzq7RLAY01wIHJxuIzIJ6Bx0fis+y6BanFd3ZS4G/NK+9E4waGU8N3fLM7w==}
+  '@coinmasters/types@4.8.13':
+    resolution: {integrity: sha512-ZKSIxwh1mNW6tO68UxHTNXhr5kYq+3ceBWojPKOOGise3urABECxKP04aVB8StVlXGWHM2E6pHjluNNYTH+l9A==}
 
   '@coinmasters/types@4.8.5':
     resolution: {integrity: sha512-7dkPUKrlqXqJ9/FM6BKPWxlELlrV84gFmhWnB3alYqnpErs34TiGAynXbWie8OJuC9/bV8r4WxS+DFZIE0197Q==}
@@ -6756,16 +6756,16 @@ snapshots:
       '@chakra-ui/system': 2.6.2(@emotion/react@11.13.3(@types/react@18.3.11)(react@18.3.1))(@emotion/styled@11.13.0(@emotion/react@11.13.3(@types/react@18.3.11)(react@18.3.1))(@types/react@18.3.11)(react@18.3.1))(react@18.3.1)
       react: 18.3.1
 
-  '@coinmasters/api@3.8.11':
+  '@coinmasters/api@3.8.13':
     dependencies:
-      '@coinmasters/types': 4.8.11
+      '@coinmasters/types': 4.8.13
       ky: 1.1.3
 
-  '@coinmasters/pioneer-sdk@4.8.17(@swc/core@1.7.26)(@types/node@18.19.55)':
+  '@coinmasters/pioneer-sdk@4.8.19(@swc/core@1.7.26)(@types/node@18.19.55)':
     dependencies:
-      '@coinmasters/api': 3.8.11
-      '@coinmasters/tokens': 3.8.11
-      '@coinmasters/types': 4.8.11
+      '@coinmasters/api': 3.8.13
+      '@coinmasters/tokens': 3.8.13
+      '@coinmasters/types': 4.8.13
       '@keepkey/keepkey-sdk': 0.2.61
       '@pioneer-platform/loggerdog': 8.3.1(@swc/core@1.7.26)(@types/node@18.19.55)
       '@pioneer-platform/pioneer-caip': 9.2.37
@@ -6781,11 +6781,11 @@ snapshots:
 
   '@coinmasters/tokens@3.7.66': {}
 
-  '@coinmasters/tokens@3.8.11': {}
+  '@coinmasters/tokens@3.8.13': {}
 
   '@coinmasters/types@4.7.63': {}
 
-  '@coinmasters/types@4.8.11': {}
+  '@coinmasters/types@4.8.13': {}
 
   '@coinmasters/types@4.8.5': {}
 
@@ -7246,7 +7246,7 @@ snapshots:
   '@pioneer-platform/helpers@4.0.12(@swc/core@1.7.26)':
     dependencies:
       '@coinmasters/tokens': 3.7.66
-      '@coinmasters/types': 4.8.11
+      '@coinmasters/types': 4.8.13
       '@noble/hashes': 1.5.0
       '@pioneer-platform/loggerdog': 8.3.1(@swc/core@1.7.26)(@types/node@18.19.55)
       '@types/node': 18.19.55
@@ -7308,8 +7308,8 @@ snapshots:
 
   '@pioneer-platform/pioneer-discovery@0.0.15(@swc/core@1.7.26)(@types/node@18.19.55)':
     dependencies:
-      '@coinmasters/tokens': 3.8.11
-      '@coinmasters/types': 4.8.11
+      '@coinmasters/tokens': 3.8.13
+      '@coinmasters/types': 4.8.13
       '@pioneer-platform/loggerdog': 8.3.1(@swc/core@1.7.26)(@types/node@18.19.55)
       '@pioneer-platform/pioneer-caip': 9.2.37
     transitivePeerDependencies:

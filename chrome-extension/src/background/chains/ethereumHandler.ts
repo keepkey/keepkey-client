@@ -308,8 +308,9 @@ const handleWalletAddEthereumChain = async (params, KEEPKEY_WALLET) => {
 
   chrome.runtime.sendMessage({ type: 'PROVIDER_CHANGED', provider: currentProvider });
   chrome.runtime.sendMessage({ type: 'ASSET_CONTEXT_UPDATED', assetContext: KEEPKEY_WALLET.assetContext });
-
-  return true;
+  chrome.runtime.sendMessage({ type: 'CHAIN_CHANGED', provider: currentProvider });
+  console.log('Pushing CHAIN_CHANGED event');
+  return null;
 };
 
 const handleWalletGetSnaps = async () => {
@@ -368,7 +369,7 @@ const handleSigningMethods = async (method, params, requestInfo, ADDRESS, KEEPKE
     chain: 'ethereum', //TODO I dont like this
     requestInfo,
     unsignedTx,
-    type: 'transfer',
+    type: method,
     request: params,
     status: 'request',
     timestamp: new Date().toISOString(),
@@ -484,6 +485,10 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
     const txid = await KEEPKEY_WALLET.broadcastTx(caipToNetworkId(caip), signedTx);
     console.log(tag, 'txid:', txid);
     if (txid.error) {
+      chrome.runtime.sendMessage({
+        action: 'transaction_error',
+        error: txid.error,
+      });
       //Failed to Broadcast!
       throw createProviderRpcError(4200, txid.error);
     } else {
