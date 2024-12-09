@@ -91,6 +91,7 @@ export const handleBitcoinRequest = async (
         to: params[0].recipient,
         amount: params[0].amount.amount,
         feeLevel: 5, //@TODO Options
+        isMax: params[0].isMax,
       };
       console.log(tag, 'Send Payload: ', sendPayload);
 
@@ -114,6 +115,10 @@ export const handleBitcoinRequest = async (
           });
         } catch (e) {
           console.error(e);
+          chrome.runtime.sendMessage({
+            action: 'transaction_error',
+            error: JSON.stringify(e),
+          });
         }
       };
       buildTx();
@@ -159,9 +164,19 @@ export const handleBitcoinRequest = async (
         response.signedTx = signedTx;
         await requestStorage.updateEventById(requestInfo.id, response);
 
-        const txHash = await wallet.broadcastTx(signedTx);
-
-        response.txid = txHash;
+        try{
+          let txHash = await KEEPKEY_WALLET.broadcastTx(signedTx);
+          console.log(tag, 'txHash: ', txHash);
+          if (txHash.txHash) txHash = txHash.txHash;
+          if (txHash.txid) txHash = txHash.txid;
+          response.txid = txHash;
+        }catch(e){
+          console.error(tag,e)
+          chrome.runtime.sendMessage({
+            action: 'transaction_error',
+            error: JSON.stringify(e),
+          });
+        }
         await requestStorage.updateEventById(requestInfo.id, response);
 
         //push event

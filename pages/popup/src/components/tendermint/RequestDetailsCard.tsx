@@ -109,7 +109,7 @@ export default function RequestDetailsCard({ transaction }: any) {
                 <Td>
                   {message.amount?.map((amt, index) => (
                     <span key={index}>
-                      {(amt.amount / 1000000).toLocaleString('en', {
+                      {(amt.amount / 100000000).toLocaleString('en', {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 6,
                       })}{' '}

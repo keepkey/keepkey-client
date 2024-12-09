@@ -118,9 +118,9 @@ export function UtxoTransaction({ transaction: initialTransaction, handleRespons
             <Spinner size="xl" />
             {JSON.stringify(transaction.unsignedTx)}
             <p>Transaction ID: {transaction.id}</p>
-            <Button mt={4} onClick={() => fetchTransactionData(transaction.id)}>
-              Update
-            </Button>
+            {/*<Button mt={4} onClick={() => fetchTransactionData(transaction.id)}>*/}
+            {/*  Update*/}
+            {/*</Button>*/}
             <Button mt={4} onClick={handleReload}>
               View in Sidebar
             </Button>

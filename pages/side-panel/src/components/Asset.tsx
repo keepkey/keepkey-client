@@ -122,7 +122,7 @@ export function Asset() {
   };
 
   const fetchBalancesAndPubkeys = (assetLoaded: any) => {
-    if (assetLoaded.caip.includes('eip155')) {
+    if (assetLoaded?.caip?.includes('eip155')) {
       fetchEthereumBalance(assetLoaded);
     } else {
       fetchAppBalances(assetLoaded);
@@ -219,7 +219,7 @@ export function Asset() {
     if (asset?.networkId?.startsWith('eip155')) {
       return pubkey.networks.some((networkId: any) => networkId.startsWith('eip155'));
     }
-    return pubkey.networks.includes(asset.networkId);
+    return pubkey?.networks?.includes(asset.networkId);
   });
 
   const handleReplaceTxClick = () => {
@@ -243,7 +243,7 @@ export function Asset() {
 
     let chain: string | undefined;
     if (assetContext?.networkId) {
-      chain = assetContext.networkId.includes('eip155')
+      chain = assetContext?.networkId?.includes('eip155')
         ? 'ethereum'
         : NetworkIdToChain[assetContext.networkId]?.toLowerCase();
 

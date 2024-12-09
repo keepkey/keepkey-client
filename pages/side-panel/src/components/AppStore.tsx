@@ -14,7 +14,7 @@ interface AppStoreProps {
   networkId: string;
 }
 
-async function getLookedUpDapps(networkId: string): Promise<Dapp[]> {
+async function getLookedUpDapps(networkId: string): Promise<unknown> {
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage({ type: 'GET_DAPPS_BY_NETWORKID', networkId }, response => {
       if (chrome.runtime.lastError) {
@@ -22,15 +22,17 @@ async function getLookedUpDapps(networkId: string): Promise<Dapp[]> {
         reject(chrome.runtime.lastError);
         return;
       }
-      if (response) {
+      if (response && Array.isArray(response)) {
+        console.log('response:', response);
         const formattedDapps = response.map((dapp: any) => ({
           name: dapp.name,
           icon: dapp.image,
           url: dapp.app,
         }));
-        resolve(formattedDapps || []);
+        resolve(formattedDapps);
       } else {
-        reject(new Error('No dapps found'));
+        console.warn('Unexpected response format:', response);
+        resolve([]); // Gracefully resolve with an empty array
       }
     });
   });

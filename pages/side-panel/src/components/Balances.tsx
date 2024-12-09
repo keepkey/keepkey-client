@@ -246,7 +246,7 @@ const Balances = ({ setShowBack }: any) => {
                               <br />
                               {/*<Badge colorScheme="green">USD {formatUsd(balance?.valueUsd || '0.00')}</Badge>*/}
                               <Badge colorScheme="green">USD {formatUsd(totalUsdValue.toString())}</Badge>
-                              {tokenCount > 1 && <Text fontSize="sm">Tokens: {tokenCount}</Text>}
+                              {/*{tokenCount > 1 && <Text fontSize="sm">Tokens: {tokenCount}</Text>}*/}
                               {/*{tokenCount > 1 && <Text fontSize="sm" color="gray.500">Tokens: {tokenCount}</Text>}*/}
                             </Text>
                           </>

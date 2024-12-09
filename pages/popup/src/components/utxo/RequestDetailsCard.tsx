@@ -69,24 +69,24 @@ export default function RequestDetailsCard({ transaction }: any) {
             Inputs {inputs.length}
           </Text>
           <VStack spacing={2} align="stretch" divider={<StackDivider borderColor="gray.200" />}>
-            {/*{inputs.map((input: any, index: number) => (*/}
-            {/*  <Box key={index}>*/}
-            {/*    <VStack align="stretch" spacing={1}>*/}
-            {/*      <HStack justify="space-between">*/}
-            {/*        <Badge colorScheme="teal">TXID</Badge>*/}
-            {/*        <Text fontSize="xs" color="gray.600" wordBreak="break-all">*/}
-            {/*          {input.txid}*/}
-            {/*        </Text>*/}
-            {/*      </HStack>*/}
-            {/*      <HStack justify="space-between">*/}
-            {/*        <Badge colorScheme="green">Amount</Badge>*/}
-            {/*        <Text fontSize="sm" fontWeight="medium">*/}
-            {/*          {Number(input.amount)}*/}
-            {/*        </Text>*/}
-            {/*      </HStack>*/}
-            {/*    </VStack>*/}
-            {/*  </Box>*/}
-            {/*))}*/}
+            {inputs.map((input: any, index: number) => (
+              <Box key={index}>
+                <VStack align="stretch" spacing={1}>
+                  <HStack justify="space-between">
+                    <Badge colorScheme="teal">TXID</Badge>
+                    <Text fontSize="xs" wordBreak="break-all">
+                      {input.txid}
+                    </Text>
+                  </HStack>
+                {/*  <HStack justify="space-between">*/}
+                {/*    <Badge colorScheme="green">Amount</Badge>*/}
+                {/*    <Text fontSize="sm" fontWeight="medium">*/}
+                {/*      {Number(input.amount)}*/}
+                {/*    </Text>*/}
+                {/*  </HStack>*/}
+                </VStack>
+              </Box>
+            ))}
           </VStack>
         </VStack>
       )}
@@ -105,14 +105,14 @@ export default function RequestDetailsCard({ transaction }: any) {
                     <Badge colorScheme={output.isChange ? 'purple' : 'orange'}>
                       {output.isChange ? 'Change to' : 'To'}
                     </Badge>
-                    <Text fontSize="xs" color="gray.600" wordBreak="break-all">
+                    <Text fontSize="xs" wordBreak="break-all">
                       {output.address || 'N/A'}
                     </Text>
                   </HStack>
                   <HStack justify="space-between">
                     <Badge colorScheme="green">Amount</Badge>
                     <Text fontSize="sm" fontWeight="medium">
-                      {Number(output.amount)}
+                      {output.amount / 100000000}
                     </Text>
                   </HStack>
                 </VStack>
@@ -131,7 +131,7 @@ export default function RequestDetailsCard({ transaction }: any) {
             Total Input
           </Text>
           <Text fontSize="sm" fontWeight="medium">
-            {totalInput}
+            {totalInput / 100000000}
           </Text>
         </HStack>
         <HStack justify="space-between">
@@ -139,7 +139,7 @@ export default function RequestDetailsCard({ transaction }: any) {
             Total Output
           </Text>
           <Text fontSize="sm" fontWeight="medium">
-            {totalOutput}
+            {totalOutput / 100000000}
           </Text>
         </HStack>
         <HStack justify="space-between">
@@ -147,7 +147,7 @@ export default function RequestDetailsCard({ transaction }: any) {
             Fee (Difference)
           </Text>
           <Text fontSize="sm" fontWeight="medium">
-            {fee}
+            {fee / 100000000}
           </Text>
         </HStack>
       </VStack>

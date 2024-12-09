@@ -104,6 +104,13 @@ export function Receive({ onClose }: { onClose: () => void }) {
     );
   }
 
+  const formatWithEllipsis = (text: string, maxLength: number = 10) => {
+    if (text.length <= maxLength) return text;
+    const start = text.slice(0, maxLength / 2);
+    const end = text.slice(-maxLength / 2);
+    return `${start}...${end}`;
+  };
+
   return (
     <VStack spacing={6} align="center">
       {/* Avatar and Title */}
@@ -113,14 +120,14 @@ export function Receive({ onClose }: { onClose: () => void }) {
       </Text>
 
       {/* Chain and Address Selector */}
-      <Table variant="simple">
+      <Table variant="simple" width="100%" style={{ tableLayout: 'fixed' }}>
         <Tbody>
           <Tr>
             <Td>
-              <Text fontWeight="bold">network</Text>
+              <Text fontWeight="bold">Network</Text>
             </Td>
             <Td>
-              <Badge>{assetContext?.networkId}</Badge>
+              <Badge>{formatWithEllipsis(assetContext?.networkId || '', 20)}</Badge>
             </Td>
           </Tr>
           <Tr>
@@ -128,11 +135,11 @@ export function Receive({ onClose }: { onClose: () => void }) {
               <Text fontWeight="bold">Address</Text>
             </Td>
             <Td>
-              <Select value={selectedAddress} onChange={handleAddressChange}>
+              <Select value={selectedAddress} onChange={handleAddressChange} whiteSpace="normal" wordBreak="break-word">
                 {pubkeys.map((pubkey, index) => (
-                  <option key={index} value={pubkey.address || pubkey.master}>
-                    {pubkey.address || pubkey.master}
-                  </option>
+                    <option key={index} value={pubkey.address || pubkey.master}>
+                      {pubkey.address || pubkey.master}
+                    </option>
                 ))}
               </Select>
             </Td>

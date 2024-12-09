@@ -80,6 +80,7 @@ export const handleLitecoinRequest = async (
         to: params[0].recipient,
         amount: params[0].amount.amount,
         feeLevel: 5, //@TODO Options
+        isMax: params[0].isMax,
       };
       console.log(tag, 'Send Payload: ', sendPayload);
 
@@ -96,6 +97,10 @@ export const handleLitecoinRequest = async (
           console.log(tag, 'storedEvent: ', storedEvent);
           console.log(tag, 'requestInfo.id: ', requestInfo.id);
           await requestStorage.updateEventById(requestInfo.id, storedEvent);
+          chrome.runtime.sendMessage({
+            action: 'utxo_build_tx',
+            unsignedTx: requestInfo,
+          });
         } catch (e) {
           console.error(e);
         }
@@ -143,10 +148,19 @@ export const handleLitecoinRequest = async (
         response.signedTx = signedTx;
         await requestStorage.updateEventById(requestInfo.id, response);
 
-        const txHash = await wallet.broadcastTx(signedTx);
-        console.log(tag, 'txHash: ', txHash);
-
-        response.txid = txHash;
+        try{
+          let txHash = await KEEPKEY_WALLET.broadcastTx(signedTx);
+          console.log(tag, 'txHash: ', txHash);
+          if (txHash.txHash) txHash = txHash.txHash;
+          if (txHash.txid) txHash = txHash.txid;
+          response.txid = txHash;
+        }catch(e){
+          console.error(tag,e)
+          chrome.runtime.sendMessage({
+            action: 'transaction_error',
+            error: JSON.stringify(e),
+          });
+        }
         await requestStorage.updateEventById(requestInfo.id, response);
 
         //push event

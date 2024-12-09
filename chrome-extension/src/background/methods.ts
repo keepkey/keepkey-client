@@ -272,6 +272,15 @@ export const handleWalletRequest = async (
     }
   } catch (error) {
     console.error(tag, `Error processing method ${method}:`, error);
+    let errorMessage = JSON.stringify(error)
+    if(errorMessage.indexOf('unrecognized address') >= 0){
+        errorMessage = 'KeepKey State Invalid, please restart device!'
+    }
+    //push error to the popup
+    chrome.runtime.sendMessage({
+      action: 'transaction_error',
+      error: errorMessage,
+    });
     if ((error as ProviderRpcError).code && (error as ProviderRpcError).message) {
       throw error;
     } else {
