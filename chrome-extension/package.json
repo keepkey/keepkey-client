@@ -16,7 +16,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@coinmasters/pioneer-sdk": "^4.8.24",
+    "@coinmasters/pioneer-sdk": "^4.8.26",
     "@coinmasters/types": "^4.8.5",
     "@extension/shared": "workspace:*",
     "@extension/storage": "workspace:*",
