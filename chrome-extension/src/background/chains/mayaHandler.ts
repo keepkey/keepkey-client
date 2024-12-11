@@ -119,7 +119,10 @@ export const handleMayaRequest = async (
       const result = await requireApproval(networkId, requestInfo, 'mayachain', method, params[0]);
       console.log(tag, 'result:', result);
 
-      if (approvalResponse.success && requestInfo.unsignedTx) {
+      requestInfo = await requestStorage.getEventById(requestInfo.id);
+      console.log(tag, 'requestInfo: ', requestInfo);
+
+      if (result.success && requestInfo.unsignedTx) {
         //send tx
         // Sign the transaction
         const signedTx = await KEEPKEY_WALLET.signTx({

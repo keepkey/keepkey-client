@@ -159,7 +159,7 @@ export const handleBitcoinCashRequest = async (
         response.signedTx = signedTx;
         await requestStorage.updateEventById(requestInfo.id, response);
 
-        const txHash = await KEEPKEY_WALLET.broadcastTx(signedTx);
+        const txHash = await KEEPKEY_WALLET.broadcastTx(caip, signedTx);
 
         response.txid = txHash;
         await requestStorage.updateEventById(requestInfo.id, response);

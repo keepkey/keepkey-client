@@ -120,8 +120,12 @@ export const handleRippleRequest = async (
         const signedTx = await KEEPKEY_WALLET.signTx({ caip, unsignedTx: requestInfo.unsignedTx });
         console.log(tag, 'signedTx: ', signedTx);
 
+        // Update storage with signed transaction
+        requestInfo.signedTx = signedTx;
+        await requestStorage.updateEventById(requestInfo.id, requestInfo);
+
         //broadcast
-        const broadcast = await KEEPKEY_WALLET.broadcastTx(caipToNetworkId(caip), signedTx);
+        const broadcast = await KEEPKEY_WALLET.broadcastTx(caip, signedTx);
         console.log(tag, 'broadcast: ', broadcast);
 
         const response = await requestStorage.getEventById(requestInfo.id);

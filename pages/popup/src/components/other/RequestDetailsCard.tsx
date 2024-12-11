@@ -47,19 +47,19 @@ export default function RequestDetailsCard({ transaction }: any) {
                 <Td>
                   <Badge>To:</Badge>
                 </Td>
-                <Td>{transaction?.request?.recipient || 'N/A'}</Td>
+                <Td>{transaction?.unsignedTx?.payment?.destination || 'N/A'}</Td>
               </Tr>
               <Tr>
                 <Td>
                   <Badge>Amount:</Badge>
                 </Td>
-                <Td>{transaction?.request?.amount.amount || 'N/A'}</Td>
+                <Td>{transaction?.unsignedTx?.payment?.amount / 1000000 || 'N/A'}</Td>
               </Tr>
               <Tr>
                 <Td>
-                  <Badge>Memo:</Badge>
+                  <Badge>destinationTag:</Badge>
                 </Td>
-                <Td>{transaction?.request?.memo || 'none'}</Td>
+                <Td>{transaction?.unsignedTx?.payment?.destinationTag || 'none'}</Td>
               </Tr>
             </Tbody>
           </Table>

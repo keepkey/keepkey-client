@@ -121,7 +121,7 @@ export const handleThorchainRequest = async (
         console.log(tag, 'signedTx: ', signedTx);
 
         //broadcast
-        const broadcast = await KEEPKEY_WALLET.broadcastTx(caipToNetworkId(caip), signedTx);
+        const broadcast = await KEEPKEY_WALLET.broadcastTx(caip, signedTx);
         console.log(tag, 'broadcast: ', broadcast);
 
         const response = await requestStorage.getEventById(requestInfo.id);

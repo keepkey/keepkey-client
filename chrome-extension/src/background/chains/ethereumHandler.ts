@@ -482,7 +482,7 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
     await requestStorage.updateEventById(requestInfo.id, requestInfo);
 
     // Broadcast the transaction
-    const txid = await KEEPKEY_WALLET.broadcastTx(caipToNetworkId(caip), signedTx);
+    const txid = await KEEPKEY_WALLET.broadcastTx(caip, signedTx);
     console.log(tag, 'txid:', txid);
     if (txid.error) {
       chrome.runtime.sendMessage({

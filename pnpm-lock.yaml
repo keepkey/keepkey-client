@@ -103,8 +103,8 @@ importers:
   chrome-extension:
     dependencies:
       '@coinmasters/pioneer-sdk':
-        specifier: ^4.8.20
-        version: 4.8.20(@swc/core@1.7.26)(@types/node@18.19.55)
+        specifier: ^4.8.24
+        version: 4.8.24(@swc/core@1.7.26)(@types/node@18.19.55)
       '@coinmasters/types':
         specifier: ^4.8.5
         version: 4.8.5
@@ -1103,8 +1103,8 @@ packages:
   '@coinmasters/api@3.8.14':
     resolution: {integrity: sha512-c/Py0W9K5Sn8Bjz+83y/PwJ+f73/FQSBqiqmngkuwsezVsb9eRzFmvzfxRRc1UlSoXgl+XYIUJxDpWUzykOoow==}
 
-  '@coinmasters/pioneer-sdk@4.8.20':
-    resolution: {integrity: sha512-6kcxIktgh7YVBwyMRT9SnIpO7C/DxpWqVW897Rni0dQnnx2ZehQb3pzGLsDq5nPSsJMibpi+IdUTC4TKoqfvVg==}
+  '@coinmasters/pioneer-sdk@4.8.24':
+    resolution: {integrity: sha512-A28WfOjxSpztasiCbibOTe1BeOnMCMn8wZUwY5rvVL7sTQ+Hi9xAILaPUMC/GDDPMnkFcXF6h1uVtEWc8Su90Q==}
 
   '@coinmasters/tokens@3.7.66':
     resolution: {integrity: sha512-nJRA0c7NZ5qPQinYQUvPv/SUioe+SjyaDbN0nTEhO85ntixjMXL0zQAHTK68JOkb1a26hLco0Io16DZvmfb8GQ==}
@@ -1601,8 +1601,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
 
-  '@keepkey/keepkey-sdk@0.2.61':
-    resolution: {integrity: sha512-KsbBo6P2hBtlLBI7W6MF/YdwlVD6iaB8zlh9L5vmR4+iysAe7eVVrrJAiMKFJlFYYn/quGQDDOKaFtMA+fVweA==}
+  '@keepkey/keepkey-sdk@0.2.62':
+    resolution: {integrity: sha512-RQYR4hljLytvIK7Q0lV5x+gd/gtAtYtO5a7af5dKUf4pTX5zrRNOrCZIDNQT/f+ZExhRIZ7mO8SoO00AoYMcUQ==}
 
   '@laynezh/vite-plugin-lib-assets@0.5.24':
     resolution: {integrity: sha512-z1M8reWte/xP7xw+aFN0Euh9OinCjCzJ8HhLkvpz+6h6MSTyyA54xrxGmECx5QNd3bCwQlkGd7WAgkozjublCg==}
@@ -6761,12 +6761,12 @@ snapshots:
       '@coinmasters/types': 4.8.14
       ky: 1.1.3
 
-  '@coinmasters/pioneer-sdk@4.8.20(@swc/core@1.7.26)(@types/node@18.19.55)':
+  '@coinmasters/pioneer-sdk@4.8.24(@swc/core@1.7.26)(@types/node@18.19.55)':
     dependencies:
       '@coinmasters/api': 3.8.14
       '@coinmasters/tokens': 3.8.14
       '@coinmasters/types': 4.8.14
-      '@keepkey/keepkey-sdk': 0.2.61
+      '@keepkey/keepkey-sdk': 0.2.62
       '@pioneer-platform/loggerdog': 8.3.1(@swc/core@1.7.26)(@types/node@18.19.55)
       '@pioneer-platform/pioneer-caip': 9.2.37
       '@pioneer-platform/pioneer-client': 9.2.5
@@ -7213,7 +7213,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.0
 
-  '@keepkey/keepkey-sdk@0.2.61': {}
+  '@keepkey/keepkey-sdk@0.2.62': {}
 
   '@laynezh/vite-plugin-lib-assets@0.5.24(vite@5.4.8(@types/node@18.19.55)(terser@5.36.0))':
     dependencies:

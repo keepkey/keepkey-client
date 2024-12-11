@@ -164,28 +164,27 @@ export const handleBitcoinRequest = async (
         response.signedTx = signedTx;
         await requestStorage.updateEventById(requestInfo.id, response);
 
-        try{
-          let txHash = await KEEPKEY_WALLET.broadcastTx(signedTx);
+        try {
+          let txHash = await KEEPKEY_WALLET.broadcastTx(caip, signedTx);
           console.log(tag, 'txHash: ', txHash);
           if (txHash.txHash) txHash = txHash.txHash;
           if (txHash.txid) txHash = txHash.txid;
           response.txid = txHash;
-        }catch(e){
-          console.error(tag,e)
+          await requestStorage.updateEventById(requestInfo.id, response);
+
+          //push event
+          chrome.runtime.sendMessage({
+            action: 'transaction_complete',
+            txHash: txHash,
+          });
+          return txHash;
+        } catch (e) {
+          console.error(tag, e);
           chrome.runtime.sendMessage({
             action: 'transaction_error',
             error: JSON.stringify(e),
           });
         }
-        await requestStorage.updateEventById(requestInfo.id, response);
-
-        //push event
-        chrome.runtime.sendMessage({
-          action: 'transaction_complete',
-          txHash: txHash,
-        });
-
-        return txHash;
       } else {
         throw createProviderRpcError(4200, 'User denied transaction');
       }
