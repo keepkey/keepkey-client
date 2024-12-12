@@ -91,7 +91,7 @@ export const handleBitcoinCashRequest = async (
       console.log(tag, 'Send Payload: ', sendPayload);
 
       const buildTx = async function () {
-        let tag = TAG + ' | buildTx | ';
+        const tag = TAG + ' | buildTx | ';
         try {
           //test as BEX (multi-set)
           const unsignedTx = await KEEPKEY_WALLET.buildTx(sendPayload);
