@@ -67,16 +67,27 @@ export interface WalletProvider {
   network: string;
   isKeepKey: boolean;
   isMetaMask: boolean;
-  isConnected: boolean;
+  isConnected: boolean | (() => boolean);
   chainId?: string;
   networkVersion?: string;
+  selectedAddress?: string | null;
   request: (args: { method: string; params?: any[] }) => Promise<any>;
   send: (payload: any, param1?: any, callback?: any) => any;
   sendAsync: (payload: any, param1?: any, callback?: any) => any;
-  on: (event: string, handler: Function) => void;
-  removeListener: (event: string, handler: Function) => void;
-  removeAllListeners: () => void;
-  emit?: (event: string, ...args: any[]) => void;
+  on: (event: string, handler: Function) => WalletProvider;
+  off?: (event: string, handler: Function) => WalletProvider;
+  once?: (event: string, handler: Function) => WalletProvider;
+  removeListener: (event: string, handler: Function) => WalletProvider;
+  removeAllListeners: (event?: string) => WalletProvider;
+  emit: (event: string, ...args: any[]) => WalletProvider;
+  enable?: () => Promise<any>;
+  _metamask?: {
+    isUnlocked: () => Promise<boolean>;
+  };
+  _handleAccountsChanged?: (accounts: string[]) => void;
+  _handleChainChanged?: (chainId: string) => void;
+  _handleConnect?: (info: { chainId: string }) => void;
+  _handleDisconnect?: (error: { code: number; message: string }) => void;
 }
 
 export interface KeepKeyWindow extends Window {

@@ -247,15 +247,63 @@ import type {
     }
   });
 
+  // Event emitter implementation for EIP-1193 compatibility
+  class EventEmitter {
+    private events: Map<string, Set<Function>> = new Map();
+
+    on(event: string, handler: Function) {
+      if (!this.events.has(event)) {
+        this.events.set(event, new Set());
+      }
+      this.events.get(event)!.add(handler);
+    }
+
+    off(event: string, handler: Function) {
+      this.events.get(event)?.delete(handler);
+    }
+
+    removeListener(event: string, handler: Function) {
+      this.off(event, handler);
+    }
+
+    removeAllListeners(event?: string) {
+      if (event) {
+        this.events.delete(event);
+      } else {
+        this.events.clear();
+      }
+    }
+
+    emit(event: string, ...args: any[]) {
+      this.events.get(event)?.forEach(handler => {
+        try {
+          handler(...args);
+        } catch (error) {
+          console.error(TAG, `Error in event handler for ${event}:`, error);
+        }
+      });
+    }
+
+    once(event: string, handler: Function) {
+      const onceHandler = (...args: any[]) => {
+        handler(...args);
+        this.off(event, onceHandler);
+      };
+      this.on(event, onceHandler);
+    }
+  }
+
   // Create wallet provider with proper typing
   function createWalletObject(chain: ChainType): WalletProvider {
     console.log(TAG, 'Creating wallet object for chain:', chain);
+
+    const eventEmitter = new EventEmitter();
 
     const wallet: WalletProvider = {
       network: 'mainnet',
       isKeepKey: true,
       isMetaMask: true,
-      isConnected: isContentScriptReady,
+      isConnected: () => isContentScriptReady,
 
       request: ({ method, params = [] }) => {
         return new Promise((resolve, reject) => {
@@ -311,16 +359,43 @@ import type {
       },
 
       on: (event: string, handler: Function) => {
-        window.addEventListener(event, handler as EventListener);
+        eventEmitter.on(event, handler);
+        return wallet; // Return this for chaining
+      },
+
+      off: (event: string, handler: Function) => {
+        eventEmitter.off(event, handler);
+        return wallet; // Return this for chaining
       },
 
       removeListener: (event: string, handler: Function) => {
-        window.removeEventListener(event, handler as EventListener);
+        eventEmitter.removeListener(event, handler);
+        return wallet; // Return this for chaining
       },
 
-      removeAllListeners: () => {
-        // This would require tracking all listeners
-        console.warn(TAG, 'removeAllListeners not fully implemented');
+      removeAllListeners: (event?: string) => {
+        eventEmitter.removeAllListeners(event);
+        return wallet; // Return this for chaining
+      },
+
+      emit: (event: string, ...args: any[]) => {
+        eventEmitter.emit(event, ...args);
+        return wallet; // Return this for chaining
+      },
+
+      once: (event: string, handler: Function) => {
+        eventEmitter.once(event, handler);
+        return wallet; // Return this for chaining
+      },
+
+      // Additional methods for compatibility
+      enable: () => {
+        // Legacy method for backward compatibility
+        return wallet.request({ method: 'eth_requestAccounts' });
+      },
+
+      _metamask: {
+        isUnlocked: () => Promise.resolve(true),
       },
     };
 
@@ -328,6 +403,27 @@ import type {
     if (chain === 'ethereum') {
       wallet.chainId = '0x1';
       wallet.networkVersion = '1';
+      wallet.selectedAddress = null; // Will be populated after connection
+
+      // Auto-connect handler
+      wallet._handleAccountsChanged = (accounts: string[]) => {
+        wallet.selectedAddress = accounts[0] || null;
+        eventEmitter.emit('accountsChanged', accounts);
+      };
+
+      wallet._handleChainChanged = (chainId: string) => {
+        wallet.chainId = chainId;
+        eventEmitter.emit('chainChanged', chainId);
+      };
+
+      wallet._handleConnect = (info: { chainId: string }) => {
+        eventEmitter.emit('connect', info);
+      };
+
+      wallet._handleDisconnect = (error: { code: number; message: string }) => {
+        wallet.selectedAddress = null;
+        eventEmitter.emit('disconnect', error);
+      };
     }
 
     return wallet;
@@ -429,9 +525,15 @@ import type {
 
     // Handle chain changes and other events
     window.addEventListener('message', (event: MessageEvent) => {
-      if (event.data?.type === 'CHAIN_CHANGED' && ethereum.emit) {
+      if (event.data?.type === 'CHAIN_CHANGED') {
         console.log(tag, 'Chain changed:', event.data);
         ethereum.emit('chainChanged', event.data.provider?.chainId);
+      }
+      if (event.data?.type === 'ACCOUNTS_CHANGED') {
+        console.log(tag, 'Accounts changed:', event.data);
+        if (ethereum._handleAccountsChanged) {
+          ethereum._handleAccountsChanged(event.data.accounts || []);
+        }
       }
     });
 
