@@ -433,9 +433,9 @@ import type {
   function announceProvider(ethereumProvider: WalletProvider) {
     const info: ProviderInfo = {
       uuid: '350670db-19fa-4704-a166-e52e178b59d4',
-      name: 'KeepKey Client',
-      icon: 'https://pioneers.dev/coins/keepkey.png',
-      rdns: 'com.keepkey',
+      name: 'KeepKey',
+      icon: 'data:image/png;base64,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',
+      rdns: 'com.keepkey.client',
     };
 
     const announceEvent = new CustomEvent('eip6963:announceProvider', {
@@ -451,15 +451,7 @@ import type {
     const tag = TAG + ' | mountWallet | ';
     console.log(tag, 'Starting wallet mount process');
 
-    // Wait for injection verification
-    const verified = await verifyInjection();
-    if (!verified) {
-      console.error(tag, 'Failed to verify injection, wallet features may not work');
-      // Continue anyway for compatibility, but flag the issue
-      injectionState.lastError = 'Injection not verified';
-    }
-
-    // Create wallet objects
+    // Create wallet objects immediately - don't wait for verification
     const ethereum = createWalletObject('ethereum');
     const xfi: Record<string, WalletProvider> = {
       binance: createWalletObject('binance'),
@@ -514,14 +506,21 @@ import type {
     mountProvider('xfi', xfi);
     mountProvider('keepkey', keepkey);
 
-    // Announce EIP-6963 provider
-    announceProvider(ethereum);
-
-    // Listen for re-announcement requests
+    // CRITICAL: Set up EIP-6963 listener BEFORE announcing
+    // This ensures we catch any immediate requests
     window.addEventListener('eip6963:requestProvider', () => {
       console.log(tag, 'Re-announcing provider on request');
       announceProvider(ethereum);
     });
+
+    // Announce EIP-6963 provider immediately
+    announceProvider(ethereum);
+
+    // Also announce with a slight delay to catch late-loading dApps
+    setTimeout(() => {
+      console.log(tag, 'Delayed EIP-6963 announcement for late-loading dApps');
+      announceProvider(ethereum);
+    }, 100);
 
     // Handle chain changes and other events
     window.addEventListener('message', (event: MessageEvent) => {
@@ -537,15 +536,34 @@ import type {
       }
     });
 
+    // Now verify injection for content script communication
+    // This is non-blocking for EIP-6963
+    verifyInjection().then(verified => {
+      if (!verified) {
+        console.error(tag, 'Failed to verify injection, wallet features may not work');
+        injectionState.lastError = 'Injection not verified';
+      } else {
+        console.log(tag, 'Injection verified successfully');
+      }
+    });
+
     console.log(tag, 'Wallet mount complete');
   }
 
-  // Initialize based on document state
+  // Initialize immediately for EIP-6963 compliance
+  // The spec requires announcement as early as possible
+  mountWallet();
+
+  // Also re-run when DOM is ready in case dApp loads later
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', mountWallet);
-  } else {
-    // Document already loaded, mount immediately
-    mountWallet();
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log(TAG, 'DOM loaded, re-announcing provider for late-loading dApps');
+      // Re-announce when DOM is ready
+      if (kWindow.ethereum && typeof kWindow.dispatchEvent === 'function') {
+        const ethereum = kWindow.ethereum as WalletProvider;
+        announceProvider(ethereum);
+      }
+    });
   }
 
   console.log(TAG, 'Injection script loaded and initialized');

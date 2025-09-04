@@ -326,6 +326,34 @@ const handleWalletPermissions = async () => {
   return permissions;
 };
 
+const handleWalletGetCapabilities = async (params: any[]) => {
+  // wallet_getCapabilities is used by dApps to determine what features the wallet supports
+  // Uniswap uses this to check for things like atomic batch transactions
+  const address = params[0]?.toLowerCase();
+
+  // Return capabilities for the specified address or all addresses
+  const capabilities: Record<string, any> = {};
+
+  // Add base capabilities that KeepKey supports
+  const baseCapabilities = {
+    atomicBatch: {
+      supported: false, // KeepKey doesn't support atomic batch transactions yet
+    },
+    paymasterService: {
+      supported: false, // No paymaster service support
+    },
+  };
+
+  if (address) {
+    capabilities[address] = baseCapabilities;
+  } else {
+    // Return for all addresses if none specified
+    capabilities['0x0000000000000000000000000000000000000000'] = baseCapabilities;
+  }
+
+  return capabilities;
+};
+
 const handleEthAccounts = async ADDRESS => {
   const accounts = [ADDRESS];
   return accounts;
@@ -586,6 +614,9 @@ export const handleEthereumRequest = async (
     case 'wallet_getPermissions':
     case 'wallet_requestPermissions':
       return await handleWalletPermissions();
+
+    case 'wallet_getCapabilities':
+      return await handleWalletGetCapabilities(params);
 
     case 'request_accounts':
     case 'eth_accounts':
