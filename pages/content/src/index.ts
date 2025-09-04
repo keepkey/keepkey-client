@@ -91,40 +91,95 @@ window.addEventListener('message', (event: MessageEvent) => {
       );
     }, 30000); // 30 second timeout
 
-    chrome.runtime.sendMessage({ type: 'WALLET_REQUEST', requestInfo: requestWithMetadata }, response => {
-      clearTimeout(timeout);
-
-      if (chrome.runtime.lastError) {
-        console.error(TAG, 'Background communication error:', chrome.runtime.lastError);
-        window.postMessage(
-          {
-            source: 'keepkey-content',
-            type: 'WALLET_RESPONSE',
-            requestId,
-            error: {
-              code: -32603,
-              message: `Internal error: ${chrome.runtime.lastError.message}`,
-            },
-          } as WalletMessage,
-          '*',
-        );
-        return;
-      }
-
-      console.log(TAG, 'Received response from background:', response);
-
-      // Send response back to injected script
+    // Check if extension context is still valid before sending message
+    if (!chrome.runtime?.id) {
+      console.error(TAG, 'Extension context invalidated, reloading page...');
       window.postMessage(
         {
           source: 'keepkey-content',
           type: 'WALLET_RESPONSE',
           requestId,
-          result: response?.result || null,
-          error: response?.error || null,
+          error: {
+            code: -32603,
+            message: 'Extension reloaded. Please refresh the page.',
+          },
         } as WalletMessage,
         '*',
       );
-    });
+      // Optionally reload the page
+      setTimeout(() => window.location.reload(), 1000);
+      return;
+    }
+
+    try {
+      chrome.runtime.sendMessage({ type: 'WALLET_REQUEST', requestInfo: requestWithMetadata }, response => {
+        clearTimeout(timeout);
+
+        if (chrome.runtime.lastError) {
+          console.error(TAG, 'Background communication error:', chrome.runtime.lastError);
+
+          // Check if it's a context invalidation error
+          if (chrome.runtime.lastError.message?.includes('context invalidated')) {
+            window.postMessage(
+              {
+                source: 'keepkey-content',
+                type: 'WALLET_RESPONSE',
+                requestId,
+                error: {
+                  code: -32603,
+                  message: 'Extension was reloaded. Please refresh the page.',
+                },
+              } as WalletMessage,
+              '*',
+            );
+            // Trigger page reload after a short delay
+            setTimeout(() => window.location.reload(), 1000);
+          } else {
+            window.postMessage(
+              {
+                source: 'keepkey-content',
+                type: 'WALLET_RESPONSE',
+                requestId,
+                error: {
+                  code: -32603,
+                  message: `Internal error: ${chrome.runtime.lastError.message}`,
+                },
+              } as WalletMessage,
+              '*',
+            );
+          }
+          return;
+        }
+
+        console.log(TAG, 'Received response from background:', response);
+
+        // Send response back to injected script
+        window.postMessage(
+          {
+            source: 'keepkey-content',
+            type: 'WALLET_RESPONSE',
+            requestId,
+            result: response?.result || null,
+            error: response?.error || null,
+          } as WalletMessage,
+          '*',
+        );
+      });
+    } catch (error) {
+      console.error(TAG, 'Failed to send message to background:', error);
+      window.postMessage(
+        {
+          source: 'keepkey-content',
+          type: 'WALLET_RESPONSE',
+          requestId,
+          error: {
+            code: -32603,
+            message: 'Failed to communicate with extension. Please refresh the page.',
+          },
+        } as WalletMessage,
+        '*',
+      );
+    }
   }
 });
 
