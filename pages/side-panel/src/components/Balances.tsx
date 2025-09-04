@@ -8,7 +8,6 @@ import { NetworkIdToChain } from '@coinmasters/types';
 const Balances = ({ setShowBack }: any) => {
   const [balances, setBalances] = useState<any[]>([]);
   const [assets, setAssets] = useState<any[]>([]);
-  const [assetContext, setAssetContext] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAssetSelect, setShowAssetSelect] = useState(false); // New state to toggle between Balances and AssetSelect
 
@@ -90,10 +89,16 @@ const Balances = ({ setShowBack }: any) => {
     return parseFloat(value).toFixed(2);
   };
 
+  // Remove asset context listener - dashboard should always show all assets
+  // No longer listening for asset context changes since we want to always display all assets
+
   // Fetch assets, balances, and asset context from background script
   useEffect(() => {
     const fetchAssetsAndBalances = async () => {
       setLoading(true);
+
+      // Dashboard always shows all assets
+      setShowBack(false);
 
       // Fetch assets
       chrome.runtime.sendMessage({ type: 'GET_ASSETS' }, async response => {
@@ -106,7 +111,34 @@ const Balances = ({ setShowBack }: any) => {
           console.log(response.assets);
 
           const addedAssets = await addAddedAssets();
-          const combined = response.assets.concat(addedAssets);
+
+          // Log for debugging
+          console.log('Default assets:', response.assets);
+          console.log('Added assets:', addedAssets);
+
+          // Create a Map to track unique assets by networkId
+          const assetMap = new Map();
+
+          // Add default assets first
+          response.assets.forEach((asset: any) => {
+            console.log('Adding default asset:', asset.name, 'networkId:', asset.networkId);
+            assetMap.set(asset.networkId, asset);
+          });
+
+          // Only add custom assets that don't already exist
+          addedAssets.forEach((asset: any) => {
+            console.log('Checking added asset:', asset.name, 'networkId:', asset.networkId);
+            if (!assetMap.has(asset.networkId)) {
+              console.log('Adding custom asset:', asset.name);
+              assetMap.set(asset.networkId, asset);
+            } else {
+              console.log('Skipping duplicate:', asset.name, 'networkId already exists');
+            }
+          });
+
+          // Convert Map back to array
+          const combined = Array.from(assetMap.values());
+          console.log('Combined assets count:', combined.length);
           setAssets(combined);
         } else {
           console.error('Error: No assets found in the response');
@@ -130,17 +162,7 @@ const Balances = ({ setShowBack }: any) => {
         setLoading(false);
       });
 
-      // Fetch asset context
-      chrome.runtime.sendMessage({ type: 'GET_ASSET_CONTEXT' }, response => {
-        if (chrome.runtime.lastError) {
-          console.error('Error fetching asset context:', chrome.runtime.lastError.message);
-          return;
-        }
-        if (response && response.assetContext) {
-          setAssetContext(response.assetContext);
-          setShowBack(true);
-        }
-      });
+      // Don't fetch asset context - dashboard should always show all assets
     };
 
     // Call the function to fetch data on component mount
@@ -172,15 +194,14 @@ const Balances = ({ setShowBack }: any) => {
     }
   };
 
-  const sortedAssets = [...assets]
-    .filter(asset => balances.find(balance => balance.caip === asset.caip) || asset.manual) // Include assets with balances or marked as manual (custom)
-    .sort((a: any, b: any) => {
-      const balanceA = balances.find(balance => balance.caip === a.caip);
-      const balanceB = balances.find(balance => balance.caip === b.caip);
-      const valueUsdA = balanceA ? parseFloat(balanceA.valueUsd) : 0;
-      const valueUsdB = balanceB ? parseFloat(balanceB.valueUsd) : 0;
-      return valueUsdB - valueUsdA; // Sort in descending order by value in USD
-    });
+  // Always show all assets - no filtering
+  const sortedAssets = [...assets].sort((a: any, b: any) => {
+    const balanceA = balances.find(balance => balance.caip === a.caip);
+    const balanceB = balances.find(balance => balance.caip === b.caip);
+    const valueUsdA = balanceA ? parseFloat(balanceA.valueUsd) : 0;
+    const valueUsdB = balanceB ? parseFloat(balanceB.valueUsd) : 0;
+    return valueUsdB - valueUsdA; // Sort in descending order by value in USD
+  });
 
   if (showAssetSelect) {
     // setShowBack(true)
@@ -196,8 +217,6 @@ const Balances = ({ setShowBack }: any) => {
             <Spinner size="xl" />
             Loading....
           </Flex>
-        ) : assetContext ? (
-          <Asset />
         ) : (
           <>
             {sortedAssets.length === 0 ? (
