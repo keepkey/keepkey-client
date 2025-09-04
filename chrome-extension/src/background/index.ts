@@ -82,6 +82,50 @@ const onStart = async function () {
     console.log(tag, 'APP.balances: ', APP.balances);
     console.log(tag, 'APP.pubkeys: ', APP.pubkeys);
 
+    // Fetch balances for all available networks
+    if (APP.balances && APP.balances.length === 0) {
+      console.log(tag, 'No initial balances, fetching all network balances...');
+      try {
+        // Get unique network IDs from pubkeys
+        const networkIds = new Set<string>();
+        APP.pubkeys.forEach((pubkey: any) => {
+          if (pubkey.networks && Array.isArray(pubkey.networks)) {
+            pubkey.networks.forEach((networkId: string) => networkIds.add(networkId));
+          }
+        });
+
+        console.log(tag, 'Found networks to fetch balances for:', Array.from(networkIds));
+
+        // Fetch balances for each network and accumulate them
+        const allBalances: any[] = [];
+        for (const networkId of networkIds) {
+          try {
+            await APP.getBalance(networkId);
+            // After each fetch, collect the balances
+            if (APP.balances && APP.balances.length > 0) {
+              APP.balances.forEach((balance: any) => {
+                // Only add if not already in allBalances
+                if (!allBalances.find((b: any) => b.caip === balance.caip)) {
+                  allBalances.push(balance);
+                }
+              });
+            }
+          } catch (e) {
+            console.error(tag, `Failed to fetch balance for ${networkId}:`, e);
+          }
+        }
+
+        // Set all accumulated balances
+        if (allBalances.length > 0) {
+          APP.balances = allBalances;
+        }
+
+        console.log(tag, 'Finished fetching all balances, total:', APP.balances?.length);
+      } catch (e) {
+        console.error(tag, 'Error fetching initial balances:', e);
+      }
+    }
+
     const pubkeysEth = APP.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.Ethereum]));
     if (pubkeysEth.length > 0) {
       console.log(tag, 'pubkeys:', pubkeysEth);
@@ -341,6 +385,11 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         case 'CLEAR_ASSET_CONTEXT': {
           if (APP) {
             APP.setAssetContext();
+            // Notify all tabs/panels that asset context has been cleared
+            chrome.runtime.sendMessage({ type: 'ASSET_CONTEXT_CLEARED' }).catch(() => {
+              // Ignore errors if no listeners
+            });
+            sendResponse({ success: true });
           } else {
             sendResponse({ error: 'APP not initialized' });
           }
@@ -352,9 +401,48 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             const { asset } = message;
             if (asset && asset.caip) {
               try {
+                // Store existing balances before fetching new ones
+                const existingBalances = APP.balances ? [...APP.balances] : [];
+                console.log(tag, 'Existing balances count before update:', existingBalances.length);
+
                 //refresh balances for network
                 const networkId = asset.networkId;
                 await APP.getBalance(networkId);
+
+                // Check if getBalance replaced all balances
+                console.log(tag, 'Balances count after getBalance:', APP.balances?.length);
+
+                // If we had more balances before and now have fewer, merge them
+                if (existingBalances.length > 0 && APP.balances) {
+                  // Create a map of new balances for the updated network
+                  const newBalancesMap = new Map();
+                  APP.balances.forEach((balance: any) => {
+                    if (balance.networkId === networkId) {
+                      newBalancesMap.set(balance.caip, balance);
+                    }
+                  });
+
+                  // Update existing balances with new data for this network only
+                  const mergedBalances = existingBalances.map((balance: any) => {
+                    // If this balance is for the network we just updated, use the new data
+                    if (balance.networkId === networkId && newBalancesMap.has(balance.caip)) {
+                      return newBalancesMap.get(balance.caip);
+                    }
+                    // Otherwise keep the existing balance
+                    return balance;
+                  });
+
+                  // Add any new balances for this network that didn't exist before
+                  newBalancesMap.forEach((newBalance: any, caip: string) => {
+                    if (!mergedBalances.find((b: any) => b.caip === caip)) {
+                      mergedBalances.push(newBalance);
+                    }
+                  });
+
+                  // Restore the full balances array
+                  APP.balances = mergedBalances;
+                  console.log(tag, 'Restored balances count:', APP.balances.length);
+                }
 
                 console.log(tag, 'Setting asset context:', asset);
                 const response = await APP.setAssetContext(asset);
@@ -556,6 +644,54 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         case 'GET_APP_BALANCES': {
           if (APP) {
             sendResponse({ balances: APP.balances });
+          } else {
+            sendResponse({ error: 'APP not initialized' });
+          }
+          break;
+        }
+
+        case 'REFRESH_ALL_BALANCES': {
+          if (APP) {
+            console.log(tag, 'Refreshing all balances...');
+            try {
+              // Get unique network IDs from pubkeys
+              const networkIds = new Set<string>();
+              APP.pubkeys.forEach((pubkey: any) => {
+                if (pubkey.networks && Array.isArray(pubkey.networks)) {
+                  pubkey.networks.forEach((networkId: string) => networkIds.add(networkId));
+                }
+              });
+
+              // Fetch and accumulate balances for all networks
+              const allBalances: any[] = [];
+              for (const networkId of networkIds) {
+                try {
+                  await APP.getBalance(networkId);
+                  // After each fetch, collect the balances
+                  if (APP.balances && APP.balances.length > 0) {
+                    APP.balances.forEach((balance: any) => {
+                      // Only add if not already in allBalances
+                      if (!allBalances.find((b: any) => b.caip === balance.caip)) {
+                        allBalances.push(balance);
+                      }
+                    });
+                  }
+                } catch (e) {
+                  console.error(tag, `Failed to fetch balance for ${networkId}:`, e);
+                }
+              }
+
+              // Update APP.balances with all accumulated balances
+              if (allBalances.length > 0) {
+                APP.balances = allBalances;
+              }
+
+              console.log(tag, 'All balances refreshed, total:', APP.balances?.length);
+              sendResponse({ balances: APP.balances });
+            } catch (error) {
+              console.error('Error refreshing all balances:', error);
+              sendResponse({ error: 'Failed to refresh all balances' });
+            }
           } else {
             sendResponse({ error: 'APP not initialized' });
           }
