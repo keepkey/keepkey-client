@@ -1,6 +1,13 @@
 import sucrase from '@rollup/plugin-sucrase';
+import replace from '@rollup/plugin-replace';
 
 const plugins = [
+  replace({
+    preventAssignment: true,
+    values: {
+      '__HMR_ID': JSON.stringify('hmr-extension')
+    }
+  }),
   sucrase({
     exclude: ['node_modules/**'],
     transforms: ['typescript'],
