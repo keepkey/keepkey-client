@@ -6,10 +6,24 @@ import { COIN_MAP_LONG } from '@pioneer-platform/pioneer-coins';
 import { NetworkIdToChain } from '@coinmasters/types';
 
 const Balances = ({ setShowBack }: any) => {
-  const [balances, setBalances] = useState<any[]>([]);
-  const [assets, setAssets] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Initialize state with cached data if available
+  const getCachedData = (key: string) => {
+    try {
+      const cached = sessionStorage.getItem(key);
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const cachedBalances = getCachedData('app_balances');
+  const cachedAssets = getCachedData('app_assets');
+
+  const [balances, setBalances] = useState<any[]>(cachedBalances || []);
+  const [assets, setAssets] = useState<any[]>(cachedAssets || []);
+  const [loading, setLoading] = useState(!cachedBalances || !cachedAssets); // Only show loading if no cached data
   const [showAssetSelect, setShowAssetSelect] = useState(false); // New state to toggle between Balances and AssetSelect
+  const [balancesLoaded, setBalancesLoaded] = useState(!!cachedBalances); // Already loaded if we have cached data
 
   // Function to add custom (added) assets
   const addAddedAssets = async () => {
@@ -92,10 +106,40 @@ const Balances = ({ setShowBack }: any) => {
   // Remove asset context listener - dashboard should always show all assets
   // No longer listening for asset context changes since we want to always display all assets
 
+  // Add message listener for when returning from asset view
+  useEffect(() => {
+    const messageListener = (message: any) => {
+      if (message.type === 'ASSET_CONTEXT_CLEARED') {
+        console.log('Asset context cleared, refreshing balances...');
+        // Fetch fresh balances when returning from asset view
+        chrome.runtime.sendMessage({ type: 'GET_APP_BALANCES' }, response => {
+          if (response && response.balances && response.balances.length > 0) {
+            console.log('Refreshed balances: ', response.balances.length);
+            setBalances(response.balances);
+            // Update session storage
+            try {
+              sessionStorage.setItem('app_balances', JSON.stringify(response.balances));
+            } catch (e) {
+              console.error('Failed to store refreshed balances:', e);
+            }
+          }
+        });
+      }
+    };
+
+    chrome.runtime.onMessage.addListener(messageListener);
+    return () => {
+      chrome.runtime.onMessage.removeListener(messageListener);
+    };
+  }, []);
+
   // Fetch assets, balances, and asset context from background script
   useEffect(() => {
     const fetchAssetsAndBalances = async () => {
-      setLoading(true);
+      // Only show loading if we haven't loaded balances yet
+      if (!balancesLoaded) {
+        setLoading(true);
+      }
 
       // Dashboard always shows all assets
       setShowBack(false);
@@ -140,8 +184,25 @@ const Balances = ({ setShowBack }: any) => {
           const combined = Array.from(assetMap.values());
           console.log('Combined assets count:', combined.length);
           setAssets(combined);
+          // Store assets in session storage
+          try {
+            sessionStorage.setItem('app_assets', JSON.stringify(combined));
+          } catch (e) {
+            console.error('Failed to store assets:', e);
+          }
         } else {
           console.error('Error: No assets found in the response');
+          // Try to restore cached assets
+          try {
+            const cachedAssets = sessionStorage.getItem('app_assets');
+            if (cachedAssets) {
+              const parsed = JSON.parse(cachedAssets);
+              console.log('Using cached assets:', parsed.length);
+              setAssets(parsed);
+            }
+          } catch (e) {
+            console.error('Failed to retrieve cached assets:', e);
+          }
         }
       });
 
@@ -152,11 +213,72 @@ const Balances = ({ setShowBack }: any) => {
           setLoading(false);
           return;
         }
-        if (response && response.balances) {
+        if (response && response.balances && response.balances.length > 0) {
           console.log('Balances: ', response.balances.length);
-          setBalances(response.balances);
-        } else {
-          console.error('Error: No balances found in the response');
+
+          // Check if we have fewer balances than assets (might indicate incomplete data)
+          if (assets.length > 0 && response.balances.length < assets.length / 2) {
+            console.log('Balances seem incomplete, refreshing all...');
+            // Try to refresh all balances
+            chrome.runtime.sendMessage({ type: 'REFRESH_ALL_BALANCES' }, refreshResponse => {
+              if (refreshResponse && refreshResponse.balances && refreshResponse.balances.length > 0) {
+                console.log('Refreshed all balances:', refreshResponse.balances.length);
+                setBalances(refreshResponse.balances);
+                setBalancesLoaded(true);
+                try {
+                  sessionStorage.setItem('app_balances', JSON.stringify(refreshResponse.balances));
+                } catch (e) {
+                  console.error('Failed to store refreshed balances:', e);
+                }
+              } else {
+                // Use the original response if refresh failed
+                setBalances(response.balances);
+                setBalancesLoaded(true);
+                try {
+                  sessionStorage.setItem('app_balances', JSON.stringify(response.balances));
+                } catch (e) {
+                  console.error('Failed to store balances:', e);
+                }
+              }
+            });
+          } else {
+            setBalances(response.balances);
+            setBalancesLoaded(true);
+            // Store balances in session storage as backup
+            try {
+              sessionStorage.setItem('app_balances', JSON.stringify(response.balances));
+            } catch (e) {
+              console.error('Failed to store balances in session storage:', e);
+            }
+          }
+        } else if (!balancesLoaded) {
+          // Only use cached balances if we haven't loaded fresh ones yet
+          console.log('No fresh balances, checking cache...');
+          try {
+            const cachedBalances = sessionStorage.getItem('app_balances');
+            if (cachedBalances) {
+              const parsed = JSON.parse(cachedBalances);
+              console.log('Using cached balances:', parsed.length);
+              setBalances(parsed);
+            } else {
+              console.error('No cached balances available');
+              // Try to refresh all balances
+              chrome.runtime.sendMessage({ type: 'REFRESH_ALL_BALANCES' }, refreshResponse => {
+                if (refreshResponse && refreshResponse.balances) {
+                  console.log('Fetched fresh balances:', refreshResponse.balances.length);
+                  setBalances(refreshResponse.balances);
+                  setBalancesLoaded(true);
+                  try {
+                    sessionStorage.setItem('app_balances', JSON.stringify(refreshResponse.balances));
+                  } catch (e) {
+                    console.error('Failed to store fresh balances:', e);
+                  }
+                }
+              });
+            }
+          } catch (e) {
+            console.error('Failed to retrieve cached balances:', e);
+          }
         }
 
         setLoading(false);
@@ -165,13 +287,23 @@ const Balances = ({ setShowBack }: any) => {
       // Don't fetch asset context - dashboard should always show all assets
     };
 
-    // Call the function to fetch data on component mount
+    // Call the function to fetch data on component mount and when returning to this view
     fetchAssetsAndBalances();
-  }, []);
+  }, [balancesLoaded, setShowBack]);
 
   const onSelect = (asset: any) => {
     console.log('Asset selected:', asset);
     try {
+      // Store current balances before switching views
+      if (balances && balances.length > 0) {
+        try {
+          sessionStorage.setItem('app_balances', JSON.stringify(balances));
+          sessionStorage.setItem('app_assets', JSON.stringify(assets));
+        } catch (e) {
+          console.error('Failed to store data before navigation:', e);
+        }
+      }
+
       chrome.runtime.sendMessage(
         {
           type: 'SET_ASSET_CONTEXT',
@@ -198,8 +330,8 @@ const Balances = ({ setShowBack }: any) => {
   const sortedAssets = [...assets].sort((a: any, b: any) => {
     const balanceA = balances.find(balance => balance.caip === a.caip);
     const balanceB = balances.find(balance => balance.caip === b.caip);
-    const valueUsdA = balanceA ? parseFloat(balanceA.valueUsd) : 0;
-    const valueUsdB = balanceB ? parseFloat(balanceB.valueUsd) : 0;
+    const valueUsdA = balanceA ? parseFloat(balanceA.valueUsd || '0') : 0;
+    const valueUsdB = balanceB ? parseFloat(balanceB.valueUsd || '0') : 0;
     return valueUsdB - valueUsdA; // Sort in descending order by value in USD
   });
 
