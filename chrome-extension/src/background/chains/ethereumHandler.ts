@@ -639,10 +639,21 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
 
   if (result.success && response.unsignedTx) {
     console.log(tag, 'FINAL: unsignedTx: ', response.unsignedTx);
-    const signedTx = await KEEPKEY_WALLET.signTx({
-      caip,
-      unsignedTx: response.unsignedTx,
-    });
+
+    // Convert chainId from number to hex string if needed
+    const txForSigning = {
+      ...response.unsignedTx,
+      chainId:
+        typeof response.unsignedTx.chainId === 'number'
+          ? '0x' + response.unsignedTx.chainId.toString(16)
+          : response.unsignedTx.chainId,
+    };
+
+    console.log(tag, 'txForSigning (chainId converted to hex):', txForSigning);
+
+    // CRITICAL: signTx expects TWO separate parameters (caip, unsignedTx)
+    // NOT an object { caip, unsignedTx }
+    const signedTx = await KEEPKEY_WALLET.signTx(caip, txForSigning);
     console.log(tag, 'signedTx:', signedTx);
 
     // Update storage with signed transaction
