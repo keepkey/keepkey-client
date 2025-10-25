@@ -698,6 +698,13 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           break;
         }
 
+        case 'INJECTION_SUCCESS': {
+          // Content script successfully injected - just log it
+          console.log(tag, 'Injection successful:', message.url);
+          sendResponse({ success: true });
+          break;
+        }
+
         default:
           console.error('Unknown message:', message);
           sendResponse({ error: 'Unknown message type: ' + message.type });
