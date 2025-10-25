@@ -89,20 +89,91 @@ const sanitizeChainId = (chainId: string): string => {
   return chainId.replace(/^0x0x/, '0x');
 };
 
-// Helper function to get the provider
+// Track failed RPCs to avoid retrying them immediately
+const failedRpcs = new Map<string, number>(); // URL -> timestamp of failure
+const RPC_RETRY_DELAY = 60000; // Don't retry failed RPC for 1 minute
+
+// Helper function to get the provider with RPC failover
 const getProvider = async (): Promise<JsonRpcProvider> => {
+  const tag = TAG + ' | getProvider | ';
   const currentProvider = await web3ProviderStorage.getWeb3Provider();
-  if (!currentProvider || !currentProvider.providerUrl) {
-    throw new Error('Provider not properly configured');
+  console.log(tag, 'currentProvider from storage:', currentProvider);
+
+  if (!currentProvider) {
+    throw createProviderRpcError(4900, 'Provider not properly configured');
   }
-  return new JsonRpcProvider(currentProvider.providerUrl);
+
+  // Get all available RPC URLs
+  const rpcUrls = currentProvider.providers || [currentProvider.providerUrl];
+  if (!rpcUrls || rpcUrls.length === 0) {
+    throw createProviderRpcError(4900, 'No RPC URLs available');
+  }
+
+  console.log(tag, 'Available RPCs:', rpcUrls.length);
+
+  // Filter out recently failed RPCs
+  const now = Date.now();
+  const availableRpcs = rpcUrls.filter(url => {
+    const failedAt = failedRpcs.get(url);
+    if (failedAt && now - failedAt < RPC_RETRY_DELAY) {
+      console.log(tag, 'Skipping recently failed RPC:', url);
+      return false;
+    }
+    return true;
+  });
+
+  if (availableRpcs.length === 0) {
+    console.warn(tag, 'All RPCs recently failed, retrying anyway...');
+    failedRpcs.clear(); // Reset failures and try again
+    availableRpcs.push(...rpcUrls);
+  }
+
+  // Try each RPC until one works
+  const errors = [];
+  for (const rpcUrl of availableRpcs) {
+    try {
+      const cleanUrl = rpcUrl.trim();
+      console.log(tag, `Trying RPC [${availableRpcs.indexOf(rpcUrl) + 1}/${availableRpcs.length}]:`, cleanUrl);
+
+      const provider = new JsonRpcProvider(cleanUrl);
+
+      // Test the connection with a quick call (with timeout)
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('RPC timeout')), 5000));
+      const blockNumber = await Promise.race([provider.getBlockNumber(), timeoutPromise]);
+
+      console.log(tag, '✅ RPC working! Block:', blockNumber, 'URL:', cleanUrl);
+
+      // Update the primary URL to the working one
+      if (currentProvider.providerUrl !== cleanUrl) {
+        currentProvider.providerUrl = cleanUrl;
+        await web3ProviderStorage.saveWeb3Provider(currentProvider);
+        console.log(tag, 'Updated primary RPC to:', cleanUrl);
+      }
+
+      return provider;
+    } catch (error) {
+      console.error(tag, '❌ RPC failed:', rpcUrl, error.message);
+      errors.push({ url: rpcUrl, error: error.message });
+      failedRpcs.set(rpcUrl, now);
+    }
+  }
+
+  // All RPCs failed
+  console.error(tag, 'All RPCs failed:', errors);
+  throw createProviderRpcError(
+    4900,
+    `All ${availableRpcs.length} RPC endpoints failed. Errors: ${errors.map(e => `${e.url}: ${e.error}`).join('; ')}`,
+  );
 };
 
 // Handler functions for each method
 
 const handleEthChainId = async () => {
   const currentProvider = await web3ProviderStorage.getWeb3Provider();
-  return currentProvider.chainId;
+  const chainIdDecimal = parseInt(currentProvider.chainId, 10);
+  const chainIdHex = '0x' + chainIdDecimal.toString(16);
+  console.log(TAG, 'eth_chainId returning:', chainIdHex, '(decimal:', currentProvider.chainId, ')');
+  return chainIdHex;
 };
 
 const handleNetVersion = async () => {
@@ -124,9 +195,20 @@ const handleEthBlockNumber = async () => {
 };
 
 const handleEthGetBalance = async params => {
-  const provider = await getProvider();
-  const balance = await provider.getBalance(params[0], params[1]);
-  return '0x' + balance.toString(16);
+  const tag = TAG + ' | handleEthGetBalance | ';
+  try {
+    console.log(tag, 'Getting balance for address:', params[0], 'block:', params[1]);
+    const provider = await getProvider();
+    console.log(tag, 'Provider created, calling getBalance...');
+
+    const balance = await provider.getBalance(params[0], params[1]);
+    console.log(tag, 'Balance retrieved:', balance.toString());
+
+    return '0x' + balance.toString(16);
+  } catch (error) {
+    console.error(tag, 'Error getting balance:', error);
+    throw error;
+  }
 };
 
 const handleEthGetTransactionReceipt = async params => {
@@ -202,114 +284,172 @@ const handleEthSendRawTransaction = async params => {
   return txResponse.hash;
 };
 
-const handleWalletAddEthereumChain = async (params, KEEPKEY_WALLET) => {
-  const tag = TAG + ' | handleWalletAddEthereumChain | ';
-  console.log(tag, 'Switching Chain params: ', params);
-  if (!params || !params[0] || !params[0].chainId) throw new Error('Invalid chainId (Required)');
+// Helper function to switch to a provider and update contexts
+const switchToProvider = async (currentProvider: any, KEEPKEY_WALLET: any, tag: string) => {
+  console.log(tag, 'Switching to provider (raw):', currentProvider);
+
+  if (!currentProvider.caip) {
+    throw createProviderRpcError(4900, 'Invalid provider configuration - missing caip');
+  }
+  if (!currentProvider.networkId) {
+    throw createProviderRpcError(4900, 'Invalid provider configuration - missing networkId');
+  }
+
+  // Clean provider URLs to handle malformed data from storage or dApps
+  const cleanedProvider = {
+    ...currentProvider,
+    providerUrl: currentProvider.providerUrl?.trim(),
+    explorer: currentProvider.explorer?.trim(),
+    explorerAddressLink: currentProvider.explorerAddressLink?.trim(),
+    explorerTxLink: currentProvider.explorerTxLink?.trim(),
+    providers: Array.isArray(currentProvider.providers)
+      ? currentProvider.providers.map((url: string) => url?.trim()).filter((url: string) => url && url.length > 0)
+      : [],
+  };
+
+  console.log(tag, 'Cleaned provider URL:', cleanedProvider.providerUrl);
+
+  // Save cleaned provider (this will fix stored data)
+  await web3ProviderStorage.saveWeb3Provider(cleanedProvider);
+  await assetContextStorage.updateContext(cleanedProvider);
+
+  // Set asset context
+  try {
+    console.log(tag, 'Setting asset context...');
+    const result = await KEEPKEY_WALLET.setAssetContext(cleanedProvider);
+    console.log(tag, 'setAssetContext result:', result);
+  } catch (error) {
+    console.error(tag, 'Failed to set asset context:', error);
+    throw createProviderRpcError(4900, `Failed to set asset context: ${error.message}`, error);
+  }
+
+  // Notify listeners with cleaned provider
+  chrome.runtime.sendMessage({ type: 'PROVIDER_CHANGED', provider: cleanedProvider });
+  chrome.runtime.sendMessage({ type: 'ASSET_CONTEXT_UPDATED', assetContext: KEEPKEY_WALLET.assetContext });
+  chrome.runtime.sendMessage({ type: 'CHAIN_CHANGED', provider: cleanedProvider });
+  console.log(tag, 'Chain switched successfully');
+};
+
+// Handle wallet_switchEthereumChain - switch to existing chain only
+const handleWalletSwitchEthereumChain = async (params, KEEPKEY_WALLET) => {
+  const tag = TAG + ' | handleWalletSwitchEthereumChain | ';
+  console.log(tag, 'Switch Chain params: ', params);
+
+  if (!params || !params[0] || !params[0].chainId) {
+    throw createProviderRpcError(4001, 'Invalid chainId parameter (Required)');
+  }
 
   const chainIdHex = params[0].chainId;
   const chainIdDecimal = parseInt(chainIdHex, 16);
   const chainId = chainIdDecimal.toString();
   const networkId = 'eip155:' + chainIdDecimal;
-  console.log(tag, 'Switching Chain networkId: ', networkId);
+  console.log(tag, 'networkId: ', networkId);
 
-  let currentProvider: any = await web3ProviderStorage.getWeb3Provider();
-
-  if (params[0].rpcUrls && params[0].rpcUrls[0]) {
-    const name = params[0].chainName;
-    console.log(tag, 'Switching Chain name: ', name);
-    currentProvider = {
-      explorer: params[0].blockExplorerUrls[0],
-      explorerAddressLink: params[0].blockExplorerUrls[0] + '/address/',
-      explorerTxLink: params[0].blockExplorerUrls[0] + '/tx/',
-      chainId,
+  // Check if chain exists in our defaults
+  if (EIP155_CHAINS[networkId]) {
+    console.log(tag, 'Chain found in defaults, switching...');
+    const currentProvider = {
+      chainId: chainId,
+      caip: EIP155_CHAINS[networkId].caip,
       networkId,
-      caip: `eip155:${chainIdDecimal}/slip44:60`,
-      name: params[0].chainName,
-      type: 'evm',
-      identifier: params[0].chainName,
-      nativeCurrency: params[0].nativeCurrency,
-      symbol: params[0].nativeCurrency.symbol,
-      precision: params[0].nativeCurrency.decimals,
-      providerUrl: params[0].rpcUrls[0],
-      providers: params[0].rpcUrls,
+      name: EIP155_CHAINS[networkId].name,
+      providerUrl: EIP155_CHAINS[networkId].rpc,
     };
-    blockchainStorage.addBlockchain(currentProvider.networkId);
-    blockchainDataStorage.addBlockchainData(currentProvider.networkId, currentProvider);
-    console.log(tag, 'currentProvider', currentProvider);
-  } else {
-    console.log(tag, 'Switching to network without loading provider!: networkId', networkId);
-
-    let chainFound = false;
-
-    if (EIP155_CHAINS[networkId]) {
-      console.log(tag, 'Chain found in defaults');
-      currentProvider = {
-        chainId: chainId,
-        caip: EIP155_CHAINS[networkId].caip,
-        networkId,
-        name: EIP155_CHAINS[networkId].name,
-        providerUrl: EIP155_CHAINS[networkId].rpc,
-      };
-      chainFound = true;
-    } else {
-      console.log(tag, 'Chain not found in defaults');
-      const nodeInfoResponse = await KEEPKEY_WALLET.pioneer.SearchNodesByNetworkId({ chainId });
-      const nodeInfo = nodeInfoResponse.data;
-      console.log(tag, 'nodeInfo', nodeInfo);
-      if (!nodeInfo[0] || !nodeInfo[0].service) throw new Error('Node not found! Unable to change networks!');
-
-      let allProviders = [];
-      for (let i = 0; i < nodeInfo.length; i++) {
-        allProviders = allProviders.concat(nodeInfo[i].network);
-      }
-
-      currentProvider = {
-        explorer: nodeInfo[0].infoURL,
-        explorerAddressLink: nodeInfo[0].infoURL + '/address/',
-        explorerTxLink: nodeInfo[0].infoURL + '/tx/',
-        chainId: chainId,
-        networkId,
-        symbol: nodeInfo[0].nativeCurrency.symbol,
-        name: nodeInfo[0].name,
-        icon: nodeInfo[0].image,
-        logo: nodeInfo[0].image,
-        image: nodeInfo[0].image,
-        type: nodeInfo[0].type.toLowerCase(),
-        caip: nodeInfo[0].caip,
-        rpc: nodeInfo[0].service,
-        providerUrl: nodeInfo[0].service,
-        providers: allProviders,
-      };
-      chainFound = true;
-      blockchainStorage.addBlockchain(currentProvider.networkId);
-      blockchainDataStorage.addBlockchainData(currentProvider.networkId, currentProvider);
-    }
-
-    if (!chainFound) {
-      throw new Error(`Chain with chainId ${chainId} not found.`);
-    }
+    await switchToProvider(currentProvider, KEEPKEY_WALLET, tag);
+    return null;
   }
 
-  assetContextStorage.updateContext(currentProvider);
-  if (currentProvider != null) {
-    await web3ProviderStorage.saveWeb3Provider(currentProvider);
-  } else {
-    throw Error('Failed to set provider! empty provider!');
+  // Check if chain exists in storage (previously added custom chain)
+  const storedChainData = await blockchainDataStorage.getBlockchainData(networkId);
+  if (storedChainData) {
+    console.log(tag, 'Chain found in storage, switching...');
+    await switchToProvider(storedChainData, KEEPKEY_WALLET, tag);
+    return null;
   }
 
-  console.log('Changing context to caip', currentProvider.caip);
-  console.log('Changing context to networkId', currentProvider.networkId);
-  if (!currentProvider.caip) throw Error('invalid provider! missing caip');
-  if (!currentProvider.networkId) throw Error('invalid provider! missing networkId');
-  const result = await KEEPKEY_WALLET.setAssetContext(currentProvider);
-  console.log('Result ', result);
-  console.log('KEEPKEY_WALLET.assetContext ', KEEPKEY_WALLET.assetContext);
+  // Chain not found - return 4902 per EIP-3326
+  console.log(tag, 'Chain not found, returning 4902 error');
+  throw createProviderRpcError(
+    4902,
+    `Unrecognized chain ID "${chainIdHex}". Try adding the chain using wallet_addEthereumChain first.`,
+  );
+};
 
-  chrome.runtime.sendMessage({ type: 'PROVIDER_CHANGED', provider: currentProvider });
-  chrome.runtime.sendMessage({ type: 'ASSET_CONTEXT_UPDATED', assetContext: KEEPKEY_WALLET.assetContext });
-  chrome.runtime.sendMessage({ type: 'CHAIN_CHANGED', provider: currentProvider });
-  console.log('Pushing CHAIN_CHANGED event');
+// Handle wallet_addEthereumChain - add new chain with user approval
+const handleWalletAddEthereumChain = async (params, KEEPKEY_WALLET) => {
+  const tag = TAG + ' | handleWalletAddEthereumChain | ';
+  console.log(tag, 'Add Chain params: ', params);
+  console.log(tag, 'KEEPKEY_WALLET exists:', !!KEEPKEY_WALLET);
+  console.log(tag, 'KEEPKEY_WALLET.pioneer exists:', !!KEEPKEY_WALLET?.pioneer);
+
+  if (!params || !params[0] || !params[0].chainId) {
+    throw createProviderRpcError(4001, 'Invalid chainId parameter (Required)');
+  }
+
+  const chainIdHex = params[0].chainId;
+  const chainIdDecimal = parseInt(chainIdHex, 16);
+  const chainId = chainIdDecimal.toString();
+  const networkId = 'eip155:' + chainIdDecimal;
+  console.log(tag, 'Adding Chain networkId: ', networkId);
+
+  // Check if dApp provided RPC URLs (full chain details)
+  if (!params[0].rpcUrls || !params[0].rpcUrls[0]) {
+    // No RPC URLs provided - cannot add chain without details
+    throw createProviderRpcError(
+      4001,
+      `Missing rpcUrls parameter. To add chain ${chainIdHex}, please provide rpcUrls, chainName, and nativeCurrency.`,
+    );
+  }
+
+  // Validate required parameters for adding chain
+  if (!params[0].chainName) {
+    throw createProviderRpcError(4001, 'Missing chainName parameter');
+  }
+  if (!params[0].nativeCurrency) {
+    throw createProviderRpcError(4001, 'Missing nativeCurrency parameter');
+  }
+
+  // Build provider config from dApp params
+  console.log(tag, 'Adding custom chain:', params[0].chainName);
+
+  // Clean and validate RPC URLs (trim whitespace)
+  const cleanRpcUrls = params[0].rpcUrls.map((url: string) => url.trim()).filter((url: string) => url.length > 0);
+  if (cleanRpcUrls.length === 0) {
+    throw createProviderRpcError(4001, 'Invalid rpcUrls - all URLs are empty after cleaning');
+  }
+
+  const cleanExplorer = params[0].blockExplorerUrls?.[0]?.trim() || '';
+
+  const newProvider = {
+    explorer: cleanExplorer,
+    explorerAddressLink: cleanExplorer ? `${cleanExplorer}/address/` : '',
+    explorerTxLink: cleanExplorer ? `${cleanExplorer}/tx/` : '',
+    chainId,
+    networkId,
+    caip: `eip155:${chainIdDecimal}/slip44:60`,
+    name: params[0].chainName.trim(),
+    type: 'evm',
+    identifier: params[0].chainName.trim(),
+    nativeCurrency: params[0].nativeCurrency,
+    symbol: params[0].nativeCurrency.symbol.trim(),
+    precision: params[0].nativeCurrency.decimals,
+    providerUrl: cleanRpcUrls[0],
+    providers: cleanRpcUrls,
+  };
+
+  console.log(tag, 'Cleaned provider config:', newProvider);
+
+  // TODO: Show user approval dialog here
+  // For now, auto-approve - but we should ask user permission
+  console.log(tag, 'Auto-approving chain addition (TODO: add user prompt)');
+
+  // Store the custom chain
+  await blockchainStorage.addBlockchain(newProvider.networkId);
+  await blockchainDataStorage.addBlockchainData(newProvider.networkId, newProvider);
+  console.log(tag, 'Custom chain stored:', newProvider);
+
+  // Switch to the newly added chain
+  await switchToProvider(newProvider, KEEPKEY_WALLET, tag);
   return null;
 };
 
@@ -601,8 +741,10 @@ export const handleEthereumRequest = async (
     case 'eth_sendRawTransaction':
       return await handleEthSendRawTransaction(params);
 
-    case 'wallet_addEthereumChain':
     case 'wallet_switchEthereumChain':
+      return await handleWalletSwitchEthereumChain(params, KEEPKEY_WALLET);
+
+    case 'wallet_addEthereumChain':
       return await handleWalletAddEthereumChain(params, KEEPKEY_WALLET);
 
     case 'wallet_getSnaps':

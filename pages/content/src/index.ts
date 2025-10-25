@@ -39,7 +39,7 @@ window.addEventListener('message', (event: MessageEvent) => {
     return;
   }
 
-  const data = event.data as WalletMessage;
+  const data = event.data;
 
   // Handle injection verification
   if (data?.source === 'keepkey-injected' && data.type === 'INJECTION_VERIFY') {
@@ -65,6 +65,8 @@ window.addEventListener('message', (event: MessageEvent) => {
     }
     return;
   }
+
+  // Type is now narrowed to WalletMessage by the guard
 
   if (data.type === 'WALLET_REQUEST' && data.requestInfo) {
     const { requestId, requestInfo } = data;
