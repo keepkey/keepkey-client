@@ -15,7 +15,11 @@ export default defineConfig({
       '@root': rootDir,
       '@src': srcDir,
       '@assets': resolve(srcDir, 'assets'),
+      buffer: 'buffer',
     },
+  },
+  define: {
+    global: 'globalThis',
   },
   plugins: [
     libAssetsPlugin({
@@ -26,6 +30,9 @@ export default defineConfig({
     isDev && watchRebuildPlugin({ reload: true }),
   ],
   publicDir: resolve(rootDir, 'public'),
+  optimizeDeps: {
+    include: ['swagger-client'],
+  },
   build: {
     lib: {
       formats: ['iife'],
@@ -39,6 +46,10 @@ export default defineConfig({
     minify: isProduction,
     reportCompressedSize: isProduction,
     watch: watchOption,
+    commonjsOptions: {
+      include: [/swagger-client/, /node_modules/],
+      transformMixedEsModules: true,
+    },
     rollupOptions: {
       external: ['chrome'],
     },

@@ -1,4 +1,8 @@
 import 'webextension-polyfill';
+// Buffer polyfill for browser environment
+import { Buffer } from 'buffer';
+globalThis.Buffer = Buffer;
+
 import packageJson from '../../package.json'; // Adjust the path as needed
 import { onStartKeepkey } from './keepkey';
 import { handleWalletRequest } from './methods';

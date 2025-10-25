@@ -17,14 +17,15 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@coinmasters/pioneer-sdk": "^4.13.22",
     "@coinmasters/types": "^4.8.5",
     "@extension/shared": "workspace:*",
     "@extension/storage": "workspace:*",
     "@pioneer-platform/helpers": "^4.0.12",
     "@pioneer-platform/pioneer-caip": "^9.2.32",
     "@pioneer-platform/pioneer-coins": "^9.2.23",
+    "@pioneer-platform/pioneer-sdk": "^4.21.5",
     "axios": "^1.7.7",
+    "buffer": "^6.0.3",
     "coinselect": "^3.1.13",
     "ethers": "^6.13.2",
     "uuid": "^10.0.0",
