@@ -51,6 +51,14 @@ export const AppStore: React.FC<AppStoreProps> = ({ networkId }) => {
   const [currentPage, setCurrentPage] = useState(1);
 
   const fetchDapps = async () => {
+    // Don't fetch if networkId is not provided
+    if (!networkId) {
+      console.log('[AppStore] No networkId provided, skipping dapp fetch');
+      setLoading(false);
+      setDapps([]);
+      return;
+    }
+
     setLoading(true);
 
     try {

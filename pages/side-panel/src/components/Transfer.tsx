@@ -50,6 +50,8 @@ export function Transfer(): JSX.Element {
   const [useUsdInput, setUseUsdInput] = useState(false);
   const [isMax, setIsMax] = useState(false);
   const [totalBalance, setTotalBalance] = useState(0);
+  const [isToken, setIsToken] = useState(false);
+  const [tokenStandard, setTokenStandard] = useState<string>('');
 
   const { isOpen, onOpen, onClose } = useDisclosure();
 
@@ -86,6 +88,26 @@ export function Transfer(): JSX.Element {
       setAssetContext(response.assets);
       if (response?.assets.icon) setAvatarUrl(response.assets.icon);
       if (response?.assets.priceUsd) setPriceUsd(response.assets.priceUsd);
+
+      // Detect if this is a token
+      const caip = response?.assets?.caip || '';
+      const isTokenAsset =
+        caip.includes('/erc20:') ||
+        caip.includes('/cw20:') ||
+        caip.includes('/bep20:') ||
+        response?.assets?.token === true;
+      setIsToken(isTokenAsset);
+
+      if (isTokenAsset) {
+        const standard = caip.includes('/erc20:')
+          ? 'ERC-20'
+          : caip.includes('/cw20:')
+            ? 'CW-20'
+            : caip.includes('/bep20:')
+              ? 'BEP-20'
+              : 'Token';
+        setTokenStandard(standard);
+      }
     });
   }, []);
 
@@ -163,6 +185,14 @@ export function Transfer(): JSX.Element {
         isMax,
       };
 
+      // Log token transaction info for debugging
+      if (isToken) {
+        console.log(TAG, 'Sending token transaction:');
+        console.log(TAG, '  Token CAIP:', assetContext?.caip);
+        console.log(TAG, '  Token Standard:', tokenStandard);
+        console.log(TAG, '  Amount:', inputAmount, assetContext?.symbol);
+      }
+
       let chain: string | undefined;
       if (assetContext?.networkId) {
         chain = assetContext.networkId.includes('eip155')
@@ -225,7 +255,7 @@ export function Transfer(): JSX.Element {
     <>
       <VStack align="start" borderRadius="md" p={4} spacing={4} bg={bgColor} margin="0 auto">
         <Heading as="h1" size="md" color={headingColor}>
-          Send Crypto
+          Send {isToken ? tokenStandard : 'Crypto'}
         </Heading>
 
         <Flex align="center" gap={4}>
@@ -233,6 +263,11 @@ export function Transfer(): JSX.Element {
           <Box>
             <Text>
               Asset: <Badge colorScheme="green">{assetContext?.name}</Badge>
+              {isToken && (
+                <Badge colorScheme="purple" ml={2}>
+                  {tokenStandard}
+                </Badge>
+              )}
             </Text>
             <Text>
               Chain: <Badge colorScheme="green">{assetContext?.networkId}</Badge>
@@ -285,14 +320,24 @@ export function Transfer(): JSX.Element {
       <Modal isOpen={isOpen} onClose={onClose}>
         <ModalOverlay />
         <ModalContent>
-          <ModalHeader>Confirm Transaction</ModalHeader>
+          <ModalHeader>Confirm {isToken ? `${tokenStandard} Token ` : ''}Transaction</ModalHeader>
           <ModalCloseButton />
           <ModalBody>
             <Text>Recipient: {recipient}</Text>
             <Text>
               Amount: {inputAmount} {assetContext?.symbol}
+              {isToken && (
+                <Badge colorScheme="purple" ml={2}>
+                  {tokenStandard}
+                </Badge>
+              )}
             </Text>
             {memo && <Text>Memo: {memo}</Text>}
+            {isToken && (
+              <Text fontSize="xs" color="gray.500" mt={2}>
+                This will send {assetContext?.symbol} tokens on {assetContext?.networkId}
+              </Text>
+            )}
           </ModalBody>
           <ModalFooter>
             <Button colorScheme="red" mr={3} onClick={onClose}>

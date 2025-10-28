@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { VStack, HStack, Box, Text, Image, Spinner, Button, Flex, Badge } from '@chakra-ui/react';
 import { FaCoins, FaSync, FaPlus } from 'react-icons/fa';
+import { customTokensStorageApi, type CustomToken } from '@extension/storage';
+import { CustomTokenDialog } from './CustomTokenDialog';
 
 interface TokensProps {
   asset: any;
@@ -78,10 +80,27 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
   const [tokens, setTokens] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isCustomTokenDialogOpen, setIsCustomTokenDialogOpen] = useState(false);
+  const [customTokens, setCustomTokens] = useState<CustomToken[]>([]);
 
   useEffect(() => {
     fetchTokens();
+    loadCustomTokens();
   }, [asset, networkId]);
+
+  // Load custom tokens from storage
+  const loadCustomTokens = async () => {
+    if (!networkId && !asset?.networkId) return;
+    if (!asset?.address) return;
+
+    const effectiveNetworkId = networkId || asset.networkId;
+    try {
+      const storedTokens = await customTokensStorageApi.getTokensForNetworkAndUser(effectiveNetworkId, asset.address);
+      setCustomTokens(storedTokens);
+    } catch (error) {
+      console.error('Error loading custom tokens:', error);
+    }
+  };
 
   const fetchTokens = async () => {
     setLoading(true);
@@ -129,29 +148,35 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
   };
 
   const handleTokenClick = (token: any) => {
-    console.log('Token clicked:', token);
+    console.log('🪙 Token clicked:', token);
+    console.log('   CAIP:', token.caip);
+    console.log('   Symbol:', token.symbol);
+    console.log('   Balance:', token.balance);
+
     // Send message to background to set asset context
+    // NOTE: Background expects `asset` not `assetContext.assets`
     chrome.runtime.sendMessage(
       {
         type: 'SET_ASSET_CONTEXT',
-        assetContext: {
-          assets: {
-            ...token,
-            caip: token.caip,
-            name: token.name || token.symbol,
-            symbol: token.symbol,
-            icon: token.icon,
-            networkId: token.networkId,
-            pubkeys: asset?.pubkeys || [],
-          },
+        asset: {
+          ...token,
+          caip: token.caip,
+          name: token.name || token.symbol,
+          symbol: token.symbol,
+          icon: token.icon,
+          networkId: token.networkId,
+          contractAddress: token.contractAddress,
+          decimals: token.decimals,
+          token: true, // Mark as token
+          pubkeys: asset?.pubkeys || [],
         },
       },
       response => {
-        if (response?.success) {
-          console.log('Asset context updated for token');
-        } else {
-          console.error('Failed to update asset context');
+        if (chrome.runtime.lastError) {
+          console.error('❌ Error setting asset context:', chrome.runtime.lastError);
+          return;
         }
+        console.log('✅ Asset context updated for token:', response);
       },
     );
   };
@@ -171,6 +196,77 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
   const isCosmosNetwork = (networkId || asset?.networkId)?.startsWith('cosmos:');
   const isUtxoNetwork = (networkId || asset?.networkId)?.startsWith('bip122:');
 
+  // Custom token handlers
+  const handleAddCustomToken = async (token: Omit<CustomToken, 'addedAt'>) => {
+    if (!networkId && !asset?.networkId) {
+      return { success: false, message: 'Network ID not available' };
+    }
+    if (!asset?.address) {
+      return { success: false, message: 'User address not available' };
+    }
+
+    const effectiveNetworkId = networkId || asset.networkId;
+    try {
+      await customTokensStorageApi.addToken(effectiveNetworkId, asset.address, token);
+      await loadCustomTokens();
+      await handleRefresh(); // Refresh to pick up the new token
+      return { success: true };
+    } catch (error: any) {
+      console.error('Error adding custom token:', error);
+      return { success: false, message: error.message || 'Failed to add token' };
+    }
+  };
+
+  const handleRemoveCustomToken = async (tokenAddress: string) => {
+    if (!networkId && !asset?.networkId) return false;
+    if (!asset?.address) return false;
+
+    const effectiveNetworkId = networkId || asset.networkId;
+    try {
+      await customTokensStorageApi.removeToken(effectiveNetworkId, asset.address, tokenAddress);
+      await loadCustomTokens();
+      await handleRefresh();
+      return true;
+    } catch (error) {
+      console.error('Error removing custom token:', error);
+      return false;
+    }
+  };
+
+  const handleValidateToken = async (contractAddress: string) => {
+    // Send validation request to background script
+    return new Promise<{ valid: boolean; token?: Omit<CustomToken, 'addedAt'>; error?: string }>(resolve => {
+      chrome.runtime.sendMessage(
+        {
+          type: 'VALIDATE_ERC20_TOKEN',
+          contractAddress,
+          networkId: networkId || asset?.networkId,
+        },
+        response => {
+          if (chrome.runtime.lastError) {
+            resolve({
+              valid: false,
+              error: chrome.runtime.lastError.message || 'Failed to validate token',
+            });
+            return;
+          }
+
+          if (response?.valid && response?.token) {
+            resolve({
+              valid: true,
+              token: response.token,
+            });
+          } else {
+            resolve({
+              valid: false,
+              error: response?.error || 'Invalid token contract',
+            });
+          }
+        },
+      );
+    });
+  };
+
   // Only show tokens for non-UTXO networks
   if (isUtxoNetwork) {
     return null;
@@ -183,17 +279,31 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
         <Text fontSize="md" fontWeight="bold" color="whiteAlpha.900">
           {isEvmNetwork ? 'ERC-20 Tokens' : isCosmosNetwork ? 'IBC Tokens' : 'Tokens'} ({tokens.length})
         </Text>
-        <Button
-          size="sm"
-          variant="ghost"
-          colorScheme="whiteAlpha"
-          onClick={handleRefresh}
-          isLoading={isRefreshing}
-          leftIcon={<FaSync />}
-          color="whiteAlpha.800"
-          _hover={{ bg: 'whiteAlpha.200' }}>
-          Refresh
-        </Button>
+        <HStack gap={2}>
+          {isEvmNetwork && (
+            <Button
+              size="sm"
+              variant="ghost"
+              colorScheme="whiteAlpha"
+              onClick={() => setIsCustomTokenDialogOpen(true)}
+              leftIcon={<FaPlus />}
+              color="whiteAlpha.800"
+              _hover={{ bg: 'whiteAlpha.200' }}>
+              Add Token
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="ghost"
+            colorScheme="whiteAlpha"
+            onClick={handleRefresh}
+            isLoading={isRefreshing}
+            leftIcon={<FaSync />}
+            color="whiteAlpha.800"
+            _hover={{ bg: 'whiteAlpha.200' }}>
+            Refresh
+          </Button>
+        </HStack>
       </Flex>
 
       {/* Loading State */}
@@ -252,12 +362,16 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
                   borderWidth="2px"
                   borderColor="transparent"
                   position="relative"
+                  cursor="pointer"
                   _hover={{
                     bg: 'rgba(255, 255, 255, 0.08)',
-                    cursor: 'pointer',
                     transform: 'translateY(-2px)',
                     boxShadow: `0 4px 20px ${accentColor}`,
                     borderColor: accentColor,
+                  }}
+                  _active={{
+                    transform: 'translateY(0px) scale(0.98)',
+                    boxShadow: `0 2px 10px ${accentColor}`,
                   }}
                   _before={{
                     content: '""',
@@ -335,17 +449,44 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
                   : "You don't have any tokens on this network yet."}
             </Text>
           </VStack>
-          <Button
-            size="sm"
-            colorScheme="whiteAlpha"
-            onClick={handleRefresh}
-            isLoading={isRefreshing}
-            leftIcon={<FaSync />}
-            bg="rgba(255, 255, 255, 0.1)"
-            _hover={{ bg: 'rgba(255, 255, 255, 0.2)' }}>
-            Discover Tokens
-          </Button>
+          <HStack gap={3}>
+            <Button
+              size="sm"
+              colorScheme="whiteAlpha"
+              onClick={handleRefresh}
+              isLoading={isRefreshing}
+              leftIcon={<FaSync />}
+              bg="rgba(255, 255, 255, 0.1)"
+              _hover={{ bg: 'rgba(255, 255, 255, 0.2)' }}>
+              Discover Tokens
+            </Button>
+            {isEvmNetwork && (
+              <Button
+                size="sm"
+                colorScheme="blue"
+                onClick={() => setIsCustomTokenDialogOpen(true)}
+                leftIcon={<FaPlus />}
+                bg="rgba(66, 153, 225, 0.2)"
+                _hover={{ bg: 'rgba(66, 153, 225, 0.3)' }}>
+                Add Token
+              </Button>
+            )}
+          </HStack>
         </VStack>
+      )}
+
+      {/* Custom Token Dialog */}
+      {isEvmNetwork && (
+        <CustomTokenDialog
+          isOpen={isCustomTokenDialogOpen}
+          onClose={() => setIsCustomTokenDialogOpen(false)}
+          networkId={networkId || asset?.networkId || ''}
+          userAddress={asset?.address || ''}
+          customTokens={customTokens}
+          onAddToken={handleAddCustomToken}
+          onRemoveToken={handleRemoveCustomToken}
+          onValidateToken={handleValidateToken}
+        />
       )}
     </VStack>
   );

@@ -129,6 +129,15 @@ const onStart = async function () {
       }
     }
 
+    // Discover tokens for all networks
+    console.log(tag, 'Discovering tokens via APP.getCharts()...');
+    try {
+      await APP.getCharts();
+      console.log(tag, 'Token discovery complete, total balances:', APP.balances?.length);
+    } catch (e) {
+      console.error(tag, 'Error discovering tokens:', e);
+    }
+
     const pubkeysEth = APP.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.Ethereum]));
     if (pubkeysEth.length > 0) {
       console.log(tag, 'pubkeys:', pubkeysEth);
@@ -646,6 +655,13 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
 
         case 'GET_APP_BALANCES': {
           if (APP) {
+            console.log(tag, 'GET_APP_BALANCES - Total balances:', APP.balances?.length);
+            console.log(tag, 'GET_APP_BALANCES - Sample balance:', APP.balances?.[0]);
+            const tokens = APP.balances?.filter((b: any) => b.token === true);
+            console.log(tag, 'GET_APP_BALANCES - Tokens found:', tokens?.length);
+            if (tokens && tokens.length > 0) {
+              console.log(tag, 'GET_APP_BALANCES - Sample token:', tokens[0]);
+            }
             sendResponse({ balances: APP.balances });
           } else {
             sendResponse({ error: 'APP not initialized' });
@@ -697,6 +713,322 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             }
           } else {
             sendResponse({ error: 'APP not initialized' });
+          }
+          break;
+        }
+
+        case 'GET_CHARTS': {
+          if (APP) {
+            console.log(tag, 'Fetching charts (discovering tokens)...');
+            try {
+              const { networkIds } = message;
+
+              // Call getCharts with optional network filter
+              // If networkIds array is provided, only fetch for those networks
+              // If not provided, fetch for all networks
+              if (networkIds && Array.isArray(networkIds) && networkIds.length > 0) {
+                console.log(tag, `Fetching charts for specific networks: ${networkIds.join(', ')}`);
+                await APP.getCharts(networkIds);
+              } else {
+                console.log(tag, 'Fetching charts for all networks');
+                await APP.getCharts();
+              }
+
+              console.log(tag, 'Charts fetched successfully, balances count:', APP.balances?.length);
+
+              // Return the updated balances
+              sendResponse({
+                success: true,
+                balances: APP.balances,
+                message: 'Charts fetched successfully',
+              });
+            } catch (error: any) {
+              console.error('Error fetching charts:', error);
+              sendResponse({
+                error: error.message || 'Failed to fetch charts',
+                success: false,
+              });
+            }
+          } else {
+            sendResponse({ error: 'APP not initialized', success: false });
+          }
+          break;
+        }
+
+        case 'LOOKUP_TOKEN_METADATA': {
+          if (APP) {
+            console.log(tag, 'Looking up token metadata...');
+            try {
+              const { networkId, contractAddress, userAddress } = message;
+
+              if (!networkId || !contractAddress) {
+                throw new Error('networkId and contractAddress are required');
+              }
+
+              console.log(tag, 'Calling APP.pioneer.LookupTokenMetadata:', { networkId, contractAddress, userAddress });
+
+              const payload: any = {
+                networkId,
+                contractAddress,
+              };
+
+              // Include userAddress if provided to get balance too
+              if (userAddress) {
+                payload.userAddress = userAddress;
+              }
+
+              const result = await APP.pioneer.LookupTokenMetadata(payload);
+
+              console.log(tag, 'Token metadata lookup result:', result);
+
+              sendResponse({
+                success: true,
+                data: result.data,
+              });
+            } catch (error: any) {
+              console.error('Error looking up token metadata:', error);
+              sendResponse({
+                success: false,
+                error: error.message || 'Failed to lookup token metadata',
+              });
+            }
+          } else {
+            sendResponse({ error: 'APP not initialized', success: false });
+          }
+          break;
+        }
+
+        case 'ADD_CUSTOM_TOKEN': {
+          if (APP) {
+            console.log(tag, 'Adding custom token...');
+            try {
+              const { userAddress, token } = message;
+
+              if (!userAddress || !token) {
+                throw new Error('userAddress and token are required');
+              }
+
+              console.log(tag, 'Calling APP.pioneer.AddCustomToken:', { userAddress, token });
+
+              const result = await APP.pioneer.AddCustomToken({
+                userAddress,
+                token: {
+                  networkId: token.networkId,
+                  address: token.address,
+                  caip: token.caip,
+                  name: token.name,
+                  symbol: token.symbol,
+                  decimals: token.decimals,
+                  icon: token.icon,
+                  coingeckoId: token.coingeckoId,
+                },
+              });
+
+              console.log(tag, 'Add custom token result:', result);
+
+              sendResponse({
+                success: result?.success || result?.data?.success || false,
+                data: result.data,
+              });
+            } catch (error: any) {
+              console.error('Error adding custom token:', error);
+              sendResponse({
+                success: false,
+                error: error.message || 'Failed to add custom token',
+              });
+            }
+          } else {
+            sendResponse({ error: 'APP not initialized', success: false });
+          }
+          break;
+        }
+
+        case 'GET_CUSTOM_TOKENS': {
+          if (APP) {
+            console.log(tag, 'Getting custom tokens...');
+            try {
+              const { userAddress, networkId } = message;
+
+              if (!userAddress) {
+                throw new Error('userAddress is required');
+              }
+
+              console.log(tag, 'Calling APP.pioneer.GetCustomTokens:', { userAddress, networkId });
+
+              const payload: any = { userAddress };
+              if (networkId) {
+                payload.networkId = networkId;
+              }
+
+              const result = await APP.pioneer.GetCustomTokens(payload);
+
+              console.log(tag, 'Get custom tokens result:', result);
+
+              // Handle nested response structure: result.data.data.tokens
+              const tokens = result?.data?.data?.tokens || result?.data?.tokens || result?.tokens || [];
+
+              sendResponse({
+                success: true,
+                tokens,
+              });
+            } catch (error: any) {
+              console.error('Error getting custom tokens:', error);
+              sendResponse({
+                success: false,
+                error: error.message || 'Failed to get custom tokens',
+                tokens: [],
+              });
+            }
+          } else {
+            sendResponse({ error: 'APP not initialized', success: false });
+          }
+          break;
+        }
+
+        case 'GET_CUSTOM_TOKEN_BALANCES': {
+          if (APP) {
+            console.log(tag, 'Getting custom token balances...');
+            try {
+              const { networkId, address } = message;
+
+              if (!networkId || !address) {
+                throw new Error('networkId and address are required');
+              }
+
+              console.log(tag, 'Calling APP.pioneer.GetCustomTokenBalances:', { networkId, address });
+
+              const result = await APP.pioneer.GetCustomTokenBalances({
+                networkId,
+                address,
+              });
+
+              console.log(tag, 'Get custom token balances result:', result);
+
+              // Handle nested response structure
+              const tokens = result?.data?.data?.tokens || result?.data?.tokens || result?.tokens || [];
+
+              sendResponse({
+                success: true,
+                tokens,
+              });
+            } catch (error: any) {
+              console.error('Error getting custom token balances:', error);
+              sendResponse({
+                success: false,
+                error: error.message || 'Failed to get custom token balances',
+                tokens: [],
+              });
+            }
+          } else {
+            sendResponse({ error: 'APP not initialized', success: false });
+          }
+          break;
+        }
+
+        case 'REMOVE_CUSTOM_TOKEN': {
+          if (APP) {
+            console.log(tag, 'Removing custom token...');
+            try {
+              const { userAddress, networkId, tokenAddress } = message;
+
+              if (!userAddress || !networkId || !tokenAddress) {
+                throw new Error('userAddress, networkId, and tokenAddress are required');
+              }
+
+              console.log(tag, 'Calling APP.pioneer.RemoveCustomToken:', { userAddress, networkId, tokenAddress });
+
+              const result = await APP.pioneer.RemoveCustomToken({
+                userAddress,
+                networkId,
+                tokenAddress,
+              });
+
+              console.log(tag, 'Remove custom token result:', result);
+
+              sendResponse({
+                success: result?.success || result?.data?.success || false,
+                data: result.data,
+              });
+            } catch (error: any) {
+              console.error('Error removing custom token:', error);
+              sendResponse({
+                success: false,
+                error: error.message || 'Failed to remove custom token',
+              });
+            }
+          } else {
+            sendResponse({ error: 'APP not initialized', success: false });
+          }
+          break;
+        }
+
+        case 'VALIDATE_ERC20_TOKEN': {
+          if (APP) {
+            try {
+              const { contractAddress, networkId } = message;
+
+              if (!contractAddress) {
+                sendResponse({ valid: false, error: 'Contract address is required' });
+                break;
+              }
+
+              if (!networkId) {
+                sendResponse({ valid: false, error: 'Network ID is required' });
+                break;
+              }
+
+              // Extract chain ID from network ID (e.g., 'eip155:1' -> '1')
+              const chainId = networkId.replace('eip155:', '');
+
+              // Get RPC provider for the network
+              const chainInfo = EIP155_CHAINS[networkId];
+              if (!chainInfo) {
+                sendResponse({ valid: false, error: 'Unsupported network' });
+                break;
+              }
+
+              const rpcProvider = new JsonRpcProvider(chainInfo.rpc);
+
+              // ERC-20 ABI for name, symbol, and decimals
+              const ERC20_ABI = [
+                'function name() view returns (string)',
+                'function symbol() view returns (string)',
+                'function decimals() view returns (uint8)',
+              ];
+
+              const { Contract } = await import('ethers');
+              const tokenContract = new Contract(contractAddress, ERC20_ABI, rpcProvider);
+
+              // Validate token by calling its methods
+              const [name, symbol, decimals] = await Promise.all([
+                tokenContract.name(),
+                tokenContract.symbol(),
+                tokenContract.decimals(),
+              ]);
+
+              // Build CAIP identifier
+              const caip = `${networkId}/erc20:${contractAddress.toLowerCase()}`;
+
+              const tokenData = {
+                address: contractAddress,
+                symbol,
+                name,
+                decimals: Number(decimals),
+                caip,
+                networkId,
+              };
+
+              console.log(tag, 'Token validated successfully:', tokenData);
+              sendResponse({ valid: true, token: tokenData });
+            } catch (error: any) {
+              console.error(tag, 'Error validating ERC-20 token:', error);
+              sendResponse({
+                valid: false,
+                error: error.message || 'Failed to validate token. Make sure it is a valid ERC-20 contract.',
+              });
+            }
+          } else {
+            sendResponse({ valid: false, error: 'APP not initialized' });
           }
           break;
         }
