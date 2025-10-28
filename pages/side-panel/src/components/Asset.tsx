@@ -24,7 +24,10 @@ import {
   ModalBody,
   ModalCloseButton,
   Input,
+  HStack,
+  Image,
 } from '@chakra-ui/react';
+import { FaCoins } from 'react-icons/fa';
 import { Transfer } from './Transfer';
 import { Receive } from './Receive';
 import AppStore from './AppStore';
@@ -41,6 +44,73 @@ interface Pubkey {
   networks: string[];
 }
 
+// Icon component with fallback for broken/empty images (reused from Tokens.tsx)
+const IconWithFallback = ({ src, alt, boxSize }: { src: string | null; alt: string; boxSize: string }) => {
+  const [error, setError] = useState(false);
+
+  const cleanUrl = React.useMemo(() => {
+    if (!src || src.trim() === '') {
+      return null;
+    }
+
+    if (src.includes(',')) {
+      const urls = src
+        .split(',')
+        .map(u => u.trim())
+        .filter(u => u.startsWith('http://') || u.startsWith('https://'));
+      return urls[0] || null;
+    }
+
+    if (!src.startsWith('http://') && !src.startsWith('https://')) {
+      return null;
+    }
+
+    return src;
+  }, [src]);
+
+  if (!cleanUrl || error) {
+    return (
+      <Box
+        boxSize={boxSize}
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+        fontSize="2xl"
+        color="whiteAlpha.500"
+        bg="rgba(255, 255, 255, 0.08)"
+        borderRadius="md"
+        border="1px solid"
+        borderColor="whiteAlpha.200">
+        <FaCoins />
+      </Box>
+    );
+  }
+
+  return (
+    <Box
+      boxSize={boxSize}
+      display="flex"
+      alignItems="center"
+      justifyContent="center"
+      bg="rgba(255, 255, 255, 0.08)"
+      borderRadius="md"
+      p="3px"
+      position="relative"
+      border="1px solid"
+      borderColor="whiteAlpha.200">
+      <Image
+        src={cleanUrl}
+        alt={alt}
+        boxSize="100%"
+        objectFit="contain"
+        onError={() => {
+          setError(true);
+        }}
+      />
+    </Box>
+  );
+};
+
 export function Asset() {
   const [activeTab, setActiveTab] = useState<'send' | 'receive' | null>(null);
   const [loading, setLoading] = useState(true);
@@ -51,6 +121,8 @@ export function Asset() {
   const [assetType, setAssetType] = useState<string>(''); // EVM TENDERMINT UTXO OTHER
   const [showHistoryButton, setShowHistoryButton] = useState<boolean>(false);
   const [showAllPubkeys, setShowAllPubkeys] = useState(false);
+  const [isToken, setIsToken] = useState<boolean>(false);
+  const [tokenMetadata, setTokenMetadata] = useState<any>(null);
 
   // Modal state
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
@@ -86,6 +158,33 @@ export function Asset() {
 
   useEffect(() => {
     if (asset) {
+      // Detect if this is a token CAIP
+      const isTokenAsset =
+        asset.caip?.includes('/erc20:') ||
+        asset.caip?.includes('/cw20:') ||
+        asset.caip?.includes('/bep20:') ||
+        asset.token === true;
+      setIsToken(isTokenAsset);
+
+      if (isTokenAsset) {
+        // Extract token metadata from asset context
+        const contractAddress = asset.contractAddress || asset.caip?.split(':')[2] || null;
+        setTokenMetadata({
+          contractAddress,
+          decimals: asset.decimals,
+          isCustom: asset.isCustomToken || false,
+          tokenStandard: asset.caip?.includes('/erc20:')
+            ? 'ERC-20'
+            : asset.caip?.includes('/cw20:')
+              ? 'CW-20'
+              : asset.caip?.includes('/bep20:')
+                ? 'BEP-20'
+                : 'Token',
+        });
+      } else {
+        setTokenMetadata(null);
+      }
+
       fetchBalancesAndPubkeys(asset);
     }
   }, [asset]);
@@ -286,12 +385,27 @@ export function Asset() {
               </Box>
 
               <Flex align="center" justifyContent="space-between" mb={4}>
-                <Avatar size="xl" src={asset.icon} />
+                <IconWithFallback src={asset.icon} alt={asset.name || asset.symbol} boxSize="60px" />
                 <Box ml={3} flex="1">
-                  <Text fontSize="lg" fontWeight="bold">
-                    {asset.name}
+                  <HStack spacing={2} align="center">
+                    <Text fontSize="lg" fontWeight="bold">
+                      {asset.name}
+                    </Text>
+                    {isToken && tokenMetadata && (
+                      <Badge colorScheme="purple" fontSize="xs" px={2} py={1}>
+                        {tokenMetadata.tokenStandard}
+                      </Badge>
+                    )}
+                  </HStack>
+                  <Text fontSize="md" color="whiteAlpha.800">
+                    {asset.symbol}
                   </Text>
-                  <Text fontSize="md">{asset.symbol}</Text>
+                  {isToken && tokenMetadata?.contractAddress && (
+                    <Text fontSize="xs" color="whiteAlpha.600" fontFamily="mono" mt={1}>
+                      {tokenMetadata.contractAddress.slice(0, 6)}...
+                      {tokenMetadata.contractAddress.slice(-4)}
+                    </Text>
+                  )}
                 </Box>
                 {/*<Box>*/}
                 {/*  {balances.length > 0 ? (*/}
@@ -315,10 +429,24 @@ export function Asset() {
 
               <Flex direction="column" align="center" mb={4} width="100%">
                 <Button my={2} size="md" variant="outline" width="100%" onClick={() => setActiveTab('send')}>
-                  Send {asset.name}
+                  <HStack spacing={2}>
+                    <Text>Send {asset.symbol}</Text>
+                    {isToken && (
+                      <Badge colorScheme="purple" size="sm">
+                        Token
+                      </Badge>
+                    )}
+                  </HStack>
                 </Button>
                 <Button my={2} size="md" variant="outline" width="100%" onClick={() => setActiveTab('receive')}>
-                  Receive {asset.name}
+                  <HStack spacing={2}>
+                    <Text>Receive {asset.symbol}</Text>
+                    {isToken && (
+                      <Badge colorScheme="purple" size="sm">
+                        Token
+                      </Badge>
+                    )}
+                  </HStack>
                 </Button>
 
                 <Button my={2} size="md" variant="outline" width="100%" onClick={() => setIsHistoryModalOpen(true)}>
