@@ -29,6 +29,7 @@ import { Transfer } from './Transfer';
 import { Receive } from './Receive';
 import AppStore from './AppStore';
 import TransactionHistoryModal from './TransactionHistoryModal';
+import Tokens from './Tokens';
 import { COIN_MAP_LONG } from '@pioneer-platform/pioneer-coins';
 
 interface Pubkey {
@@ -366,12 +367,16 @@ export function Asset() {
       </Modal>
 
       <Box mt={4}>
-        <Tabs variant="enclosed" mt={4}>
+        <Tabs variant="enclosed" mt={4} defaultIndex={0}>
           <TabList>
+            <Tab>Tokens</Tab>
             <Tab>Dapps</Tab>
             {isEvm && <Tab>Recent</Tab>}
           </TabList>
           <TabPanels>
+            <TabPanel>
+              <Tokens asset={asset} networkId={asset?.networkId} />
+            </TabPanel>
             <TabPanel>
               <AppStore networkId={asset?.networkId} />
             </TabPanel>
