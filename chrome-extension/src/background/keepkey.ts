@@ -2,11 +2,11 @@
     KeepKey Wallet
  */
 import { AssetValue } from '@pioneer-platform/helpers';
-import { WalletOption, availableChainsByWallet, ChainToNetworkId, getChainEnumValue } from '@coinmasters/types';
+import { ChainToNetworkId, getChainEnumValue } from '@pioneer-platform/pioneer-caip';
 import { getPaths } from '@pioneer-platform/pioneer-coins';
 import { keepKeyApiKeyStorage, pioneerKeyStorage } from '@extension/storage'; // Re-import the storage
 // @ts-ignore
-import { SDK } from '@coinmasters/pioneer-sdk';
+import { SDK } from '@pioneer-platform/pioneer-sdk';
 import { v4 as uuidv4 } from 'uuid';
 // import assert from 'assert';
 
@@ -170,8 +170,8 @@ export const onStartKeepkey = async function () {
     const keepkeyApiKey = (await keepKeyApiKeyStorage.getApiKey()) || 'key:123';
     let username = await pioneerKeyStorage.getUsername();
     let queryKey = await pioneerKeyStorage.getUsername();
-    const spec = (await pioneerKeyStorage.getPioneerSpec()) || 'https://pioneers.dev/spec/swagger.json';
-    const wss = (await pioneerKeyStorage.getPioneerWss()) || 'wss://pioneers.dev';
+    const spec = (await pioneerKeyStorage.getPioneerSpec()) || 'https://api.keepkey.info/spec/swagger.json';
+    const wss = (await pioneerKeyStorage.getPioneerWss()) || 'wss://api.keepkey.info';
     if (!queryKey) {
       queryKey = `key:${uuidv4()}`;
       pioneerKeyStorage.saveQueryKey(queryKey);
@@ -186,7 +186,7 @@ export const onStartKeepkey = async function () {
     console.log(tag, 'queryKey:', queryKey);
     console.log(tag, 'spec:', spec);
     console.log(tag, 'wss:', wss);
-    //let spec = 'https://pioneers.dev/spec/swagger.json'
+    //let spec = 'https://api.keepkey.info/spec/swagger.json'
 
     const config: any = {
       appName: 'KeepKey Client',

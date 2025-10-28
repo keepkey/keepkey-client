@@ -8,8 +8,7 @@ import { onStartKeepkey } from './keepkey';
 import { handleWalletRequest } from './methods';
 // import { listenForApproval } from './approvals';
 import { JsonRpcProvider } from 'ethers';
-import { ChainToNetworkId } from '@pioneer-platform/pioneer-caip';
-import { Chain } from '@coinmasters/types';
+import { ChainToNetworkId, Chain } from '@pioneer-platform/pioneer-caip';
 import { requestStorage, exampleSidebarStorage, web3ProviderStorage } from '@extension/storage'; // Re-import the storage
 import { EIP155_CHAINS } from './chains';
 import axios from 'axios';
