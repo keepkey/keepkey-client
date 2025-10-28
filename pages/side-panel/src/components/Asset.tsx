@@ -26,6 +26,8 @@ import {
   Input,
   HStack,
   Image,
+  Skeleton,
+  SkeletonCircle,
 } from '@chakra-ui/react';
 import { FaCoins } from 'react-icons/fa';
 import { Transfer } from './Transfer';
@@ -205,6 +207,7 @@ export function Asset() {
           setPubkeys(response.assets.pubkeys);
         }
 
+        // Fetch transaction history in parallel (non-blocking)
         if (response.assets.networkId.indexOf('eip155') !== -1) {
           fetchTxHistory(response.assets.networkId);
         }
@@ -374,10 +377,33 @@ export function Asset() {
       <Card>
         <CardBody>
           {loading ? (
-            <Flex justifyContent="center" p={5}>
-              <Spinner size="xl" />
-              <Text ml={3}>Loading...</Text>
-            </Flex>
+            <VStack spacing={4} width="100%">
+              {/* Skeleton Header */}
+              <Flex align="center" justify="space-between" width="100%" mb={4}>
+                <HStack spacing={3}>
+                  <SkeletonCircle size="60px" />
+                  <VStack align="flex-start" spacing={2}>
+                    <Skeleton height="20px" width="120px" />
+                    <Skeleton height="16px" width="80px" />
+                  </VStack>
+                </HStack>
+              </Flex>
+
+              {/* Skeleton Buttons */}
+              <VStack spacing={2} width="100%">
+                <Skeleton height="40px" width="100%" borderRadius="md" />
+                <Skeleton height="40px" width="100%" borderRadius="md" />
+                <Skeleton height="40px" width="100%" borderRadius="md" />
+              </VStack>
+
+              {/* Loading Indicator */}
+              <Flex justify="center" align="center" py={4}>
+                <Spinner size="sm" color="blue.400" mr={2} />
+                <Text fontSize="sm" color="whiteAlpha.600">
+                  Loading asset details...
+                </Text>
+              </Flex>
+            </VStack>
           ) : activeTab === null && asset ? (
             <>
               <Box textAlign="center">
