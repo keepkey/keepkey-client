@@ -2,7 +2,7 @@ import { bip32ToAddressNList } from '@pioneer-platform/pioneer-coins';
 
 const TAG = ' | litecoinHandler | ';
 import { JsonRpcProvider } from 'ethers';
-import { Chain, DerivationPath } from '@coinmasters/types';
+import { Chain } from '@pioneer-platform/pioneer-caip';
 import { AssetValue } from '@pioneer-platform/helpers';
 import { EIP155_CHAINS } from '../chains';
 // @ts-ignore
@@ -142,7 +142,7 @@ export const handleLitecoinRequest = async (
       console.log(tag, 'response: ', response);
 
       if (result.success && response.unsignedTx) {
-        const signedTx = await KEEPKEY_WALLET.signTx({ caip, unsignedTx: response.unsignedTx });
+        const signedTx = await KEEPKEY_WALLET.signTx(caip, response.unsignedTx);
         console.log(tag, 'signedTx: ', signedTx);
 
         response.signedTx = signedTx;

@@ -40,11 +40,17 @@ export default function LegacyTx({ transaction }: any) {
 
   // Calculate native value from the hex value in the transaction
   const ethValueHex = transaction?.unsignedTx?.value || '0x0';
-  const nativeValue = parseFloat(parseInt(ethValueHex, 16).toString()) / 1e18;
+  let nativeValue = 0;
+  try {
+    nativeValue = parseFloat(parseInt(ethValueHex, 16).toString()) / 1e18;
+  } catch (e) {
+    console.error('Error parsing value:', e);
+    nativeValue = 0;
+  }
 
   // Whenever price or nativeValue changes, recalculate the USD value
   useEffect(() => {
-    if (price !== null && !isNaN(nativeValue)) {
+    if (price !== null && !isNaN(nativeValue) && nativeValue > 0) {
       const usd = (price * nativeValue).toFixed(2);
       setValueUsd(usd);
       console.log('Price updated:', price, 'Native Value:', nativeValue, 'USD:', usd);
@@ -76,7 +82,7 @@ export default function LegacyTx({ transaction }: any) {
                 {isNative ? `${nativeValue} ETH` : `${ethValueHex} (Hex)`}
 
                 {/* If price and isNative are set, display equivalent USD */}
-                <Text fontSize="sm">≈ ${valueUsd} USD</Text>
+                {valueUsd && <Text fontSize="sm">≈ ${valueUsd} USD</Text>}
               </Td>
             </Tr>
             <Tr>

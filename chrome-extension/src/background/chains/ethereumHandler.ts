@@ -2,7 +2,7 @@
     Ethereum Provider Refactored
 */
 
-import { Chain } from '@coinmasters/types';
+import { Chain } from '@pioneer-platform/pioneer-caip';
 import { JsonRpcProvider } from 'ethers';
 import { createProviderRpcError } from '../utils';
 import { requestStorage, web3ProviderStorage, assetContextStorage, blockchainDataStorage } from '@extension/storage';

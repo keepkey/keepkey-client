@@ -66,6 +66,9 @@ importers:
       eslint-plugin-react-hooks:
         specifier: 4.6.2
         version: 4.6.2(eslint@8.57.0)
+      ethers:
+        specifier: ^6.13.2
+        version: 6.15.0
       husky:
         specifier: ^9.1.6
         version: 9.1.7
@@ -102,9 +105,6 @@ importers:
 
   chrome-extension:
     dependencies:
-      '@coinmasters/types':
-        specifier: ^4.8.5
-        version: 4.10.2
       '@extension/shared':
         specifier: workspace:*
         version: link:../packages/shared
@@ -115,14 +115,14 @@ importers:
         specifier: ^4.0.12
         version: 4.0.13(@swc/core@1.13.5)
       '@pioneer-platform/pioneer-caip':
-        specifier: ^9.2.32
-        version: 9.2.38
+        specifier: ^9.10.0
+        version: 9.10.0
       '@pioneer-platform/pioneer-coins':
-        specifier: ^9.2.23
-        version: 9.3.2(@swc/core@1.13.5)(@types/node@18.19.124)
+        specifier: ^9.11.0
+        version: 9.11.0(@swc/core@1.13.5)(@types/node@18.19.124)
       '@pioneer-platform/pioneer-sdk':
-        specifier: ^4.21.5
-        version: 4.21.5(@swc/core@1.13.5)(@types/node@18.19.124)
+        specifier: ^4.21.13
+        version: 4.21.13(@swc/core@1.13.5)(@types/node@18.19.124)
       axios:
         specifier: ^1.7.7
         version: 1.11.0
@@ -1531,8 +1531,8 @@ packages:
   '@pioneer-platform/pioneer-caip@9.2.38':
     resolution: {integrity: sha512-eQ3vplYpaz8Au9YrqRLKFRiMZSyOlXoxkSulxDRGx+vmzy7NM+Qn2HXNeNwGKFNyk9LQkSlspi7BcagYiF96Sg==}
 
-  '@pioneer-platform/pioneer-client@9.10.9':
-    resolution: {integrity: sha512-78bUrMVGlvxeEe9WIwcsEG83JYOyNY9kydsthIL+G8Nzc5dBoNII8QOcQIautiozZq5VIAAMHrnkrJUcv65jkw==}
+  '@pioneer-platform/pioneer-client@9.10.10':
+    resolution: {integrity: sha512-Fz45zb1ZY9VVRoKPizDjY5esG+/kkFBvD6WBqWGxIExPwBHY7n4CqPyfL1+JYvHl9u58xPQxEkaBiMMFTYt+2g==}
 
   '@pioneer-platform/pioneer-coins@9.11.0':
     resolution: {integrity: sha512-QwYGY+nfXLSLE6qMC/oySjEblhhoSDs/we1rgNPNZKX2ObWJM07Uq4H8UcomtiULBSMdBdIFtji0+WHhd0PqGA==}
@@ -1546,8 +1546,8 @@ packages:
   '@pioneer-platform/pioneer-events@8.11.0':
     resolution: {integrity: sha512-461VEaaDWBDdY6CKo5Sh6a74CJCE27D5xJVsKZlvB5LsCvbPJ07QiFqNab2l+jR7DsODvpuiuzA9ppyWffoZyw==}
 
-  '@pioneer-platform/pioneer-sdk@4.21.5':
-    resolution: {integrity: sha512-56Kf7UXKBMAo8N+mFN6aHpwaMMPqanXSgitt4SzWsjh9eprz9S/KPhTVmLBIzgxByPlpHmAOwmT4slJghZCqbg==}
+  '@pioneer-platform/pioneer-sdk@4.21.13':
+    resolution: {integrity: sha512-sioDUxx7b9JDGEktlP/5G03x9ODYoJC3p/gOBeTujhYIaqSyMYi+ma4qbKlQWYY22lvuDKgsABcN51SVnWIUcA==}
 
   '@pioneer-platform/pioneer-types@8.11.0':
     resolution: {integrity: sha512-EVB5AzzaIf1hnjobR3lohhFYIEV+IZTkRtLeTQ4xrd8Z8dfkiW+X3iHCKCYgtH/Z3YVtpq0oLHANwazX/bUl6A==}
@@ -6882,7 +6882,7 @@ snapshots:
 
   '@pioneer-platform/pioneer-caip@9.2.38': {}
 
-  '@pioneer-platform/pioneer-client@9.10.9(@swc/core@1.13.5)(@types/node@18.19.124)':
+  '@pioneer-platform/pioneer-client@9.10.10(@swc/core@1.13.5)(@types/node@18.19.124)':
     dependencies:
       '@pioneer-platform/loggerdog': 8.11.0(@swc/core@1.13.5)(@types/node@18.19.124)
       swagger-client: 3.35.6
@@ -6895,16 +6895,6 @@ snapshots:
   '@pioneer-platform/pioneer-coins@9.11.0(@swc/core@1.13.5)(@types/node@18.19.124)':
     dependencies:
       '@pioneer-platform/loggerdog': 8.11.0(@swc/core@1.13.5)(@types/node@18.19.124)
-      bignumber.js: 9.3.1
-      bs58check: 3.0.1
-    transitivePeerDependencies:
-      - '@swc/core'
-      - '@swc/wasm'
-      - '@types/node'
-
-  '@pioneer-platform/pioneer-coins@9.3.2(@swc/core@1.13.5)(@types/node@18.19.124)':
-    dependencies:
-      '@pioneer-platform/loggerdog': 8.3.1(@swc/core@1.13.5)(@types/node@18.19.124)
       bignumber.js: 9.3.1
       bs58check: 3.0.1
     transitivePeerDependencies:
@@ -6952,12 +6942,12 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@pioneer-platform/pioneer-sdk@4.21.5(@swc/core@1.13.5)(@types/node@18.19.124)':
+  '@pioneer-platform/pioneer-sdk@4.21.13(@swc/core@1.13.5)(@types/node@18.19.124)':
     dependencies:
       '@keepkey/keepkey-sdk': 0.2.62
       '@pioneer-platform/loggerdog': 8.11.0(@swc/core@1.13.5)(@types/node@18.19.124)
       '@pioneer-platform/pioneer-caip': 9.10.0
-      '@pioneer-platform/pioneer-client': 9.10.9(@swc/core@1.13.5)(@types/node@18.19.124)
+      '@pioneer-platform/pioneer-client': 9.10.10(@swc/core@1.13.5)(@types/node@18.19.124)
       '@pioneer-platform/pioneer-coins': 9.11.0(@swc/core@1.13.5)(@types/node@18.19.124)
       '@pioneer-platform/pioneer-discovery': 0.8.0(@swc/core@1.13.5)(@types/node@18.19.124)
       '@pioneer-platform/pioneer-events': 8.11.0

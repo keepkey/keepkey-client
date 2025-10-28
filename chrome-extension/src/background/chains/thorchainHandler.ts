@@ -1,6 +1,6 @@
 const TAG = ' | thorchainHandler | ';
 import { JsonRpcProvider } from 'ethers';
-import { Chain } from '@coinmasters/types';
+import { Chain } from '@pioneer-platform/pioneer-caip';
 import { AssetValue } from '@pioneer-platform/helpers';
 import { EIP155_CHAINS } from '../chains';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -117,7 +117,7 @@ export const handleThorchainRequest = async (
 
       if (result.success && eventUpdated.unsignedTx) {
         //sign
-        const signedTx = await KEEPKEY_WALLET.signTx({ caip, unsignedTx: eventUpdated.unsignedTx });
+        const signedTx = await KEEPKEY_WALLET.signTx(caip, eventUpdated.unsignedTx);
         console.log(tag, 'signedTx: ', signedTx);
 
         //broadcast

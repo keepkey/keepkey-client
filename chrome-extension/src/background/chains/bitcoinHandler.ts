@@ -1,7 +1,7 @@
 import { requestStorage } from '@extension/storage/dist/lib';
 
 const TAG = ' | bitcoinHandler | ';
-import { Chain, DerivationPath } from '@coinmasters/types';
+import { Chain } from '@pioneer-platform/pioneer-caip';
 import { AssetValue } from '@pioneer-platform/helpers';
 import { ChainToNetworkId, shortListSymbolToCaip, caipToNetworkId } from '@pioneer-platform/pioneer-caip';
 //@ts-ignore
@@ -158,7 +158,16 @@ export const handleBitcoinRequest = async (
       console.log(tag, 'response: ', response);
 
       if (result.success && response.unsignedTx) {
-        const signedTx = await KEEPKEY_WALLET.signTx({ caip, unsignedTx: response.unsignedTx });
+        // DEBUG: Log the structure of unsignedTx before signing
+        console.log(tag, 'DEBUG: About to sign Bitcoin transaction');
+        console.log(tag, 'DEBUG: caip:', caip, '(type:', typeof caip, ')');
+        console.log(tag, 'DEBUG: unsignedTx:', response.unsignedTx);
+        console.log(tag, 'DEBUG: Checking all unsignedTx field types:');
+        for (const [key, value] of Object.entries(response.unsignedTx)) {
+          console.log(tag, `  ${key}:`, typeof value, Array.isArray(value) ? '(array)' : '', value);
+        }
+
+        const signedTx = await KEEPKEY_WALLET.signTx(caip, response.unsignedTx);
         console.log(tag, 'signedTx: ', signedTx);
 
         response.signedTx = signedTx;

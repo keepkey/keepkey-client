@@ -2,7 +2,7 @@ import { bip32ToAddressNList } from '@pioneer-platform/pioneer-coins';
 
 const TAG = ' | bitcoinCashHandler | ';
 import { JsonRpcProvider } from 'ethers';
-import { Chain, DerivationPath } from '@coinmasters/types';
+import { Chain } from '@pioneer-platform/pioneer-caip';
 import { AssetValue } from '@pioneer-platform/helpers';
 // @ts-ignore
 // @ts-ignore
@@ -154,7 +154,7 @@ export const handleBitcoinCashRequest = async (
       console.log(tag, 'response: ', response);
 
       if (result.success && response.unsignedTx) {
-        const signedTx = await KEEPKEY_WALLET.signTx({ caip, unsignedTx: response.unsignedTx });
+        const signedTx = await KEEPKEY_WALLET.signTx(caip, response.unsignedTx);
 
         response.signedTx = signedTx;
         await requestStorage.updateEventById(requestInfo.id, response);
