@@ -82,6 +82,7 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isCustomTokenDialogOpen, setIsCustomTokenDialogOpen] = useState(false);
   const [customTokens, setCustomTokens] = useState<CustomToken[]>([]);
+  const [loadingTokenId, setLoadingTokenId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchTokens();
@@ -153,6 +154,9 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
     console.log('   Symbol:', token.symbol);
     console.log('   Balance:', token.balance);
 
+    // Set loading state for this specific token
+    setLoadingTokenId(token.caip);
+
     // Send message to background to set asset context
     // NOTE: Background expects `asset` not `assetContext.assets`
     chrome.runtime.sendMessage(
@@ -174,9 +178,13 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
       response => {
         if (chrome.runtime.lastError) {
           console.error('❌ Error setting asset context:', chrome.runtime.lastError);
+          setLoadingTokenId(null);
           return;
         }
         console.log('✅ Asset context updated for token:', response);
+        // Keep loading state - it will be cleared when Asset component loads
+        // We'll clear it after a timeout as fallback
+        setTimeout(() => setLoadingTokenId(null), 2000);
       },
     );
   };
@@ -352,6 +360,7 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
               };
 
               const accentColor = getTokenColor(token.icon);
+              const isLoading = loadingTokenId === token.caip;
 
               return (
                 <Box
@@ -362,7 +371,9 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
                   borderWidth="2px"
                   borderColor="transparent"
                   position="relative"
-                  cursor="pointer"
+                  cursor={isLoading ? 'wait' : 'pointer'}
+                  opacity={isLoading ? 0.6 : 1}
+                  pointerEvents={isLoading ? 'none' : 'auto'}
                   _hover={{
                     bg: 'rgba(255, 255, 255, 0.08)',
                     transform: 'translateY(-2px)',
@@ -399,13 +410,24 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
                   onClick={() => handleTokenClick(token)}>
                   <Flex justify="space-between" align="center">
                     <HStack gap={3}>
-                      <IconWithFallback src={token.icon} alt={token.name || token.symbol} boxSize="40px" />
+                      {isLoading ? (
+                        <Flex
+                          boxSize="40px"
+                          align="center"
+                          justify="center"
+                          bg="rgba(255, 255, 255, 0.08)"
+                          borderRadius="md">
+                          <Spinner size="sm" color="blue.400" />
+                        </Flex>
+                      ) : (
+                        <IconWithFallback src={token.icon} alt={token.name || token.symbol} boxSize="40px" />
+                      )}
                       <VStack align="flex-start" gap={0} spacing={0}>
                         <Text fontSize="sm" fontWeight="bold" color="whiteAlpha.900">
                           {token.symbol || 'Unknown'}
                         </Text>
                         <Text fontSize="xs" color="whiteAlpha.600">
-                          {token.name || 'Unknown Token'}
+                          {isLoading ? 'Loading...' : token.name || 'Unknown Token'}
                         </Text>
                       </VStack>
                     </HStack>
