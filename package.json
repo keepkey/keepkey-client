@@ -1,6 +1,6 @@
 {
   "name": "keepkey-client",
-  "version": "0.0.12",
+  "version": "0.0.21",
   "description": "chrome extension for KeepKey",
   "license": "GNU General Public License v3.0",
   "repository": {
@@ -53,6 +53,7 @@
     "eslint-plugin-prettier": "5.2.1",
     "eslint-plugin-react": "7.35.0",
     "eslint-plugin-react-hooks": "4.6.2",
+    "ethers": "^6.13.2",
     "husky": "^9.1.6",
     "lint-staged": "^15.2.10",
     "postcss": "^8.4.47",

@@ -1,6 +1,6 @@
 const TAG = ' | cosmosHandler | ';
 import { JsonRpcProvider } from 'ethers';
-import { Chain } from '@coinmasters/types';
+import { Chain } from '@pioneer-platform/pioneer-caip';
 import { AssetValue } from '@pioneer-platform/helpers';
 import { requestStorage, web3ProviderStorage, assetContextStorage } from '@extension/storage';
 
@@ -125,10 +125,7 @@ export const handleCosmosRequest = async (
       if (result.success && requestInfo.unsignedTx) {
         //send tx
         // Sign the transaction
-        const signedTx = await KEEPKEY_WALLET.signTx({
-          caip,
-          unsignedTx: requestInfo.unsignedTx,
-        });
+        const signedTx = await KEEPKEY_WALLET.signTx(caip, requestInfo.unsignedTx);
         console.log(tag, 'signedTx:', signedTx);
 
         // Update storage with signed transaction

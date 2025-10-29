@@ -1,5 +1,5 @@
 const TAG = ' | osmosisHandler | ';
-import { Chain } from '@coinmasters/types';
+import { Chain } from '@pioneer-platform/pioneer-caip';
 import { AssetValue } from '@pioneer-platform/helpers';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-expect-error
@@ -125,10 +125,7 @@ export const handleOsmosisRequest = async (
 
       if (approvalResponse.success && requestInfo.unsignedTx) {
         // Sign the transaction
-        const signedTx = await KEEPKEY_WALLET.signTx({
-          caip,
-          unsignedTx: requestInfo.unsignedTx,
-        });
+        const signedTx = await KEEPKEY_WALLET.signTx(caip, requestInfo.unsignedTx);
         console.log(tag, 'signedTx:', signedTx);
 
         // Update storage with signed transaction

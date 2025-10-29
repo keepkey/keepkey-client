@@ -24,11 +24,24 @@ import {
   ModalBody,
   ModalCloseButton,
   Input,
+  HStack,
+  Image,
+  Skeleton,
+  SkeletonCircle,
+  Table,
+  Thead,
+  Tbody,
+  Tr,
+  Th,
+  Td,
+  TableContainer,
 } from '@chakra-ui/react';
+import { FaCoins } from 'react-icons/fa';
 import { Transfer } from './Transfer';
 import { Receive } from './Receive';
 import AppStore from './AppStore';
 import TransactionHistoryModal from './TransactionHistoryModal';
+import Tokens from './Tokens';
 import { COIN_MAP_LONG } from '@pioneer-platform/pioneer-coins';
 
 interface Pubkey {
@@ -40,6 +53,131 @@ interface Pubkey {
   networks: string[];
 }
 
+// Icon component with fallback for broken/empty images (reused from Tokens.tsx)
+const IconWithFallback = ({ src, alt, boxSize }: { src: string | null; alt: string; boxSize: string }) => {
+  const [error, setError] = useState(false);
+
+  const cleanUrl = React.useMemo(() => {
+    if (!src || src.trim() === '') {
+      return null;
+    }
+
+    if (src.includes(',')) {
+      const urls = src
+        .split(',')
+        .map(u => u.trim())
+        .filter(u => u.startsWith('http://') || u.startsWith('https://'));
+      return urls[0] || null;
+    }
+
+    if (!src.startsWith('http://') && !src.startsWith('https://')) {
+      return null;
+    }
+
+    return src;
+  }, [src]);
+
+  if (!cleanUrl || error) {
+    return (
+      <Box
+        boxSize={boxSize}
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+        fontSize="2xl"
+        color="whiteAlpha.500"
+        bg="rgba(255, 255, 255, 0.08)"
+        borderRadius="md"
+        border="1px solid"
+        borderColor="whiteAlpha.200">
+        <FaCoins />
+      </Box>
+    );
+  }
+
+  return (
+    <Box
+      boxSize={boxSize}
+      display="flex"
+      alignItems="center"
+      justifyContent="center"
+      bg="rgba(255, 255, 255, 0.08)"
+      borderRadius="md"
+      p="3px"
+      position="relative"
+      border="1px solid"
+      borderColor="whiteAlpha.200">
+      <Image
+        src={cleanUrl}
+        alt={alt}
+        boxSize="100%"
+        objectFit="contain"
+        onError={() => {
+          setError(true);
+        }}
+      />
+    </Box>
+  );
+};
+
+// Component to render data as a formatted table
+const DataTable = ({ data, title }: { data: any; title?: string }) => {
+  const renderValue = (value: any): string => {
+    if (value === null || value === undefined) return 'N/A';
+    if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+    if (Array.isArray(value)) return value.join(', ');
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+  };
+
+  const entries = Object.entries(data || {}).filter(([key, value]) => {
+    // Filter out complex nested objects for cleaner display
+    return typeof value !== 'object' || value === null || Array.isArray(value);
+  });
+
+  if (entries.length === 0) return null;
+
+  return (
+    <TableContainer
+      bg="rgba(0, 0, 0, 0.3)"
+      borderRadius="md"
+      border="1px solid"
+      borderColor="whiteAlpha.200"
+      maxH="500px"
+      overflowY="auto">
+      <Table size="sm" variant="simple">
+        <Thead position="sticky" top={0} bg="rgba(0, 0, 0, 0.5)" zIndex={1}>
+          <Tr>
+            <Th color="whiteAlpha.700" borderColor="whiteAlpha.200">
+              Property
+            </Th>
+            <Th color="whiteAlpha.700" borderColor="whiteAlpha.200">
+              Value
+            </Th>
+          </Tr>
+        </Thead>
+        <Tbody>
+          {entries.map(([key, value]) => (
+            <Tr key={key} _hover={{ bg: 'whiteAlpha.50' }}>
+              <Td color="blue.300" fontWeight="semibold" borderColor="whiteAlpha.200" fontFamily="mono" fontSize="xs">
+                {key}
+              </Td>
+              <Td
+                color="whiteAlpha.900"
+                borderColor="whiteAlpha.200"
+                fontFamily="mono"
+                fontSize="xs"
+                wordBreak="break-all">
+                {renderValue(value)}
+              </Td>
+            </Tr>
+          ))}
+        </Tbody>
+      </Table>
+    </TableContainer>
+  );
+};
+
 export function Asset() {
   const [activeTab, setActiveTab] = useState<'send' | 'receive' | null>(null);
   const [loading, setLoading] = useState(true);
@@ -50,6 +188,8 @@ export function Asset() {
   const [assetType, setAssetType] = useState<string>(''); // EVM TENDERMINT UTXO OTHER
   const [showHistoryButton, setShowHistoryButton] = useState<boolean>(false);
   const [showAllPubkeys, setShowAllPubkeys] = useState(false);
+  const [isToken, setIsToken] = useState<boolean>(false);
+  const [tokenMetadata, setTokenMetadata] = useState<any>(null);
 
   // Modal state
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
@@ -85,6 +225,33 @@ export function Asset() {
 
   useEffect(() => {
     if (asset) {
+      // Detect if this is a token CAIP
+      const isTokenAsset =
+        asset.caip?.includes('/erc20:') ||
+        asset.caip?.includes('/cw20:') ||
+        asset.caip?.includes('/bep20:') ||
+        asset.token === true;
+      setIsToken(isTokenAsset);
+
+      if (isTokenAsset) {
+        // Extract token metadata from asset context
+        const contractAddress = asset.contractAddress || asset.caip?.split(':')[2] || null;
+        setTokenMetadata({
+          contractAddress,
+          decimals: asset.decimals,
+          isCustom: asset.isCustomToken || false,
+          tokenStandard: asset.caip?.includes('/erc20:')
+            ? 'ERC-20'
+            : asset.caip?.includes('/cw20:')
+              ? 'CW-20'
+              : asset.caip?.includes('/bep20:')
+                ? 'BEP-20'
+                : 'Token',
+        });
+      } else {
+        setTokenMetadata(null);
+      }
+
       fetchBalancesAndPubkeys(asset);
     }
   }, [asset]);
@@ -105,6 +272,7 @@ export function Asset() {
           setPubkeys(response.assets.pubkeys);
         }
 
+        // Fetch transaction history in parallel (non-blocking)
         if (response.assets.networkId.indexOf('eip155') !== -1) {
           fetchTxHistory(response.assets.networkId);
         }
@@ -274,10 +442,33 @@ export function Asset() {
       <Card>
         <CardBody>
           {loading ? (
-            <Flex justifyContent="center" p={5}>
-              <Spinner size="xl" />
-              <Text ml={3}>Loading...</Text>
-            </Flex>
+            <VStack spacing={4} width="100%">
+              {/* Skeleton Header */}
+              <Flex align="center" justify="space-between" width="100%" mb={4}>
+                <HStack spacing={3}>
+                  <SkeletonCircle size="60px" />
+                  <VStack align="flex-start" spacing={2}>
+                    <Skeleton height="20px" width="120px" />
+                    <Skeleton height="16px" width="80px" />
+                  </VStack>
+                </HStack>
+              </Flex>
+
+              {/* Skeleton Buttons */}
+              <VStack spacing={2} width="100%">
+                <Skeleton height="40px" width="100%" borderRadius="md" />
+                <Skeleton height="40px" width="100%" borderRadius="md" />
+                <Skeleton height="40px" width="100%" borderRadius="md" />
+              </VStack>
+
+              {/* Loading Indicator */}
+              <Flex justify="center" align="center" py={4}>
+                <Spinner size="sm" color="blue.400" mr={2} />
+                <Text fontSize="sm" color="whiteAlpha.600">
+                  Loading asset details...
+                </Text>
+              </Flex>
+            </VStack>
           ) : activeTab === null && asset ? (
             <>
               <Box textAlign="center">
@@ -285,12 +476,27 @@ export function Asset() {
               </Box>
 
               <Flex align="center" justifyContent="space-between" mb={4}>
-                <Avatar size="xl" src={asset.icon} />
+                <IconWithFallback src={asset.icon} alt={asset.name || asset.symbol} boxSize="60px" />
                 <Box ml={3} flex="1">
-                  <Text fontSize="lg" fontWeight="bold">
-                    {asset.name}
+                  <HStack spacing={2} align="center">
+                    <Text fontSize="lg" fontWeight="bold">
+                      {asset.name}
+                    </Text>
+                    {isToken && tokenMetadata && (
+                      <Badge colorScheme="purple" fontSize="xs" px={2} py={1}>
+                        {tokenMetadata.tokenStandard}
+                      </Badge>
+                    )}
+                  </HStack>
+                  <Text fontSize="md" color="whiteAlpha.800">
+                    {asset.symbol}
                   </Text>
-                  <Text fontSize="md">{asset.symbol}</Text>
+                  {isToken && tokenMetadata?.contractAddress && (
+                    <Text fontSize="xs" color="whiteAlpha.600" fontFamily="mono" mt={1}>
+                      {tokenMetadata.contractAddress.slice(0, 6)}...
+                      {tokenMetadata.contractAddress.slice(-4)}
+                    </Text>
+                  )}
                 </Box>
                 {/*<Box>*/}
                 {/*  {balances.length > 0 ? (*/}
@@ -314,10 +520,24 @@ export function Asset() {
 
               <Flex direction="column" align="center" mb={4} width="100%">
                 <Button my={2} size="md" variant="outline" width="100%" onClick={() => setActiveTab('send')}>
-                  Send {asset.name}
+                  <HStack spacing={2}>
+                    <Text>Send {asset.symbol}</Text>
+                    {isToken && (
+                      <Badge colorScheme="purple" size="sm">
+                        Token
+                      </Badge>
+                    )}
+                  </HStack>
                 </Button>
                 <Button my={2} size="md" variant="outline" width="100%" onClick={() => setActiveTab('receive')}>
-                  Receive {asset.name}
+                  <HStack spacing={2}>
+                    <Text>Receive {asset.symbol}</Text>
+                    {isToken && (
+                      <Badge colorScheme="purple" size="sm">
+                        Token
+                      </Badge>
+                    )}
+                  </HStack>
                 </Button>
 
                 <Button my={2} size="md" variant="outline" width="100%" onClick={() => setIsHistoryModalOpen(true)}>
@@ -366,12 +586,17 @@ export function Asset() {
       </Modal>
 
       <Box mt={4}>
-        <Tabs variant="enclosed" mt={4}>
+        <Tabs variant="enclosed" mt={4} defaultIndex={0}>
           <TabList>
+            <Tab>Tokens</Tab>
             <Tab>Dapps</Tab>
             {isEvm && <Tab>Recent</Tab>}
+            <Tab>Advanced Data</Tab>
           </TabList>
           <TabPanels>
+            <TabPanel>
+              <Tokens asset={asset} networkId={asset?.networkId} />
+            </TabPanel>
             <TabPanel>
               <AppStore networkId={asset?.networkId} />
             </TabPanel>
@@ -384,6 +609,51 @@ export function Asset() {
                 <Text mt={2}>Stuck TX? Build a cancel transaction.</Text>
               </TabPanel>
             )}
+            <TabPanel>
+              <VStack align="stretch" spacing={4}>
+                <Text fontSize="lg" fontWeight="bold">
+                  Asset Data for {asset?.caip}
+                </Text>
+                <DataTable data={asset} />
+
+                {/* Additional data sections */}
+                {balances && balances.length > 0 && (
+                  <>
+                    <Text fontSize="md" fontWeight="bold" mt={4}>
+                      Balance Data
+                    </Text>
+                    {balances.map((balance, index) => (
+                      <DataTable key={index} data={balance} />
+                    ))}
+                  </>
+                )}
+
+                {filteredPubkeys && filteredPubkeys.length > 0 && (
+                  <>
+                    <Text fontSize="md" fontWeight="bold" mt={4}>
+                      Pubkey Data
+                    </Text>
+                    {filteredPubkeys.map((pubkey, index) => (
+                      <Box key={index} mb={3}>
+                        <Text fontSize="xs" color="whiteAlpha.600" mb={2}>
+                          Pubkey {index + 1}
+                        </Text>
+                        <DataTable data={pubkey} />
+                      </Box>
+                    ))}
+                  </>
+                )}
+
+                {isToken && tokenMetadata && (
+                  <>
+                    <Text fontSize="md" fontWeight="bold" mt={4}>
+                      Token Metadata
+                    </Text>
+                    <DataTable data={tokenMetadata} />
+                  </>
+                )}
+              </VStack>
+            </TabPanel>
           </TabPanels>
         </Tabs>
       </Box>

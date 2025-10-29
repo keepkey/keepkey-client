@@ -14,6 +14,8 @@ import {
 } from './customStorage';
 import { chainIdStorage } from './providerStorage';
 import { exampleThemeStorage, exampleSidebarStorage } from './exampleThemeStorage';
+import customTokensStorage, { customTokensStorageApi } from './customTokensStorage';
+export type { CustomToken, CustomTokensStorage } from './customTokensStorage';
 
 export {
   chainIdStorage,
@@ -27,6 +29,8 @@ export {
   blockchainStorage,
   blockchainDataStorage,
   dappStorage,
+  customTokensStorage,
+  customTokensStorageApi,
   createStorage,
   StorageType,
   SessionAccessLevel,
