@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Button, Flex, Switch, Text, Avatar, useToast, Badge } from '@chakra-ui/react';
-import { availableChainsByWallet, ChainToNetworkId, getChainEnumValue, NetworkIdToChain } from '@coinmasters/types';
+import {
+  availableChainsByWallet,
+  ChainToNetworkId,
+  getChainEnumValue,
+  NetworkIdToChain,
+} from '@pioneer-platform/pioneer-caip';
 // @ts-ignore
 import { COIN_MAP_LONG } from '@pioneer-platform/pioneer-coins';
 import { blockchainStorage, blockchainDataStorage } from '@extension/storage';

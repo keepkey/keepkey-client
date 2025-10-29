@@ -28,6 +28,13 @@ import {
   Image,
   Skeleton,
   SkeletonCircle,
+  Table,
+  Thead,
+  Tbody,
+  Tr,
+  Th,
+  Td,
+  TableContainer,
 } from '@chakra-ui/react';
 import { FaCoins } from 'react-icons/fa';
 import { Transfer } from './Transfer';
@@ -110,6 +117,64 @@ const IconWithFallback = ({ src, alt, boxSize }: { src: string | null; alt: stri
         }}
       />
     </Box>
+  );
+};
+
+// Component to render data as a formatted table
+const DataTable = ({ data, title }: { data: any; title?: string }) => {
+  const renderValue = (value: any): string => {
+    if (value === null || value === undefined) return 'N/A';
+    if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+    if (Array.isArray(value)) return value.join(', ');
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+  };
+
+  const entries = Object.entries(data || {}).filter(([key, value]) => {
+    // Filter out complex nested objects for cleaner display
+    return typeof value !== 'object' || value === null || Array.isArray(value);
+  });
+
+  if (entries.length === 0) return null;
+
+  return (
+    <TableContainer
+      bg="rgba(0, 0, 0, 0.3)"
+      borderRadius="md"
+      border="1px solid"
+      borderColor="whiteAlpha.200"
+      maxH="500px"
+      overflowY="auto">
+      <Table size="sm" variant="simple">
+        <Thead position="sticky" top={0} bg="rgba(0, 0, 0, 0.5)" zIndex={1}>
+          <Tr>
+            <Th color="whiteAlpha.700" borderColor="whiteAlpha.200">
+              Property
+            </Th>
+            <Th color="whiteAlpha.700" borderColor="whiteAlpha.200">
+              Value
+            </Th>
+          </Tr>
+        </Thead>
+        <Tbody>
+          {entries.map(([key, value]) => (
+            <Tr key={key} _hover={{ bg: 'whiteAlpha.50' }}>
+              <Td color="blue.300" fontWeight="semibold" borderColor="whiteAlpha.200" fontFamily="mono" fontSize="xs">
+                {key}
+              </Td>
+              <Td
+                color="whiteAlpha.900"
+                borderColor="whiteAlpha.200"
+                fontFamily="mono"
+                fontSize="xs"
+                wordBreak="break-all">
+                {renderValue(value)}
+              </Td>
+            </Tr>
+          ))}
+        </Tbody>
+      </Table>
+    </TableContainer>
   );
 };
 
@@ -526,6 +591,7 @@ export function Asset() {
             <Tab>Tokens</Tab>
             <Tab>Dapps</Tab>
             {isEvm && <Tab>Recent</Tab>}
+            <Tab>Advanced Data</Tab>
           </TabList>
           <TabPanels>
             <TabPanel>
@@ -543,6 +609,51 @@ export function Asset() {
                 <Text mt={2}>Stuck TX? Build a cancel transaction.</Text>
               </TabPanel>
             )}
+            <TabPanel>
+              <VStack align="stretch" spacing={4}>
+                <Text fontSize="lg" fontWeight="bold">
+                  Asset Data for {asset?.caip}
+                </Text>
+                <DataTable data={asset} />
+
+                {/* Additional data sections */}
+                {balances && balances.length > 0 && (
+                  <>
+                    <Text fontSize="md" fontWeight="bold" mt={4}>
+                      Balance Data
+                    </Text>
+                    {balances.map((balance, index) => (
+                      <DataTable key={index} data={balance} />
+                    ))}
+                  </>
+                )}
+
+                {filteredPubkeys && filteredPubkeys.length > 0 && (
+                  <>
+                    <Text fontSize="md" fontWeight="bold" mt={4}>
+                      Pubkey Data
+                    </Text>
+                    {filteredPubkeys.map((pubkey, index) => (
+                      <Box key={index} mb={3}>
+                        <Text fontSize="xs" color="whiteAlpha.600" mb={2}>
+                          Pubkey {index + 1}
+                        </Text>
+                        <DataTable data={pubkey} />
+                      </Box>
+                    ))}
+                  </>
+                )}
+
+                {isToken && tokenMetadata && (
+                  <>
+                    <Text fontSize="md" fontWeight="bold" mt={4}>
+                      Token Metadata
+                    </Text>
+                    <DataTable data={tokenMetadata} />
+                  </>
+                )}
+              </VStack>
+            </TabPanel>
           </TabPanels>
         </Tabs>
       </Box>
