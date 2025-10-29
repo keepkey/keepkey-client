@@ -3,7 +3,7 @@ import { Flex, Spinner, Avatar, Box, Text, Badge, Card, Stack, Button } from '@c
 import AssetSelect from './AssetSelect'; // Import AssetSelect component
 import { blockchainDataStorage, blockchainStorage } from '@extension/storage';
 import { COIN_MAP_LONG } from '@pioneer-platform/pioneer-coins';
-import { NetworkIdToChain } from '@coinmasters/types';
+import { NetworkIdToChain } from '@pioneer-platform/pioneer-caip';
 
 const Balances = ({ setShowBack }: any) => {
   // Initialize state with cached data if available
@@ -24,6 +24,7 @@ const Balances = ({ setShowBack }: any) => {
   const [loading, setLoading] = useState(!cachedBalances || !cachedAssets); // Only show loading if no cached data
   const [showAssetSelect, setShowAssetSelect] = useState(false); // New state to toggle between Balances and AssetSelect
   const [balancesLoaded, setBalancesLoaded] = useState(!!cachedBalances); // Already loaded if we have cached data
+  const [loadingAssetId, setLoadingAssetId] = useState<string | null>(null); // Track which asset is being loaded
 
   // Function to add custom (added) assets
   const addAddedAssets = async () => {
@@ -111,6 +112,7 @@ const Balances = ({ setShowBack }: any) => {
     const messageListener = (message: any) => {
       if (message.type === 'ASSET_CONTEXT_CLEARED') {
         console.log('Asset context cleared, refreshing balances...');
+        setLoadingAssetId(null); // Clear loading state when returning
         // Fetch fresh balances when returning from asset view
         chrome.runtime.sendMessage({ type: 'GET_APP_BALANCES' }, response => {
           if (response && response.balances && response.balances.length > 0) {
@@ -215,6 +217,11 @@ const Balances = ({ setShowBack }: any) => {
         }
         if (response && response.balances && response.balances.length > 0) {
           console.log('Balances: ', response.balances.length);
+          console.log('Sample balance structure:', response.balances[0]);
+          console.log(
+            'Bitcoin balances:',
+            response.balances.filter(b => b.symbol === 'BTC' || b.name?.toLowerCase().includes('bitcoin')),
+          );
 
           // Check if we have fewer balances than assets (might indicate incomplete data)
           if (assets.length > 0 && response.balances.length < assets.length / 2) {
@@ -293,6 +300,8 @@ const Balances = ({ setShowBack }: any) => {
 
   const onSelect = (asset: any) => {
     console.log('Asset selected:', asset);
+    setLoadingAssetId(asset.caip); // Set loading state for this specific asset
+
     try {
       // Store current balances before switching views
       if (balances && balances.length > 0) {
@@ -312,27 +321,47 @@ const Balances = ({ setShowBack }: any) => {
         response => {
           if (chrome.runtime.lastError) {
             console.error('Error sending message:', chrome.runtime.lastError);
+            setLoadingAssetId(null); // Clear loading state on error
           }
           console.log('SET_ASSET_CONTEXT response: ', response);
           if (response && response.error) {
             console.error('Error setting asset context:', response.error);
+            setLoadingAssetId(null); // Clear loading state on error
           } else {
             console.log('Asset context set successfully:', response);
+            // Don't clear loading here - let the navigation clear it
           }
         },
       );
     } catch (e) {
       console.error(e);
+      setLoadingAssetId(null); // Clear loading state on error
     }
   };
 
   // Always show all assets - no filtering
   const sortedAssets = [...assets].sort((a: any, b: any) => {
-    const balanceA = balances.find(balance => balance.caip === a.caip);
-    const balanceB = balances.find(balance => balance.caip === b.caip);
-    const valueUsdA = balanceA ? parseFloat(balanceA.valueUsd || '0') : 0;
-    const valueUsdB = balanceB ? parseFloat(balanceB.valueUsd || '0') : 0;
-    return valueUsdB - valueUsdA; // Sort in descending order by value in USD
+    // Find balance for asset A
+    let balanceA = balances.find(balance => balance.caip === a.caip);
+    if (!balanceA && a.networkId) {
+      balanceA = balances.find(b => b.networkId === a.networkId && b.isNative === true);
+    }
+
+    // Find balance for asset B
+    let balanceB = balances.find(balance => balance.caip === b.caip);
+    if (!balanceB && b.networkId) {
+      balanceB = balances.find(b => b.networkId === b.networkId && b.isNative === true);
+    }
+
+    // Calculate total USD value for the entire chain (including tokens)
+    const chainBalancesA = balances.filter(b => b.networkId === a.networkId);
+    const chainBalancesB = balances.filter(b => b.networkId === b.networkId);
+
+    const valueUsdA = chainBalancesA.reduce((sum, b) => sum + parseFloat(b.valueUsd || '0'), 0);
+    const valueUsdB = chainBalancesB.reduce((sum, b) => sum + parseFloat(b.valueUsd || '0'), 0);
+
+    // Sort in descending order by total USD value (highest to lowest)
+    return valueUsdB - valueUsdA;
   });
 
   if (showAssetSelect) {
@@ -357,12 +386,29 @@ const Balances = ({ setShowBack }: any) => {
               </Flex>
             ) : (
               sortedAssets.map((asset: any, index: any) => {
-                const balance = balances.find(b => b.caip === asset.caip);
-                const { integer, largePart, smallPart } = formatBalance(balance?.balance || '0.00');
-
+                // Get all balances for this chain
                 const chainBalances = balances.filter(b => b.networkId === asset.networkId);
                 const totalUsdValue = chainBalances.reduce((sum, b) => sum + parseFloat(b.valueUsd || '0'), 0);
                 const tokenCount = chainBalances.filter(b => !b.isNative).length;
+
+                // For native assets, sum up all balances across different addresses
+                const nativeBalances = chainBalances.filter(b => b.isNative === true || b.caip === asset.caip);
+
+                let totalBalance = '0';
+                if (nativeBalances.length > 0) {
+                  // Sum all balances for this asset (handles multiple addresses)
+                  const sum = nativeBalances.reduce((acc, b) => {
+                    const bal = parseFloat(b.balance || '0');
+                    return acc + bal;
+                  }, 0);
+                  totalBalance = sum.toString();
+                } else {
+                  // Fallback: try to find exact match
+                  const balance = balances.find(b => b.caip === asset.caip);
+                  totalBalance = balance?.balance || '0';
+                }
+
+                const { integer, largePart, smallPart } = formatBalance(totalBalance);
 
                 return (
                   <Card key={index} borderRadius="md" p={4} mb={1} width="100%">
@@ -403,7 +449,13 @@ const Balances = ({ setShowBack }: any) => {
                           </>
                         )}
                       </Box>
-                      <Button ml="auto" onClick={() => onSelect(asset)} size="md">
+                      <Button
+                        ml="auto"
+                        onClick={() => onSelect(asset)}
+                        size="md"
+                        isLoading={loadingAssetId === asset.caip}
+                        loadingText="Loading..."
+                        disabled={loadingAssetId !== null}>
                         Select
                       </Button>
                     </Flex>

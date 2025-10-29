@@ -1,6 +1,6 @@
 {
   "name": "chrome-extension",
-  "version": "0.3.12",
+  "version": "0.3.13",
   "description": "chrome extension - core settings",
   "type": "module",
   "scripts": {
@@ -19,10 +19,11 @@
   "dependencies": {
     "@extension/shared": "workspace:*",
     "@extension/storage": "workspace:*",
-    "@pioneer-platform/helpers": "^4.0.12",
-    "@pioneer-platform/pioneer-caip": "^9.10.0",
+    "@pioneer-platform/helpers": "^4.0.13",
+    "@pioneer-platform/pioneer-caip": "^9.2.38",
     "@pioneer-platform/pioneer-coins": "^9.11.0",
-    "@pioneer-platform/pioneer-sdk": "^4.21.13",
+    "@pioneer-platform/pioneer-discovery": "^0.8.4",
+    "@pioneer-platform/pioneer-sdk": "^4.21.14",
     "axios": "^1.7.7",
     "buffer": "^6.0.3",
     "coinselect": "^3.1.13",

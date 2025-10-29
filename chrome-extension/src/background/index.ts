@@ -9,7 +9,7 @@ import { handleWalletRequest } from './methods';
 // import { listenForApproval } from './approvals';
 import { JsonRpcProvider } from 'ethers';
 import { ChainToNetworkId, Chain } from '@pioneer-platform/pioneer-caip';
-import { requestStorage, exampleSidebarStorage, web3ProviderStorage } from '@extension/storage'; // Re-import the storage
+import { requestStorage, exampleSidebarStorage, web3ProviderStorage, blockchainDataStorage } from '@extension/storage'; // Re-import the storage
 import { EIP155_CHAINS } from './chains';
 import axios from 'axios';
 
@@ -468,9 +468,35 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                 const currentAssetContext = await APP.assetContext;
                 //if eip155 then set web3 provider
                 if (currentAssetContext.networkId.includes('eip155')) {
-                  const newProvider = EIP155_CHAINS[currentAssetContext.networkId].provider;
-                  console.log('newProvider', newProvider);
-                  await web3ProviderStorage.setWeb3Provider(newProvider);
+                  // Try to get provider data from custom chains first (user-added networks)
+                  let providerData = await blockchainDataStorage.getBlockchainData(currentAssetContext.networkId);
+
+                  // Fallback to static chain list if not found in custom storage
+                  if (!providerData) {
+                    const chainInfo = EIP155_CHAINS[currentAssetContext.networkId];
+                    if (chainInfo) {
+                      // Build provider object from static chain info
+                      providerData = {
+                        chainId: chainInfo.chainId,
+                        caip: chainInfo.caip,
+                        blockExplorerUrls: [],
+                        name: chainInfo.name,
+                        providerUrl: chainInfo.rpc,
+                        fallbacks: [],
+                      };
+                    } else {
+                      console.error(
+                        tag,
+                        'Network not found in custom or static chains:',
+                        currentAssetContext.networkId,
+                      );
+                    }
+                  }
+
+                  console.log('newProvider', providerData);
+                  if (providerData) {
+                    await web3ProviderStorage.setWeb3Provider(providerData);
+                  }
                 }
               } catch (error) {
                 console.error('Error setting asset context:', error);
