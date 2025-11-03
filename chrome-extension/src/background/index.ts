@@ -29,7 +29,8 @@ let KEEPKEY_STATE = 0;
 
 function updateIcon() {
   let iconPath = './icon-128.png';
-  if (KEEPKEY_STATE === 2) iconPath = './icon-128-online.png';
+  // Show green/online icon when connected (state 2) or paired (state 5)
+  if (KEEPKEY_STATE === 2 || KEEPKEY_STATE === 5) iconPath = './icon-128-online.png';
 
   chrome.action.setIcon({ path: iconPath }, () => {
     if (chrome.runtime.lastError) {
@@ -1067,8 +1068,14 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         }
 
         default:
-          console.error('Unknown message:', message);
-          sendResponse({ error: 'Unknown message type: ' + message.type });
+          // Handle action-based messages (like eth_sign_response) that are handled by other listeners
+          if (message.action) {
+            // Don't log error for action-based messages - they're handled by other listeners
+            sendResponse({ success: true });
+          } else {
+            console.error('Unknown message:', message);
+            sendResponse({ error: 'Unknown message type: ' + message.type });
+          }
       }
     } catch (error) {
       console.error('Error handling message:', error);
