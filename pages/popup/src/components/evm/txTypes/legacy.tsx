@@ -59,8 +59,8 @@ export default function LegacyTx({ transaction }: any) {
 
   return (
     <Flex direction="column" mb={4}>
-      <Box mb={2}>
-        <Table variant="simple" size="sm">
+      <Box mb={2} maxW="100%" overflowX="auto">
+        <Table variant="simple" size="sm" wordBreak="break-word">
           <Tbody>
             <Tr>
               <Td>
@@ -72,7 +72,9 @@ export default function LegacyTx({ transaction }: any) {
               <Td>
                 <Badge>recipient:</Badge>
               </Td>
-              <Td>{transaction?.unsignedTx?.to}</Td>
+              <Td wordBreak="break-all" fontSize="sm">
+                {transaction?.unsignedTx?.to}
+              </Td>
             </Tr>
             <Tr>
               <Td>
@@ -96,7 +98,10 @@ export default function LegacyTx({ transaction }: any) {
                   size="sm"
                   resize="vertical"
                   minHeight="100px"
+                  maxHeight="200px"
                   cursor="default"
+                  wordBreak="break-all"
+                  whiteSpace="pre-wrap"
                   _focus={{ boxShadow: 'none' }}
                 />
               </Td>

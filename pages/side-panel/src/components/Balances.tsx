@@ -340,26 +340,15 @@ const Balances = ({ setShowBack }: any) => {
     }
   };
 
-  // Always show all assets - no filtering
+  // Always show all assets - sorted by total USD value (descending)
   const sortedAssets = [...assets].sort((a: any, b: any) => {
-    // Find balance for asset A
-    let balanceA = balances.find(balance => balance.caip === a.caip);
-    if (!balanceA && a.networkId) {
-      balanceA = balances.find(b => b.networkId === a.networkId && b.isNative === true);
-    }
+    // Calculate total USD value for the entire chain A (including tokens)
+    const chainBalancesA = balances.filter(bal => bal.networkId === a.networkId);
+    const valueUsdA = chainBalancesA.reduce((sum, bal) => sum + parseFloat(bal.valueUsd || '0'), 0);
 
-    // Find balance for asset B
-    let balanceB = balances.find(balance => balance.caip === b.caip);
-    if (!balanceB && b.networkId) {
-      balanceB = balances.find(b => b.networkId === b.networkId && b.isNative === true);
-    }
-
-    // Calculate total USD value for the entire chain (including tokens)
-    const chainBalancesA = balances.filter(b => b.networkId === a.networkId);
-    const chainBalancesB = balances.filter(b => b.networkId === b.networkId);
-
-    const valueUsdA = chainBalancesA.reduce((sum, b) => sum + parseFloat(b.valueUsd || '0'), 0);
-    const valueUsdB = chainBalancesB.reduce((sum, b) => sum + parseFloat(b.valueUsd || '0'), 0);
+    // Calculate total USD value for the entire chain B (including tokens)
+    const chainBalancesB = balances.filter(bal => bal.networkId === b.networkId);
+    const valueUsdB = chainBalancesB.reduce((sum, bal) => sum + parseFloat(bal.valueUsd || '0'), 0);
 
     // Sort in descending order by total USD value (highest to lowest)
     return valueUsdB - valueUsdA;

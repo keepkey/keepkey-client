@@ -87,6 +87,9 @@ const RequestFeeCard = ({ transaction }) => {
     const fetchAssetContext = async () => {
       try {
         const context = await requestAssetContext();
+        console.log('RequestFeeCard - Full asset context:', context);
+        console.log('RequestFeeCard - Assets:', context?.assets);
+        console.log('RequestFeeCard - Price USD:', context?.assets?.priceUsd);
         setAssetContext(context.assets);
       } catch (error) {
         console.error('Error fetching asset context:', error);
@@ -114,24 +117,29 @@ const RequestFeeCard = ({ transaction }) => {
       const feeData = await requestFeeData();
       console.log(tag, ' feeData: ', feeData);
 
-      // Since feeData.gasPrice is already in decimal format, there's no need for hexToDecimal
-      const networkGasPrice = BigInt(feeData.gasPrice);
+      // feeData.gasPrice appears to already be in wei (not gwei)
+      const networkGasPriceWei = BigInt(feeData.gasPrice);
       console.log(tag, ' feeData: ', feeData);
+      console.log(tag, ' networkGasPriceWei: ', networkGasPriceWei);
 
-      // Calculate low, medium, and high gas prices based on the network gas price
-      const lowGasPrice = (networkGasPrice * BigInt(80)) / BigInt(100); // 80% of gas price
-      const mediumGasPrice = networkGasPrice; // Use the network-provided gas price
-      const highGasPrice = (networkGasPrice * BigInt(120)) / BigInt(100); // 120% of gas price
-      console.log(tag, ' lowGasPrice: ', lowGasPrice);
-      console.log(tag, ' mediumGasPrice: ', mediumGasPrice);
-      console.log(tag, ' highGasPrice: ', highGasPrice);
+      // Calculate low, medium, and high gas prices in wei
+      const lowGasPriceWei = (networkGasPriceWei * BigInt(80)) / BigInt(100); // 80%
+      const mediumGasPriceWei = networkGasPriceWei;
+      const highGasPriceWei = (networkGasPriceWei * BigInt(120)) / BigInt(100); // 120%
+      console.log(tag, ' lowGasPriceWei: ', lowGasPriceWei);
+      console.log(tag, ' mediumGasPriceWei: ', mediumGasPriceWei);
+      console.log(tag, ' highGasPriceWei: ', highGasPriceWei);
 
-      // Convert from wei to gwei (1e9)
+      // Convert from wei to gwei for display (divide by 1e9)
+      // If the values are small (< 1000000), they might already be in gwei
+      const isAlreadyGwei = Number(networkGasPriceWei) < 1000000;
+      const divider = isAlreadyGwei ? 1 : 1e9;
+
       const feeSettings = {
         dappSuggested: fees.dappSuggested,
-        low: Math.floor(Number(lowGasPrice) / 1e9).toString(), // Low gas price in gwei, rounded down
-        medium: Math.floor(Number(mediumGasPrice) / 1e9).toString(), // Medium gas price in gwei, rounded down
-        high: Math.floor(Number(highGasPrice) / 1e9).toString(), // High gas price in gwei, rounded down
+        low: Math.floor(Number(lowGasPriceWei) / divider).toString(),
+        medium: Math.floor(Number(mediumGasPriceWei) / divider).toString(),
+        high: Math.floor(Number(highGasPriceWei) / divider).toString(),
       };
       console.log(tag, ' feeSettings: ', feeSettings);
       setFees(feeSettings);

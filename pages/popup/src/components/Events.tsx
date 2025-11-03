@@ -72,7 +72,7 @@ const EventsViewer = () => {
   };
 
   return (
-    <Box>
+    <Box maxW="100vw" overflowX="hidden" p={4}>
       {/* Show spinner if events are being fetched */}
       {loading && <Spinner />}
 
