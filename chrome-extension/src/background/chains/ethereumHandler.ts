@@ -104,8 +104,11 @@ const getProvider = async (): Promise<JsonRpcProvider> => {
   }
 
   // Get all available RPC URLs
-  const rpcUrls = currentProvider.providers || [currentProvider.providerUrl];
-  if (!rpcUrls || rpcUrls.length === 0) {
+  const rpcUrls =
+    currentProvider.providers && currentProvider.providers.length > 0
+      ? currentProvider.providers
+      : [currentProvider.providerUrl];
+  if (!rpcUrls || rpcUrls.length === 0 || !rpcUrls[0]) {
     throw createProviderRpcError(4900, 'No RPC URLs available');
   }
 
@@ -675,10 +678,15 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
       requestInfo.txid = txid;
       await requestStorage.updateEventById(requestInfo.id, requestInfo);
 
+      // Get current provider for explorer link
+      const currentProvider = await web3ProviderStorage.getWeb3Provider();
+
       // Notify transaction completion
       chrome.runtime.sendMessage({
         action: 'transaction_complete',
         txHash: txid,
+        explorerTxLink: currentProvider.explorerTxLink,
+        networkId: currentProvider.networkId,
       });
     }
 
@@ -844,6 +852,12 @@ const signMessage = async (message, KEEPKEY_WALLET, ADDRESS: string) => {
     const output = await KEEPKEY_WALLET.keepKeySdk.eth.ethSign({ address: ADDRESS, message: message });
     console.log(`${tag} Transaction output: `, output);
 
+    // Notify popup that signature is complete
+    chrome.runtime.sendMessage({
+      action: 'signature_complete',
+      signature: output,
+    });
+
     return output;
   } catch (e) {
     console.error(e);
@@ -885,7 +899,7 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
     }
 
     if (!transaction.gasLimit) {
-      console.error(tag, 'Asked to estimate gas on a signTransaction!');
+      console.log(tag, 'No gas limit provided, estimating...');
       try {
         console.log('estimateGasPayload: ', {
           from: transaction.from,
@@ -899,31 +913,35 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
           data: transaction.data,
         });
 
-        console.log(tag, 'Estimated gas: ', estimatedGas.toString());
+        console.log(tag, 'Estimated gas:', estimatedGas.toString());
 
-        // If estimated gas is less than 115,000, set a warning and adjust
-        if (estimatedGas < 615000) {
-          console.warn(tag, `Estimated gas too low (${estimatedGas.toString()}). Using minimum of 115000.`);
-          estimatedGas = 615000;
+        // Always add 20% buffer to prevent out of gas errors
+        const gasBuffer = BigInt(estimatedGas) / BigInt(5); // 20% buffer
+        estimatedGas = BigInt(estimatedGas) + gasBuffer;
+        console.log(tag, `Added 20% buffer: ${estimatedGas.toString()}`);
+
+        // Ensure minimum gas limit of 21,000 (simple transfer)
+        const MIN_GAS = BigInt(21000);
+        if (estimatedGas < MIN_GAS) {
+          console.warn(tag, `Estimated gas too low (${estimatedGas.toString()}). Using minimum of ${MIN_GAS}.`);
+          estimatedGas = MIN_GAS;
         }
 
-        // If estimated gas exceeds 115,000, apply 25% bump
-        if (estimatedGas > 615000) {
-          estimatedGas = BigInt(estimatedGas) + BigInt(estimatedGas) / BigInt(4); // Adds 25%
-          console.log(tag, `Increased gas by 25%: ${estimatedGas.toString()}`);
-        }
-
-        // Never exceed 2 million gas
-        if (estimatedGas > 2000000) {
-          console.warn(tag, `Estimated gas exceeds max limit. Using 1,000,000.`);
-          estimatedGas = 2000000;
+        // Cap at 10 million gas (most reasonable transactions should be under this)
+        const MAX_GAS = BigInt(10000000);
+        if (estimatedGas > MAX_GAS) {
+          console.warn(tag, `Estimated gas exceeds max limit (${estimatedGas.toString()}). Capping at ${MAX_GAS}.`);
+          estimatedGas = MAX_GAS;
         }
 
         transaction.gasLimit = '0x' + estimatedGas.toString(16); // Convert to hex
+        console.log(tag, `Final gas limit: ${estimatedGas.toString()}`);
       } catch (e) {
-        console.error(tag, 'e: ', e);
-        console.error(tag, 'Error estimating gas, using fallback 115,000 gas limit.');
-        transaction.gasLimit = '0x' + BigInt('315000').toString(16); // Fallback gas limit
+        console.error(tag, 'Gas estimation failed:', e);
+        // Use a reasonable fallback for complex transactions (with 20% buffer already included)
+        const fallbackGas = BigInt(400000); // 400k should handle most complex swaps
+        console.warn(tag, `Using fallback gas limit: ${fallbackGas.toString()}`);
+        transaction.gasLimit = '0x' + fallbackGas.toString(16);
       }
     }
 
@@ -995,6 +1013,13 @@ const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string) 
     console.log(tag, '**** HDWalletPayload: ', JSON.stringify(HDWalletPayload));
     const signedMessage = await KEEPKEY_WALLET.keepKeySdk.eth.ethSignTypedData(HDWalletPayload);
     console.log(tag, '**** signedMessage: ', signedMessage);
+
+    // Notify popup that signature is complete
+    chrome.runtime.sendMessage({
+      action: 'signature_complete',
+      signature: signedMessage,
+    });
+
     return signedMessage;
   } catch (e) {
     console.error(`${tag} Error: `, e);
@@ -1081,6 +1106,8 @@ const sendTransaction = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string
     chrome.runtime.sendMessage({
       action: 'transaction_complete',
       txHash: txHash,
+      explorerTxLink: currentProvider.explorerTxLink,
+      networkId: currentProvider.networkId,
     });
 
     return txHash;
