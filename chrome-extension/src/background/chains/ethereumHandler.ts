@@ -853,13 +853,13 @@ const signMessage = async (message, KEEPKEY_WALLET, ADDRESS: string) => {
 
     // Transform device-specific errors to user-friendly messages
     if (errorMessage.includes('unrecognized address')) {
-      throw createProviderRpcError(4000, 'KeepKey device state is invalid. Please restart your device and try again.');
+      throw createProviderRpcError(4000, 'Please restart KeepKey Desktop, invalid state');
     } else if (errorMessage.includes('device not found') || errorMessage.includes('disconnected')) {
-      throw createProviderRpcError(4000, 'KeepKey device not detected. Please check your connection.');
+      throw createProviderRpcError(4000, 'KeepKey device not detected. Please check your USB connection.');
     } else if (errorMessage.includes('user rejected') || errorMessage.includes('cancelled')) {
       throw createProviderRpcError(4001, 'User rejected the signature request.');
     } else if (errorMessage.includes('timeout')) {
-      throw createProviderRpcError(4000, 'Device communication timed out. Please try again.');
+      throw createProviderRpcError(4000, 'KeepKey Desktop communication timed out. Please try again.');
     }
 
     // Generic fallback with original error
@@ -964,15 +964,15 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
 
     // Transform device-specific errors to user-friendly messages
     if (errorMessage.includes('unrecognized address')) {
-      throw createProviderRpcError(4000, 'KeepKey device state is invalid. Please restart your device and try again.');
+      throw createProviderRpcError(4000, 'Please restart KeepKey Desktop, invalid state');
     } else if (errorMessage.includes('device not found') || errorMessage.includes('disconnected')) {
-      throw createProviderRpcError(4000, 'KeepKey device not detected. Please check your connection.');
+      throw createProviderRpcError(4000, 'KeepKey device not detected. Please check your USB connection.');
     } else if (errorMessage.includes('user rejected') || errorMessage.includes('cancelled')) {
       throw createProviderRpcError(4001, 'User rejected the transaction.');
     } else if (errorMessage.includes('insufficient funds')) {
       throw createProviderRpcError(4000, 'Insufficient balance to complete this transaction.');
     } else if (errorMessage.includes('timeout')) {
-      throw createProviderRpcError(4000, 'Device communication timed out. Please try again.');
+      throw createProviderRpcError(4000, 'KeepKey Desktop communication timed out. Please try again.');
     }
 
     // Generic fallback with original error
@@ -1004,13 +1004,13 @@ const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string) 
 
     // Transform device-specific errors to user-friendly messages
     if (errorMessage.includes('unrecognized address')) {
-      throw createProviderRpcError(4000, 'KeepKey device state is invalid. Please restart your device and try again.');
+      throw createProviderRpcError(4000, 'Please restart KeepKey Desktop, invalid state');
     } else if (errorMessage.includes('device not found') || errorMessage.includes('disconnected')) {
-      throw createProviderRpcError(4000, 'KeepKey device not detected. Please check your connection.');
+      throw createProviderRpcError(4000, 'KeepKey device not detected. Please check your USB connection.');
     } else if (errorMessage.includes('user rejected') || errorMessage.includes('cancelled')) {
       throw createProviderRpcError(4001, 'User rejected the typed data signature.');
     } else if (errorMessage.includes('timeout')) {
-      throw createProviderRpcError(4000, 'Device communication timed out. Please try again.');
+      throw createProviderRpcError(4000, 'KeepKey Desktop communication timed out. Please try again.');
     }
 
     // Generic fallback with original error

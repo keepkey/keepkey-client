@@ -272,15 +272,28 @@ export const handleWalletRequest = async (
     }
   } catch (error) {
     console.error(tag, `Error processing method ${method}:`, error);
-    let errorMessage = JSON.stringify(error)
-    if(errorMessage.indexOf('unrecognized address') >= 0){
-        errorMessage = 'KeepKey State Invalid, please restart device!'
+
+    // Extract error message - prefer structured error message over JSON stringification
+    let errorMessage: string;
+    if ((error as ProviderRpcError).message) {
+      errorMessage = (error as ProviderRpcError).message;
+    } else if (error instanceof Error) {
+      errorMessage = error.message;
+    } else {
+      errorMessage = JSON.stringify(error);
     }
+
+    // Legacy fallback for any errors that slip through chain handlers
+    if (errorMessage.indexOf('unrecognized address') >= 0) {
+      errorMessage = 'Please restart KeepKey Desktop, invalid state';
+    }
+
     //push error to the popup
     chrome.runtime.sendMessage({
       action: 'transaction_error',
       error: errorMessage,
     });
+
     if ((error as ProviderRpcError).code && (error as ProviderRpcError).message) {
       throw error;
     } else {
