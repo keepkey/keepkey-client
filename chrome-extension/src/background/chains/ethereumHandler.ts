@@ -847,7 +847,23 @@ const signMessage = async (message, KEEPKEY_WALLET, ADDRESS: string) => {
     return output;
   } catch (e) {
     console.error(e);
-    throw createProviderRpcError(4000, 'Error signing message', e);
+
+    // Extract meaningful error message
+    const errorMessage = e?.message || JSON.stringify(e);
+
+    // Transform device-specific errors to user-friendly messages
+    if (errorMessage.includes('unrecognized address')) {
+      throw createProviderRpcError(4000, 'KeepKey device state is invalid. Please restart your device and try again.');
+    } else if (errorMessage.includes('device not found') || errorMessage.includes('disconnected')) {
+      throw createProviderRpcError(4000, 'KeepKey device not detected. Please check your connection.');
+    } else if (errorMessage.includes('user rejected') || errorMessage.includes('cancelled')) {
+      throw createProviderRpcError(4001, 'User rejected the signature request.');
+    } else if (errorMessage.includes('timeout')) {
+      throw createProviderRpcError(4000, 'Device communication timed out. Please try again.');
+    }
+
+    // Generic fallback with original error
+    throw createProviderRpcError(4000, `Error signing message: ${errorMessage}`);
   }
 };
 
@@ -942,7 +958,25 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
     return output.serialized;
   } catch (e) {
     console.error(`${tag} Error: `, e);
-    throw createProviderRpcError(4000, 'Error signing transaction', e);
+
+    // Extract meaningful error message
+    const errorMessage = e?.message || JSON.stringify(e);
+
+    // Transform device-specific errors to user-friendly messages
+    if (errorMessage.includes('unrecognized address')) {
+      throw createProviderRpcError(4000, 'KeepKey device state is invalid. Please restart your device and try again.');
+    } else if (errorMessage.includes('device not found') || errorMessage.includes('disconnected')) {
+      throw createProviderRpcError(4000, 'KeepKey device not detected. Please check your connection.');
+    } else if (errorMessage.includes('user rejected') || errorMessage.includes('cancelled')) {
+      throw createProviderRpcError(4001, 'User rejected the transaction.');
+    } else if (errorMessage.includes('insufficient funds')) {
+      throw createProviderRpcError(4000, 'Insufficient balance to complete this transaction.');
+    } else if (errorMessage.includes('timeout')) {
+      throw createProviderRpcError(4000, 'Device communication timed out. Please try again.');
+    }
+
+    // Generic fallback with original error
+    throw createProviderRpcError(4000, `Error signing transaction: ${errorMessage}`);
   }
 };
 
@@ -964,7 +998,23 @@ const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string) 
     return signedMessage;
   } catch (e) {
     console.error(`${tag} Error: `, e);
-    throw createProviderRpcError(4000, 'Error signing typed data', e);
+
+    // Extract meaningful error message
+    const errorMessage = e?.message || JSON.stringify(e);
+
+    // Transform device-specific errors to user-friendly messages
+    if (errorMessage.includes('unrecognized address')) {
+      throw createProviderRpcError(4000, 'KeepKey device state is invalid. Please restart your device and try again.');
+    } else if (errorMessage.includes('device not found') || errorMessage.includes('disconnected')) {
+      throw createProviderRpcError(4000, 'KeepKey device not detected. Please check your connection.');
+    } else if (errorMessage.includes('user rejected') || errorMessage.includes('cancelled')) {
+      throw createProviderRpcError(4001, 'User rejected the typed data signature.');
+    } else if (errorMessage.includes('timeout')) {
+      throw createProviderRpcError(4000, 'Device communication timed out. Please try again.');
+    }
+
+    // Generic fallback with original error
+    throw createProviderRpcError(4000, `Error signing typed data: ${errorMessage}`);
   }
 };
 
@@ -981,7 +1031,25 @@ const broadcastTransaction = async (signedTx: string) => {
     return txResponse.hash;
   } catch (e) {
     console.error(tag, e);
-    throw createProviderRpcError(4000, 'Error broadcasting transaction', e);
+
+    // Extract meaningful error message
+    const errorMessage = e?.message || JSON.stringify(e);
+
+    // Transform network-specific errors
+    if (errorMessage.includes('insufficient funds')) {
+      throw createProviderRpcError(4000, 'Insufficient balance to complete this transaction.');
+    } else if (errorMessage.includes('nonce too low')) {
+      throw createProviderRpcError(4000, 'Transaction nonce conflict. Please try again.');
+    } else if (errorMessage.includes('replacement transaction underpriced')) {
+      throw createProviderRpcError(4000, 'Transaction fee too low. Try with a higher gas price.');
+    } else if (errorMessage.includes('gas required exceeds')) {
+      throw createProviderRpcError(4000, 'Transaction requires more gas than available.');
+    } else if (errorMessage.includes('timeout')) {
+      throw createProviderRpcError(4000, 'Network timeout. Please try again.');
+    }
+
+    // Generic fallback
+    throw createProviderRpcError(4000, `Error broadcasting transaction: ${errorMessage}`);
   }
 };
 
