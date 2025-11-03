@@ -100,7 +100,7 @@ export default function ContractDetailsCard({ transaction }: ContractDetailsCard
     <Card mt={4} shadow="md" borderWidth="1px">
       <CardHeader>
         <Flex alignItems="center">
-          <Avatar src={'https://pioneers.dev/coins/pioneerMan.png'} size="md" mr={4} />
+          <Avatar src={'https://api.keepkey.info/coins/pioneerMan.png'} size="md" mr={4} />
           <Heading as="h5" size="lg">
             Pioneer Summary:
           </Heading>

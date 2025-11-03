@@ -29,7 +29,7 @@ export function AddDappModal({ networkId, isOpen, onClose, onSave }: AddDappModa
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const toast = useToast();
-  const defaultIcon = 'https://pioneers.dev/coins/ethereum.png';
+  const defaultIcon = 'https://api.keepkey.info/coins/ethereum.png';
 
   const handleSave = async () => {
     if (!url || !name) {
@@ -60,7 +60,7 @@ export function AddDappModal({ networkId, isOpen, onClose, onSave }: AddDappModa
       <ModalContent>
         <ModalHeader>
           <Flex align="center">
-            <Avatar src="https://pioneers.dev/coins/pioneerMan.png" size="sm" mr={2} />
+            <Avatar src="https://api.keepkey.info/coins/pioneerMan.png" size="sm" mr={2} />
             <Text>Discovery</Text>
           </Flex>
         </ModalHeader>

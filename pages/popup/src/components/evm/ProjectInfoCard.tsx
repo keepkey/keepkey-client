@@ -22,7 +22,7 @@ export default function ProjectInfoCard({ transaction }: IProps) {
   // Attempt to fetch the favicon from the cleaned URL or handle the KeepKey Browser Extension case
   useEffect(() => {
     if (transaction?.siteUrl === 'KeepKey Browser Extension') {
-      setFaviconUrl('https://pioneers.dev/coins/keepkey.png');
+      setFaviconUrl('https://api.keepkey.info/coins/keepkey.png');
     } else if (cleanUrl) {
       const favicon = `${cleanUrl}/favicon.ico`;
       setFaviconUrl(favicon);
@@ -37,7 +37,7 @@ export default function ProjectInfoCard({ transaction }: IProps) {
 
         {/* Sub Avatar for KeepKey logo */}
         <Avatar
-          src={'https://pioneers.dev/coins/keepkey.png'}
+          src={'https://api.keepkey.info/coins/keepkey.png'}
           size="sm"
           position="absolute"
           bottom={0}

@@ -14,7 +14,7 @@ const AwaitingApproval = ({ onCancel }: { onCancel: () => void; onClose: () => v
               Device Signing Request
             </Heading>
             <Image
-              src="https://pioneers.dev/coins/hold-and-release.svg"
+              src="https://api.keepkey.info/coins/hold-and-release.svg"
               alt="Approve on device"
               boxSize="150px"
               mb={4}

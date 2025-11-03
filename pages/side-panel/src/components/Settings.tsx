@@ -135,7 +135,7 @@ const Settings = () => {
         provider: {
           name: 'KeepKey',
           uuid: '350670db-19fa-4704-a166-e52e178b59d4',
-          icon: 'https://pioneers.dev/coins/keepkey.png',
+          icon: 'https://api.keepkey.info/coins/keepkey.png',
           rdns: 'com.keepkey',
         },
       },

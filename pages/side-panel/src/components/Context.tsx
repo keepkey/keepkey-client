@@ -5,7 +5,7 @@ import { CopyIcon } from '@chakra-ui/icons';
 const Context = () => {
   const toast = useToast();
   const [currentAssetContext, setCurrentAssetContext] = useState({
-    icon: 'https://pioneers.dev/coins/ethereum.png',
+    icon: 'https://api.keepkey.info/coins/ethereum.png',
     name: 'Ethereum',
   });
   const [address, setAddress] = useState('');
@@ -62,7 +62,7 @@ const Context = () => {
       if (chrome.runtime.lastError) {
         console.error('Error clearing asset context:', chrome.runtime.lastError.message);
       } else {
-        setCurrentAssetContext({ icon: 'https://pioneers.dev/coins/ethereum.png', name: 'Ethereum' });
+        setCurrentAssetContext({ icon: 'https://api.keepkey.info/coins/ethereum.png', name: 'Ethereum' });
         setAddress('');
       }
     });

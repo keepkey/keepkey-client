@@ -89,7 +89,7 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
         let blockchain: Chain = {
           networkId,
           name: COIN_MAP_LONG[(NetworkIdToChain as any)[networkId]] || 'unknown',
-          image: `https://pioneers.dev/coins/${COIN_MAP_LONG[(NetworkIdToChain as any)[networkId]] || 'unknown'}.png`,
+          image: `https://api.keepkey.info/coins/${COIN_MAP_LONG[(NetworkIdToChain as any)[networkId]] || 'unknown'}.png`,
           isEnabled: true,
         };
 
@@ -98,7 +98,7 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
           const assetData = await blockchainDataStorage.getBlockchainData(networkId);
           if (assetData && assetData.name) {
             blockchain.name = assetData.name;
-            blockchain.image = assetData.image || `https://pioneers.dev/coins/${assetData.name.toLowerCase()}.png`;
+            blockchain.image = assetData.image || `https://api.keepkey.info/coins/${assetData.name.toLowerCase()}.png`;
           }
         }
 
