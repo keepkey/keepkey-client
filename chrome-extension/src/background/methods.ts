@@ -65,11 +65,25 @@ export const createProviderRpcError = (code: number, message: string, data?: unk
 };
 
 let isPopupOpen = false; // Flag to track popup state
+let popupWindowId: number | null = null; // Track the popup window ID
 
 const openPopup = function () {
   const tag = TAG + ' | openPopup | ';
   try {
+    // If popup is already open, focus it instead of creating a new one
+    if (isPopupOpen && popupWindowId !== null) {
+      console.log(tag, 'Popup already open, focusing existing window:', popupWindowId);
+      chrome.windows.update(popupWindowId, { focused: true }).catch(err => {
+        console.error(tag, 'Failed to focus existing popup, creating new one:', err);
+        isPopupOpen = false;
+        popupWindowId = null;
+        openPopup();
+      });
+      return;
+    }
+
     console.log(tag, 'Opening popup');
+    isPopupOpen = true;
     chrome.windows.create(
       {
         url: chrome.runtime.getURL('popup/index.html'), // Adjust the URL to your popup file
@@ -81,13 +95,27 @@ const openPopup = function () {
         if (chrome.runtime.lastError) {
           console.error('Error creating popup:', chrome.runtime.lastError);
           isPopupOpen = false;
+          popupWindowId = null;
         } else {
           console.log('Popup window created:', window);
+          popupWindowId = window?.id || null;
+
+          // Listen for when the popup is closed
+          chrome.windows.onRemoved.addListener(function windowClosedListener(windowId) {
+            if (windowId === popupWindowId) {
+              console.log(tag, 'Popup closed, resetting state');
+              isPopupOpen = false;
+              popupWindowId = null;
+              chrome.windows.onRemoved.removeListener(windowClosedListener);
+            }
+          });
         }
       },
     );
   } catch (e) {
     console.error(tag, e);
+    isPopupOpen = false;
+    popupWindowId = null;
   }
 };
 
@@ -117,7 +145,6 @@ const openPopup = function () {
 const requireApproval = async function (networkId, requestInfo) {
   const tag = TAG + ' | requireApproval | ';
   try {
-    isPopupOpen = true;
     console.log(tag, 'networkId:', networkId);
 
     //if chain is ethereum, use current context for networkId
@@ -196,7 +223,6 @@ const requireUnlock = async function () {
     // openPopup();
   } catch (e) {
     console.error(e);
-    isPopupOpen = false;
   }
 };
 
