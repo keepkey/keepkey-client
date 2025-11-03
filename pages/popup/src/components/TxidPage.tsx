@@ -15,7 +15,7 @@ import {
 import { CheckCircleIcon, CopyIcon } from '@chakra-ui/icons';
 import Confetti from 'react-confetti';
 
-const TxidPage = ({ txHash, explorerUrl }: { txHash: string; explorerUrl: string }) => {
+const TxidPage = ({ txHash, explorerUrl }: { txHash: string; explorerUrl?: string }) => {
   const [showConfetti, setShowConfetti] = useState(true);
   const { hasCopied, onCopy } = useClipboard(txHash); // Chakra hook for clipboard functionality
 
@@ -30,8 +30,10 @@ const TxidPage = ({ txHash, explorerUrl }: { txHash: string; explorerUrl: string
 
   // Function to handle the View on Explorer and close popup
   const handleExplorerClick = () => {
-    window.open(explorerUrl, '_blank', 'noopener,noreferrer'); // Open the explorer URL
-    window.close(); // Close the popup
+    if (explorerUrl) {
+      window.open(explorerUrl, '_blank', 'noopener,noreferrer'); // Open the explorer URL
+      window.close(); // Close the popup
+    }
   };
 
   return (
@@ -84,8 +86,15 @@ const TxidPage = ({ txHash, explorerUrl }: { txHash: string; explorerUrl: string
           </Box>
 
           {/* Button to view the transaction on the explorer and close the popup */}
-          <Button onClick={handleExplorerClick} colorScheme="teal" size="lg">
-            View on Explorer
+          {explorerUrl && (
+            <Button onClick={handleExplorerClick} colorScheme="teal" size="lg" mb={2}>
+              View on Explorer
+            </Button>
+          )}
+
+          {/* Close button - always available */}
+          <Button onClick={() => window.close()} colorScheme="gray" size="lg" variant="outline">
+            Close
           </Button>
         </CardBody>
       </Card>

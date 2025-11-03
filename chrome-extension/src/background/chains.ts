@@ -7,6 +7,7 @@ export const EIP155_CHAINS: any = {
     rpc: 'https://ethereum-rpc.publicnode.com',
     namespace: 'eip155',
     caip: 'eip155:1/slip44:60',
+    explorerTxLink: 'https://etherscan.io/tx/',
   },
   'eip155:43114': {
     chainId: '0xa86a',
@@ -16,6 +17,7 @@ export const EIP155_CHAINS: any = {
     rpc: 'https://api.avax.network/ext/bc/C/rpc',
     namespace: 'eip155',
     caip: 'eip155:43114/slip44:60',
+    explorerTxLink: 'https://snowtrace.io/tx/',
   },
   'eip155:137': {
     chainId: '0x89',
@@ -25,6 +27,7 @@ export const EIP155_CHAINS: any = {
     rpc: 'https://polygon-rpc.com/',
     namespace: 'eip155',
     caip: 'eip155:137/slip44:60',
+    explorerTxLink: 'https://polygonscan.com/tx/',
   },
   'eip155:10': {
     chainId: '0xa',
@@ -34,6 +37,7 @@ export const EIP155_CHAINS: any = {
     rpc: 'https://mainnet.optimism.io',
     namespace: 'eip155',
     caip: 'eip155:10/slip44:60',
+    explorerTxLink: 'https://optimistic.etherscan.io/tx/',
   },
   'eip155:324': {
     chainId: '0x144',
@@ -43,6 +47,7 @@ export const EIP155_CHAINS: any = {
     rpc: 'https://mainnet.era.zksync.io/',
     namespace: 'eip155',
     caip: 'eip155:324/slip44:60',
+    explorerTxLink: 'https://explorer.zksync.io/tx/',
   },
   'eip155:8453': {
     chainId: '0x2105',
@@ -52,6 +57,7 @@ export const EIP155_CHAINS: any = {
     rpc: 'https://mainnet.base.org',
     namespace: 'eip155',
     caip: 'eip155:8453/slip44:60',
+    explorerTxLink: 'https://basescan.org/tx/',
   },
   'eip155:42161': {
     chainId: '0xa4b1',
@@ -61,5 +67,6 @@ export const EIP155_CHAINS: any = {
     rpc: 'https://api.zan.top/node/v1/arb/one/public',
     namespace: 'eip155',
     caip: 'eip155:42161/slip44:60',
+    explorerTxLink: 'https://arbiscan.io/tx/',
   },
 };
