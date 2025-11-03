@@ -40,7 +40,7 @@ const Balances = ({ setShowBack }: any) => {
         const blockchain = {
           networkId: networkId,
           name: chainName,
-          image: `https://pioneers.dev/coins/${chainName}.png`,
+          image: `https://api.keepkey.info/coins/${chainName}.png`,
           isEnabled: true,
         };
 
@@ -53,7 +53,8 @@ const Balances = ({ setShowBack }: any) => {
 
             if (assetData && assetData.name) {
               blockchain.name = assetData.name;
-              blockchain.image = assetData.image || `https://pioneers.dev/coins/${assetData.name.toLowerCase()}.png`;
+              blockchain.image =
+                assetData.image || `https://api.keepkey.info/coins/${assetData.name.toLowerCase()}.png`;
             }
           } catch (error) {
             console.error(`Error fetching asset data for networkId ${networkId}:`, error);

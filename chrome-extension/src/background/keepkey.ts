@@ -190,7 +190,7 @@ export const onStartKeepkey = async function () {
 
     const config: any = {
       appName: 'KeepKey Client',
-      appIcon: 'https://pioneers.dev/coins/keepkey.png',
+      appIcon: 'https://api.keepkey.info/coins/keepkey.png',
       username,
       queryKey,
       spec,
