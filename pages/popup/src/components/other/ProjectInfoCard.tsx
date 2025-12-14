@@ -28,13 +28,13 @@ export default function ProjectInfoCard({ transaction }: any) {
   return (
     <Box textAlign="center">
       <Stack align="center">
-        <Avatar src={'https://api.keepkey.info/coins/keepkey.png'} size="xl" />
+        <Avatar src={'https://pioneers.dev/coins/keepkey.png'} size="xl" bg="gray.700" />
       </Stack>
       <Stack align="center">
         <Text fontSize="2xl" data-testid="session-info-card-text">
           <span>{url}</span> <br />
           <Text fontSize="xl">
-            wants to <Badge>{transaction.type}</Badge>
+            wants to <Badge colorScheme="yellow">{transaction.type}</Badge>
           </Text>
         </Text>
       </Stack>
