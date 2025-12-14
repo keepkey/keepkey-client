@@ -11,6 +11,7 @@ import {
   Heading,
   Input,
   VStack,
+  HStack,
   useToast,
   useColorModeValue,
   Modal,
@@ -21,7 +22,11 @@ import {
   ModalBody,
   ModalFooter,
   useDisclosure,
+  InputGroup,
+  InputRightElement,
+  IconButton,
 } from '@chakra-ui/react';
+import { CloseIcon } from '@chakra-ui/icons';
 import React, { useCallback, useEffect, useState } from 'react';
 import { NetworkIdToChain } from '@pioneer-platform/pioneer-caip';
 import { COIN_MAP_LONG } from '@pioneer-platform/pioneer-coins';
@@ -253,97 +258,169 @@ export function Transfer(): JSX.Element {
 
   return (
     <>
-      <VStack align="start" borderRadius="md" p={4} spacing={4} bg={bgColor} margin="0 auto">
-        <Heading as="h1" size="md" color={headingColor}>
-          Send {isToken ? tokenStandard : 'Crypto'}
-        </Heading>
+      <VStack align="stretch" spacing={5} p={2}>
+        {/* Asset Card - Shows what you're sending */}
+        <Box bg="rgba(255, 255, 255, 0.05)" borderRadius="xl" p={4} border="1px solid" borderColor="whiteAlpha.100">
+          <Flex align="center" justify="space-between">
+            <Flex align="center" gap={3}>
+              <Avatar size="md" src={avatarUrl} />
+              <Box>
+                <Text fontWeight="semibold" color="white" fontSize="lg">
+                  {assetContext?.name || 'Loading...'}
+                </Text>
+                <Text fontSize="sm" color="whiteAlpha.600">
+                  {totalBalance.toFixed(6)} {assetContext?.symbol}
+                </Text>
+              </Box>
+            </Flex>
+            {isToken && (
+              <Badge colorScheme="purple" fontSize="xs">
+                {tokenStandard}
+              </Badge>
+            )}
+          </Flex>
+        </Box>
 
-        <Flex align="center" gap={4}>
-          <Avatar size="md" src={avatarUrl} />
-          <Box>
-            <Text>
-              Asset: <Badge colorScheme="green">{assetContext?.name}</Badge>
-              {isToken && (
-                <Badge colorScheme="purple" ml={2}>
-                  {tokenStandard}
-                </Badge>
-              )}
-            </Text>
-            <Text>
-              Chain: <Badge colorScheme="green">{assetContext?.networkId}</Badge>
-            </Text>
-            <Text>
-              Symbol: <Badge colorScheme="green">{assetContext?.symbol}</Badge>
-            </Text>
-            <Text>
-              balance: <Badge colorScheme="green">{totalBalance}</Badge>
-            </Text>
-          </Box>
-        </Flex>
-
-        <Grid gap={4} templateColumns="1fr">
-          <FormControl>
-            <FormLabel>Recipient</FormLabel>
+        {/* Recipient Input */}
+        <Box>
+          <Text fontSize="sm" color="whiteAlpha.600" mb={2} fontWeight="medium">
+            To
+          </Text>
+          <InputGroup>
             <Input
               value={recipient}
               onChange={e => setRecipient(e.target.value)}
-              placeholder="Enter recipient address"
+              placeholder="Address, domain or identity"
+              bg="rgba(255, 255, 255, 0.05)"
+              border="1px solid"
+              borderColor="whiteAlpha.200"
+              borderRadius="xl"
+              py={6}
+              _placeholder={{ color: 'whiteAlpha.400' }}
+              _focus={{ borderColor: 'blue.400', boxShadow: 'none' }}
             />
-          </FormControl>
+            {recipient && (
+              <InputRightElement h="100%">
+                <IconButton
+                  aria-label="Clear"
+                  icon={<CloseIcon />}
+                  size="xs"
+                  variant="ghost"
+                  onClick={() => setRecipient('')}
+                />
+              </InputRightElement>
+            )}
+          </InputGroup>
+        </Box>
 
-          <FormControl>
-            <FormLabel>Amount</FormLabel>
-            <Flex>
+        {/* Amount Input */}
+        <Box>
+          <Flex justify="space-between" align="center" mb={2}>
+            <Text fontSize="sm" color="whiteAlpha.600" fontWeight="medium">
+              Amount
+            </Text>
+            <HStack spacing={2}>
+              <Button
+                size="xs"
+                variant="ghost"
+                color="blue.400"
+                onClick={() => {
+                  const halfAmount = totalBalance / 2;
+                  setInputAmount(halfAmount.toString());
+                  setIsMax(false);
+                  if (priceUsd) {
+                    setInputAmountUsd((halfAmount * priceUsd).toFixed(2));
+                  }
+                }}>
+                50%
+              </Button>
+              <Button size="xs" variant="ghost" color="blue.400" onClick={setMaxAmount}>
+                Max
+              </Button>
+            </HStack>
+          </Flex>
+
+          <Box bg="rgba(255, 255, 255, 0.05)" border="1px solid" borderColor="whiteAlpha.200" borderRadius="xl" p={4}>
+            <Flex align="center" justify="space-between">
               <Input
                 value={useUsdInput ? inputAmountUsd : inputAmount}
                 onChange={handleInputChange}
-                placeholder="Enter amount"
+                placeholder="0"
+                variant="unstyled"
+                fontSize="2xl"
+                fontWeight="semibold"
+                color="white"
+                _placeholder={{ color: 'whiteAlpha.300' }}
+                flex={1}
               />
-              <Button ml={2} onClick={() => setUseUsdInput(!useUsdInput)}>
-                {useUsdInput ? 'USD' : assetContext?.symbol || 'Symbol'}
-              </Button>
-              {/* Conditionally hide this button if networkId includes "eip155" */}
-              {!assetContext?.networkId?.includes('eip155') && (
-                <Button ml={2} onClick={setMaxAmount}>
-                  Max
-                </Button>
-              )}
+              <HStack spacing={2}>
+                <Text color="whiteAlpha.600" fontWeight="medium">
+                  {useUsdInput ? 'USD' : assetContext?.symbol || '---'}
+                </Text>
+              </HStack>
             </Flex>
-          </FormControl>
-        </Grid>
 
-        <Button colorScheme="green" w="full" isDisabled={isSubmitting || !inputAmount || !recipient} onClick={onOpen}>
-          {isSubmitting ? 'Sending...' : 'Send'}
+            {/* Secondary amount display */}
+            <Flex justify="space-between" align="center" mt={2}>
+              <Text fontSize="sm" color="whiteAlpha.500">
+                {useUsdInput ? `${inputAmount || '0'} ${assetContext?.symbol || ''}` : `$${inputAmountUsd || '0.00'}`}
+              </Text>
+              <Button size="xs" variant="ghost" color="whiteAlpha.500" onClick={() => setUseUsdInput(!useUsdInput)}>
+                ↕ Switch to {useUsdInput ? assetContext?.symbol : 'USD'}
+              </Button>
+            </Flex>
+          </Box>
+        </Box>
+
+        {/* Send Button */}
+        <Button
+          colorScheme="blue"
+          size="lg"
+          w="full"
+          borderRadius="xl"
+          py={6}
+          isDisabled={isSubmitting || !inputAmount || !recipient}
+          onClick={onOpen}
+          _disabled={{ bg: 'whiteAlpha.200', cursor: 'not-allowed' }}>
+          {!recipient ? 'Enter recipient' : !inputAmount ? 'Enter amount' : isSubmitting ? 'Sending...' : 'Continue'}
         </Button>
       </VStack>
 
-      <Modal isOpen={isOpen} onClose={onClose}>
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Confirm {isToken ? `${tokenStandard} Token ` : ''}Transaction</ModalHeader>
-          <ModalCloseButton />
+      {/* Confirmation Modal */}
+      <Modal isOpen={isOpen} onClose={onClose} isCentered>
+        <ModalOverlay bg="blackAlpha.700" />
+        <ModalContent bg="gray.900" borderRadius="xl">
+          <ModalHeader color="white">Confirm Transaction</ModalHeader>
+          <ModalCloseButton color="white" />
           <ModalBody>
-            <Text>Recipient: {recipient}</Text>
-            <Text>
-              Amount: {inputAmount} {assetContext?.symbol}
-              {isToken && (
-                <Badge colorScheme="purple" ml={2}>
-                  {tokenStandard}
-                </Badge>
-              )}
-            </Text>
-            {memo && <Text>Memo: {memo}</Text>}
-            {isToken && (
-              <Text fontSize="xs" color="gray.500" mt={2}>
-                This will send {assetContext?.symbol} tokens on {assetContext?.networkId}
-              </Text>
-            )}
+            <VStack spacing={4} align="stretch">
+              <Box bg="whiteAlpha.100" p={4} borderRadius="lg">
+                <Text fontSize="sm" color="whiteAlpha.600">
+                  Sending
+                </Text>
+                <Text fontSize="xl" fontWeight="bold" color="white">
+                  {inputAmount} {assetContext?.symbol}
+                </Text>
+                <Text fontSize="sm" color="whiteAlpha.500">
+                  ${inputAmountUsd || '0.00'}
+                </Text>
+              </Box>
+
+              <Box bg="whiteAlpha.100" p={4} borderRadius="lg">
+                <Text fontSize="sm" color="whiteAlpha.600">
+                  To
+                </Text>
+                <Text fontSize="sm" color="white" wordBreak="break-all">
+                  {recipient}
+                </Text>
+              </Box>
+            </VStack>
           </ModalBody>
-          <ModalFooter>
-            <Button colorScheme="red" mr={3} onClick={onClose}>
+          <ModalFooter gap={3}>
+            <Button variant="ghost" onClick={onClose} color="white">
               Cancel
             </Button>
-            <Button colorScheme="green" onClick={handleSend} isLoading={isSubmitting}>
+            <Button colorScheme="blue" onClick={handleSend} isLoading={isSubmitting}>
               Confirm
             </Button>
           </ModalFooter>

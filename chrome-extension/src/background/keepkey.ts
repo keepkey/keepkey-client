@@ -1,7 +1,6 @@
 /*
     KeepKey Wallet
  */
-import { AssetValue } from '@pioneer-platform/helpers';
 import { ChainToNetworkId, getChainEnumValue } from '@pioneer-platform/pioneer-caip';
 import { getPaths } from '@pioneer-platform/pioneer-coins';
 import { keepKeyApiKeyStorage, pioneerKeyStorage } from '@extension/storage'; // Re-import the storage
@@ -164,6 +163,30 @@ export const onStartKeepkey = async function () {
       addressNListMaster: [0x80000000 + 44, 0x80000000 + 0, 0x80000000 + 3, 0, 0],
       curve: 'secp256k1',
       showDisplay: false, // Not supported by TrezorConnect or Ledger, but KeepKey should do it
+    });
+
+    // Ethereum account 1 - m/44'/60'/1'/0/0
+    paths.push({
+      note: 'Ethereum account 1',
+      networks: ['eip155:1'],
+      script_type: 'ethereum',
+      type: 'address',
+      addressNList: [0x80000000 + 44, 0x80000000 + 60, 0x80000000 + 1, 0, 0],
+      addressNListMaster: [0x80000000 + 44, 0x80000000 + 60, 0x80000000 + 1, 0, 0],
+      curve: 'secp256k1',
+      showDisplay: false,
+    });
+
+    // Ethereum account 2 - m/44'/60'/2'/0/0
+    paths.push({
+      note: 'Ethereum account 2',
+      networks: ['eip155:1'],
+      script_type: 'ethereum',
+      type: 'address',
+      addressNList: [0x80000000 + 44, 0x80000000 + 60, 0x80000000 + 2, 0, 0],
+      addressNListMaster: [0x80000000 + 44, 0x80000000 + 60, 0x80000000 + 2, 0, 0],
+      curve: 'secp256k1',
+      showDisplay: false,
     });
 
     //get username from storage

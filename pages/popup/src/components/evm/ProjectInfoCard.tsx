@@ -1,5 +1,9 @@
 import { useMemo, useEffect, useState } from 'react';
-import { Avatar, Box, Text, VStack, Stack, Badge } from '@chakra-ui/react';
+import { Avatar, Box, Text, VStack, Stack, Badge, Image } from '@chakra-ui/react';
+
+// KeepKey logo URL with fallback
+const KEEPKEY_LOGO = 'https://pioneers.dev/coins/keepkey.png';
+const KEEPKEY_LOGO_FALLBACK = '/icon-128.png';
 
 interface IProps {
   transaction: any;
@@ -7,6 +11,8 @@ interface IProps {
 
 export default function ProjectInfoCard({ transaction }: IProps) {
   const [faviconUrl, setFaviconUrl] = useState<string | null>(null);
+  const [logoError, setLogoError] = useState(false);
+  const isKeepKeyExtension = transaction?.siteUrl === 'KeepKey Browser Extension';
 
   // Clean the URL to extract the domain
   const cleanUrl = useMemo(() => {
@@ -21,38 +27,67 @@ export default function ProjectInfoCard({ transaction }: IProps) {
 
   // Attempt to fetch the favicon from the cleaned URL or handle the KeepKey Browser Extension case
   useEffect(() => {
-    if (transaction?.siteUrl === 'KeepKey Browser Extension') {
-      setFaviconUrl('https://api.keepkey.info/coins/keepkey.png');
+    if (isKeepKeyExtension) {
+      setFaviconUrl(KEEPKEY_LOGO);
     } else if (cleanUrl) {
       const favicon = `${cleanUrl}/favicon.ico`;
       setFaviconUrl(favicon);
     }
-  }, [cleanUrl, transaction?.siteUrl]);
+  }, [cleanUrl, isKeepKeyExtension]);
+
+  // Get the appropriate logo src
+  const getLogoSrc = () => {
+    if (logoError) return KEEPKEY_LOGO_FALLBACK;
+    return faviconUrl || KEEPKEY_LOGO;
+  };
 
   return (
     <Box textAlign="center">
       <Stack align="center" position="relative">
-        {/* Main Avatar for the dApp's favicon */}
-        <Avatar src={faviconUrl || 'https://via.placeholder.com/150'} size="xl" />
+        {/* Logo - square for KeepKey, round avatar for dApps */}
+        {isKeepKeyExtension ? (
+          <Image
+            src={getLogoSrc()}
+            alt="KeepKey"
+            boxSize="80px"
+            objectFit="contain"
+            onError={() => setLogoError(true)}
+          />
+        ) : (
+          <Avatar src={getLogoSrc()} size="xl" bg="gray.700" onError={() => setLogoError(true)} />
+        )}
 
-        {/* Sub Avatar for KeepKey logo */}
-        <Avatar
-          src={'https://api.keepkey.info/coins/keepkey.png'}
-          size="sm"
-          position="absolute"
-          bottom={0}
-          right={0}
-          borderWidth="2px"
-          borderColor="white"
-        />
+        {/* Sub Avatar for KeepKey logo - only show if not already KeepKey */}
+        {!isKeepKeyExtension && (
+          <Image
+            src={KEEPKEY_LOGO}
+            boxSize="24px"
+            position="absolute"
+            bottom={0}
+            right="calc(50% - 40px)"
+            borderWidth="2px"
+            borderColor="gray.800"
+            borderRadius="md"
+          />
+        )}
       </Stack>
       <Stack align="center" mt={4}>
-        <Text fontSize="2xl" data-testid="session-info-card-text">
-          {transaction?.siteUrl === 'KeepKey Browser Extension' ? 'KeepKey Browser Extension' : cleanUrl} <br />
-          <Text fontSize="xl">
-            wants to <Badge>{transaction.type}</Badge>
+        {/* For KeepKey extension, just show "wants to" since logo has the name */}
+        {isKeepKeyExtension ? (
+          <Text fontSize="xl" data-testid="session-info-card-text">
+            wants to{' '}
+            <Badge colorScheme="yellow" fontSize="md" px={2}>
+              {transaction.type}
+            </Badge>
           </Text>
-        </Text>
+        ) : (
+          <Text fontSize="2xl" data-testid="session-info-card-text">
+            {cleanUrl} <br />
+            <Text fontSize="xl">
+              wants to <Badge colorScheme="yellow">{transaction.type}</Badge>
+            </Text>
+          </Text>
+        )}
       </Stack>
     </Box>
   );

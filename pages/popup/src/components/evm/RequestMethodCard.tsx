@@ -15,26 +15,30 @@ const getMethodInfo = (txType: string, hasSmartContractExecution: boolean) => {
       return {
         title: 'Safe Method',
         description: 'Does not move funds',
-        icon: <CheckCircleIcon boxSize={8} color="green.400" />,
+        icon: <CheckCircleIcon boxSize={5} color="green.400" />,
         color: 'green.400',
       };
 
     case 'transfer':
       return {
         title: 'Transaction',
-        description: 'Moves funds only, no smart contract execution',
-        icon: <WarningIcon boxSize={8} color="yellow.400" />,
-        color: 'yellow.400',
+        description: 'Simple transfer - no smart contract interaction',
+        icon: <CheckCircleIcon boxSize={5} color="green.400" />,
+        color: 'green.400',
       };
     case 'eth_sendTransaction':
     case 'eth_signTransaction':
       return {
-        title: 'Transaction',
+        title: hasSmartContractExecution ? 'Smart Contract' : 'Transaction',
         description: hasSmartContractExecution
-          ? 'This transaction has smart contract execution, requires extended validation'
-          : 'Moves funds only, no smart contract execution',
-        icon: <WarningIcon boxSize={8} color="yellow.400" />,
-        color: 'yellow.400',
+          ? 'Interacts with smart contract - review carefully'
+          : 'Simple transfer - no smart contract interaction',
+        icon: hasSmartContractExecution ? (
+          <WarningIcon boxSize={5} color="yellow.400" />
+        ) : (
+          <CheckCircleIcon boxSize={5} color="green.400" />
+        ),
+        color: hasSmartContractExecution ? 'yellow.400' : 'green.400',
       };
 
     case 'eth_signTypedData':

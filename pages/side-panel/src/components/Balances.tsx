@@ -1,9 +1,42 @@
-import React, { useState, useEffect } from 'react';
-import { Flex, Spinner, Avatar, Box, Text, Badge, Card, Stack, Button } from '@chakra-ui/react';
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  Flex,
+  Spinner,
+  Avatar,
+  Box,
+  Text,
+  Badge,
+  Card,
+  Stack,
+  Button,
+  HStack,
+  IconButton,
+  Tooltip,
+  Image,
+} from '@chakra-ui/react';
+import { ArrowUpIcon, ArrowDownIcon, ChevronRightIcon } from '@chakra-ui/icons';
 import AssetSelect from './AssetSelect'; // Import AssetSelect component
 import { blockchainDataStorage, blockchainStorage } from '@extension/storage';
 import { COIN_MAP_LONG } from '@pioneer-platform/pioneer-coins';
 import { NetworkIdToChain } from '@pioneer-platform/pioneer-caip';
+
+// Chain name mapping for cleaner display
+const getChainDisplayName = (networkId: string): string => {
+  if (networkId?.includes('eip155:1/')) return 'Ethereum';
+  if (networkId?.includes('eip155:8453')) return 'Base';
+  if (networkId?.includes('eip155:137')) return 'Polygon';
+  if (networkId?.includes('eip155:43114')) return 'Avalanche';
+  if (networkId?.includes('eip155:56')) return 'BSC';
+  if (networkId?.includes('eip155:10')) return 'Optimism';
+  if (networkId?.includes('eip155:42161')) return 'Arbitrum';
+  if (networkId?.includes('bip122:000000000019d6689c085ae165831e93')) return 'Bitcoin';
+  if (networkId?.includes('cosmos:')) return 'Cosmos';
+  if (networkId?.includes('cosmos:thorchain')) return 'THORChain';
+  if (networkId?.includes('cosmos:mayachain')) return 'Maya';
+  // Extract chain name from networkId as fallback
+  const chain = (NetworkIdToChain as any)[networkId?.split('/')[0]];
+  return (COIN_MAP_LONG as any)[chain] || 'Unknown';
+};
 
 const Balances = ({ setShowBack }: any) => {
   // Initialize state with cached data if available
@@ -399,69 +432,104 @@ const Balances = ({ setShowBack }: any) => {
                 }
 
                 const { integer, largePart, smallPart } = formatBalance(totalBalance);
+                const chainName = getChainDisplayName(asset.networkId);
 
                 return (
-                  <Card key={index} borderRadius="md" p={4} mb={1} width="100%">
+                  <Card
+                    key={index}
+                    borderRadius="lg"
+                    p={3}
+                    mb={2}
+                    width="100%"
+                    bg="rgba(255, 255, 255, 0.03)"
+                    border="1px solid"
+                    borderColor="whiteAlpha.100"
+                    _hover={{ bg: 'rgba(255, 255, 255, 0.06)', cursor: 'pointer' }}
+                    onClick={() => onSelect(asset)}
+                    transition="all 0.2s">
                     <Flex align="center" width="100%">
-                      <Avatar src={asset.icon} />
+                      {/* Token Icon */}
+                      <Box position="relative">
+                        <Avatar src={asset.icon} size="md" />
+                      </Box>
+
+                      {/* Token Info */}
                       <Box ml={3} flex="1" minWidth="0">
-                        <Text fontWeight="bold" isTruncated>
-                          {asset.name} {asset.manual && <Badge colorScheme="purple">Added Asset</Badge>}
-                        </Text>
+                        <Flex align="center" gap={2}>
+                          <Text fontWeight="semibold" fontSize="md" isTruncated color="white">
+                            {asset.name}
+                          </Text>
+                          {/* Chain Badge - subtle, not dominant */}
+                          <Badge
+                            size="sm"
+                            colorScheme="gray"
+                            variant="subtle"
+                            fontSize="10px"
+                            px={2}
+                            borderRadius="full">
+                            {chainName}
+                          </Badge>
+                          {asset.manual && (
+                            <Badge size="sm" colorScheme="purple" fontSize="10px">
+                              Custom
+                            </Badge>
+                          )}
+                        </Flex>
 
                         {asset.manual ? (
-                          // For custom added assets
-                          <>
-                            <Text color="gray.500">Click to view balance</Text>
-                          </>
+                          <Text fontSize="sm" color="whiteAlpha.600">
+                            Tap to view balance
+                          </Text>
                         ) : (
-                          // For regular assets with balance
-                          <>
-                            <Text as="span" fontSize="lg">
-                              {integer}.
-                              <Text as="span" fontSize="lg">
-                                {largePart}
-                              </Text>
+                          <HStack spacing={2} mt={0.5}>
+                            <Text fontSize="md" color="white" fontWeight="medium">
+                              {integer}.{largePart}
                               {largePart === '0000' && (
-                                <Text as="span" fontSize="sm">
+                                <Text as="span" fontSize="xs" color="whiteAlpha.600">
                                   {smallPart}
                                 </Text>
                               )}
-                              <Badge ml={2} colorScheme="teal">
+                              <Text as="span" color="whiteAlpha.700" ml={1} fontSize="sm">
                                 {asset.symbol}
-                              </Badge>
-                              <br />
-                              {/*<Badge colorScheme="green">USD {formatUsd(balance?.valueUsd || '0.00')}</Badge>*/}
-                              <Badge colorScheme="green">USD {formatUsd(totalUsdValue.toString())}</Badge>
-                              {/*{tokenCount > 1 && <Text fontSize="sm">Tokens: {tokenCount}</Text>}*/}
-                              {/*{tokenCount > 1 && <Text fontSize="sm" color="gray.500">Tokens: {tokenCount}</Text>}*/}
+                              </Text>
                             </Text>
-                          </>
+                          </HStack>
                         )}
                       </Box>
-                      <Button
-                        ml="auto"
-                        onClick={() => onSelect(asset)}
-                        size="md"
-                        isLoading={loadingAssetId === asset.caip}
-                        loadingText="Loading..."
-                        disabled={loadingAssetId !== null}>
-                        Select
-                      </Button>
+
+                      {/* USD Value - Right aligned */}
+                      {!asset.manual && (
+                        <Flex direction="column" align="flex-end" minW="80px">
+                          <Text fontWeight="semibold" color="white" fontSize="md">
+                            ${formatUsd(totalUsdValue.toString())}
+                          </Text>
+                          {loadingAssetId === asset.caip && <Spinner size="xs" color="blue.400" />}
+                        </Flex>
+                      )}
+
+                      <ChevronRightIcon color="whiteAlpha.400" ml={2} />
                     </Flex>
                   </Card>
                 );
               })
             )}
 
-            {/* Add Blockchain Placeholder */}
-            <Card borderRadius="md" p={4} mb={1} width="100%" bg="gray.100" border="2px dashed teal">
-              <Flex align="center" width="100%" justifyContent="center">
-                <Button colorScheme="teal" size="lg" onClick={() => setShowAssetSelect(true)}>
-                  Add Blockchain
-                </Button>
-              </Flex>
-            </Card>
+            {/* Add Blockchain - More subtle */}
+            <Flex
+              align="center"
+              justify="center"
+              p={4}
+              mt={2}
+              borderRadius="lg"
+              border="1px dashed"
+              borderColor="whiteAlpha.200"
+              _hover={{ borderColor: 'whiteAlpha.400', cursor: 'pointer' }}
+              onClick={() => setShowAssetSelect(true)}
+              transition="all 0.2s">
+              <Text color="whiteAlpha.600" fontSize="sm">
+                + Add Blockchain
+              </Text>
+            </Flex>
           </>
         )}
       </Stack>
