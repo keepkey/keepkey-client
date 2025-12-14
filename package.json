@@ -1,6 +1,6 @@
 {
   "name": "keepkey-client",
-  "version": "0.0.22",
+  "version": "0.0.23",
   "description": "chrome extension for KeepKey",
   "license": "GNU General Public License v3.0",
   "repository": {
