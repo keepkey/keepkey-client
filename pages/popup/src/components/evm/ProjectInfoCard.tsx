@@ -27,6 +27,7 @@ export default function ProjectInfoCard({ transaction }: IProps) {
 
   // Attempt to fetch the favicon from the cleaned URL or handle the KeepKey Browser Extension case
   useEffect(() => {
+    setLogoError(false); // Reset error state for new URL
     if (isKeepKeyExtension) {
       setFaviconUrl(KEEPKEY_LOGO);
     } else if (cleanUrl) {
@@ -81,12 +82,12 @@ export default function ProjectInfoCard({ transaction }: IProps) {
             </Badge>
           </Text>
         ) : (
-          <Text fontSize="2xl" data-testid="session-info-card-text">
-            {cleanUrl} <br />
+          <VStack spacing={1} data-testid="session-info-card-text">
+            <Text fontSize="2xl">{cleanUrl}</Text>
             <Text fontSize="xl">
               wants to <Badge colorScheme="yellow">{transaction.type}</Badge>
             </Text>
-          </Text>
+          </VStack>
         )}
       </Stack>
     </Box>

@@ -34,7 +34,7 @@ export default function ProjectInfoCard({ transaction }: any) {
         <Text fontSize="2xl" data-testid="session-info-card-text">
           <span>{url}</span> <br />
           <Text fontSize="xl">
-            wants to <Badge colorScheme="yellow">{transaction.type}</Badge>
+            wants to <Badge colorScheme="yellow">{transaction?.type}</Badge>
           </Text>
         </Text>
       </Stack>
