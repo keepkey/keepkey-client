@@ -226,8 +226,18 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
   const handleTokenSelect = (token: any) => {
     setLoading(true);
     chrome.runtime.sendMessage({ type: 'SET_ASSET_CONTEXT', asset: token }, () => {
+      if (chrome.runtime.lastError) {
+        console.error('Error setting asset context:', chrome.runtime.lastError.message);
+        setLoading(false);
+        return;
+      }
       // Re-fetch the asset context
       chrome.runtime.sendMessage({ type: 'GET_ASSET_CONTEXT' }, response => {
+        if (chrome.runtime.lastError) {
+          console.error('Error fetching asset context:', chrome.runtime.lastError.message);
+          setLoading(false);
+          return;
+        }
         if (response && response.assets) {
           setAssetContext(response.assets);
           setPubkeys(response.assets.pubkeys || []);
