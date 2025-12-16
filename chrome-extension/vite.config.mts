@@ -20,7 +20,9 @@ export default defineConfig({
   },
   define: {
     global: 'globalThis',
-    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production'),
+    'process.env': '{}',
+    'process.version': '""',
+    'process.browser': 'true',
   },
   plugins: [
     libAssetsPlugin({

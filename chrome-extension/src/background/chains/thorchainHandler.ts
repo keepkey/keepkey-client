@@ -29,7 +29,7 @@ export const handleThorchainRequest = async (
   requestInfo: any,
   ADDRESS: string,
   KEEPKEY_WALLET: any,
-  requireApproval: (networkId: string, requestInfo: any, chain: any, method: string, params: any) => Promise<void>,
+  requireApproval: (networkId: string, requestInfo: any, chain: any, method: string, params: any) => Promise<any>,
 ): Promise<any> => {
   const tag = TAG + ' | handleThorchainRequest | ';
   console.log(tag, 'method:', method);

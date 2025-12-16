@@ -35,7 +35,10 @@ export function withPageConfig(config) {
           },
         },
         define: {
-          'process.env.NODE_ENV': isDev ? `"development"` : `"production"`,
+          global: 'globalThis',
+          'process.env': '{}',
+          'process.version': '""',
+          'process.browser': 'true',
         },
         envDir: '../..'
       },

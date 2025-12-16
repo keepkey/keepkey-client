@@ -21,7 +21,10 @@ async function build() {
       minify: !isDev,
       sourcemap: isDev ? 'inline' : false,
       define: {
-        'process.env.NODE_ENV': JSON.stringify(isDev ? 'development' : 'production'),
+        global: 'globalThis',
+        'process.env': '{}',
+        'process.version': '""',
+        'process.browser': 'true',
       },
       logLevel: 'info',
     });
