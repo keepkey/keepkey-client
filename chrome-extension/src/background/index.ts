@@ -1,4 +1,6 @@
 import 'webextension-polyfill';
+// Process polyfill for browser environment
+import '../polyfills/process';
 // Buffer polyfill for browser environment
 import { Buffer } from 'buffer';
 globalThis.Buffer = Buffer;
@@ -85,6 +87,38 @@ const onStart = async function () {
 
     console.log(tag, 'APP.balances: ', APP.balances);
     console.log(tag, 'APP.pubkeys: ', APP.pubkeys);
+
+    // AUTO-SAVE: Cache pubkeys after successful pairing
+    if (APP && APP.pubkeys && APP.pubkeys.length > 0) {
+      const { pubkeyStorage } = await import('@extension/storage');
+
+      try {
+        const deviceInfo = {
+          label: APP.keepKeySdk?.device?.label || 'KeepKey',
+          model: APP.keepKeySdk?.device?.model || 'KeepKey',
+          deviceId: APP.keepKeySdk?.device?.deviceId || 'unknown',
+          features: APP.keepKeySdk?.device?.features,
+        };
+
+        const saved = await pubkeyStorage.savePubkeys(APP.pubkeys, deviceInfo);
+        if (saved) {
+          console.log('✅ Cached', APP.pubkeys.length, 'pubkeys for view-only mode');
+        }
+      } catch (error) {
+        console.error('⚠️ Failed to cache pubkeys:', error);
+      }
+    }
+
+    // Run migration check once per session
+    const { pubkeyStorage: migrationStorage } = await import('@extension/storage');
+    try {
+      const migrated = await migrationStorage.migrateFromVault();
+      if (migrated) {
+        console.log('✅ Successfully migrated pubkeys from vault');
+      }
+    } catch (error) {
+      console.warn('⚠️ Migration check failed (normal if vault not installed):', error);
+    }
 
     // Fetch balances for all available networks
     if (APP.balances && APP.balances.length === 0) {
@@ -503,6 +537,65 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                 console.error('Error setting asset context:', error);
                 sendResponse({ error: 'Failed to fetch assets' });
               }
+            }
+          } else {
+            sendResponse({ error: 'APP not initialized' });
+          }
+          break;
+        }
+
+        case 'GET_PUBKEY_CONTEXT': {
+          if (APP) {
+            sendResponse({ pubkeyContext: APP.pubkeyContext });
+          } else {
+            sendResponse({ error: 'APP not initialized' });
+          }
+          break;
+        }
+
+        case 'SET_PUBKEY_CONTEXT': {
+          if (APP) {
+            const { pubkey } = message;
+            try {
+              await APP.setPubkeyContext(pubkey);
+              chrome.runtime.sendMessage({
+                type: 'PUBKEY_CONTEXT_UPDATED',
+                pubkeyContext: APP.pubkeyContext,
+              });
+              sendResponse({ success: true, pubkeyContext: APP.pubkeyContext });
+            } catch (error) {
+              console.error('Error setting pubkey context:', error);
+              sendResponse({ error: 'Failed to set pubkey context' });
+            }
+          } else {
+            sendResponse({ error: 'APP not initialized' });
+          }
+          break;
+        }
+
+        case 'GET_PUBKEYS_FOR_NETWORK': {
+          if (APP) {
+            const { networkId } = message;
+            const pubkeys = APP.pubkeys.filter((pk: any) => pk.networks && pk.networks.includes(networkId));
+            sendResponse({ pubkeys });
+          } else {
+            sendResponse({ error: 'APP not initialized' });
+          }
+          break;
+        }
+
+        case 'ADD_ACCOUNT_PATH': {
+          if (APP) {
+            const { path } = message;
+            try {
+              // Add path to APP configuration
+              APP.paths.push(path);
+              // Re-pair with new path
+              await APP.getPubkeys();
+              sendResponse({ success: true, pubkeys: APP.pubkeys });
+            } catch (error) {
+              console.error('Error adding account path:', error);
+              sendResponse({ error: 'Failed to add account path' });
             }
           } else {
             sendResponse({ error: 'APP not initialized' });
@@ -1064,6 +1157,50 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           // Content script successfully injected - just log it
           console.log(tag, 'Injection successful:', message.url);
           sendResponse({ success: true });
+          break;
+        }
+
+        case 'GET_CACHED_PUBKEYS_STATUS': {
+          const { pubkeyStorage } = await import('@extension/storage');
+          try {
+            const [hasCached, deviceInfo, cacheEnabled] = await Promise.all([
+              pubkeyStorage.hasStoredPubkeys(),
+              pubkeyStorage.getDeviceInfo(),
+              pubkeyStorage.isCacheEnabled(),
+            ]);
+
+            sendResponse({
+              hasCached,
+              deviceInfo,
+              cacheEnabled,
+              isViewOnlyMode: hasCached && !APP?.keepKeySdk?.device,
+            });
+          } catch (error) {
+            sendResponse({ error: 'Failed to get cache status' });
+          }
+          break;
+        }
+
+        case 'CLEAR_CACHED_PUBKEYS': {
+          const { pubkeyStorage } = await import('@extension/storage');
+          try {
+            const success = await pubkeyStorage.clearPubkeys();
+            sendResponse({ success });
+          } catch (error) {
+            sendResponse({ error: 'Failed to clear cache' });
+          }
+          break;
+        }
+
+        case 'SET_CACHE_ENABLED': {
+          const { pubkeyStorage } = await import('@extension/storage');
+          const { enabled } = message;
+          try {
+            const success = await pubkeyStorage.setCacheEnabled(enabled);
+            sendResponse({ success, enabled });
+          } catch (error) {
+            sendResponse({ error: 'Failed to update cache setting' });
+          }
           break;
         }
 

@@ -30,15 +30,18 @@
     "@pioneer-platform/pioneer-coins": "^9.11.0",
     "axios": "^1.7.7",
     "canvas-confetti": "^1.9.3",
+    "d3": "^7.9.0",
     "date-fns": "^4.1.0",
     "framer-motion": "^11.5.4",
     "qrcode": "^1.5.4",
+    "react-countup": "^6.5.3",
     "react-icons": "^5.5.0"
   },
   "devDependencies": {
     "@extension/tailwindcss-config": "workspace:*",
     "@extension/tsconfig": "workspace:*",
     "@extension/vite-config": "workspace:*",
+    "@types/d3": "^7.4.3",
     "cross-env": "^7.0.3",
     "postcss-load-config": "^6.0.1"
   },

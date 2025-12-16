@@ -3,7 +3,7 @@
  */
 import { ChainToNetworkId, getChainEnumValue } from '@pioneer-platform/pioneer-caip';
 import { getPaths } from '@pioneer-platform/pioneer-coins';
-import { keepKeyApiKeyStorage, pioneerKeyStorage } from '@extension/storage'; // Re-import the storage
+import { keepKeyApiKeyStorage, pioneerKeyStorage, pubkeyStorage } from '@extension/storage'; // Re-import the storage
 // @ts-ignore
 import { SDK } from '@pioneer-platform/pioneer-sdk';
 import { v4 as uuidv4 } from 'uuid';
@@ -224,6 +224,22 @@ export const onStartKeepkey = async function () {
       pubkeys: [],
       balances: [],
     };
+
+    // AUTO-LOAD: Try to load cached pubkeys for view-only mode
+    try {
+      const cacheEnabled = await pubkeyStorage.isCacheEnabled();
+      if (cacheEnabled) {
+        const cached = await pubkeyStorage.loadPubkeys();
+        if (cached && cached.pubkeys.length > 0) {
+          config.pubkeys = cached.pubkeys;
+          console.log('✅ Loaded', cached.pubkeys.length, 'cached pubkeys for view-only mode');
+          console.log('ℹ️ Device:', cached.deviceInfo.label, '| Age:', Math.round((Date.now() - cached.timestamp) / 60000), 'min');
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️ Could not load cached pubkeys:', error);
+      // Continue without cached pubkeys
+    }
 
     const app = new SDK(spec, config);
     await app.init([], {});

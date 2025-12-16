@@ -142,7 +142,13 @@ const openPopup = function () {
 
  */
 
-const requireApproval = async function (networkId, requestInfo) {
+const requireApproval = async function (
+  networkId: string,
+  requestInfo: any,
+  chain?: any,
+  method?: string,
+  params?: any,
+): Promise<any> {
   const tag = TAG + ' | requireApproval | ';
   try {
     console.log(tag, 'networkId:', networkId);
@@ -197,7 +203,7 @@ const requireApproval = async function (networkId, requestInfo) {
 
     // Wait for user's decision and return the result
     return new Promise(resolve => {
-      const listener = (message, sender, sendResponse) => {
+      const listener = (message: any, sender: chrome.runtime.MessageSender, sendResponse: any) => {
         if (message.action === 'eth_sign_response' && message.response.eventId === requestInfo.id) {
           console.log(tag, 'Received eth_sign_response for event:', message.response.eventId);
           chrome.runtime.onMessage.removeListener(listener);

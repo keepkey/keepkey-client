@@ -317,7 +317,7 @@ import type {
         });
       },
 
-      send: (payload: any, param1?: any, callback?: any) => {
+      send: (payload: any, param1?: any, callback?: any): any => {
         if (!payload.chain) {
           payload.chain = chain;
         }
@@ -331,6 +331,7 @@ import type {
               callback(null, { id: payload.id, jsonrpc: '2.0', result });
             }
           });
+          return undefined;
         } else {
           // Sync send (deprecated, but required for compatibility)
           console.warn(TAG, 'Synchronous send is deprecated and may not work properly');

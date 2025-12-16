@@ -30,17 +30,19 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
   const [selectedAddress, setSelectedAddress] = useState('');
   const [pubkeys, setPubkeys] = useState<any[]>([]);
   const [assetContext, setAssetContext] = useState<any>(null);
+  const [pubkeyContext, setPubkeyContext] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [hasCopied, setHasCopied] = useState(false);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const toast = useToast();
 
-  // Fetch asset context and pubkeys from the backend (extension)
+  // Fetch asset context, pubkeys, and current pubkey context from the backend (extension)
   useEffect(() => {
     const fetchAssetContextAndPubkeys = () => {
       setLoading(true);
 
+      // Fetch asset context and pubkeys
       chrome.runtime.sendMessage({ type: 'GET_ASSET_CONTEXT' }, response => {
         if (chrome.runtime.lastError) {
           console.error('Error fetching asset context:', chrome.runtime.lastError.message);
@@ -50,12 +52,21 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
         if (response && response.assets) {
           setAssetContext(response.assets);
           setPubkeys(response.assets.pubkeys || []);
-          if (response.assets.pubkeys && response.assets.pubkeys.length > 0) {
-            const initialAddress = response.assets.pubkeys[0].address || response.assets.pubkeys[0].master;
-            setSelectedAddress(initialAddress);
-          }
         }
         setLoading(false);
+      });
+
+      // Fetch current pubkey context to default to the selected account
+      chrome.runtime.sendMessage({ type: 'GET_PUBKEY_CONTEXT' }, response => {
+        if (chrome.runtime.lastError) {
+          console.error('Error fetching pubkey context:', chrome.runtime.lastError.message);
+          return;
+        }
+        if (response && response.pubkeyContext) {
+          setPubkeyContext(response.pubkeyContext);
+          const address = response.pubkeyContext.address || response.pubkeyContext.master;
+          setSelectedAddress(address);
+        }
       });
     };
 
@@ -71,8 +82,48 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
     }
   }, [selectedAddress, assetContext?.icon]);
 
+  // Listen for pubkey context updates from other components (like header)
+  useEffect(() => {
+    const messageListener = (message: any) => {
+      if (message.type === 'PUBKEY_CONTEXT_UPDATED' && message.pubkeyContext) {
+        setPubkeyContext(message.pubkeyContext);
+        const address = message.pubkeyContext.address || message.pubkeyContext.master;
+        setSelectedAddress(address);
+      }
+    };
+
+    chrome.runtime.onMessage.addListener(messageListener);
+    return () => chrome.runtime.onMessage.removeListener(messageListener);
+  }, []);
+
   const handleAddressSelect = (address: string) => {
-    setSelectedAddress(address);
+    // Find the pubkey object that matches this address
+    const selectedPubkey = pubkeys.find(pk => (pk.address || pk.master) === address);
+    if (selectedPubkey) {
+      // Update global pubkey context
+      chrome.runtime.sendMessage({ type: 'SET_PUBKEY_CONTEXT', pubkey: selectedPubkey }, response => {
+        if (response?.success) {
+          setPubkeyContext(response.pubkeyContext);
+          setSelectedAddress(address);
+          toast({
+            title: 'Account switched',
+            description: `Now using ${getAddressType(selectedPubkey, pubkeys.indexOf(selectedPubkey))}`,
+            status: 'success',
+            duration: 2000,
+            isClosable: true,
+          });
+        } else if (response?.error) {
+          console.error('Error setting pubkey context:', response.error);
+          toast({
+            title: 'Error switching account',
+            description: response.error,
+            status: 'error',
+            duration: 3000,
+            isClosable: true,
+          });
+        }
+      });
+    }
   };
 
   // Copy to clipboard function
@@ -241,12 +292,21 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
         if (response && response.assets) {
           setAssetContext(response.assets);
           setPubkeys(response.assets.pubkeys || []);
-          if (response.assets.pubkeys && response.assets.pubkeys.length > 0) {
-            const initialAddress = response.assets.pubkeys[0].address || response.assets.pubkeys[0].master;
-            setSelectedAddress(initialAddress);
-          }
         }
         setLoading(false);
+      });
+
+      // Re-fetch pubkey context (setAssetContext automatically updates pubkeyContext in Pioneer SDK)
+      chrome.runtime.sendMessage({ type: 'GET_PUBKEY_CONTEXT' }, response => {
+        if (chrome.runtime.lastError) {
+          console.error('Error fetching pubkey context:', chrome.runtime.lastError.message);
+          return;
+        }
+        if (response && response.pubkeyContext) {
+          setPubkeyContext(response.pubkeyContext);
+          const address = response.pubkeyContext.address || response.pubkeyContext.master;
+          setSelectedAddress(address);
+        }
       });
     });
   };

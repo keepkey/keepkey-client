@@ -26,6 +26,11 @@ import {
   DrawerCloseButton,
   Avatar,
   Badge,
+  Menu,
+  MenuButton,
+  MenuList,
+  MenuItem,
+  useToast,
 } from '@chakra-ui/react';
 import {
   ChevronLeftIcon,
@@ -36,6 +41,10 @@ import {
   WarningIcon,
   ArrowUpIcon,
   ArrowDownIcon,
+  ChevronDownIcon,
+  CopyIcon,
+  CheckIcon,
+  AddIcon,
 } from '@chakra-ui/icons';
 import { withErrorBoundary, withSuspense } from '@extension/shared';
 
@@ -47,6 +56,7 @@ import History from './components/History';
 import Settings from './components/Settings';
 import { Transfer } from './components/Transfer';
 import { Receive } from './components/Receive';
+import { DonutChart, ChartLegend, DonutChartItem } from './components/chart';
 
 const stateNames: { [key: number]: string } = {
   0: 'unknown',
@@ -69,9 +79,44 @@ const SidePanel = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedTokenForAction, setSelectedTokenForAction] = useState<any>(null);
 
+  // New state for account selection
+  const [networkContext, setNetworkContext] = useState<any>(null);
+  const [pubkeyContext, setPubkeyContextState] = useState<any>(null);
+  const [availablePubkeys, setAvailablePubkeys] = useState<any[]>([]);
+  const [hasCopiedAddress, setHasCopiedAddress] = useState(false);
+
   const { isOpen: isSettingsOpen, onOpen: onSettingsOpen, onClose: onSettingsClose } = useDisclosure();
   const { isOpen: isSendOpen, onOpen: onSendOpen, onClose: onSendClose } = useDisclosure();
   const { isOpen: isReceiveOpen, onOpen: onReceiveOpen, onClose: onReceiveClose } = useDisclosure();
+  const [activeSliceIndex, setActiveSliceIndex] = useState<number | null>(null);
+  const toast = useToast();
+
+  // Color palette for different assets
+  const getAssetColor = (symbol: string): string => {
+    const colorMap: { [key: string]: string } = {
+      'BTC': '#F7931A',
+      'ETH': '#627EEA',
+      'USDT': '#26A17B',
+      'USDC': '#2775CA',
+      'BNB': '#F3BA2F',
+      'XRP': '#23292F',
+      'ADA': '#0033AD',
+      'DOGE': '#C2A633',
+      'SOL': '#14F195',
+      'DOT': '#E6007A',
+      'MATIC': '#8247E5',
+      'LTC': '#345D9D',
+      'AVAX': '#E84142',
+      'ATOM': '#2E3148',
+      'RUNE': '#33FF99',
+      'MAYA': '#00C9FF',
+      'OSMO': '#5E12A0',
+      'BCH': '#8DC351',
+      'DASH': '#008CE7',
+    };
+
+    return colorMap[symbol.toUpperCase()] || `#${Math.floor(Math.random() * 16777215).toString(16)}`;
+  };
 
   // Fetch total balance from all tokens
   const fetchTotalBalance = useCallback(() => {
@@ -145,6 +190,41 @@ const SidePanel = () => {
     }
   };
 
+  // Fetch contexts on mount
+  useEffect(() => {
+    const fetchContexts = () => {
+      chrome.runtime.sendMessage({ type: 'GET_ASSET_CONTEXT' }, response => {
+        if (response?.assets) {
+          setAssetContext(response.assets);
+          setNetworkContext(response.assets);
+
+          // Fetch pubkeys for this network
+          if (response.assets.networkId) {
+            chrome.runtime.sendMessage(
+              {
+                type: 'GET_PUBKEYS_FOR_NETWORK',
+                networkId: response.assets.networkId,
+              },
+              pubkeyResponse => {
+                if (pubkeyResponse?.pubkeys) {
+                  setAvailablePubkeys(pubkeyResponse.pubkeys);
+                }
+              },
+            );
+          }
+        }
+      });
+
+      chrome.runtime.sendMessage({ type: 'GET_PUBKEY_CONTEXT' }, response => {
+        if (response?.pubkeyContext) {
+          setPubkeyContextState(response.pubkeyContext);
+        }
+      });
+    };
+
+    fetchContexts();
+  }, []);
+
   useEffect(() => {
     const messageListener = (message: any) => {
       if (message.type === 'KEEPKEY_STATE_CHANGED' && message.state !== undefined) {
@@ -152,7 +232,26 @@ const SidePanel = () => {
       }
       if (message.type === 'ASSET_CONTEXT_UPDATED' && message.assetContext) {
         setAssetContext(message.assetContext);
+        setNetworkContext(message.assetContext);
         setShowBack(true);
+
+        // Refresh available pubkeys for new network
+        if (message.assetContext.networkId) {
+          chrome.runtime.sendMessage(
+            {
+              type: 'GET_PUBKEYS_FOR_NETWORK',
+              networkId: message.assetContext.networkId,
+            },
+            response => {
+              if (response?.pubkeys) {
+                setAvailablePubkeys(response.pubkeys);
+              }
+            },
+          );
+        }
+      }
+      if (message.type === 'PUBKEY_CONTEXT_UPDATED' && message.pubkeyContext) {
+        setPubkeyContextState(message.pubkeyContext);
       }
       if (message.type === 'TRANSACTION_CONTEXT_UPDATED' && message.id) {
         console.log('TRANSACTION_CONTEXT_UPDATED', message.id);
@@ -247,10 +346,98 @@ const SidePanel = () => {
     }).format(value);
   };
 
+  // Helper functions for account selection
+  const formatAddress = (address: string) => {
+    if (!address) return '';
+    if (address.length <= 16) return address;
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  };
+
+  const getAccountLabel = (pubkey: any, allPubkeys: any[], index?: number) => {
+    // Try to extract account number from note
+    if (pubkey?.note) {
+      const match = pubkey.note.match(/account\s*(\d+)/i);
+      if (match) {
+        return `Account ${match[1]}`;
+      }
+    }
+    // Try from addressNList (last hardened index)
+    if (pubkey?.addressNList && pubkey.addressNList.length > 2) {
+      const accountIndex = pubkey.addressNList[2] & 0x7fffffff; // Remove hardening bit
+      return `Account ${accountIndex}`;
+    }
+    // Fallback to array index
+    return `Account ${index ?? 0}`;
+  };
+
+  const isSelectedPubkey = (pubkey: any, current: any) => {
+    if (!current) return false;
+    return (
+      pubkey.address === current.address || pubkey.pubkey === current.pubkey || pubkey.master === current.master
+    );
+  };
+
+  const handleAccountSelect = (pubkey: any) => {
+    chrome.runtime.sendMessage(
+      {
+        type: 'SET_PUBKEY_CONTEXT',
+        pubkey,
+      },
+      response => {
+        if (response?.success) {
+          setPubkeyContextState(response.pubkeyContext);
+          toast({
+            title: 'Account switched',
+            description: `Now using ${getAccountLabel(pubkey, availablePubkeys)}`,
+            status: 'success',
+            duration: 2000,
+          });
+        }
+      },
+    );
+  };
+
+  const handleCopyAddress = () => {
+    const address = pubkeyContext?.address || pubkeyContext?.master;
+    if (address) {
+      navigator.clipboard.writeText(address);
+      setHasCopiedAddress(true);
+      toast({
+        title: 'Address copied!',
+        status: 'success',
+        duration: 2000,
+      });
+      setTimeout(() => setHasCopiedAddress(false), 2000);
+    }
+  };
+
+  const handleAddAccount = () => {
+    // TODO: Open modal to select network and account type
+    // For now, just show a message
+    toast({
+      title: 'Add Account',
+      description: 'Feature coming soon - allows adding new derivation paths',
+      status: 'info',
+      duration: 3000,
+    });
+  };
+
+  // Transform balances into chart data
+  const chartData: DonutChartItem[] = balances
+    .filter((balance: any) => parseFloat(balance.valueUsd || '0') > 0)
+    .map((balance: any) => ({
+      name: balance.symbol || balance.ticker || 'Unknown',
+      value: parseFloat(balance.valueUsd || '0'),
+      color: getAssetColor(balance.symbol || balance.ticker || ''),
+    }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 10); // Limit to top 10 assets for clarity
+
   return (
     <Flex direction="column" width="100%" height="100vh" p={4}>
-      {/* Compact Header with Settings and Refresh */}
-      <Flex alignItems="center" justifyContent="space-between" mb={2}>
+      {/* Enhanced Header with Network + Account Selection */}
+      <Flex alignItems="center" justifyContent="space-between" mb={2} gap={2} flexWrap="wrap">
+        {/* Left: Back/Settings + Logo + Status */}
         <Flex alignItems="center" gap={2}>
           <IconButton
             icon={showBack ? <ChevronLeftIcon boxSize={5} /> : <SettingsIcon />}
@@ -259,9 +446,7 @@ const SidePanel = () => {
             size="sm"
             onClick={handleSettingsClick}
           />
-          <Heading size="sm" color="white">
-            KeepKey
-          </Heading>
+          <Avatar size="xs" src="https://api.keepkey.info/coins/keepkey.png" />
           <Tooltip label={`${keepkeyState !== null ? stateNames[keepkeyState] : 'unknown'}`} placement="right" hasArrow>
             <span>
               {keepkeyState === 5 ? (
@@ -272,6 +457,72 @@ const SidePanel = () => {
             </span>
           </Tooltip>
         </Flex>
+
+        {/* Center/Right: Network + Account Selector (only when paired) */}
+        {keepkeyState === 5 && networkContext && (
+          <Flex alignItems="center" gap={2} flex={1} justifyContent="flex-end">
+            {/* Network Logo */}
+            <Avatar size="xs" src={networkContext.icon} />
+
+            {/* Account Dropdown + Copy Button */}
+            <Menu>
+              <MenuButton
+                as={Box}
+                cursor="pointer"
+                _hover={{ opacity: 0.8 }}
+                px={2}
+                py={1}
+                borderRadius="md"
+                bg="whiteAlpha.100">
+                <Flex alignItems="center" gap={1}>
+                  <Text fontSize="xs" color="whiteAlpha.600">
+                    {getAccountLabel(pubkeyContext, availablePubkeys)}
+                  </Text>
+                  <Text fontFamily="mono" fontSize="xs" color="white">
+                    {formatAddress(pubkeyContext?.address || pubkeyContext?.master)}
+                  </Text>
+                  <ChevronDownIcon boxSize={3} />
+                </Flex>
+              </MenuButton>
+
+              <MenuList bg="gray.800" borderColor="whiteAlpha.200" minW="200px">
+                {availablePubkeys.map((pubkey, index) => (
+                  <MenuItem
+                    key={index}
+                    onClick={() => handleAccountSelect(pubkey)}
+                    bg={isSelectedPubkey(pubkey, pubkeyContext) ? 'whiteAlpha.200' : 'transparent'}
+                    _hover={{ bg: 'whiteAlpha.100' }}>
+                    <VStack align="start" spacing={0}>
+                      <Text fontSize="xs" color="whiteAlpha.600">
+                        {getAccountLabel(pubkey, availablePubkeys, index)}
+                      </Text>
+                      <Text fontFamily="mono" fontSize="xs">
+                        {formatAddress(pubkey.address || pubkey.master)}
+                      </Text>
+                    </VStack>
+                  </MenuItem>
+                ))}
+
+                {/* Add Account Button */}
+                <MenuItem icon={<AddIcon />} onClick={handleAddAccount} color="blue.400" _hover={{ bg: 'whiteAlpha.100' }}>
+                  Add Account
+                </MenuItem>
+              </MenuList>
+            </Menu>
+
+            {/* Copy Address Button */}
+            <IconButton
+              icon={hasCopiedAddress ? <CheckIcon /> : <CopyIcon />}
+              aria-label="Copy address"
+              size="xs"
+              variant="ghost"
+              colorScheme={hasCopiedAddress ? 'green' : 'gray'}
+              onClick={handleCopyAddress}
+            />
+          </Flex>
+        )}
+
+        {/* Refresh Button */}
         <IconButton
           icon={<RepeatIcon />}
           aria-label="Refresh"
@@ -291,14 +542,43 @@ const SidePanel = () => {
           mb={4}
           border="1px solid"
           borderColor="whiteAlpha.100">
-          {/* Total Balance */}
-          <VStack spacing={1} mb={4}>
+          {/* Total Balance with Donut Chart */}
+          <VStack spacing={3} mb={4}>
             <Text fontSize="sm" color="whiteAlpha.600" fontWeight="medium">
               Total Balance
             </Text>
-            <Heading size="xl" color="white">
-              {formatCurrency(totalUsdBalance)}
-            </Heading>
+
+            {/* Donut Chart */}
+            {chartData.length > 0 ? (
+              <Flex direction="column" align="center" width="100%">
+                <DonutChart
+                  data={chartData}
+                  height={200}
+                  width={200}
+                  showTotalLabel={false}
+                  activeIndex={activeSliceIndex ?? undefined}
+                  onHoverSlice={setActiveSliceIndex}
+                />
+
+                {/* Total Balance Display */}
+                <Heading size="xl" color="white" mt={2}>
+                  {formatCurrency(totalUsdBalance)}
+                </Heading>
+
+                {/* Chart Legend - Shows active slice info */}
+                <Box width="100%" mt={2}>
+                  <ChartLegend
+                    data={chartData}
+                    total={totalUsdBalance}
+                    activeIndex={activeSliceIndex ?? undefined}
+                  />
+                </Box>
+              </Flex>
+            ) : (
+              <Heading size="xl" color="white">
+                {formatCurrency(totalUsdBalance)}
+              </Heading>
+            )}
           </VStack>
 
           {/* Global Action Buttons */}

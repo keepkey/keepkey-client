@@ -16,6 +16,8 @@ import { chainIdStorage } from './providerStorage';
 import { exampleThemeStorage, exampleSidebarStorage } from './exampleThemeStorage';
 import customTokensStorage, { customTokensStorageApi } from './customTokensStorage';
 export type { CustomToken, CustomTokensStorage } from './customTokensStorage';
+import { pubkeyStorage } from './pubkeyStorage';
+export type { DeviceInfo, StoredPubkeys, PubkeyStorageType } from './pubkeyStorage';
 
 export {
   chainIdStorage,
@@ -37,6 +39,7 @@ export {
   assetContextStorage,
   exampleThemeStorage,
   exampleSidebarStorage,
+  pubkeyStorage,
 };
 
 export type { BaseStorage };

@@ -33,7 +33,7 @@ export const handleBitcoinCashRequest = async (
   requestInfo: any,
   ADDRESS: string,
   KEEPKEY_WALLET: any,
-  requireApproval: (networkId: string, requestInfo: any, chain: any, method: string, params: any) => Promise<void>,
+  requireApproval: (networkId: string, requestInfo: any, chain: any, method: string, params: any) => Promise<any>,
 ): Promise<any> => {
   const tag = TAG + ' | handleBitcoinCashRequest | ';
   console.log(tag, 'method:', method);
