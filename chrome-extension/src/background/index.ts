@@ -42,27 +42,34 @@ function updateIcon() {
 }
 
 function pushStateChangeEvent() {
-  chrome.runtime.sendMessage({
-    type: 'KEEPKEY_STATE_CHANGED',
-    state: KEEPKEY_STATE,
-  });
+  chrome.runtime
+    .sendMessage({
+      type: 'KEEPKEY_STATE_CHANGED',
+      state: KEEPKEY_STATE,
+    })
+    .catch(() => {
+      // Ignore — no popup/sidebar listening
+    });
 }
 
 async function checkKeepKey() {
+  const prevState = KEEPKEY_STATE;
   try {
     const response = await axios.get('http://localhost:1646/docs');
     if (response.status === 200) {
-      updateIcon();
       if (KEEPKEY_STATE < 2) {
         KEEPKEY_STATE = 2; // Set state to connected
-        pushStateChangeEvent();
       }
+      updateIcon();
+      if (KEEPKEY_STATE !== prevState) pushStateChangeEvent();
     }
-  } catch (error) {
-    console.error('KeepKey endpoint not found:', error);
+  } catch (error: any) {
+    if (KEEPKEY_STATE !== 4) {
+      console.warn('KeepKey endpoint not found:', error?.message || error);
+    }
     KEEPKEY_STATE = 4; // Set state to errored
     updateIcon();
-    pushStateChangeEvent();
+    if (KEEPKEY_STATE !== prevState) pushStateChangeEvent();
   }
 }
 
@@ -329,7 +336,11 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
 
         case 'CLEAR_CACHE': {
           if (APP) {
-            APP.clearCache();
+            if (typeof APP.clearCache === 'function') {
+              APP.clearCache();
+            } else {
+              console.warn(tag, 'APP.clearCache not available in this SDK version');
+            }
             sendResponse(true);
           } else {
             sendResponse({ error: 'APP not initialized' });
@@ -494,10 +505,12 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                 console.log(tag, 'Setting asset context:', asset);
                 const response = await APP.setAssetContext(asset);
                 console.log('Asset context set:', response);
-                chrome.runtime.sendMessage({
-                  type: 'ASSET_CONTEXT_UPDATED',
-                  assetContext: response, // Notify frontend about the change
-                });
+                chrome.runtime
+                  .sendMessage({
+                    type: 'ASSET_CONTEXT_UPDATED',
+                    assetContext: response, // Notify frontend about the change
+                  })
+                  .catch(() => {});
                 sendResponse(response);
 
                 const currentAssetContext = await APP.assetContext;
@@ -558,10 +571,12 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             const { pubkey } = message;
             try {
               await APP.setPubkeyContext(pubkey);
-              chrome.runtime.sendMessage({
-                type: 'PUBKEY_CONTEXT_UPDATED',
-                pubkeyContext: APP.pubkeyContext,
-              });
+              chrome.runtime
+                .sendMessage({
+                  type: 'PUBKEY_CONTEXT_UPDATED',
+                  pubkeyContext: APP.pubkeyContext,
+                })
+                .catch(() => {});
               sendResponse({ success: true, pubkeyContext: APP.pubkeyContext });
             } catch (error) {
               console.error('Error setting pubkey context:', error);

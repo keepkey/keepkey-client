@@ -189,67 +189,112 @@ export const onStartKeepkey = async function () {
       showDisplay: false,
     });
 
-    //get username from storage
+    //get credentials from storage
     const keepkeyApiKey = (await keepKeyApiKeyStorage.getApiKey()) || 'key:123';
-    let username = await pioneerKeyStorage.getUsername();
-    let queryKey = await pioneerKeyStorage.getUsername();
     const spec = (await pioneerKeyStorage.getPioneerSpec()) || 'https://api.keepkey.info/spec/swagger.json';
     const wss = (await pioneerKeyStorage.getPioneerWss()) || 'wss://api.keepkey.info';
-    if (!queryKey) {
-      queryKey = `key:${uuidv4()}`;
-      pioneerKeyStorage.saveQueryKey(queryKey);
-    }
-    if (!username) {
-      username = `user:${uuidv4()}`;
-      username = username.substring(0, 13);
-      pioneerKeyStorage.saveUsername(username);
-    }
-    console.log(tag, 'keepkeyApiKey:', keepkeyApiKey);
-    console.log(tag, 'username:', username);
-    console.log(tag, 'queryKey:', queryKey);
-    console.log(tag, 'spec:', spec);
-    console.log(tag, 'wss:', wss);
-    //let spec = 'https://api.keepkey.info/spec/swagger.json'
 
-    const config: any = {
-      appName: 'KeepKey Client',
-      appIcon: 'https://api.keepkey.info/coins/keepkey.png',
-      username,
-      queryKey,
-      spec,
-      keepkeyApiKey,
-      paths,
-      blockchains: allByCaip,
-      nodes: [],
-      pubkeys: [],
-      balances: [],
-    };
+    // Generate fresh credentials helper
+    function generateCredentials() {
+      const id = uuidv4().substring(0, 8);
+      return {
+        username: `user:${id}`,
+        queryKey: `key:${uuidv4()}`,
+      };
+    }
 
-    // AUTO-LOAD: Try to load cached pubkeys for view-only mode
+    // Load cached pubkeys once
+    let cachedPubkeys: any[] = [];
     try {
       const cacheEnabled = await pubkeyStorage.isCacheEnabled();
       if (cacheEnabled) {
         const cached = await pubkeyStorage.loadPubkeys();
         if (cached && cached.pubkeys.length > 0) {
-          config.pubkeys = cached.pubkeys;
+          cachedPubkeys = cached.pubkeys;
           console.log('✅ Loaded', cached.pubkeys.length, 'cached pubkeys for view-only mode');
-          console.log('ℹ️ Device:', cached.deviceInfo.label, '| Age:', Math.round((Date.now() - cached.timestamp) / 60000), 'min');
+          console.log(
+            'ℹ️ Device:',
+            cached.deviceInfo.label,
+            '| Age:',
+            Math.round((Date.now() - cached.timestamp) / 60000),
+            'min',
+          );
         }
       }
     } catch (error) {
       console.warn('⚠️ Could not load cached pubkeys:', error);
-      // Continue without cached pubkeys
     }
 
-    const app = new SDK(spec, config);
-    await app.init([], {});
+    // Try init with stored credentials first, then cycle with fresh ones
+    const MAX_RETRIES = 3;
+    let lastError: any = null;
 
-    if (app.keepkeyApiKey !== keepkeyApiKey) {
-      console.log('SAVING API KEY. ');
-      keepKeyApiKeyStorage.saveApiKey(app.keepkeyApiKey);
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      let username: string;
+      let queryKey: string;
+
+      if (attempt === 0) {
+        // First attempt: use stored credentials
+        username = (await pioneerKeyStorage.getUsername()) || generateCredentials().username;
+        queryKey = `key:${uuidv4()}`; // Always fresh queryKey
+      } else {
+        // Subsequent attempts: generate completely fresh credentials
+        const fresh = generateCredentials();
+        username = fresh.username;
+        queryKey = fresh.queryKey;
+        console.log(tag, `Attempt ${attempt + 1}: cycling to fresh credentials`, username);
+      }
+
+      // Save credentials
+      await pioneerKeyStorage.saveUsername(username);
+      await pioneerKeyStorage.saveQueryKey(queryKey);
+
+      console.log(tag, 'keepkeyApiKey:', keepkeyApiKey);
+      console.log(tag, 'username:', username);
+      console.log(tag, 'queryKey:', queryKey);
+      console.log(tag, 'spec:', spec);
+      console.log(tag, 'wss:', wss);
+
+      const config: any = {
+        appName: 'KeepKey Client',
+        appIcon: 'https://api.keepkey.info/coins/keepkey.png',
+        username,
+        queryKey,
+        spec,
+        wss,
+        keepkeyApiKey,
+        keepkeyEndpoint: 'http://localhost:1646',
+        paths,
+        blockchains: allByCaip,
+        nodes: [],
+        pubkeys: cachedPubkeys.length > 0 ? [...cachedPubkeys] : [],
+        balances: [],
+        transactions: [],
+      };
+
+      try {
+        const app = new SDK(spec, config);
+        await app.init({}, { skipSync: false });
+
+        if (app.keepkeyApiKey !== keepkeyApiKey) {
+          console.log('SAVING API KEY.');
+          keepKeyApiKeyStorage.saveApiKey(app.keepkeyApiKey);
+        }
+
+        return app;
+      } catch (initError: any) {
+        lastError = initError;
+        console.warn(tag, `Init attempt ${attempt + 1} failed:`, initError?.message || initError);
+        // If it's a registration error, cycle credentials and retry
+        if (initError?.message?.includes('register') || initError?.message?.includes('Registration')) {
+          continue;
+        }
+        // For other errors, don't retry
+        throw initError;
+      }
     }
 
-    return app;
+    throw lastError || new Error('Failed to initialize after max retries');
   } catch (e) {
     console.error(e);
     throw e;
