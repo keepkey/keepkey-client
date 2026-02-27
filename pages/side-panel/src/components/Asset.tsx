@@ -42,7 +42,7 @@ import { Receive } from './Receive';
 import AppStore from './AppStore';
 import TransactionHistoryModal from './TransactionHistoryModal';
 import Tokens from './Tokens';
-import { COIN_MAP_LONG } from '@pioneer-platform/pioneer-coins';
+import { COIN_MAP_LONG } from '@extension/shared';
 
 interface Pubkey {
   note: string;

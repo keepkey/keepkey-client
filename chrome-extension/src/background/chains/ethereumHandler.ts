@@ -2,14 +2,14 @@
     Ethereum Provider Refactored
 */
 
-import { Chain } from '@pioneer-platform/pioneer-caip';
 import { JsonRpcProvider } from 'ethers';
 import { createProviderRpcError } from '../utils';
 import { requestStorage, web3ProviderStorage, assetContextStorage, blockchainDataStorage } from '@extension/storage';
 import { EIP155_CHAINS } from '../chains';
 import { v4 as uuidv4 } from 'uuid';
 import { blockchainStorage } from '@extension/storage';
-import { ChainToNetworkId, shortListSymbolToCaip, caipToNetworkId } from '@pioneer-platform/pioneer-caip';
+import { ChainToNetworkId, caipToNetworkId } from '../chainConfig';
+import * as wallet from '../wallet';
 
 const TAG = ' | ethereumHandler | ';
 const DOMAIN_WHITE_LIST = [];
@@ -316,19 +316,9 @@ const switchToProvider = async (currentProvider: any, KEEPKEY_WALLET: any, tag: 
   await web3ProviderStorage.saveWeb3Provider(cleanedProvider);
   await assetContextStorage.updateContext(cleanedProvider);
 
-  // Set asset context
-  try {
-    console.log(tag, 'Setting asset context...');
-    const result = await KEEPKEY_WALLET.setAssetContext(cleanedProvider);
-    console.log(tag, 'setAssetContext result:', result);
-  } catch (error) {
-    console.error(tag, 'Failed to set asset context:', error);
-    throw createProviderRpcError(4900, `Failed to set asset context: ${error.message}`, error);
-  }
-
   // Notify listeners with cleaned provider
   chrome.runtime.sendMessage({ type: 'PROVIDER_CHANGED', provider: cleanedProvider });
-  chrome.runtime.sendMessage({ type: 'ASSET_CONTEXT_UPDATED', assetContext: KEEPKEY_WALLET.assetContext });
+  chrome.runtime.sendMessage({ type: 'ASSET_CONTEXT_UPDATED', assetContext: cleanedProvider });
   chrome.runtime.sendMessage({ type: 'CHAIN_CHANGED', provider: cleanedProvider });
   console.log(tag, 'Chain switched successfully');
 };
@@ -514,12 +504,7 @@ const handleSigningMethods = async (method, params, requestInfo, ADDRESS, KEEPKE
   const currentProvider = await web3ProviderStorage.getWeb3Provider();
   console.log(tag, 'currentProvider:', currentProvider);
 
-  if (!KEEPKEY_WALLET.assetContext || currentProvider.caip !== KEEPKEY_WALLET.assetContext.caip) {
-    // Set context to the chain, defaults to ETH
-    const currentProvider = await web3ProviderStorage.getWeb3Provider();
-    await KEEPKEY_WALLET.setAssetContext({ caip: currentProvider.caip });
-  }
-  const networkId = KEEPKEY_WALLET.assetContext.networkId;
+  const networkId = currentProvider?.networkId || caipToNetworkId(currentProvider?.caip || 'eip155:1/slip44:60');
   console.log(tag, 'networkId:', networkId);
   if (!networkId) throw Error('Failed to set context before sending!');
   // Require user approval
@@ -578,29 +563,49 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
   console.log(tag, 'params:', params);
   console.log(tag, 'requestInfo:', requestInfo);
 
-  if (!KEEPKEY_WALLET.assetContext) {
-    console.log(tag, 'No asset context! Setting context to current provider');
-    // Set context to the chain, defaults to ETH
-    const currentProvider = await web3ProviderStorage.getWeb3Provider();
-    console.log(tag, 'currentProvider caip:', currentProvider.caip);
-    await KEEPKEY_WALLET.setAssetContext({ caip: currentProvider.caip });
-  }
-  const caip = KEEPKEY_WALLET.assetContext.caip;
-  const networkId = KEEPKEY_WALLET.assetContext.networkId;
+  const currentProviderCtx = await web3ProviderStorage.getWeb3Provider();
+  const caip = currentProviderCtx?.caip || 'eip155:1/slip44:60';
+  const networkId = currentProviderCtx?.networkId || caipToNetworkId(caip);
   console.log(tag, 'networkId:', networkId);
   if (!networkId) throw Error('Failed to set context before sending!');
 
-  const sendPayload = {
-    caip,
-    isMax: params[0].isMax,
-    to: params[0].recipient,
-    amount: params[0].amount.amount,
-    feeLevel: 5, // Options
-  };
-  console.log(tag, 'Send Payload:', sendPayload);
+  // Build EVM transfer locally
+  const provider = await getProvider();
+  const amountWei =
+    '0x' + BigInt(Math.floor(parseFloat(params[0].amount?.amount || params[0].amount || '0') * 1e18)).toString(16);
+  const chainId = currentProviderCtx?.chainId || '1';
+
   requestInfo.id = uuidv4();
 
-  const unsignedTx = await KEEPKEY_WALLET.buildTx(sendPayload);
+  const unsignedTx: any = {
+    from: ADDRESS,
+    to: params[0].recipient || params[0].to,
+    value: amountWei,
+    chainId,
+    data: '0x',
+  };
+
+  // Get nonce and gas
+  const nonce = await provider.getTransactionCount(ADDRESS, 'latest');
+  unsignedTx.nonce = '0x' + nonce.toString(16);
+  try {
+    let estimatedGas = await provider.estimateGas({ from: ADDRESS, to: unsignedTx.to, value: unsignedTx.value });
+    const gasBuffer = BigInt(estimatedGas) / BigInt(5);
+    estimatedGas = BigInt(estimatedGas) + gasBuffer;
+    unsignedTx.gasLimit = '0x' + estimatedGas.toString(16);
+  } catch (e) {
+    unsignedTx.gasLimit = '0x' + BigInt(21000).toString(16);
+  }
+  const feeData = await provider.getFeeData();
+  if (feeData.maxFeePerGas) {
+    unsignedTx.maxFeePerGas = '0x' + feeData.maxFeePerGas.toString(16);
+    unsignedTx.maxPriorityFeePerGas = feeData.maxPriorityFeePerGas
+      ? '0x' + feeData.maxPriorityFeePerGas.toString(16)
+      : '0x0';
+  } else if (feeData.gasPrice) {
+    unsignedTx.gasPrice = '0x' + feeData.gasPrice.toString(16);
+  }
+
   console.log(tag, 'unsignedTx:', unsignedTx);
   requestInfo.unsignedTx = unsignedTx;
   await requestStorage.updateEventById(requestInfo.id, requestInfo);
@@ -643,20 +648,8 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
   if (result.success && response.unsignedTx) {
     console.log(tag, 'FINAL: unsignedTx: ', response.unsignedTx);
 
-    // Convert chainId from number to hex string if needed
-    const txForSigning = {
-      ...response.unsignedTx,
-      chainId:
-        typeof response.unsignedTx.chainId === 'number'
-          ? '0x' + response.unsignedTx.chainId.toString(16)
-          : response.unsignedTx.chainId,
-    };
-
-    console.log(tag, 'txForSigning (chainId converted to hex):', txForSigning);
-
-    // CRITICAL: signTx expects TWO separate parameters (caip, unsignedTx)
-    // NOT an object { caip, unsignedTx }
-    const signedTx = await KEEPKEY_WALLET.signTx(caip, txForSigning);
+    // Sign using vault SDK directly
+    const signedTx = await signTransaction(response.unsignedTx, KEEPKEY_WALLET);
     console.log(tag, 'signedTx:', signedTx);
 
     // Update storage with signed transaction
@@ -664,31 +657,20 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
     await requestStorage.updateEventById(requestInfo.id, requestInfo);
 
     // Broadcast the transaction
-    const txid = await KEEPKEY_WALLET.broadcastTx(caip, signedTx);
+    const txid = await broadcastTransaction(signedTx);
     console.log(tag, 'txid:', txid);
-    if (txid.error) {
-      chrome.runtime.sendMessage({
-        action: 'transaction_error',
-        error: txid.error,
-      });
-      //Failed to Broadcast!
-      throw createProviderRpcError(4200, txid.error);
-    } else {
-      // Update storage with transaction hash
-      requestInfo.txid = txid;
-      await requestStorage.updateEventById(requestInfo.id, requestInfo);
 
-      // Get current provider for explorer link
-      const currentProvider = await web3ProviderStorage.getWeb3Provider();
+    // Update storage with transaction hash
+    requestInfo.txid = txid;
+    await requestStorage.updateEventById(requestInfo.id, requestInfo);
 
-      // Notify transaction completion
-      chrome.runtime.sendMessage({
-        action: 'transaction_complete',
-        txHash: txid,
-        explorerTxLink: currentProvider.explorerTxLink,
-        networkId: currentProvider.networkId,
-      });
-    }
+    // Notify transaction completion
+    chrome.runtime.sendMessage({
+      action: 'transaction_complete',
+      txHash: txid,
+      explorerTxLink: currentProviderCtx?.explorerTxLink,
+      networkId,
+    });
 
     return txid;
   } else {
@@ -849,7 +831,8 @@ const signMessage = async (message, KEEPKEY_WALLET, ADDRESS: string) => {
     console.log(tag, '**** message: ', message);
     console.log(tag, '**** ADDRESS: ', ADDRESS);
 
-    const output = await KEEPKEY_WALLET.keepKeySdk.eth.ethSign({ address: ADDRESS, message: message });
+    const sdk = wallet.getSdk();
+    const output = await sdk.eth.ethSignMessage({ address: ADDRESS, message: message });
     console.log(`${tag} Transaction output: `, output);
 
     // Notify popup that signature is complete
@@ -970,7 +953,8 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
     }
 
     console.log(`${tag} Final input: `, input);
-    const output = await KEEPKEY_WALLET.keepKeySdk.eth.ethSignTransaction(input);
+    const sdk = wallet.getSdk();
+    const output = await sdk.eth.ethSignTransaction(input);
     console.log(`${tag} Transaction output: `, output);
 
     return output.serialized;
@@ -1011,7 +995,8 @@ const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string) 
     };
     console.log(tag, '**** HDWalletPayload: ', HDWalletPayload);
     console.log(tag, '**** HDWalletPayload: ', JSON.stringify(HDWalletPayload));
-    const signedMessage = await KEEPKEY_WALLET.keepKeySdk.eth.ethSignTypedData(HDWalletPayload);
+    const sdk = wallet.getSdk();
+    const signedMessage = await sdk.eth.ethSignTypedData(HDWalletPayload);
     console.log(tag, '**** signedMessage: ', signedMessage);
 
     // Notify popup that signature is complete

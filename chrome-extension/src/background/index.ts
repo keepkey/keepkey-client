@@ -5,19 +5,25 @@ import '../polyfills/process';
 import { Buffer } from 'buffer';
 globalThis.Buffer = Buffer;
 
-import packageJson from '../../package.json'; // Adjust the path as needed
-import { onStartKeepkey } from './keepkey';
+import packageJson from '../../package.json';
+import * as wallet from './wallet';
 import { handleWalletRequest } from './methods';
-// import { listenForApproval } from './approvals';
 import { JsonRpcProvider } from 'ethers';
-import { ChainToNetworkId, Chain } from '@pioneer-platform/pioneer-caip';
-import { requestStorage, exampleSidebarStorage, web3ProviderStorage, blockchainDataStorage } from '@extension/storage'; // Re-import the storage
+import { ChainToNetworkId, Chain, COIN_MAP_LONG, shortListSymbolToCaip, NetworkIdToChain } from './chainConfig';
+import {
+  requestStorage,
+  exampleSidebarStorage,
+  web3ProviderStorage,
+  blockchainDataStorage,
+  assetContextStorage,
+} from '@extension/storage';
 import { EIP155_CHAINS } from './chains';
-import axios from 'axios';
 
 const TAG = ' | background/index.js | ';
 console.log('Background script loaded');
 console.log('Version:', packageJson.version);
+
+const PIONEER_API = 'https://api.keepkey.info';
 
 const KEEPKEY_STATES = {
   0: 'unknown',
@@ -55,8 +61,8 @@ function pushStateChangeEvent() {
 async function checkKeepKey() {
   const prevState = KEEPKEY_STATE;
   try {
-    const response = await axios.get('http://localhost:1646/docs');
-    if (response.status === 200) {
+    const response = await fetch('http://localhost:1646/docs');
+    if (response.ok) {
       if (KEEPKEY_STATE < 2) {
         KEEPKEY_STATE = 2; // Set state to connected
       }
@@ -82,107 +88,166 @@ console.log('Background loaded');
 const provider = new JsonRpcProvider(EIP155_CHAINS['eip155:1'].rpc);
 
 let ADDRESS = '';
-let APP: any = null;
+
+// ---- Balance fetching via Pioneer API ----
+let cachedBalances: any[] = [];
+let balancesFetchInProgress: Promise<any[]> | null = null;
+
+// All EVM CAPIPs (deduplicated) — used to fan out EVM wildcard addresses
+const EVM_CAIPS = [...new Set(Object.values(shortListSymbolToCaip).filter(caip => caip.startsWith('eip155:')))];
+
+async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
+  // Deduplicate concurrent calls
+  if (balancesFetchInProgress) return balancesFetchInProgress;
+
+  balancesFetchInProgress = (async () => {
+    try {
+      const allPubkeys = wallet.getPubkeys();
+      if (allPubkeys.length === 0) return cachedBalances;
+
+      // Build pubkeys array for Pioneer API: { caip, pubkey }
+      const pioneerPubkeys: { caip: string; pubkey: string }[] = [];
+      const seen = new Set<string>();
+
+      for (const pk of allPubkeys) {
+        const pubkeyValue = pk.address || pk.xpub || pk.pubkey;
+        if (!pubkeyValue) continue;
+
+        const networks: string[] = pk.networks || [];
+        const hasEvmWildcard = networks.includes('eip155:*');
+
+        if (hasEvmWildcard) {
+          // Fan out to all supported EVM chains (same address works on all)
+          for (const caip of EVM_CAIPS) {
+            const key = `${caip}:${pubkeyValue}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              pioneerPubkeys.push({ caip, pubkey: pubkeyValue });
+            }
+          }
+        }
+
+        // Handle specific (non-wildcard) networks
+        for (const networkId of networks) {
+          if (networkId === 'eip155:*') continue; // Already handled above
+          const symbol = (NetworkIdToChain as any)[networkId];
+          if (!symbol) continue;
+          const caip = shortListSymbolToCaip[symbol];
+          if (!caip) continue;
+          const key = `${caip}:${pubkeyValue}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            pioneerPubkeys.push({ caip, pubkey: pubkeyValue });
+          }
+        }
+      }
+
+      if (pioneerPubkeys.length === 0) return cachedBalances;
+
+      console.log(`[fetchBalances] Sending ${pioneerPubkeys.length} pubkeys to Pioneer API`);
+
+      // Use /api/v1/charts endpoint — no auth required, returns balances + tokens
+      const url = forceRefresh ? `${PIONEER_API}/api/v1/charts?forceRefresh=true` : `${PIONEER_API}/api/v1/charts`;
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pubkeys: pioneerPubkeys }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Pioneer API returned ${response.status}: ${response.statusText}`);
+      }
+
+      const json = await response.json();
+
+      // /api/v1/charts returns { data: { balances: [...], tokens: [...] }, meta: {...} }
+      const chartsData = json?.data || {};
+      const rawBalances: any[] = chartsData.balances || [];
+      const rawTokens: any[] = chartsData.tokens || [];
+
+      if (rawBalances.length === 0 && rawTokens.length === 0) {
+        console.warn('[fetchBalances] Pioneer returned 0 balances for', pioneerPubkeys.length, 'pubkeys');
+        return cachedBalances;
+      }
+
+      // Transform native balances
+      const balances: any[] = rawBalances.map((b: any) => {
+        const caip = b.caip || '';
+        const networkId = b.networkId || caip.split('/')[0] || '';
+        return {
+          networkId,
+          caip,
+          symbol: b.symbol || '',
+          name: b.name || b.symbol || '',
+          balance: String(b.balance ?? '0'),
+          valueUsd: String(b.valueUsd ?? '0'),
+          priceUsd: String(b.priceUsd ?? '0'),
+          isNative: true,
+          address: b.address || b.pubkey || '',
+        };
+      });
+
+      // Add token balances (ERC-20s etc.)
+      for (const t of rawTokens) {
+        const caip = t.caip || '';
+        const networkId = t.networkId || caip.split('/')[0] || '';
+        balances.push({
+          networkId,
+          caip,
+          symbol: t.symbol || '',
+          name: t.name || t.symbol || '',
+          balance: String(t.balance ?? '0'),
+          valueUsd: String(t.valueUsd ?? '0'),
+          priceUsd: String(t.priceUsd ?? '0'),
+          isNative: false,
+          address: t.address || t.pubkey || '',
+          contractAddress: t.contractAddress || t.contract || '',
+        });
+      }
+
+      cachedBalances = balances;
+      console.log(
+        `[fetchBalances] Got ${balances.length} balance entries (${balances.filter((b: any) => b.isNative).length} native, ${balances.filter((b: any) => !b.isNative).length} tokens)`,
+      );
+      return balances;
+    } catch (e: any) {
+      console.error('[fetchBalances] Error:', e.message || e);
+      return cachedBalances;
+    } finally {
+      balancesFetchInProgress = null;
+    }
+  })();
+
+  return balancesFetchInProgress;
+}
 
 const onStart = async function () {
   const tag = TAG + ' | onStart | ';
   try {
     console.log(tag, 'Starting...');
-    APP = await onStartKeepkey();
-    console.log(tag, 'APP:', APP);
-    if (!APP) throw Error('Failed to INIT!');
+    await wallet.init();
+    console.log(tag, 'Wallet initialized');
 
-    console.log(tag, 'APP.balances: ', APP.balances);
-    console.log(tag, 'APP.pubkeys: ', APP.pubkeys);
+    if (!wallet.isInitialized()) throw Error('Failed to INIT!');
 
-    // AUTO-SAVE: Cache pubkeys after successful pairing
-    if (APP && APP.pubkeys && APP.pubkeys.length > 0) {
-      const { pubkeyStorage } = await import('@extension/storage');
-
-      try {
-        const deviceInfo = {
-          label: APP.keepKeySdk?.device?.label || 'KeepKey',
-          model: APP.keepKeySdk?.device?.model || 'KeepKey',
-          deviceId: APP.keepKeySdk?.device?.deviceId || 'unknown',
-          features: APP.keepKeySdk?.device?.features,
-        };
-
-        const saved = await pubkeyStorage.savePubkeys(APP.pubkeys, deviceInfo);
-        if (saved) {
-          console.log('✅ Cached', APP.pubkeys.length, 'pubkeys for view-only mode');
-        }
-      } catch (error) {
-        console.error('⚠️ Failed to cache pubkeys:', error);
-      }
-    }
+    const pubkeys = wallet.getPubkeys();
+    console.log(tag, 'pubkeys:', pubkeys.length);
 
     // Run migration check once per session
     const { pubkeyStorage: migrationStorage } = await import('@extension/storage');
     try {
       const migrated = await migrationStorage.migrateFromVault();
       if (migrated) {
-        console.log('✅ Successfully migrated pubkeys from vault');
+        console.log('Successfully migrated pubkeys from vault');
       }
     } catch (error) {
-      console.warn('⚠️ Migration check failed (normal if vault not installed):', error);
+      console.warn('Migration check failed (normal if vault not installed):', error);
     }
 
-    // Fetch balances for all available networks
-    if (APP.balances && APP.balances.length === 0) {
-      console.log(tag, 'No initial balances, fetching all network balances...');
-      try {
-        // Get unique network IDs from pubkeys
-        const networkIds = new Set<string>();
-        APP.pubkeys.forEach((pubkey: any) => {
-          if (pubkey.networks && Array.isArray(pubkey.networks)) {
-            pubkey.networks.forEach((networkId: string) => networkIds.add(networkId));
-          }
-        });
-
-        console.log(tag, 'Found networks to fetch balances for:', Array.from(networkIds));
-
-        // Fetch balances for each network and accumulate them
-        const allBalances: any[] = [];
-        for (const networkId of networkIds) {
-          try {
-            await APP.getBalance(networkId);
-            // After each fetch, collect the balances
-            if (APP.balances && APP.balances.length > 0) {
-              APP.balances.forEach((balance: any) => {
-                // Only add if not already in allBalances
-                if (!allBalances.find((b: any) => b.caip === balance.caip)) {
-                  allBalances.push(balance);
-                }
-              });
-            }
-          } catch (e) {
-            console.error(tag, `Failed to fetch balance for ${networkId}:`, e);
-          }
-        }
-
-        // Set all accumulated balances
-        if (allBalances.length > 0) {
-          APP.balances = allBalances;
-        }
-
-        console.log(tag, 'Finished fetching all balances, total:', APP.balances?.length);
-      } catch (e) {
-        console.error(tag, 'Error fetching initial balances:', e);
-      }
-    }
-
-    // Discover tokens for all networks
-    console.log(tag, 'Discovering tokens via APP.getCharts()...');
-    try {
-      await APP.getCharts();
-      console.log(tag, 'Token discovery complete, total balances:', APP.balances?.length);
-    } catch (e) {
-      console.error(tag, 'Error discovering tokens:', e);
-    }
-
-    const pubkeysEth = APP.pubkeys.filter((e: any) => e.networks.includes(ChainToNetworkId[Chain.Ethereum]));
+    const pubkeysEth = wallet.getPubkeys(ChainToNetworkId[Chain.Ethereum]);
     if (pubkeysEth.length > 0) {
-      console.log(tag, 'pubkeys:', pubkeysEth);
+      console.log(tag, 'Ethereum pubkeys:', pubkeysEth.length);
       const address = pubkeysEth[0].address;
       if (address) {
         console.log(tag, 'Ethereum address:', address);
@@ -200,20 +265,17 @@ const onStart = async function () {
         providerUrl: 'https://eth.llamarpc.com',
         fallbacks: [],
       };
-      //get current provider
+      // Get current provider
       const currentProvider = await web3ProviderStorage.getWeb3Provider();
       if (!currentProvider) {
         console.log(tag, 'No provider set, setting default provider');
         await web3ProviderStorage.saveWeb3Provider(defaultProvider);
       }
-      //if not set, set it to eth mainnet
+
+      // Fetch balances in background (non-blocking)
+      fetchBalancesFromPioneer().catch(e => console.warn(tag, 'Initial balance fetch failed:', e));
     } else {
       console.error(tag, 'FAILED TO INIT, No Ethereum address found');
-      // APP.getCharts();
-      //TODO retry?
-      // setTimeout(() => {
-      //   onStart();
-      // }, 5000);
     }
   } catch (e) {
     KEEPKEY_STATE = 4; // errored
@@ -230,18 +292,18 @@ setTimeout(() => {
 chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: any) => {
   (async () => {
     const tag = TAG + ' | chrome.runtime.onMessage | ';
-    // console.log(tag, 'Received message:', message);
 
     try {
       switch (message.type) {
         case 'WALLET_REQUEST': {
-          if (!APP) throw Error('APP not initialized');
+          if (!wallet.isInitialized()) throw Error('Wallet not initialized');
           const { requestInfo } = message;
           const { method, params, chain } = requestInfo;
 
           if (method) {
             try {
-              const result = await handleWalletRequest(requestInfo, chain, method, params, APP, ADDRESS);
+              // KEEPKEY_WALLET and ADDRESS are passed for backward compat with handler signatures
+              const result = await handleWalletRequest(requestInfo, chain, method, params, null, ADDRESS);
               sendResponse({ result });
             } catch (error) {
               sendResponse({ error: error.message });
@@ -251,18 +313,16 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           }
           break;
         }
-        //OPEN_SIDEBAR
+
         case 'open_sidebar':
         case 'OPEN_SIDEBAR': {
           console.log(tag, 'Opening sidebar ** ');
-          // Query all tabs across all windows
           chrome.tabs.query({}, tabs => {
             if (chrome.runtime.lastError) {
               console.error('Error querying tabs:', chrome.runtime.lastError);
               return;
             }
 
-            // Filter out extension pages and internal Chrome pages
             const webPageTabs = tabs.filter(tab => {
               return (
                 tab.url &&
@@ -273,7 +333,6 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             });
 
             if (webPageTabs.length > 0) {
-              // Sort tabs by last accessed time to find the most recently active tab
               webPageTabs.sort((a, b) => b.lastAccessed - a.lastAccessed);
               const tab = webPageTabs[0];
               const windowId = tab.windowId;
@@ -301,27 +360,33 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
 
         case 'UPDATE_EVENT_BY_ID': {
           const { id, updatedEvent } = message.payload;
-
-          // Update the event in storage
           const success = await requestStorage.updateEventById(id, updatedEvent);
-
           if (success) {
             console.log(`Event with id ${id} has been updated successfully.`);
           } else {
             console.error(`Failed to update event with id ${id}.`);
           }
-
           break;
         }
 
         case 'GET_BALANCE': {
-          if (APP) {
+          try {
             const { networkId } = message;
-            if (!networkId) throw Error('Network ID not provided');
-            APP.getBalance([networkId]);
-            sendResponse(true);
-          } else {
-            sendResponse({ error: 'APP not initialized' });
+            // Try cached balances first
+            const cached = cachedBalances.filter((b: any) => b.networkId === networkId);
+            if (cached.length > 0) {
+              sendResponse({ balances: cached });
+            } else if (wallet.isInitialized()) {
+              // Trigger full balance fetch if not cached
+              const balances = await fetchBalancesFromPioneer();
+              const filtered = balances.filter((b: any) => b.networkId === networkId);
+              sendResponse({ balances: filtered });
+            } else {
+              sendResponse({ balances: [] });
+            }
+          } catch (error: any) {
+            console.error(tag, 'GET_BALANCE error:', error);
+            sendResponse({ error: error.message });
           }
           break;
         }
@@ -335,16 +400,8 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         }
 
         case 'CLEAR_CACHE': {
-          if (APP) {
-            if (typeof APP.clearCache === 'function') {
-              APP.clearCache();
-            } else {
-              console.warn(tag, 'APP.clearCache not available in this SDK version');
-            }
-            sendResponse(true);
-          } else {
-            sendResponse({ error: 'APP not initialized' });
-          }
+          // No SDK cache to clear — just acknowledge
+          sendResponse(true);
           break;
         }
 
@@ -356,596 +413,379 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         }
 
         case 'GET_APP': {
-          sendResponse({ app: APP });
+          // Return wallet state instead of full APP object
+          sendResponse({
+            app: {
+              pubkeys: wallet.getPubkeys(),
+              initialized: wallet.isInitialized(),
+              deviceInfo: wallet.getDeviceInfo(),
+            },
+          });
           break;
         }
 
         case 'GET_ASSET_CONTEXT': {
-          if (APP) {
-            sendResponse({ assets: APP.assetContext });
-          } else {
-            sendResponse({ error: 'APP not initialized' });
-          }
+          // Asset context lives in assetContextStorage (set by SET_ASSET_CONTEXT)
+          const assetCtx = await assetContextStorage.get();
+          sendResponse({ assets: assetCtx && Object.keys(assetCtx).length > 0 ? assetCtx : null });
           break;
         }
 
         case 'GET_TX_INSIGHT': {
-          if (APP) {
-            //get chainid
-            const assetContext = APP.assetContext;
-            if (!assetContext) throw new Error('Invalid asset context. Missing assetContext.');
+          try {
+            const providerInfo = await web3ProviderStorage.getWeb3Provider();
+            if (!providerInfo) throw new Error('Invalid asset context. Missing provider.');
             const { tx, source } = message;
-            tx.chainId = assetContext.networkId.replace('eip155:', '');
-            console.log(tag, 'chainId: ', tx.chainId);
+            tx.chainId = providerInfo.chainId;
             console.log(tag, 'GET_TX_INSIGHT', tx, source);
             if (!tx) throw new Error('Invalid request: missing tx');
             if (!source) throw new Error('Invalid request: missing source');
 
-            //result
-            const result = await APP.pioneer.Insight({ tx, source });
-            console.log(tag, 'GET_TX_INSIGHT', result);
-            sendResponse(result.data);
-          } else {
-            sendResponse({ error: 'APP not initialized' });
+            const response = await fetch(`${PIONEER_API}/api/v1/insight`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ tx, source }),
+            });
+            const result = await response.json();
+            console.log(tag, 'GET_TX_INSIGHT result:', result);
+            sendResponse(result);
+          } catch (error: any) {
+            console.error(tag, 'GET_TX_INSIGHT error:', error);
+            sendResponse({ error: error.message });
           }
           break;
         }
 
         case 'GET_GAS_ESTIMATE': {
-          if (APP) {
+          try {
             const providerInfo = await web3ProviderStorage.getWeb3Provider();
             if (!providerInfo) throw Error('Failed to get provider info');
-            console.log('providerInfo', providerInfo);
-            const provider = new JsonRpcProvider(providerInfo.providerUrl);
-            const feeData = await provider.getFeeData();
+            const evmProvider = new JsonRpcProvider(providerInfo.providerUrl);
+            const feeData = await evmProvider.getFeeData();
             sendResponse(feeData);
-          } else {
-            sendResponse({ error: 'APP not initialized' });
+          } catch (error: any) {
+            sendResponse({ error: error.message });
           }
           break;
         }
 
         case 'GET_MAX_SPENDABLE': {
-          if (APP) {
-            console.log(tag, 'GET_MAX_SPENDABLE');
-            const assetContext = APP.assetContext;
-            if (!assetContext) throw new Error('Invalid asset context. Missing assetContext.');
-
-            let pubkeys = await APP.pubkeys;
-            pubkeys = pubkeys.filter((pubkey: any) => pubkey.networks.includes(assetContext.networkId));
-            console.log('onStart Transfer pubkeys', pubkeys);
-
-            if (!assetContext.caip) throw new Error('Invalid asset context. Missing caip.');
-
-            const estimatePayload: any = {
-              feeRate: 10,
-              caip: assetContext.caip,
-              pubkeys,
-              memo: '',
-              recipient: '',
-            };
-
-            const maxSpendableAmount = await APP.swapKit.estimateMaxSendableAmount({
-              chain: assetContext.chain,
-              params: estimatePayload,
-            });
-
-            console.log('maxSpendableAmount', maxSpendableAmount);
-            console.log('maxSpendableAmount string value', maxSpendableAmount.getValue('string'));
-
-            sendResponse({ maxSpendable: maxSpendableAmount.getValue('string') });
-          } else {
-            sendResponse({ error: 'APP not initialized' });
-          }
+          // SwapKit dependency removed — max spendable estimation deferred
+          sendResponse({ error: 'Max spendable estimation not yet implemented' });
           break;
         }
 
         case 'CLEAR_ASSET_CONTEXT': {
-          if (APP) {
-            APP.setAssetContext();
-            // Notify all tabs/panels that asset context has been cleared
-            chrome.runtime.sendMessage({ type: 'ASSET_CONTEXT_CLEARED' }).catch(() => {
-              // Ignore errors if no listeners
-            });
-            sendResponse({ success: true });
-          } else {
-            sendResponse({ error: 'APP not initialized' });
-          }
+          await assetContextStorage.clearContext();
+          chrome.runtime.sendMessage({ type: 'ASSET_CONTEXT_CLEARED' }).catch(() => {});
+          sendResponse({ success: true });
           break;
         }
 
         case 'SET_ASSET_CONTEXT': {
-          if (APP) {
-            const { asset } = message;
-            if (asset && asset.caip) {
-              try {
-                // Store existing balances before fetching new ones
-                const existingBalances = APP.balances ? [...APP.balances] : [];
-                console.log(tag, 'Existing balances count before update:', existingBalances.length);
+          const { asset } = message;
+          if (asset && asset.caip) {
+            try {
+              console.log(tag, 'Setting asset context:', asset);
 
-                //refresh balances for network
-                const networkId = asset.networkId;
-                await APP.getBalance(networkId);
+              // Store in assetContextStorage for GET_ASSET_CONTEXT
+              await assetContextStorage.updateContext(asset);
 
-                // Check if getBalance replaced all balances
-                console.log(tag, 'Balances count after getBalance:', APP.balances?.length);
+              // If eip155 then set web3 provider
+              if (asset.networkId && asset.networkId.includes('eip155')) {
+                // Try to get provider data from custom chains first (user-added networks)
+                let providerData = await blockchainDataStorage.getBlockchainData(asset.networkId);
 
-                // If we had more balances before and now have fewer, merge them
-                if (existingBalances.length > 0 && APP.balances) {
-                  // Create a map of new balances for the updated network
-                  const newBalancesMap = new Map();
-                  APP.balances.forEach((balance: any) => {
-                    if (balance.networkId === networkId) {
-                      newBalancesMap.set(balance.caip, balance);
-                    }
-                  });
-
-                  // Update existing balances with new data for this network only
-                  const mergedBalances = existingBalances.map((balance: any) => {
-                    // If this balance is for the network we just updated, use the new data
-                    if (balance.networkId === networkId && newBalancesMap.has(balance.caip)) {
-                      return newBalancesMap.get(balance.caip);
-                    }
-                    // Otherwise keep the existing balance
-                    return balance;
-                  });
-
-                  // Add any new balances for this network that didn't exist before
-                  newBalancesMap.forEach((newBalance: any, caip: string) => {
-                    if (!mergedBalances.find((b: any) => b.caip === caip)) {
-                      mergedBalances.push(newBalance);
-                    }
-                  });
-
-                  // Restore the full balances array
-                  APP.balances = mergedBalances;
-                  console.log(tag, 'Restored balances count:', APP.balances.length);
-                }
-
-                console.log(tag, 'Setting asset context:', asset);
-                const response = await APP.setAssetContext(asset);
-                console.log('Asset context set:', response);
-                chrome.runtime
-                  .sendMessage({
-                    type: 'ASSET_CONTEXT_UPDATED',
-                    assetContext: response, // Notify frontend about the change
-                  })
-                  .catch(() => {});
-                sendResponse(response);
-
-                const currentAssetContext = await APP.assetContext;
-                //if eip155 then set web3 provider
-                if (currentAssetContext.networkId.includes('eip155')) {
-                  // Try to get provider data from custom chains first (user-added networks)
-                  let providerData = await blockchainDataStorage.getBlockchainData(currentAssetContext.networkId);
-
-                  // Fallback to static chain list if not found in custom storage
-                  if (!providerData) {
-                    const chainInfo = EIP155_CHAINS[currentAssetContext.networkId];
-                    if (chainInfo) {
-                      // Build provider object from static chain info
-                      providerData = {
-                        chainId: chainInfo.chainId,
-                        caip: chainInfo.caip,
-                        blockExplorerUrls: [],
-                        name: chainInfo.name,
-                        providerUrl: chainInfo.rpc,
-                        fallbacks: [],
-                      };
-                    } else {
-                      console.error(
-                        tag,
-                        'Network not found in custom or static chains:',
-                        currentAssetContext.networkId,
-                      );
-                    }
-                  }
-
-                  console.log('newProvider', providerData);
-                  if (providerData) {
-                    await web3ProviderStorage.setWeb3Provider(providerData);
+                // Fallback to static chain list if not found in custom storage
+                if (!providerData) {
+                  const chainInfo = EIP155_CHAINS[asset.networkId];
+                  if (chainInfo) {
+                    providerData = {
+                      chainId: chainInfo.chainId,
+                      caip: chainInfo.caip,
+                      blockExplorerUrls: [],
+                      name: chainInfo.name,
+                      providerUrl: chainInfo.rpc,
+                      fallbacks: [],
+                    };
+                  } else {
+                    console.error(tag, 'Network not found in custom or static chains:', asset.networkId);
                   }
                 }
-              } catch (error) {
-                console.error('Error setting asset context:', error);
-                sendResponse({ error: 'Failed to fetch assets' });
+
+                if (providerData) {
+                  await web3ProviderStorage.setWeb3Provider(providerData);
+                }
               }
+
+              chrome.runtime
+                .sendMessage({
+                  type: 'ASSET_CONTEXT_UPDATED',
+                  assetContext: asset,
+                })
+                .catch(() => {});
+              sendResponse(asset);
+            } catch (error) {
+              console.error('Error setting asset context:', error);
+              sendResponse({ error: 'Failed to set asset context' });
             }
           } else {
-            sendResponse({ error: 'APP not initialized' });
+            sendResponse({ error: 'Invalid asset' });
           }
           break;
         }
 
         case 'GET_PUBKEY_CONTEXT': {
-          if (APP) {
-            sendResponse({ pubkeyContext: APP.pubkeyContext });
-          } else {
-            sendResponse({ error: 'APP not initialized' });
-          }
+          // Return first pubkey as context
+          const pubkeys = wallet.getPubkeys();
+          sendResponse({ pubkeyContext: pubkeys.length > 0 ? pubkeys[0] : null });
           break;
         }
 
         case 'SET_PUBKEY_CONTEXT': {
-          if (APP) {
-            const { pubkey } = message;
-            try {
-              await APP.setPubkeyContext(pubkey);
-              chrome.runtime
-                .sendMessage({
-                  type: 'PUBKEY_CONTEXT_UPDATED',
-                  pubkeyContext: APP.pubkeyContext,
-                })
-                .catch(() => {});
-              sendResponse({ success: true, pubkeyContext: APP.pubkeyContext });
-            } catch (error) {
-              console.error('Error setting pubkey context:', error);
-              sendResponse({ error: 'Failed to set pubkey context' });
-            }
-          } else {
-            sendResponse({ error: 'APP not initialized' });
+          // Just broadcast the update — no SDK call needed
+          const { pubkey } = message;
+          try {
+            chrome.runtime
+              .sendMessage({
+                type: 'PUBKEY_CONTEXT_UPDATED',
+                pubkeyContext: pubkey,
+              })
+              .catch(() => {});
+            sendResponse({ success: true, pubkeyContext: pubkey });
+          } catch (error) {
+            console.error('Error setting pubkey context:', error);
+            sendResponse({ error: 'Failed to set pubkey context' });
           }
           break;
         }
 
         case 'GET_PUBKEYS_FOR_NETWORK': {
-          if (APP) {
-            const { networkId } = message;
-            const pubkeys = APP.pubkeys.filter((pk: any) => pk.networks && pk.networks.includes(networkId));
-            sendResponse({ pubkeys });
-          } else {
-            sendResponse({ error: 'APP not initialized' });
-          }
+          const { networkId } = message;
+          const pubkeys = wallet.getPubkeys(networkId);
+          sendResponse({ pubkeys });
           break;
         }
 
         case 'ADD_ACCOUNT_PATH': {
-          if (APP) {
-            const { path } = message;
-            try {
-              // Add path to APP configuration
-              APP.paths.push(path);
-              // Re-pair with new path
-              await APP.getPubkeys();
-              sendResponse({ success: true, pubkeys: APP.pubkeys });
-            } catch (error) {
-              console.error('Error adding account path:', error);
-              sendResponse({ error: 'Failed to add account path' });
-            }
-          } else {
-            sendResponse({ error: 'APP not initialized' });
+          const { path } = message;
+          try {
+            wallet.addPath(path);
+            const pubkeys = await wallet.refreshPubkeys();
+            sendResponse({ success: true, pubkeys });
+          } catch (error) {
+            console.error('Error adding account path:', error);
+            sendResponse({ error: 'Failed to add account path' });
           }
           break;
         }
 
         case 'GET_TX_HISTORY': {
-          if (APP) {
-            try {
-              console.log(tag, 'GET_TX_HISTORY');
-              //Assumed EVM*
-              // eslint-disable-next-line prefer-const
-              let { networkId, fromBlock, toBlock } = message;
-              if (!toBlock) toBlock = 'latest';
-              if (!fromBlock) fromBlock = 'latest';
-              const dappsResponse = await APP.pioneer.GetTransactionsByNetwork({
-                networkId,
-                address: ADDRESS,
-                fromBlock,
-                toBlock,
-              });
-              console.log('dappsResponse:', dappsResponse.data);
+          try {
+            console.log(tag, 'GET_TX_HISTORY');
+            // eslint-disable-next-line prefer-const
+            let { networkId, fromBlock, toBlock } = message;
+            if (!toBlock) toBlock = 'latest';
+            if (!fromBlock) fromBlock = 'latest';
 
-              sendResponse(dappsResponse.data);
-            } catch (error) {
-              console.error('Error fetching assets:', error);
-              sendResponse({ error: 'Failed to fetch assets' });
-            }
-          } else {
-            sendResponse({ error: 'APP not initialized' });
+            const response = await fetch(
+              `${PIONEER_API}/api/v1/txs?networkId=${encodeURIComponent(networkId)}&address=${encodeURIComponent(ADDRESS)}&fromBlock=${fromBlock}&toBlock=${toBlock}`,
+            );
+            const data = await response.json();
+            console.log('TX history:', data);
+            sendResponse(data);
+          } catch (error) {
+            console.error('Error fetching tx history:', error);
+            sendResponse({ error: 'Failed to fetch tx history' });
           }
           break;
         }
 
         case 'GET_DAPPS_BY_NETWORKID': {
-          if (APP) {
-            try {
-              //Assumed EVM*
-              const { networkId } = message;
-
-              const dappsResponse = await APP.pioneer.SearchDappsByNetworkId({ networkId });
-              console.log('dappsResponse:', dappsResponse.data);
-
-              sendResponse(dappsResponse.data);
-            } catch (error) {
-              console.error('Error fetching assets:', error);
-              sendResponse({ error: 'Failed to fetch assets' });
-            }
-          } else {
-            sendResponse({ error: 'APP not initialized' });
+          try {
+            const { networkId } = message;
+            const response = await fetch(`${PIONEER_API}/api/v1/dapps?networkId=${encodeURIComponent(networkId)}`);
+            const data = await response.json();
+            sendResponse(data);
+          } catch (error) {
+            console.error('Error fetching dapps:', error);
+            sendResponse({ error: 'Failed to fetch dapps' });
           }
           break;
         }
 
         case 'DISCOVERY_DAPP': {
-          if (APP) {
-            try {
-              //Assumed EVM*
-              const { networkId, url, name, description } = message;
-              const body = {
-                networks: [networkId],
-                url,
-                name,
-                description,
-              };
-              const dappsResponse = await APP.pioneer.DiscoverDapp(body);
-              console.log('dappsResponse:', dappsResponse.data);
-
-              sendResponse(dappsResponse.data);
-            } catch (error) {
-              console.error('Error fetching assets:', error);
-              sendResponse({ error: 'Failed to fetch assets' });
-            }
-          } else {
-            sendResponse({ error: 'APP not initialized' });
+          try {
+            const { networkId, url, name, description } = message;
+            const body = {
+              networks: [networkId],
+              url,
+              name,
+              description,
+            };
+            const response = await fetch(`${PIONEER_API}/api/v1/dapps/discover`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+            });
+            const data = await response.json();
+            sendResponse(data);
+          } catch (error) {
+            console.error('Error discovering dapp:', error);
+            sendResponse({ error: 'Failed to discover dapp' });
           }
           break;
         }
 
         case 'GET_ASSET_BALANCE': {
-          if (APP) {
-            try {
-              console.log(tag, 'GET_ASSET_BALANCE');
-              //Assumed EVM*
-              const { networkId } = message;
-              const chainId = networkId.replace('eip155:', '');
-              console.log('chainId:', chainId);
-              const nodeInfoResponse = await APP.pioneer.SearchNodesByNetworkId({ chainId });
-              console.log('nodeInfoResponse:', nodeInfoResponse.data);
+          try {
+            console.log(tag, 'GET_ASSET_BALANCE');
+            const { networkId } = message;
 
-              //TODO
-              //test all services
-              //give ping
-              //remmove broken services
-              //TODO push broken to api
-
-              const service = nodeInfoResponse?.data[0]?.service;
-              if (service) {
-                console.log(tag, 'service:', service);
-                if (!ADDRESS) throw new Error('ADDRESS not set');
-                const provider = new JsonRpcProvider(nodeInfoResponse.data[0].service);
-                const params = [ADDRESS, 'latest'];
-                //get balance
-                const balance = await provider.getBalance(params[0], params[1]);
-                console.log('balance:', balance);
-                sendResponse('0x' + balance.toString(16));
-              } else {
-                sendResponse('0');
-              }
-            } catch (error) {
-              console.error('Error fetching assets:', error);
-              sendResponse({ error: 'Failed to fetch balances' });
+            // Get RPC provider for the network
+            const chainInfo = EIP155_CHAINS[networkId];
+            if (chainInfo && ADDRESS) {
+              const evmProvider = new JsonRpcProvider(chainInfo.rpc);
+              const balance = await evmProvider.getBalance(ADDRESS);
+              sendResponse('0x' + balance.toString(16));
+            } else {
+              sendResponse('0');
             }
-          } else {
-            sendResponse({ error: 'APP not initialized' });
+          } catch (error) {
+            console.error('Error fetching balance:', error);
+            sendResponse({ error: 'Failed to fetch balance' });
           }
           break;
         }
 
         case 'GET_ASSETS_INFO': {
-          if (APP) {
-            try {
-              //Assumed EVM*
-              const { networkId } = message;
-              const chainId = networkId.replace('eip155:', '');
-              console.log('chainId:', chainId);
-              const nodeInfoResponse = await APP.pioneer.SearchNodesByNetworkId({ chainId });
-              console.log('nodeInfoResponse:', nodeInfoResponse.data);
-              const caip = networkId + '/slip44:60';
-              console.log('caip:', caip);
-              const marketInfoResponse = await APP.pioneer.MarketInfo({ caip });
-              console.log('marketInfoResponse:', marketInfoResponse.data);
-
-              console.log('nodeInfoResponse fetched:', nodeInfoResponse);
-              sendResponse(nodeInfoResponse);
-            } catch (error) {
-              console.error('Error fetching assets:', error);
-              sendResponse({ error: 'Failed to fetch assets' });
-            }
-          } else {
-            sendResponse({ error: 'APP not initialized' });
+          try {
+            const { networkId } = message;
+            const chainId = networkId.replace('eip155:', '');
+            const response = await fetch(`${PIONEER_API}/api/v1/nodes?chainId=${encodeURIComponent(chainId)}`);
+            const data = await response.json();
+            sendResponse(data);
+          } catch (error) {
+            console.error('Error fetching asset info:', error);
+            sendResponse({ error: 'Failed to fetch asset info' });
           }
           break;
         }
 
         case 'GET_ASSETS': {
-          if (APP) {
-            try {
-              const assets = await APP.getAssets();
-              console.log('Assets fetched:', assets);
-              let assetsArray;
-              if (assets instanceof Map) {
-                assetsArray = Array.from(assets.values()); // Extract only the values if it's a Map
-              } else {
-                assetsArray = assets; // Leave it as-is if it's not a Map
-              }
-              sendResponse({ assets: assetsArray });
-            } catch (error) {
-              console.error('Error fetching assets:', error);
-              sendResponse({ error: 'Failed to fetch assets' });
-            }
-          } else {
-            sendResponse({ error: 'APP not initialized' });
+          // Return available chain assets from static config with full metadata
+          try {
+            const assets = Object.entries(ChainToNetworkId).map(([symbol, networkId]) => {
+              const name = COIN_MAP_LONG[symbol] || symbol.toLowerCase();
+              const caip = shortListSymbolToCaip[symbol] || networkId;
+              return {
+                symbol,
+                networkId,
+                name: name.charAt(0).toUpperCase() + name.slice(1),
+                caip,
+                icon: `https://pioneers.dev/coins/${name}.png`,
+                chain: symbol,
+              };
+            });
+            sendResponse({ assets });
+          } catch (error) {
+            console.error('Error fetching assets:', error);
+            sendResponse({ error: 'Failed to fetch assets' });
           }
           break;
         }
 
         case 'GET_APP_PUBKEYS': {
-          if (APP) {
-            sendResponse({ balances: APP.pubkeys });
-          } else {
-            sendResponse({ error: 'APP not initialized' });
-          }
+          sendResponse({ balances: wallet.getPubkeys() });
           break;
         }
 
         case 'GET_APP_BALANCES': {
-          if (APP) {
-            console.log(tag, 'GET_APP_BALANCES - Total balances:', APP.balances?.length);
-            console.log(tag, 'GET_APP_BALANCES - Sample balance:', APP.balances?.[0]);
-            const tokens = APP.balances?.filter((b: any) => b.token === true);
-            console.log(tag, 'GET_APP_BALANCES - Tokens found:', tokens?.length);
-            if (tokens && tokens.length > 0) {
-              console.log(tag, 'GET_APP_BALANCES - Sample token:', tokens[0]);
+          try {
+            if (cachedBalances.length > 0) {
+              sendResponse({ balances: cachedBalances });
+            } else if (wallet.isInitialized()) {
+              const balances = await fetchBalancesFromPioneer();
+              sendResponse({ balances });
+            } else {
+              sendResponse({ balances: [] });
             }
-            sendResponse({ balances: APP.balances });
-          } else {
-            sendResponse({ error: 'APP not initialized' });
+          } catch (error: any) {
+            console.error(tag, 'GET_APP_BALANCES error:', error);
+            sendResponse({ balances: cachedBalances });
           }
           break;
         }
 
         case 'REFRESH_ALL_BALANCES': {
-          if (APP) {
-            console.log(tag, 'Refreshing all balances...');
-            try {
-              // Get unique network IDs from pubkeys
-              const networkIds = new Set<string>();
-              APP.pubkeys.forEach((pubkey: any) => {
-                if (pubkey.networks && Array.isArray(pubkey.networks)) {
-                  pubkey.networks.forEach((networkId: string) => networkIds.add(networkId));
-                }
-              });
-
-              // Fetch and accumulate balances for all networks
-              const allBalances: any[] = [];
-              for (const networkId of networkIds) {
-                try {
-                  await APP.getBalance(networkId);
-                  // After each fetch, collect the balances
-                  if (APP.balances && APP.balances.length > 0) {
-                    APP.balances.forEach((balance: any) => {
-                      // Only add if not already in allBalances
-                      if (!allBalances.find((b: any) => b.caip === balance.caip)) {
-                        allBalances.push(balance);
-                      }
-                    });
-                  }
-                } catch (e) {
-                  console.error(tag, `Failed to fetch balance for ${networkId}:`, e);
-                }
-              }
-
-              // Update APP.balances with all accumulated balances
-              if (allBalances.length > 0) {
-                APP.balances = allBalances;
-              }
-
-              console.log(tag, 'All balances refreshed, total:', APP.balances?.length);
-              sendResponse({ balances: APP.balances });
-            } catch (error) {
-              console.error('Error refreshing all balances:', error);
-              sendResponse({ error: 'Failed to refresh all balances' });
+          try {
+            if (!wallet.isInitialized()) {
+              sendResponse({ balances: [], error: 'Wallet not initialized' });
+              break;
             }
-          } else {
-            sendResponse({ error: 'APP not initialized' });
+            const balances = await fetchBalancesFromPioneer(true);
+            sendResponse({ balances });
+          } catch (error: any) {
+            console.error(tag, 'REFRESH_ALL_BALANCES error:', error);
+            sendResponse({ balances: cachedBalances, error: error.message });
           }
           break;
         }
 
         case 'GET_CHARTS': {
-          if (APP) {
-            console.log(tag, 'Fetching charts (discovering tokens)...');
-            try {
-              const { networkIds } = message;
-
-              // Call getCharts with optional network filter
-              // If networkIds array is provided, only fetch for those networks
-              // If not provided, fetch for all networks
-              if (networkIds && Array.isArray(networkIds) && networkIds.length > 0) {
-                console.log(tag, `Fetching charts for specific networks: ${networkIds.join(', ')}`);
-                await APP.getCharts(networkIds);
-              } else {
-                console.log(tag, 'Fetching charts for all networks');
-                await APP.getCharts();
-              }
-
-              console.log(tag, 'Charts fetched successfully, balances count:', APP.balances?.length);
-
-              // Return the updated balances
-              sendResponse({
-                success: true,
-                balances: APP.balances,
-                message: 'Charts fetched successfully',
-              });
-            } catch (error: any) {
-              console.error('Error fetching charts:', error);
-              sendResponse({
-                error: error.message || 'Failed to fetch charts',
-                success: false,
-              });
+          try {
+            let balances = cachedBalances;
+            if (balances.length === 0 && wallet.isInitialized()) {
+              balances = await fetchBalancesFromPioneer();
             }
-          } else {
-            sendResponse({ error: 'APP not initialized', success: false });
+            const totalValueUsd = balances.reduce((sum: number, b: any) => sum + parseFloat(b.valueUsd || '0'), 0);
+            sendResponse({
+              success: true,
+              balances,
+              dashboard: { totalValueUsd },
+            });
+          } catch (error: any) {
+            console.error(tag, 'GET_CHARTS error:', error);
+            sendResponse({ success: false, balances: cachedBalances, error: error.message });
           }
           break;
         }
 
         case 'LOOKUP_TOKEN_METADATA': {
-          if (APP) {
-            console.log(tag, 'Looking up token metadata...');
-            try {
-              const { networkId, contractAddress, userAddress } = message;
-
-              if (!networkId || !contractAddress) {
-                throw new Error('networkId and contractAddress are required');
-              }
-
-              console.log(tag, 'Calling APP.pioneer.LookupTokenMetadata:', { networkId, contractAddress, userAddress });
-
-              const payload: any = {
-                networkId,
-                contractAddress,
-              };
-
-              // Include userAddress if provided to get balance too
-              if (userAddress) {
-                payload.userAddress = userAddress;
-              }
-
-              const result = await APP.pioneer.LookupTokenMetadata(payload);
-
-              console.log(tag, 'Token metadata lookup result:', result);
-
-              sendResponse({
-                success: true,
-                data: result.data,
-              });
-            } catch (error: any) {
-              console.error('Error looking up token metadata:', error);
-              sendResponse({
-                success: false,
-                error: error.message || 'Failed to lookup token metadata',
-              });
+          try {
+            const { networkId, contractAddress, userAddress } = message;
+            if (!networkId || !contractAddress) {
+              throw new Error('networkId and contractAddress are required');
             }
-          } else {
-            sendResponse({ error: 'APP not initialized', success: false });
+
+            const payload: any = { networkId, contractAddress };
+            if (userAddress) payload.userAddress = userAddress;
+
+            const response = await fetch(`${PIONEER_API}/api/v1/tokens/metadata`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+            const data = await response.json();
+            sendResponse({ success: true, data });
+          } catch (error: any) {
+            console.error('Error looking up token metadata:', error);
+            sendResponse({ success: false, error: error.message || 'Failed to lookup token metadata' });
           }
           break;
         }
 
         case 'ADD_CUSTOM_TOKEN': {
-          if (APP) {
-            console.log(tag, 'Adding custom token...');
-            try {
-              const { userAddress, token } = message;
+          try {
+            const { userAddress, token } = message;
+            if (!userAddress || !token) {
+              throw new Error('userAddress and token are required');
+            }
 
-              if (!userAddress || !token) {
-                throw new Error('userAddress and token are required');
-              }
-
-              console.log(tag, 'Calling APP.pioneer.AddCustomToken:', { userAddress, token });
-
-              const result = await APP.pioneer.AddCustomToken({
+            const response = await fetch(`${PIONEER_API}/api/v1/tokens/custom`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
                 userAddress,
                 token: {
                   networkId: token.networkId,
@@ -957,219 +797,142 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                   icon: token.icon,
                   coingeckoId: token.coingeckoId,
                 },
-              });
-
-              console.log(tag, 'Add custom token result:', result);
-
-              sendResponse({
-                success: result?.success || result?.data?.success || false,
-                data: result.data,
-              });
-            } catch (error: any) {
-              console.error('Error adding custom token:', error);
-              sendResponse({
-                success: false,
-                error: error.message || 'Failed to add custom token',
-              });
-            }
-          } else {
-            sendResponse({ error: 'APP not initialized', success: false });
+              }),
+            });
+            const data = await response.json();
+            sendResponse({ success: data?.success || false, data });
+          } catch (error: any) {
+            console.error('Error adding custom token:', error);
+            sendResponse({ success: false, error: error.message || 'Failed to add custom token' });
           }
           break;
         }
 
         case 'GET_CUSTOM_TOKENS': {
-          if (APP) {
-            console.log(tag, 'Getting custom tokens...');
-            try {
-              const { userAddress, networkId } = message;
-
-              if (!userAddress) {
-                throw new Error('userAddress is required');
-              }
-
-              console.log(tag, 'Calling APP.pioneer.GetCustomTokens:', { userAddress, networkId });
-
-              const payload: any = { userAddress };
-              if (networkId) {
-                payload.networkId = networkId;
-              }
-
-              const result = await APP.pioneer.GetCustomTokens(payload);
-
-              console.log(tag, 'Get custom tokens result:', result);
-
-              // Handle nested response structure: result.data.data.tokens
-              const tokens = result?.data?.data?.tokens || result?.data?.tokens || result?.tokens || [];
-
-              sendResponse({
-                success: true,
-                tokens,
-              });
-            } catch (error: any) {
-              console.error('Error getting custom tokens:', error);
-              sendResponse({
-                success: false,
-                error: error.message || 'Failed to get custom tokens',
-                tokens: [],
-              });
+          try {
+            const { userAddress, networkId } = message;
+            if (!userAddress) {
+              throw new Error('userAddress is required');
             }
-          } else {
-            sendResponse({ error: 'APP not initialized', success: false });
+
+            let url = `${PIONEER_API}/api/v1/tokens/custom?userAddress=${encodeURIComponent(userAddress)}`;
+            if (networkId) url += `&networkId=${encodeURIComponent(networkId)}`;
+
+            const response = await fetch(url);
+            const data = await response.json();
+            const tokens = data?.data?.tokens || data?.tokens || [];
+            sendResponse({ success: true, tokens });
+          } catch (error: any) {
+            console.error('Error getting custom tokens:', error);
+            sendResponse({ success: false, error: error.message, tokens: [] });
           }
           break;
         }
 
         case 'GET_CUSTOM_TOKEN_BALANCES': {
-          if (APP) {
-            console.log(tag, 'Getting custom token balances...');
-            try {
-              const { networkId, address } = message;
-
-              if (!networkId || !address) {
-                throw new Error('networkId and address are required');
-              }
-
-              console.log(tag, 'Calling APP.pioneer.GetCustomTokenBalances:', { networkId, address });
-
-              const result = await APP.pioneer.GetCustomTokenBalances({
-                networkId,
-                address,
-              });
-
-              console.log(tag, 'Get custom token balances result:', result);
-
-              // Handle nested response structure
-              const tokens = result?.data?.data?.tokens || result?.data?.tokens || result?.tokens || [];
-
-              sendResponse({
-                success: true,
-                tokens,
-              });
-            } catch (error: any) {
-              console.error('Error getting custom token balances:', error);
-              sendResponse({
-                success: false,
-                error: error.message || 'Failed to get custom token balances',
-                tokens: [],
-              });
+          try {
+            const { networkId, address } = message;
+            if (!networkId || !address) {
+              throw new Error('networkId and address are required');
             }
-          } else {
-            sendResponse({ error: 'APP not initialized', success: false });
+
+            const response = await fetch(
+              `${PIONEER_API}/api/v1/tokens/balances?networkId=${encodeURIComponent(networkId)}&address=${encodeURIComponent(address)}`,
+            );
+            const data = await response.json();
+            const tokens = data?.data?.tokens || data?.tokens || [];
+            sendResponse({ success: true, tokens });
+          } catch (error: any) {
+            console.error('Error getting custom token balances:', error);
+            sendResponse({ success: false, error: error.message, tokens: [] });
           }
           break;
         }
 
         case 'REMOVE_CUSTOM_TOKEN': {
-          if (APP) {
-            console.log(tag, 'Removing custom token...');
-            try {
-              const { userAddress, networkId, tokenAddress } = message;
-
-              if (!userAddress || !networkId || !tokenAddress) {
-                throw new Error('userAddress, networkId, and tokenAddress are required');
-              }
-
-              console.log(tag, 'Calling APP.pioneer.RemoveCustomToken:', { userAddress, networkId, tokenAddress });
-
-              const result = await APP.pioneer.RemoveCustomToken({
-                userAddress,
-                networkId,
-                tokenAddress,
-              });
-
-              console.log(tag, 'Remove custom token result:', result);
-
-              sendResponse({
-                success: result?.success || result?.data?.success || false,
-                data: result.data,
-              });
-            } catch (error: any) {
-              console.error('Error removing custom token:', error);
-              sendResponse({
-                success: false,
-                error: error.message || 'Failed to remove custom token',
-              });
+          try {
+            const { userAddress, networkId, tokenAddress } = message;
+            if (!userAddress || !networkId || !tokenAddress) {
+              throw new Error('userAddress, networkId, and tokenAddress are required');
             }
-          } else {
-            sendResponse({ error: 'APP not initialized', success: false });
+
+            const response = await fetch(`${PIONEER_API}/api/v1/tokens/custom`, {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userAddress, networkId, tokenAddress }),
+            });
+            const data = await response.json();
+            sendResponse({ success: data?.success || false, data });
+          } catch (error: any) {
+            console.error('Error removing custom token:', error);
+            sendResponse({ success: false, error: error.message });
           }
           break;
         }
 
         case 'VALIDATE_ERC20_TOKEN': {
-          if (APP) {
-            try {
-              const { contractAddress, networkId } = message;
+          try {
+            const { contractAddress, networkId } = message;
 
-              if (!contractAddress) {
-                sendResponse({ valid: false, error: 'Contract address is required' });
-                break;
-              }
-
-              if (!networkId) {
-                sendResponse({ valid: false, error: 'Network ID is required' });
-                break;
-              }
-
-              // Extract chain ID from network ID (e.g., 'eip155:1' -> '1')
-              const chainId = networkId.replace('eip155:', '');
-
-              // Get RPC provider for the network
-              const chainInfo = EIP155_CHAINS[networkId];
-              if (!chainInfo) {
-                sendResponse({ valid: false, error: 'Unsupported network' });
-                break;
-              }
-
-              const rpcProvider = new JsonRpcProvider(chainInfo.rpc);
-
-              // ERC-20 ABI for name, symbol, and decimals
-              const ERC20_ABI = [
-                'function name() view returns (string)',
-                'function symbol() view returns (string)',
-                'function decimals() view returns (uint8)',
-              ];
-
-              const { Contract } = await import('ethers');
-              const tokenContract = new Contract(contractAddress, ERC20_ABI, rpcProvider);
-
-              // Validate token by calling its methods
-              const [name, symbol, decimals] = await Promise.all([
-                tokenContract.name(),
-                tokenContract.symbol(),
-                tokenContract.decimals(),
-              ]);
-
-              // Build CAIP identifier
-              const caip = `${networkId}/erc20:${contractAddress.toLowerCase()}`;
-
-              const tokenData = {
-                address: contractAddress,
-                symbol,
-                name,
-                decimals: Number(decimals),
-                caip,
-                networkId,
-              };
-
-              console.log(tag, 'Token validated successfully:', tokenData);
-              sendResponse({ valid: true, token: tokenData });
-            } catch (error: any) {
-              console.error(tag, 'Error validating ERC-20 token:', error);
-              sendResponse({
-                valid: false,
-                error: error.message || 'Failed to validate token. Make sure it is a valid ERC-20 contract.',
-              });
+            if (!contractAddress) {
+              sendResponse({ valid: false, error: 'Contract address is required' });
+              break;
             }
-          } else {
-            sendResponse({ valid: false, error: 'APP not initialized' });
+
+            if (!networkId) {
+              sendResponse({ valid: false, error: 'Network ID is required' });
+              break;
+            }
+
+            // Get RPC provider for the network
+            const chainInfo = EIP155_CHAINS[networkId];
+            if (!chainInfo) {
+              sendResponse({ valid: false, error: 'Unsupported network' });
+              break;
+            }
+
+            const rpcProvider = new JsonRpcProvider(chainInfo.rpc);
+
+            // ERC-20 ABI for name, symbol, and decimals
+            const ERC20_ABI = [
+              'function name() view returns (string)',
+              'function symbol() view returns (string)',
+              'function decimals() view returns (uint8)',
+            ];
+
+            const { Contract } = await import('ethers');
+            const tokenContract = new Contract(contractAddress, ERC20_ABI, rpcProvider);
+
+            const [name, symbol, decimals] = await Promise.all([
+              tokenContract.name(),
+              tokenContract.symbol(),
+              tokenContract.decimals(),
+            ]);
+
+            const caip = `${networkId}/erc20:${contractAddress.toLowerCase()}`;
+
+            const tokenData = {
+              address: contractAddress,
+              symbol,
+              name,
+              decimals: Number(decimals),
+              caip,
+              networkId,
+            };
+
+            console.log(tag, 'Token validated successfully:', tokenData);
+            sendResponse({ valid: true, token: tokenData });
+          } catch (error: any) {
+            console.error(tag, 'Error validating ERC-20 token:', error);
+            sendResponse({
+              valid: false,
+              error: error.message || 'Failed to validate token. Make sure it is a valid ERC-20 contract.',
+            });
           }
           break;
         }
 
         case 'INJECTION_SUCCESS': {
-          // Content script successfully injected - just log it
           console.log(tag, 'Injection successful:', message.url);
           sendResponse({ success: true });
           break;
@@ -1188,7 +951,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               hasCached,
               deviceInfo,
               cacheEnabled,
-              isViewOnlyMode: hasCached && !APP?.keepKeySdk?.device,
+              isViewOnlyMode: hasCached && !wallet.isInitialized(),
             });
           } catch (error) {
             sendResponse({ error: 'Failed to get cache status' });
@@ -1222,7 +985,6 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         default:
           // Handle action-based messages (like eth_sign_response) that are handled by other listeners
           if (message.action) {
-            // Don't log error for action-based messages - they're handled by other listeners
             sendResponse({ success: true });
           } else {
             console.error('Unknown message:', message);
@@ -1251,9 +1013,6 @@ exampleSidebarStorage
             }
           });
         });
-      } else {
-        // chrome.action.setPopup({ popup: 'popup/index.html' });
-        // chrome.action.openPopup();
       }
     });
   })
@@ -1267,6 +1026,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       console.log('getMaskingSettings result: ', result);
       sendResponse(result);
     });
-    return true; // To indicate asynchronous response
+    return true;
   }
 });

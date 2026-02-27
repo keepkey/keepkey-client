@@ -19,17 +19,9 @@
   "dependencies": {
     "@extension/shared": "workspace:*",
     "@extension/storage": "workspace:*",
-    "@pioneer-platform/helpers": "^4.0.13",
-    "@pioneer-platform/pioneer-caip": "^9.10.18",
-    "@pioneer-platform/pioneer-coins": "^9.11.18",
-    "@pioneer-platform/pioneer-discovery": "^8.15.44",
-    "@pioneer-platform/pioneer-sdk": "^8.15.44",
-    "@pioneer-platform/pioneer-types": "^8.11.16",
-    "@pioneer-platform/thorchain-client": "^0.8.27",
-    "axios": "^1.7.7",
     "buffer": "^6.0.3",
-    "coinselect": "^3.1.13",
     "ethers": "^6.13.2",
+    "keepkey-vault-sdk": "^2.0.1",
     "uuid": "^10.0.0",
     "webextension-polyfill": "^0.12.0"
   },

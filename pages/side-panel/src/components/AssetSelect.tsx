@@ -5,9 +5,8 @@ import {
   ChainToNetworkId,
   getChainEnumValue,
   NetworkIdToChain,
-} from '@pioneer-platform/pioneer-caip';
-// @ts-ignore
-import { COIN_MAP_LONG } from '@pioneer-platform/pioneer-coins';
+  COIN_MAP_LONG,
+} from '@extension/shared';
 import { blockchainStorage, blockchainDataStorage } from '@extension/storage';
 
 // Styles for truncating text with ellipsis

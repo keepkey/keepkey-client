@@ -17,8 +17,7 @@ import {
 import { ArrowUpIcon, ArrowDownIcon, ChevronRightIcon } from '@chakra-ui/icons';
 import AssetSelect from './AssetSelect'; // Import AssetSelect component
 import { blockchainDataStorage, blockchainStorage } from '@extension/storage';
-import { COIN_MAP_LONG } from '@pioneer-platform/pioneer-coins';
-import { NetworkIdToChain } from '@pioneer-platform/pioneer-caip';
+import { COIN_MAP_LONG, NetworkIdToChain } from '@extension/shared';
 
 // Chain name mapping for cleaner display
 const getChainDisplayName = (networkId: string): string => {

@@ -1,7 +1,4 @@
-import { JsonRpcProvider } from 'ethers';
-import { requestStorage } from '@extension/storage';
-// import axios from 'axios';
-import { caipToNetworkId, shortListNameToCaip } from '@pioneer-platform/pioneer-caip';
+import { caipToNetworkId, shortListNameToCaip } from './chainConfig';
 
 //@ts-ignore
 import { v4 as uuidv4 } from 'uuid';
@@ -18,39 +15,6 @@ import { handleMayaRequest } from './chains/mayaHandler';
 import { handleRippleRequest } from './chains/rippleHandler';
 
 const TAG = ' | METHODS | ';
-const DOMAIN_WHITE_LIST = [];
-
-const CURRENT_PROVIDER: any = {
-  chainId: '0x1',
-  caip: 'eip155:1/slip44:60',
-  blockExplorerUrls: ['https://etherscan.io'],
-  name: 'Ethereum',
-  providerUrl: 'https://eth.llamarpc.com',
-  provider: new JsonRpcProvider('https://eth.llamarpc.com'),
-  fallbacks: [],
-};
-
-interface ChainInfo {
-  chainId: string;
-  name: string;
-  logo: string;
-  rgb: string;
-  rpc: string;
-  namespace: string;
-  caip: string;
-}
-
-interface Eip155Chains {
-  [key: string]: ChainInfo;
-}
-
-type Event = {
-  id: string;
-  type: string;
-  request: any;
-  status: 'request' | 'approval' | 'completed';
-  timestamp: string;
-};
 
 interface ProviderRpcError extends Error {
   code: number;
@@ -237,64 +201,62 @@ export const handleWalletRequest = async (
   chain: string,
   method: string,
   params: any[],
-  KEEPKEY_WALLET: any,
+  __KEEPKEY_WALLET: any,
   ADDRESS: string,
 ): Promise<any> => {
   const tag = ' | handleWalletRequest | ';
   try {
     console.log(tag, 'id:', requestInfo.id);
     console.log(tag, 'chain:', chain);
-    console.log(tag, 'params:', params);
-    console.log(tag, 'requestInfo:', requestInfo);
-    console.log(tag, 'KEEPKEY_WALLET:', KEEPKEY_WALLET);
+    console.log(tag, 'method:', method);
     if (!chain) throw Error('Chain not provided!');
     if (!requestInfo) throw Error('Cannot validate request! Refusing to proceed.');
 
     switch (chain) {
       case 'ethereum': {
-        return await handleEthereumRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
+        return await handleEthereumRequest(method, params, requestInfo, ADDRESS, __KEEPKEY_WALLET, requireApproval);
         break;
       }
       case 'bitcoin': {
-        return await handleBitcoinRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
+        return await handleBitcoinRequest(method, params, requestInfo, ADDRESS, __KEEPKEY_WALLET, requireApproval);
         break;
       }
       case 'bitcoincash': {
-        return await handleBitcoinCashRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
+        return await handleBitcoinCashRequest(method, params, requestInfo, ADDRESS, _KEEPKEY_WALLET, requireApproval);
         break;
       }
       case 'dogecoin': {
         console.log(tag, 'checkpoint handle doge');
-        return await handleDogecoinRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
+        return await handleDogecoinRequest(method, params, requestInfo, ADDRESS, _KEEPKEY_WALLET, requireApproval);
         break;
       }
       case 'litecoin': {
         console.log(tag, 'checkpoint handle litecoin');
-        return await handleLitecoinRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
+        return await handleLitecoinRequest(method, params, requestInfo, ADDRESS, _KEEPKEY_WALLET, requireApproval);
         break;
       }
       case 'dash': {
-        return await handleDashRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
+        return await handleDashRequest(method, params, requestInfo, ADDRESS, _KEEPKEY_WALLET, requireApproval);
         break;
       }
       case 'thorchain': {
-        return await handleThorchainRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
+        return await handleThorchainRequest(method, params, requestInfo, ADDRESS, _KEEPKEY_WALLET, requireApproval);
         break;
       }
       case 'osmosis': {
-        return await handleOsmosisRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
+        return await handleOsmosisRequest(method, params, requestInfo, ADDRESS, _KEEPKEY_WALLET, requireApproval);
         break;
       }
       case 'cosmos': {
-        return await handleCosmosRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
+        return await handleCosmosRequest(method, params, requestInfo, ADDRESS, _KEEPKEY_WALLET, requireApproval);
         break;
       }
       case 'ripple': {
-        return await handleRippleRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
+        return await handleRippleRequest(method, params, requestInfo, ADDRESS, _KEEPKEY_WALLET, requireApproval);
         break;
       }
       case 'mayachain': {
-        return await handleMayaRequest(method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval);
+        return await handleMayaRequest(method, params, requestInfo, ADDRESS, _KEEPKEY_WALLET, requireApproval);
         break;
       }
       default: {
@@ -333,16 +295,3 @@ export const handleWalletRequest = async (
     }
   }
 };
-
-// Handle message to get the current provider
-chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: any) => {
-  const tag = TAG + ' | chrome.runtime.onMessage | ';
-
-  if (message.type === 'GET_PROVIDER') {
-    sendResponse({ provider: CURRENT_PROVIDER });
-    return true;
-  }
-
-  // Return false if the message type is not handled
-  return false;
-});

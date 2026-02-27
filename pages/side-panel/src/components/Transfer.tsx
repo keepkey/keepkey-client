@@ -28,8 +28,7 @@ import {
 } from '@chakra-ui/react';
 import { CloseIcon } from '@chakra-ui/icons';
 import React, { useCallback, useEffect, useState } from 'react';
-import { NetworkIdToChain } from '@pioneer-platform/pioneer-caip';
-import { COIN_MAP_LONG } from '@pioneer-platform/pioneer-coins';
+import { NetworkIdToChain, COIN_MAP_LONG } from '@extension/shared';
 //@ts-ignore
 import confetti from 'canvas-confetti';
 
