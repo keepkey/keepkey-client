@@ -10,6 +10,8 @@ import {
   blockchainStorage,
   blockchainDataStorage,
   dappStorage,
+  ethAccountsStorage,
+  customEvmNetworksStorage,
 } from './customStorage';
 import { chainIdStorage } from './providerStorage';
 import { exampleThemeStorage, exampleSidebarStorage } from './exampleThemeStorage';
@@ -38,6 +40,8 @@ export {
   exampleThemeStorage,
   exampleSidebarStorage,
   pubkeyStorage,
+  ethAccountsStorage,
+  customEvmNetworksStorage,
 };
 
 export type { BaseStorage };

@@ -101,7 +101,11 @@ export const handleCosmosRequest = async (
 
         response.txid = txHash;
         await requestStorage.updateEventById(requestInfo.id, response);
-        chrome.runtime.sendMessage({ action: 'transaction_complete', txHash });
+        chrome.runtime.sendMessage({
+          action: 'transaction_complete',
+          txHash,
+          explorerTxLink: 'https://www.mintscan.io/cosmos/tx/',
+        });
         return txHash;
       } else {
         throw createProviderRpcError(4200, 'User denied transaction');

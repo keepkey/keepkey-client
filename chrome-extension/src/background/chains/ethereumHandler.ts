@@ -826,8 +826,15 @@ const signMessage = async (message, KEEPKEY_WALLET, ADDRESS: string) => {
     console.log(tag, '**** message: ', message);
     console.log(tag, '**** ADDRESS: ', ADDRESS);
 
+    // Vault SDK requires hex-encoded message (0x...).
+    // personal_sign may pass plain UTF-8 text — convert if needed.
+    let hexMessage = message;
+    if (typeof message === 'string' && !message.startsWith('0x')) {
+      hexMessage = '0x' + Array.from(new TextEncoder().encode(message), b => b.toString(16).padStart(2, '0')).join('');
+    }
+
     const sdk = wallet.getSdk();
-    const output = await sdk.eth.ethSignMessage({ address: ADDRESS, message: message });
+    const output = await sdk.eth.ethSignMessage({ address: ADDRESS, message: hexMessage });
     console.log(`${tag} Transaction output: `, output);
 
     // Notify popup that signature is complete

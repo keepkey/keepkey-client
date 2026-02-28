@@ -1,5 +1,21 @@
-import { Badge, Box, Divider, Flex, HStack, Switch, Table, Tbody, Td, Text, Textarea, Tr } from '@chakra-ui/react';
+import {
+  Badge,
+  Box,
+  Divider,
+  Flex,
+  HStack,
+  Link,
+  Switch,
+  Table,
+  Tbody,
+  Td,
+  Text,
+  Textarea,
+  Tr,
+} from '@chakra-ui/react';
+import { ExternalLinkIcon } from '@chakra-ui/icons';
 import React, { useState, useEffect } from 'react';
+import { getExplorerAddressUrl } from '@extension/shared/lib/utils/explorerUrls';
 
 const requestAssetContext = () => {
   return new Promise((resolve, reject) => {
@@ -73,7 +89,20 @@ export default function LegacyTx({ transaction }: any) {
                 <Badge>recipient:</Badge>
               </Td>
               <Td wordBreak="break-all" fontSize="sm">
-                {transaction?.unsignedTx?.to}
+                {(() => {
+                  const to = transaction?.unsignedTx?.to;
+                  const chainId = transaction?.unsignedTx?.chainId;
+                  const networkId = chainId ? `eip155:${chainId}` : null;
+                  const explorerUrl = networkId && to ? getExplorerAddressUrl(networkId, to) : null;
+                  if (explorerUrl) {
+                    return (
+                      <Link href={explorerUrl} isExternal color="blue.300" _hover={{ color: 'blue.200' }}>
+                        {to} <ExternalLinkIcon mx={1} boxSize={3} />
+                      </Link>
+                    );
+                  }
+                  return to;
+                })()}
               </Td>
             </Tr>
             <Tr>

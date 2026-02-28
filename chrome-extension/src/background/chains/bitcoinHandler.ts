@@ -146,6 +146,7 @@ export const handleBitcoinRequest = async (
           chrome.runtime.sendMessage({
             action: 'transaction_complete',
             txHash: txHash,
+            explorerTxLink: 'https://mempool.space/tx/',
           });
           return txHash;
         } catch (e) {

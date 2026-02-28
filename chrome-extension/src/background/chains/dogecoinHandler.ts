@@ -105,7 +105,11 @@ export const handleDogecoinRequest = async (
         if (txHash.txid) txHash = txHash.txid;
         response.txid = txHash;
         await requestStorage.updateEventById(requestInfo.id, response);
-        chrome.runtime.sendMessage({ action: 'transaction_complete', txHash });
+        chrome.runtime.sendMessage({
+          action: 'transaction_complete',
+          txHash,
+          explorerTxLink: 'https://blockchair.com/dogecoin/transaction/',
+        });
         return txHash;
       } else {
         throw createProviderRpcError(4200, 'User denied transaction');

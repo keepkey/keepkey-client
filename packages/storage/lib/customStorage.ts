@@ -402,6 +402,96 @@ const createMaskingSettingsStorage = (): MaskingSettingsStorage => {
 
 export const maskingSettingsStorage = createMaskingSettingsStorage();
 
+// ---- ETH Accounts Storage (persists derived account indices) ----
+type EthAccountsStorage = BaseStorage<number[]> & {
+  getAccounts: () => Promise<number[]>;
+  addAccount: (index: number) => Promise<number[]>;
+  removeAccount: (index: number) => Promise<number[]>;
+};
+
+const createEthAccountsStorage = (): EthAccountsStorage => {
+  const storage = createStorage<number[]>('keepkey-eth-accounts', [0], {
+    storageType: StorageType.Local,
+    liveUpdate: true,
+  });
+
+  return {
+    ...storage,
+    getAccounts: async () => {
+      const accounts = await storage.get();
+      return accounts && accounts.length > 0 ? accounts : [0];
+    },
+    addAccount: async (index: number) => {
+      const accounts = await storage.get();
+      const current = accounts && accounts.length > 0 ? accounts : [0];
+      if (!current.includes(index)) {
+        const updated = [...current, index].sort((a, b) => a - b);
+        await storage.set(() => updated);
+        return updated;
+      }
+      return current;
+    },
+    removeAccount: async (index: number) => {
+      if (index === 0) return [0]; // Never remove account 0
+      const accounts = await storage.get();
+      const current = accounts && accounts.length > 0 ? accounts : [0];
+      const updated = current.filter(i => i !== index);
+      await storage.set(() => (updated.length > 0 ? updated : [0]));
+      return updated.length > 0 ? updated : [0];
+    },
+  };
+};
+
+export const ethAccountsStorage = createEthAccountsStorage();
+
+// ---- Custom EVM Networks Storage ----
+type CustomEvmNetwork = {
+  networkId: string; // e.g. 'eip155:42220'
+  chainId: number;
+  name: string;
+  rpc: string;
+  symbol: string;
+  explorerUrl?: string;
+};
+
+type CustomEvmNetworksStorage = BaseStorage<CustomEvmNetwork[]> & {
+  getNetworks: () => Promise<CustomEvmNetwork[]>;
+  addNetwork: (network: CustomEvmNetwork) => Promise<CustomEvmNetwork[]>;
+  removeNetwork: (networkId: string) => Promise<CustomEvmNetwork[]>;
+};
+
+const createCustomEvmNetworksStorage = (): CustomEvmNetworksStorage => {
+  const storage = createStorage<CustomEvmNetwork[]>('keepkey-custom-evm-networks', [], {
+    storageType: StorageType.Local,
+    liveUpdate: true,
+  });
+
+  return {
+    ...storage,
+    getNetworks: async () => {
+      return (await storage.get()) || [];
+    },
+    addNetwork: async (network: CustomEvmNetwork) => {
+      const current = (await storage.get()) || [];
+      const exists = current.some(n => n.networkId === network.networkId);
+      if (!exists) {
+        const updated = [...current, network];
+        await storage.set(() => updated);
+        return updated;
+      }
+      return current;
+    },
+    removeNetwork: async (networkId: string) => {
+      const current = (await storage.get()) || [];
+      const updated = current.filter(n => n.networkId !== networkId);
+      await storage.set(() => updated);
+      return updated;
+    },
+  };
+};
+
+export const customEvmNetworksStorage = createCustomEvmNetworksStorage();
+
 // Utility function to move an event between storages
 const moveEvent = async (
   eventId: string,

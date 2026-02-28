@@ -16,6 +16,8 @@ import {
   web3ProviderStorage,
   blockchainDataStorage,
   assetContextStorage,
+  ethAccountsStorage,
+  customEvmNetworksStorage,
 } from '@extension/storage';
 import { EIP155_CHAINS } from './chains';
 
@@ -110,7 +112,7 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
       const seen = new Set<string>();
 
       for (const pk of allPubkeys) {
-        const pubkeyValue = pk.address || pk.xpub || pk.pubkey;
+        const pubkeyValue = pk.address || pk.master || pk.xpub || pk.pubkey;
         if (!pubkeyValue) continue;
 
         const networks: string[] = pk.networks || [];
@@ -145,26 +147,52 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
       if (pioneerPubkeys.length === 0) return cachedBalances;
 
       console.log(`[fetchBalances] Sending ${pioneerPubkeys.length} pubkeys to Pioneer API`);
+      console.log(`[fetchBalances] Sample pubkeys:`, pioneerPubkeys.slice(0, 3));
 
       // Use /api/v1/charts endpoint — no auth required, returns balances + tokens
-      const url = forceRefresh ? `${PIONEER_API}/api/v1/charts?forceRefresh=true` : `${PIONEER_API}/api/v1/charts`;
+      const baseUrl = forceRefresh ? `${PIONEER_API}/api/v1/charts?forceRefresh=true` : `${PIONEER_API}/api/v1/charts`;
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pubkeys: pioneerPubkeys }),
-      });
+      // Split into address-based (EVM, Cosmos, etc.) and xpub-based (UTXO) batches
+      // to prevent a bad xpub from poisoning the entire request
+      const addressPubkeys = pioneerPubkeys.filter(
+        p => !p.pubkey.startsWith('xpub') && !p.pubkey.startsWith('zpub') && !p.pubkey.startsWith('ypub'),
+      );
+      const xpubPubkeys = pioneerPubkeys.filter(
+        p => p.pubkey.startsWith('xpub') || p.pubkey.startsWith('zpub') || p.pubkey.startsWith('ypub'),
+      );
 
-      if (!response.ok) {
-        throw new Error(`Pioneer API returned ${response.status}: ${response.statusText}`);
-      }
+      const fetchBatch = async (batch: typeof pioneerPubkeys, label: string) => {
+        if (batch.length === 0) return { balances: [] as any[], tokens: [] as any[] };
+        try {
+          const response = await fetch(baseUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pubkeys: batch }),
+          });
+          if (!response.ok) {
+            console.warn(`[fetchBalances] ${label} batch returned ${response.status}`);
+            return { balances: [] as any[], tokens: [] as any[] };
+          }
+          const json = await response.json();
+          const data = json?.data || {};
+          console.log(
+            `[fetchBalances] ${label} batch: ${data.balances?.length || 0} balances, ${data.tokens?.length || 0} tokens`,
+          );
+          return { balances: data.balances || [], tokens: data.tokens || [] };
+        } catch (e: any) {
+          console.warn(`[fetchBalances] ${label} batch error:`, e.message);
+          return { balances: [] as any[], tokens: [] as any[] };
+        }
+      };
 
-      const json = await response.json();
+      // Fetch both batches in parallel
+      const [addressResult, xpubResult] = await Promise.all([
+        fetchBatch(addressPubkeys, 'address'),
+        fetchBatch(xpubPubkeys, 'xpub'),
+      ]);
 
-      // /api/v1/charts returns { data: { balances: [...], tokens: [...] }, meta: {...} }
-      const chartsData = json?.data || {};
-      const rawBalances: any[] = chartsData.balances || [];
-      const rawTokens: any[] = chartsData.tokens || [];
+      const rawBalances: any[] = [...addressResult.balances, ...xpubResult.balances];
+      const rawTokens: any[] = [...addressResult.tokens, ...xpubResult.tokens];
 
       if (rawBalances.length === 0 && rawTokens.length === 0) {
         console.warn('[fetchBalances] Pioneer returned 0 balances for', pioneerPubkeys.length, 'pubkeys');
@@ -230,6 +258,37 @@ const onStart = async function () {
     console.log(tag, 'Wallet initialized');
 
     if (!wallet.isInitialized()) throw Error('Failed to INIT!');
+
+    // Load persisted ETH accounts and derive any beyond account 0
+    try {
+      const savedAccounts = await ethAccountsStorage.getAccounts();
+      const HARDENED = 0x80000000;
+      let needsRefresh = false;
+      for (const idx of savedAccounts) {
+        if (idx === 0) continue; // account 0 is in default paths
+        const existingPaths = wallet.getPaths();
+        const alreadyExists = existingPaths.some((p: any) => p.note === `Ethereum account ${idx}`);
+        if (!alreadyExists) {
+          wallet.addPath({
+            note: `Ethereum account ${idx}`,
+            networks: ['eip155:1'],
+            script_type: 'ethereum',
+            type: 'address',
+            addressNList: [HARDENED + 44, HARDENED + 60, HARDENED + idx, 0, 0],
+            addressNListMaster: [HARDENED + 44, HARDENED + 60, HARDENED + idx, 0, 0],
+            curve: 'secp256k1',
+            showDisplay: false,
+          });
+          needsRefresh = true;
+        }
+      }
+      if (needsRefresh) {
+        await wallet.refreshPubkeys();
+        console.log(tag, 'Refreshed pubkeys with', savedAccounts.length, 'ETH accounts');
+      }
+    } catch (e) {
+      console.warn(tag, 'Failed to load persisted ETH accounts:', e);
+    }
 
     const pubkeys = wallet.getPubkeys();
     console.log(tag, 'pubkeys:', pubkeys.length);
@@ -400,8 +459,9 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         }
 
         case 'CLEAR_CACHE': {
-          // No SDK cache to clear — just acknowledge
-          sendResponse(true);
+          cachedBalances = [];
+          balancesFetchInProgress = null;
+          sendResponse({ success: true });
           break;
         }
 
@@ -594,6 +654,93 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           } catch (error) {
             console.error('Error adding account path:', error);
             sendResponse({ error: 'Failed to add account path' });
+          }
+          break;
+        }
+
+        case 'GET_ETH_ACCOUNTS': {
+          try {
+            const accounts = await ethAccountsStorage.getAccounts();
+            sendResponse({ accounts });
+          } catch (error) {
+            console.error('Error getting ETH accounts:', error);
+            sendResponse({ accounts: [0] });
+          }
+          break;
+        }
+
+        case 'ADD_ETH_ACCOUNT': {
+          const { accountIndex } = message;
+          try {
+            const HARDENED = 0x80000000;
+            const accounts = await ethAccountsStorage.addAccount(accountIndex);
+            // Build path config for this account and derive on device
+            const path = {
+              note: `Ethereum account ${accountIndex}`,
+              networks: accountIndex === 0 ? ['eip155:1', 'eip155:*'] : ['eip155:1'],
+              script_type: 'ethereum',
+              type: 'address',
+              addressNList:
+                accountIndex === 0
+                  ? [HARDENED + 44, HARDENED + 60, HARDENED + accountIndex]
+                  : [HARDENED + 44, HARDENED + 60, HARDENED + accountIndex, 0, 0],
+              addressNListMaster: [HARDENED + 44, HARDENED + 60, HARDENED + accountIndex, 0, 0],
+              curve: 'secp256k1',
+              showDisplay: false,
+            };
+            wallet.addPath(path);
+            const pubkeys = await wallet.refreshPubkeys();
+            sendResponse({ success: true, accounts, pubkeys });
+          } catch (error) {
+            console.error('Error adding ETH account:', error);
+            sendResponse({ error: 'Failed to add ETH account' });
+          }
+          break;
+        }
+
+        case 'REMOVE_ETH_ACCOUNT': {
+          const { accountIndex: removeIdx } = message;
+          try {
+            const accounts = await ethAccountsStorage.removeAccount(removeIdx);
+            sendResponse({ success: true, accounts });
+          } catch (error) {
+            console.error('Error removing ETH account:', error);
+            sendResponse({ error: 'Failed to remove ETH account' });
+          }
+          break;
+        }
+
+        case 'GET_CUSTOM_EVM_NETWORKS': {
+          try {
+            const networks = await customEvmNetworksStorage.getNetworks();
+            sendResponse({ networks });
+          } catch (error) {
+            console.error('Error getting custom EVM networks:', error);
+            sendResponse({ networks: [] });
+          }
+          break;
+        }
+
+        case 'ADD_CUSTOM_EVM_NETWORK': {
+          const { network } = message;
+          try {
+            const networks = await customEvmNetworksStorage.addNetwork(network);
+            sendResponse({ success: true, networks });
+          } catch (error) {
+            console.error('Error adding custom EVM network:', error);
+            sendResponse({ error: 'Failed to add custom EVM network' });
+          }
+          break;
+        }
+
+        case 'REMOVE_CUSTOM_EVM_NETWORK': {
+          const { networkId: removeNetId } = message;
+          try {
+            const networks = await customEvmNetworksStorage.removeNetwork(removeNetId);
+            sendResponse({ success: true, networks });
+          } catch (error) {
+            console.error('Error removing custom EVM network:', error);
+            sendResponse({ error: 'Failed to remove custom EVM network' });
           }
           break;
         }
