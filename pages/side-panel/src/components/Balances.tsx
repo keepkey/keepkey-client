@@ -1,25 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import {
-  Flex,
-  Spinner,
-  Avatar,
-  Box,
-  Text,
-  Badge,
-  Card,
-  Stack,
-  Button,
-  HStack,
-  IconButton,
-  Tooltip,
-  Image,
-} from '@chakra-ui/react';
-import { ArrowUpIcon, ArrowDownIcon, ChevronRightIcon } from '@chakra-ui/icons';
-import AssetSelect from './AssetSelect'; // Import AssetSelect component
+import React, { useState, useEffect } from 'react';
+import { Flex, Spinner, Avatar, Box, Text, Badge, Card, Stack, HStack } from '@chakra-ui/react';
+import { ChevronRightIcon } from '@chakra-ui/icons';
+import AssetSelect from './AssetSelect';
 import { blockchainDataStorage, blockchainStorage } from '@extension/storage';
 import { COIN_MAP_LONG, NetworkIdToChain } from '@extension/shared';
 
-// Chain name mapping for cleaner display
 const getChainDisplayName = (networkId: string): string => {
   if (networkId?.includes('eip155:1/')) return 'Ethereum';
   if (networkId?.includes('eip155:8453')) return 'Base';
@@ -32,365 +17,110 @@ const getChainDisplayName = (networkId: string): string => {
   if (networkId?.includes('cosmos:')) return 'Cosmos';
   if (networkId?.includes('cosmos:thorchain')) return 'THORChain';
   if (networkId?.includes('cosmos:mayachain')) return 'Maya';
-  // Extract chain name from networkId as fallback
   const chain = (NetworkIdToChain as any)[networkId?.split('/')[0]];
   return (COIN_MAP_LONG as any)[chain] || 'Unknown';
 };
 
-const Balances = ({ setShowBack }: any) => {
-  // Initialize state with cached data if available
-  const getCachedData = (key: string) => {
-    try {
-      const cached = sessionStorage.getItem(key);
-      return cached ? JSON.parse(cached) : null;
-    } catch {
-      return null;
-    }
+interface BalancesProps {
+  onSelectAsset: (asset: any) => void;
+}
+
+const Balances = ({ onSelectAsset }: BalancesProps) => {
+  const [balances, setBalances] = useState<any[]>([]);
+  const [assets, setAssets] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAssetSelect, setShowAssetSelect] = useState(false);
+
+  const formatBalance = (balance: string) => {
+    const numericBalance = parseFloat(balance);
+    const safeBalance = isNaN(numericBalance) ? '0' : balance;
+    const [integer, decimal] = safeBalance.split('.');
+    const largePart = decimal?.slice(0, 4) || '0000';
+    const smallPart = decimal?.slice(4, 6) || '00';
+    return { integer, largePart, smallPart };
   };
 
-  const cachedBalances = getCachedData('app_balances');
-  const cachedAssets = getCachedData('app_assets');
+  const formatUsd = (value: string) => parseFloat(value).toFixed(2);
 
-  const [balances, setBalances] = useState<any[]>(cachedBalances || []);
-  const [assets, setAssets] = useState<any[]>(cachedAssets || []);
-  const [loading, setLoading] = useState(!cachedBalances || !cachedAssets); // Only show loading if no cached data
-  const [showAssetSelect, setShowAssetSelect] = useState(false); // New state to toggle between Balances and AssetSelect
-  const [balancesLoaded, setBalancesLoaded] = useState(!!cachedBalances); // Already loaded if we have cached data
-  const [loadingAssetId, setLoadingAssetId] = useState<string | null>(null); // Track which asset is being loaded
-
-  // Function to add custom (added) assets
-  const addAddedAssets = async () => {
+  // Load custom-added chains from storage
+  const loadAddedAssets = async (): Promise<any[]> => {
     try {
-      const addedAssets = [];
-      // Get enabled chains
       const savedChains = await blockchainStorage.getAllBlockchains();
+      const added: any[] = [];
 
-      for (let i = 0; i < savedChains.length; i++) {
-        const networkId = savedChains[i];
+      for (const networkId of savedChains) {
         const chainName = (COIN_MAP_LONG as any)[(NetworkIdToChain as any)[networkId]] || 'unknown';
+        let name = chainName;
+        let image = `https://api.keepkey.info/coins/${btoa(networkId + '/slip44:60').replace(/=+$/, '')}.png`;
 
-        const blockchain = {
-          networkId: networkId,
-          name: chainName,
-          image: `https://api.keepkey.info/coins/${btoa(networkId + '/slip44:60').replace(/=+$/, '')}.png`,
-          isEnabled: true,
-        };
-
-        // If the name is "unknown", fetch additional asset data
         if (chainName === 'unknown') {
           try {
-            // Get from storage
             const assetData = await blockchainDataStorage.getBlockchainData(networkId);
-            console.log('storage assetData:', assetData);
-
-            if (assetData && assetData.name) {
-              blockchain.name = assetData.name;
-              blockchain.image =
-                assetData.image ||
-                `https://api.keepkey.info/coins/${btoa(networkId + '/slip44:60').replace(/=+$/, '')}.png`;
+            if (assetData?.name) {
+              name = assetData.name;
+              image = assetData.image || image;
             }
-          } catch (error) {
-            console.error(`Error fetching asset data for networkId ${networkId}:`, error);
+          } catch (e) {
+            console.error(`Error fetching asset data for ${networkId}:`, e);
           }
         }
 
-        const asset = {
-          networkId: networkId,
+        added.push({
+          networkId,
           caip: networkId + '/slip44:60',
-          name: blockchain.name,
-          icon: blockchain.image,
-          manual: true, // Flag to identify custom added assets
-        };
-
-        // Push to addedAssets array
-        addedAssets.push(asset);
+          name,
+          icon: image,
+          manual: true,
+        });
       }
-      return addedAssets;
+      return added;
     } catch (e) {
       console.error(e);
       return [];
     }
   };
 
-  // Function to format the balance
-  const formatBalance = (balance: string) => {
-    try {
-      // Parse the balance to ensure it's a valid number
-      const numericBalance = parseFloat(balance);
-
-      // If balance is NaN, use 0
-      const safeBalance = isNaN(numericBalance) ? '0' : balance;
-
-      const [integer, decimal] = safeBalance.split('.');
-      const largePart = decimal?.slice(0, 4) || '0000';
-      const smallPart = decimal?.slice(4, 6) || '00';
-
-      return { integer, largePart, smallPart };
-    } catch (error) {
-      console.error('Error in formatBalance:', error);
-      // Fallback to zeroed format
-      return { integer: '0', largePart: '0000', smallPart: '00' };
-    }
-  };
-
-  // Function to format USD value
-  const formatUsd = (value: string) => {
-    return parseFloat(value).toFixed(2);
-  };
-
-  // Remove asset context listener - dashboard should always show all assets
-  // No longer listening for asset context changes since we want to always display all assets
-
-  // Add message listener for when returning from asset view
+  // Fetch assets and balances on mount
   useEffect(() => {
-    const messageListener = (message: any) => {
-      if (message.type === 'ASSET_CONTEXT_CLEARED') {
-        console.log('Asset context cleared, refreshing balances...');
-        setLoadingAssetId(null); // Clear loading state when returning
-        // Fetch fresh balances when returning from asset view
-        chrome.runtime.sendMessage({ type: 'GET_APP_BALANCES' }, response => {
-          if (response && response.balances && response.balances.length > 0) {
-            console.log('Refreshed balances: ', response.balances.length);
-            setBalances(response.balances);
-            // Update session storage
-            try {
-              sessionStorage.setItem('app_balances', JSON.stringify(response.balances));
-            } catch (e) {
-              console.error('Failed to store refreshed balances:', e);
-            }
-          }
-        });
-      }
-    };
+    const fetchData = async () => {
+      setLoading(true);
 
-    chrome.runtime.onMessage.addListener(messageListener);
-    return () => {
-      chrome.runtime.onMessage.removeListener(messageListener);
-    };
-  }, []);
-
-  // Fetch assets, balances, and asset context from background script
-  useEffect(() => {
-    const fetchAssetsAndBalances = async () => {
-      // Only show loading if we haven't loaded balances yet
-      if (!balancesLoaded) {
-        setLoading(true);
-      }
-
-      // Dashboard always shows all assets
-      setShowBack(false);
-
-      // Fetch assets
       chrome.runtime.sendMessage({ type: 'GET_ASSETS' }, async response => {
-        if (chrome.runtime.lastError) {
-          console.error('Error fetching assets:', chrome.runtime.lastError.message);
-          setLoading(false);
-          return;
-        }
-        if (response && response.assets) {
-          console.log(response.assets);
-
-          const addedAssets = await addAddedAssets();
-
-          // Log for debugging
-          console.log('Default assets:', response.assets);
-          console.log('Added assets:', addedAssets);
-
-          // Create a Map to track unique assets by networkId
+        if (response?.assets) {
+          const addedAssets = await loadAddedAssets();
           const assetMap = new Map();
-
-          // Add default assets first
-          response.assets.forEach((asset: any) => {
-            console.log('Adding default asset:', asset.name, 'networkId:', asset.networkId);
-            assetMap.set(asset.networkId, asset);
+          response.assets.forEach((a: any) => assetMap.set(a.networkId, a));
+          addedAssets.forEach((a: any) => {
+            if (!assetMap.has(a.networkId)) assetMap.set(a.networkId, a);
           });
-
-          // Only add custom assets that don't already exist
-          addedAssets.forEach((asset: any) => {
-            console.log('Checking added asset:', asset.name, 'networkId:', asset.networkId);
-            if (!assetMap.has(asset.networkId)) {
-              console.log('Adding custom asset:', asset.name);
-              assetMap.set(asset.networkId, asset);
-            } else {
-              console.log('Skipping duplicate:', asset.name, 'networkId already exists');
-            }
-          });
-
-          // Convert Map back to array
-          const combined = Array.from(assetMap.values());
-          console.log('Combined assets count:', combined.length);
-          setAssets(combined);
-          // Store assets in session storage
-          try {
-            sessionStorage.setItem('app_assets', JSON.stringify(combined));
-          } catch (e) {
-            console.error('Failed to store assets:', e);
-          }
-        } else {
-          console.error('Error: No assets found in the response');
-          // Try to restore cached assets
-          try {
-            const cachedAssets = sessionStorage.getItem('app_assets');
-            if (cachedAssets) {
-              const parsed = JSON.parse(cachedAssets);
-              console.log('Using cached assets:', parsed.length);
-              setAssets(parsed);
-            }
-          } catch (e) {
-            console.error('Failed to retrieve cached assets:', e);
-          }
+          setAssets(Array.from(assetMap.values()));
         }
       });
 
-      // Fetch balances
       chrome.runtime.sendMessage({ type: 'GET_APP_BALANCES' }, response => {
-        if (chrome.runtime.lastError) {
-          console.error('Error fetching balances:', chrome.runtime.lastError.message);
-          setLoading(false);
-          return;
+        if (response?.balances) {
+          setBalances(response.balances);
         }
-        if (response && response.balances && response.balances.length > 0) {
-          console.log('Balances: ', response.balances.length);
-          console.log('Sample balance structure:', response.balances[0]);
-          console.log(
-            'Bitcoin balances:',
-            response.balances.filter(b => b.symbol === 'BTC' || b.name?.toLowerCase().includes('bitcoin')),
-          );
-
-          // Check if we have fewer balances than assets (might indicate incomplete data)
-          if (assets.length > 0 && response.balances.length < assets.length / 2) {
-            console.log('Balances seem incomplete, refreshing all...');
-            // Try to refresh all balances
-            chrome.runtime.sendMessage({ type: 'REFRESH_ALL_BALANCES' }, refreshResponse => {
-              if (refreshResponse && refreshResponse.balances && refreshResponse.balances.length > 0) {
-                console.log('Refreshed all balances:', refreshResponse.balances.length);
-                setBalances(refreshResponse.balances);
-                setBalancesLoaded(true);
-                try {
-                  sessionStorage.setItem('app_balances', JSON.stringify(refreshResponse.balances));
-                } catch (e) {
-                  console.error('Failed to store refreshed balances:', e);
-                }
-              } else {
-                // Use the original response if refresh failed
-                setBalances(response.balances);
-                setBalancesLoaded(true);
-                try {
-                  sessionStorage.setItem('app_balances', JSON.stringify(response.balances));
-                } catch (e) {
-                  console.error('Failed to store balances:', e);
-                }
-              }
-            });
-          } else {
-            setBalances(response.balances);
-            setBalancesLoaded(true);
-            // Store balances in session storage as backup
-            try {
-              sessionStorage.setItem('app_balances', JSON.stringify(response.balances));
-            } catch (e) {
-              console.error('Failed to store balances in session storage:', e);
-            }
-          }
-        } else if (!balancesLoaded) {
-          // Only use cached balances if we haven't loaded fresh ones yet
-          console.log('No fresh balances, checking cache...');
-          try {
-            const cachedBalances = sessionStorage.getItem('app_balances');
-            if (cachedBalances) {
-              const parsed = JSON.parse(cachedBalances);
-              console.log('Using cached balances:', parsed.length);
-              setBalances(parsed);
-            } else {
-              console.error('No cached balances available');
-              // Try to refresh all balances
-              chrome.runtime.sendMessage({ type: 'REFRESH_ALL_BALANCES' }, refreshResponse => {
-                if (refreshResponse && refreshResponse.balances) {
-                  console.log('Fetched fresh balances:', refreshResponse.balances.length);
-                  setBalances(refreshResponse.balances);
-                  setBalancesLoaded(true);
-                  try {
-                    sessionStorage.setItem('app_balances', JSON.stringify(refreshResponse.balances));
-                  } catch (e) {
-                    console.error('Failed to store fresh balances:', e);
-                  }
-                }
-              });
-            }
-          } catch (e) {
-            console.error('Failed to retrieve cached balances:', e);
-          }
-        }
-
         setLoading(false);
       });
-
-      // Don't fetch asset context - dashboard should always show all assets
     };
 
-    // Call the function to fetch data on component mount and when returning to this view
-    fetchAssetsAndBalances();
-  }, [balancesLoaded, setShowBack]);
+    fetchData();
+  }, []);
 
-  const onSelect = (asset: any) => {
-    console.log('Asset selected:', asset);
-    setLoadingAssetId(asset.caip); // Set loading state for this specific asset
-
-    try {
-      // Store current balances before switching views
-      if (balances && balances.length > 0) {
-        try {
-          sessionStorage.setItem('app_balances', JSON.stringify(balances));
-          sessionStorage.setItem('app_assets', JSON.stringify(assets));
-        } catch (e) {
-          console.error('Failed to store data before navigation:', e);
-        }
-      }
-
-      chrome.runtime.sendMessage(
-        {
-          type: 'SET_ASSET_CONTEXT',
-          asset,
-        },
-        response => {
-          if (chrome.runtime.lastError) {
-            console.error('Error sending message:', chrome.runtime.lastError);
-            setLoadingAssetId(null); // Clear loading state on error
-          }
-          console.log('SET_ASSET_CONTEXT response: ', response);
-          if (response && response.error) {
-            console.error('Error setting asset context:', response.error);
-            setLoadingAssetId(null); // Clear loading state on error
-          } else {
-            console.log('Asset context set successfully:', response);
-            // Don't clear loading here - let the navigation clear it
-          }
-        },
-      );
-    } catch (e) {
-      console.error(e);
-      setLoadingAssetId(null); // Clear loading state on error
-    }
-  };
-
-  // Always show all assets - sorted by total USD value (descending)
-  const sortedAssets = [...assets].sort((a: any, b: any) => {
-    // Calculate total USD value for the entire chain A (including tokens)
-    const chainBalancesA = balances.filter(bal => bal.networkId === a.networkId);
-    const valueUsdA = chainBalancesA.reduce((sum, bal) => sum + parseFloat(bal.valueUsd || '0'), 0);
-
-    // Calculate total USD value for the entire chain B (including tokens)
-    const chainBalancesB = balances.filter(bal => bal.networkId === b.networkId);
-    const valueUsdB = chainBalancesB.reduce((sum, bal) => sum + parseFloat(bal.valueUsd || '0'), 0);
-
-    // Sort in descending order by total USD value (highest to lowest)
-    return valueUsdB - valueUsdA;
+  // Sort assets by total USD value descending
+  const sortedAssets = [...assets].sort((assetA: any, assetB: any) => {
+    const valueA = balances
+      .filter(bal => bal.networkId === assetA.networkId)
+      .reduce((s, bal) => s + parseFloat(bal.valueUsd || '0'), 0);
+    const valueB = balances
+      .filter(bal => bal.networkId === assetB.networkId)
+      .reduce((s, bal) => s + parseFloat(bal.valueUsd || '0'), 0);
+    return valueB - valueA;
   });
 
   if (showAssetSelect) {
-    // setShowBack(true)
-    // If showAssetSelect is true, render the AssetSelect component
-    return <AssetSelect setShowBack={setShowBack} setShowAssetSelect={setShowAssetSelect} />;
+    return <AssetSelect setShowBack={() => {}} setShowAssetSelect={setShowAssetSelect} />;
   }
 
   return (
@@ -399,122 +129,92 @@ const Balances = ({ setShowBack }: any) => {
         {loading ? (
           <Flex justifyContent="center" alignItems="center" width="100%">
             <Spinner size="xl" />
-            Loading....
+            <Text ml={2}>Loading...</Text>
+          </Flex>
+        ) : sortedAssets.length === 0 ? (
+          <Flex justifyContent="center" alignItems="center" width="100%">
+            <Text>No assets found</Text>
           </Flex>
         ) : (
           <>
-            {sortedAssets.length === 0 ? (
-              <Flex justifyContent="center" alignItems="center" width="100%">
-                <Text>No assets found</Text>
-              </Flex>
-            ) : (
-              sortedAssets.map((asset: any, index: any) => {
-                // Get all balances for this chain
-                const chainBalances = balances.filter(b => b.networkId === asset.networkId);
-                const totalUsdValue = chainBalances.reduce((sum, b) => sum + parseFloat(b.valueUsd || '0'), 0);
-                const tokenCount = chainBalances.filter(b => !b.isNative).length;
+            {sortedAssets.map((asset: any, index: number) => {
+              const chainBalances = balances.filter(b => b.networkId === asset.networkId);
+              const totalUsdValue = chainBalances.reduce((sum, b) => sum + parseFloat(b.valueUsd || '0'), 0);
 
-                // For native assets, sum up all balances across different addresses
-                const nativeBalances = chainBalances.filter(b => b.isNative === true || b.caip === asset.caip);
+              const nativeBalances = chainBalances.filter(b => b.isNative === true || b.caip === asset.caip);
+              let totalBalance = '0';
+              if (nativeBalances.length > 0) {
+                totalBalance = nativeBalances.reduce((acc, b) => acc + parseFloat(b.balance || '0'), 0).toString();
+              } else {
+                const balance = balances.find(b => b.caip === asset.caip);
+                totalBalance = balance?.balance || '0';
+              }
 
-                let totalBalance = '0';
-                if (nativeBalances.length > 0) {
-                  // Sum all balances for this asset (handles multiple addresses)
-                  const sum = nativeBalances.reduce((acc, b) => {
-                    const bal = parseFloat(b.balance || '0');
-                    return acc + bal;
-                  }, 0);
-                  totalBalance = sum.toString();
-                } else {
-                  // Fallback: try to find exact match
-                  const balance = balances.find(b => b.caip === asset.caip);
-                  totalBalance = balance?.balance || '0';
-                }
+              const { integer, largePart, smallPart } = formatBalance(totalBalance);
+              const chainName = getChainDisplayName(asset.networkId);
 
-                const { integer, largePart, smallPart } = formatBalance(totalBalance);
-                const chainName = getChainDisplayName(asset.networkId);
-
-                return (
-                  <Card
-                    key={index}
-                    borderRadius="lg"
-                    p={3}
-                    mb={2}
-                    width="100%"
-                    bg="rgba(255, 255, 255, 0.03)"
-                    border="1px solid"
-                    borderColor="whiteAlpha.100"
-                    _hover={{ bg: 'rgba(255, 255, 255, 0.06)', cursor: 'pointer' }}
-                    onClick={() => onSelect(asset)}
-                    transition="all 0.2s">
-                    <Flex align="center" width="100%">
-                      {/* Token Icon */}
-                      <Box position="relative">
-                        <Avatar src={asset.icon} size="md" />
-                      </Box>
-
-                      {/* Token Info */}
-                      <Box ml={3} flex="1" minWidth="0">
-                        <Flex align="center" gap={2}>
-                          <Text fontWeight="semibold" fontSize="md" isTruncated color="white">
-                            {asset.name}
-                          </Text>
-                          {/* Chain Badge - subtle, not dominant */}
-                          <Badge
-                            size="sm"
-                            colorScheme="gray"
-                            variant="subtle"
-                            fontSize="10px"
-                            px={2}
-                            borderRadius="full">
-                            {chainName}
+              return (
+                <Card
+                  key={index}
+                  borderRadius="lg"
+                  p={3}
+                  mb={2}
+                  width="100%"
+                  bg="rgba(255, 255, 255, 0.03)"
+                  border="1px solid"
+                  borderColor="whiteAlpha.100"
+                  _hover={{ bg: 'rgba(255, 255, 255, 0.06)', cursor: 'pointer' }}
+                  onClick={() => onSelectAsset(asset)}
+                  transition="all 0.2s">
+                  <Flex align="center" width="100%">
+                    <Avatar src={asset.icon} size="md" />
+                    <Box ml={3} flex="1" minWidth="0">
+                      <Flex align="center" gap={2}>
+                        <Text fontWeight="semibold" fontSize="md" isTruncated color="white">
+                          {asset.name}
+                        </Text>
+                        <Badge size="sm" colorScheme="gray" variant="subtle" fontSize="10px" px={2} borderRadius="full">
+                          {chainName}
+                        </Badge>
+                        {asset.manual && (
+                          <Badge size="sm" colorScheme="purple" fontSize="10px">
+                            Custom
                           </Badge>
-                          {asset.manual && (
-                            <Badge size="sm" colorScheme="purple" fontSize="10px">
-                              Custom
-                            </Badge>
-                          )}
-                        </Flex>
-
-                        {asset.manual ? (
-                          <Text fontSize="sm" color="whiteAlpha.600">
-                            Tap to view balance
-                          </Text>
-                        ) : (
-                          <HStack spacing={2} mt={0.5}>
-                            <Text fontSize="md" color="white" fontWeight="medium">
-                              {integer}.{largePart}
-                              {largePart === '0000' && (
-                                <Text as="span" fontSize="xs" color="whiteAlpha.600">
-                                  {smallPart}
-                                </Text>
-                              )}
-                              <Text as="span" color="whiteAlpha.700" ml={1} fontSize="sm">
-                                {asset.symbol}
-                              </Text>
-                            </Text>
-                          </HStack>
                         )}
-                      </Box>
-
-                      {/* USD Value - Right aligned */}
-                      {!asset.manual && (
-                        <Flex direction="column" align="flex-end" minW="80px">
-                          <Text fontWeight="semibold" color="white" fontSize="md">
-                            ${formatUsd(totalUsdValue.toString())}
+                      </Flex>
+                      {asset.manual ? (
+                        <Text fontSize="sm" color="whiteAlpha.600">
+                          Tap to view balance
+                        </Text>
+                      ) : (
+                        <HStack spacing={2} mt={0.5}>
+                          <Text fontSize="md" color="white" fontWeight="medium">
+                            {integer}.{largePart}
+                            {largePart === '0000' && (
+                              <Text as="span" fontSize="xs" color="whiteAlpha.600">
+                                {smallPart}
+                              </Text>
+                            )}
+                            <Text as="span" color="whiteAlpha.700" ml={1} fontSize="sm">
+                              {asset.symbol}
+                            </Text>
                           </Text>
-                          {loadingAssetId === asset.caip && <Spinner size="xs" color="blue.400" />}
-                        </Flex>
+                        </HStack>
                       )}
+                    </Box>
+                    {!asset.manual && (
+                      <Flex direction="column" align="flex-end" minW="80px">
+                        <Text fontWeight="semibold" color="white" fontSize="md">
+                          ${formatUsd(totalUsdValue.toString())}
+                        </Text>
+                      </Flex>
+                    )}
+                    <ChevronRightIcon color="whiteAlpha.400" ml={2} />
+                  </Flex>
+                </Card>
+              );
+            })}
 
-                      <ChevronRightIcon color="whiteAlpha.400" ml={2} />
-                    </Flex>
-                  </Card>
-                );
-              })
-            )}
-
-            {/* Add Blockchain - More subtle */}
             <Flex
               align="center"
               justify="center"
