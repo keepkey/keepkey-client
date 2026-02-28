@@ -111,6 +111,18 @@ importers:
       '@extension/storage':
         specifier: workspace:*
         version: link:../packages/storage
+      '@solana/wallet-standard-features':
+        specifier: ^1.3.0
+        version: 1.3.0
+      '@wallet-standard/base':
+        specifier: ^1.1.0
+        version: 1.1.0
+      '@wallet-standard/features':
+        specifier: ^1.1.0
+        version: 1.1.0
+      '@wallet-standard/wallet':
+        specifier: ^1.1.0
+        version: 1.1.0
       buffer:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1629,6 +1641,10 @@ packages:
     resolution: {integrity: sha512-tlqY9xq5ukxTUZBmoOp+m61cqwQD5pHJtFY3Mn8CA8ps6yghLH/Hw8UPdqg4OLmFW3IFlcXnQNmo/dh8HzXYIQ==}
     engines: {node: '>=18'}
 
+  '@solana/wallet-standard-features@1.3.0':
+    resolution: {integrity: sha512-ZhpZtD+4VArf6RPitsVExvgkF+nGghd1rzPjd97GmBximpnt1rsUxMOEyoIEuH3XBxPyNB6Us7ha7RHWQR+abg==}
+    engines: {node: '>=16'}
+
   '@swc/core-darwin-arm64@1.13.5':
     resolution: {integrity: sha512-lKNv7SujeXvKn16gvQqUQI5DdyY8v7xcoO3k06/FJbHJS90zEwZdQiMNRiqpYw/orU543tPaWgz7cIYWhbopiQ==}
     engines: {node: '>=10'}
@@ -1897,6 +1913,18 @@ packages:
 
   '@vitest/snapshot@3.2.4':
     resolution: {integrity: sha512-dEYtS7qQP2CjU27QBC5oUOxLE/v5eLkGqPE0ZKEIDGMs4vKWe7IjgLOeauHsR0D5YuuycGRO5oSRXnwnmA78fQ==}
+
+  '@wallet-standard/base@1.1.0':
+    resolution: {integrity: sha512-DJDQhjKmSNVLKWItoKThJS+CsJQjR9AOBOirBVT1F9YpRyC9oYHE+ZnSf8y8bxUphtKqdQMPVQ2mHohYdRvDVQ==}
+    engines: {node: '>=16'}
+
+  '@wallet-standard/features@1.1.0':
+    resolution: {integrity: sha512-hiEivWNztx73s+7iLxsuD1sOJ28xtRix58W7Xnz4XzzA/pF0+aicnWgjOdA10doVDEDZdUuZCIIqG96SFNlDUg==}
+    engines: {node: '>=16'}
+
+  '@wallet-standard/wallet@1.1.0':
+    resolution: {integrity: sha512-Gt8TnSlDZpAl+RWOOAB/kuvC7RpcdWAlFbHNoi4gsXsfaWa1QCT6LBcfIYTPdOZC9OVZUDwqGuGAcqZejDmHjg==}
+    engines: {node: '>=16'}
 
   '@wdio/cli@9.19.2':
     resolution: {integrity: sha512-GR011VfgW57tCycaTYzYD74eJnMebqWtVeHrBNLWgLTIl3bVMIkBGPEO7jjQJSZum3p1rxIJKoy+49Xc4YcY2g==}
@@ -6252,6 +6280,11 @@ snapshots:
 
   '@sindresorhus/merge-streams@4.0.0': {}
 
+  '@solana/wallet-standard-features@1.3.0':
+    dependencies:
+      '@wallet-standard/base': 1.1.0
+      '@wallet-standard/features': 1.1.0
+
   '@swc/core-darwin-arm64@1.13.5':
     optional: true
 
@@ -6525,6 +6558,16 @@ snapshots:
       '@vitest/pretty-format': 3.2.4
       magic-string: 0.30.18
       pathe: 2.0.3
+
+  '@wallet-standard/base@1.1.0': {}
+
+  '@wallet-standard/features@1.1.0':
+    dependencies:
+      '@wallet-standard/base': 1.1.0
+
+  '@wallet-standard/wallet@1.1.0':
+    dependencies:
+      '@wallet-standard/base': 1.1.0
 
   '@wdio/cli@9.19.2(@types/node@22.7.5)(expect-webdriverio@5.4.2(@wdio/globals@9.17.0)(@wdio/logger@9.18.0)(webdriverio@9.19.2))':
     dependencies:

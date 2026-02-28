@@ -13,6 +13,7 @@ import { handleCosmosRequest } from './chains/cosmosHandler';
 import { handleOsmosisRequest } from './chains/osmosisHandler';
 import { handleMayaRequest } from './chains/mayaHandler';
 import { handleRippleRequest } from './chains/rippleHandler';
+import { handleSolanaRequest } from './chains/solanaHandler';
 
 const TAG = ' | METHODS | ';
 
@@ -257,6 +258,10 @@ export const handleWalletRequest = async (
       }
       case 'mayachain': {
         return await handleMayaRequest(method, params, requestInfo, ADDRESS, _KEEPKEY_WALLET, requireApproval);
+        break;
+      }
+      case 'solana': {
+        return await handleSolanaRequest(method, params, requestInfo, ADDRESS, _KEEPKEY_WALLET, requireApproval);
         break;
       }
       default: {

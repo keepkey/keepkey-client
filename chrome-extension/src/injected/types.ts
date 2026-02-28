@@ -61,7 +61,8 @@ export type ChainType =
   | 'osmosis'
   | 'cosmos'
   | 'ripple'
-  | 'keplr';
+  | 'keplr'
+  | 'solana';
 
 export interface WalletProvider {
   network: string;

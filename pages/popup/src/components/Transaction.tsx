@@ -205,6 +205,9 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
           case 'ripple':
             setTransactionType('other');
             break;
+          case 'solana':
+            setTransactionType('other');
+            break;
           default:
             setTransactionType('unknown');
         }

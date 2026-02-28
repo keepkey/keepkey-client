@@ -91,7 +91,7 @@ window.addEventListener('message', (event: MessageEvent) => {
         } as WalletMessage,
         '*',
       );
-    }, 30000); // 30 second timeout
+    }, 300000); // 5 minute timeout (hardware wallet needs time)
 
     // Check if extension context is still valid before sending message
     if (!chrome.runtime?.id) {
