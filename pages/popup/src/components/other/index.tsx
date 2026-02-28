@@ -43,7 +43,10 @@ export function OtherTransaction({ transaction: initialTransaction, handleRespon
       console.log(`Fetching transaction with id: ${id}`);
       const data = await requestStorage.getEventById(id);
       console.log('Fetched transaction data:', data);
-      setTransaction(data);
+      // Only update if we got valid data — don't overwrite with null
+      if (data) {
+        setTransaction(data);
+      }
     } catch (error: any) {
       console.error('Error fetching transaction from storage:', error);
       setErrorMessage('Error loading transaction: ' + error.message);
@@ -52,8 +55,10 @@ export function OtherTransaction({ transaction: initialTransaction, handleRespon
   };
 
   useEffect(() => {
-    fetchTransactionData(transaction.id);
-  }, [transaction.id]);
+    if (transaction?.id) {
+      fetchTransactionData(transaction.id);
+    }
+  }, [transaction?.id]);
 
   const handleReload = () => {
     console.log('Reloading transaction with id:', transaction.id);

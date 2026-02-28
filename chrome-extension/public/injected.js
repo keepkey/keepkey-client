@@ -1,22 +1,22 @@
 'use strict';
 (() => {
-  var B = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-  function S(c) {
-    let o = [0];
-    for (let r of c) {
-      let l = B.indexOf(r);
-      if (l === -1) throw new Error('Invalid base58 character');
-      let u = l;
-      for (let y = 0; y < o.length; y++) ((u += o[y] * 58), (o[y] = u & 255), (u >>= 8));
-      for (; u > 0; ) (o.push(u & 255), (u >>= 8));
+  var K = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+  function M(l) {
+    let a = [0];
+    for (let i of l) {
+      let d = K.indexOf(i);
+      if (d === -1) throw new Error('Invalid base58 character');
+      let n = d;
+      for (let h = 0; h < a.length; h++) ((n += a[h] * 58), (a[h] = n & 255), (n >>= 8));
+      for (; n > 0; ) (a.push(n & 255), (n >>= 8));
     }
-    for (let r of c) {
-      if (r !== '1') break;
-      o.push(0);
+    for (let i of l) {
+      if (i !== '1') break;
+      a.push(0);
     }
-    return new Uint8Array(o.reverse());
+    return new Uint8Array(a.reverse());
   }
-  var I = class c {
+  var U = class l {
     #o;
     #e = [];
     #t = null;
@@ -35,8 +35,8 @@
         version: '1.0.0',
         connect: async () => {
           if (this.#e.length > 0) return { accounts: this.#e };
-          let o = this.#t || (await this.#n('solana_connect', []));
-          return (o && this.#i(o), { accounts: this.#e });
+          let a = this.#t || (await this.#n('solana_connect', []));
+          return (a && this.#a(a), { accounts: this.#e });
         },
       },
       'standard:disconnect': {
@@ -46,222 +46,287 @@
           try {
             localStorage.removeItem('keepkey-solana');
           } catch {}
-          this.#a();
+          this.#r();
         },
       },
       'standard:events': {
         version: '1.0.0',
-        on: (o, r) => (
-          o === 'change' && this.#s.add(r),
+        on: (a, i) => (
+          a === 'change' && this.#s.add(i),
           () => {
-            this.#s.delete(r);
+            this.#s.delete(i);
           }
         ),
       },
       'solana:signMessage': {
         version: '1.0.0',
-        signMessage: async (...o) => {
-          let r = [];
-          for (let { message: l } of o) {
-            let u = await this.#n('solana_signMessage', [Array.from(l)]);
-            r.push({ signedMessage: l, signature: new Uint8Array(u) });
+        signMessage: async (...a) => {
+          let i = [];
+          for (let { message: d } of a) {
+            let n = await this.#n('solana_signMessage', [Array.from(d)]);
+            i.push({ signedMessage: d, signature: new Uint8Array(n) });
           }
-          return r;
+          return i;
         },
       },
       'solana:signTransaction': {
         version: '1.0.0',
         supportedTransactionVersions: new Set(['legacy', 0]),
-        signTransaction: async (...o) => {
-          let r = [];
-          for (let { transaction: l } of o) {
-            let u = await this.#n('solana_signTransaction', [Array.from(l)]);
-            r.push({ signedTransaction: new Uint8Array(u) });
+        signTransaction: async (...a) => {
+          let i = [];
+          for (let { transaction: d } of a) {
+            let n = await this.#n('solana_signTransaction', [Array.from(d)]);
+            i.push({ signedTransaction: new Uint8Array(n) });
           }
-          return r;
+          return i;
         },
       },
       'solana:signAndSendTransaction': {
         version: '1.0.0',
         supportedTransactionVersions: new Set(['legacy', 0]),
-        signAndSendTransaction: async (...o) => {
-          let r = [];
-          for (let { transaction: l } of o) {
-            let u = await this.#n('solana_signAndSendTransaction', [Array.from(l)]);
-            r.push({ signature: S(u) });
+        signAndSendTransaction: async (...a) => {
+          let i = [];
+          for (let { transaction: d } of a) {
+            let n = await this.#n('solana_signAndSendTransaction', [Array.from(d)]);
+            i.push({ signature: M(n) });
           }
-          return r;
+          return i;
+        },
+      },
+      'solana:signIn': {
+        version: '1.0.0',
+        signIn: async (...a) => {
+          var d;
+          let i = [];
+          for (let n of a) {
+            if (this.#e.length === 0) {
+              let w = this.#t || (await this.#n('solana_connect', []));
+              w && this.#a(w);
+            }
+            let h = this.#e[0];
+            if (!h) throw new Error('Not connected');
+            let y = (n == null ? void 0 : n.domain) || location.host,
+              p = (n == null ? void 0 : n.address) || h.address,
+              C = (n == null ? void 0 : n.uri) || location.href,
+              b = (n == null ? void 0 : n.version) || '1',
+              E = (n == null ? void 0 : n.chainId) || 'mainnet',
+              v = (n == null ? void 0 : n.nonce) || Math.random().toString(36).substring(2),
+              I = (n == null ? void 0 : n.issuedAt) || new Date().toISOString(),
+              R = (n == null ? void 0 : n.statement) || '',
+              f = `${y} wants you to sign in with your Solana account:
+${p}`;
+            if (
+              (R &&
+                (f += `
+
+${R}`),
+              (f += `
+
+URI: ${C}`),
+              (f += `
+Version: ${b}`),
+              (f += `
+Chain ID: ${E}`),
+              (f += `
+Nonce: ${v}`),
+              (f += `
+Issued At: ${I}`),
+              n != null &&
+                n.expirationTime &&
+                (f += `
+Expiration Time: ${n.expirationTime}`),
+              n != null &&
+                n.notBefore &&
+                (f += `
+Not Before: ${n.notBefore}`),
+              n != null &&
+                n.requestId &&
+                (f += `
+Request ID: ${n.requestId}`),
+              (d = n == null ? void 0 : n.resources) != null && d.length)
+            ) {
+              f += `
+Resources:`;
+              for (let w of n.resources)
+                f += `
+- ${w}`;
+            }
+            let k = new TextEncoder().encode(f),
+              T = await this.#n('solana_signMessage', [Array.from(k)]);
+            i.push({ account: h, signedMessage: k, signature: new Uint8Array(T) });
+          }
+          return i;
         },
       },
     };
-    constructor(o) {
-      this.#o = o;
+    constructor(a) {
+      this.#o = a;
       try {
-        let r = localStorage.getItem('keepkey-solana');
-        if (r) {
-          let { address: l } = JSON.parse(r);
-          l && typeof l == 'string' && (this.#t = l);
+        let i = localStorage.getItem('keepkey-solana');
+        if (i) {
+          let { address: d } = JSON.parse(i);
+          d && typeof d == 'string' && (this.#t = d);
         }
       } catch {}
       this.#c();
     }
-    #r(o) {
-      return { address: o, publicKey: S(o), chains: ['solana:mainnet'], features: [...c.ACCOUNT_FEATURES] };
+    #i(a) {
+      return { address: a, publicKey: M(a), chains: ['solana:mainnet'], features: [...l.ACCOUNT_FEATURES] };
     }
-    #i(o) {
-      this.#e = [this.#r(o)];
+    #a(a) {
+      this.#e = [this.#i(a)];
       try {
-        localStorage.setItem('keepkey-solana', JSON.stringify({ address: o }));
+        localStorage.setItem('keepkey-solana', JSON.stringify({ address: a }));
       } catch {}
-      this.#a();
+      this.#r();
     }
     async #c() {
       try {
-        let o = await this.#n('solana_connect', []);
-        if (o && typeof o == 'string') {
-          this.#t = o;
+        let a = await this.#n('solana_connect', []);
+        if (a && typeof a == 'string') {
+          this.#t = a;
           try {
-            localStorage.setItem('keepkey-solana', JSON.stringify({ address: o }));
+            localStorage.setItem('keepkey-solana', JSON.stringify({ address: a }));
           } catch {}
         }
       } catch {}
     }
-    #a() {
-      let o = this.#e,
-        r = this.features;
-      this.#s.forEach(l => {
+    #r() {
+      let a = this.#e,
+        i = this.features;
+      this.#s.forEach(d => {
         try {
-          l({ accounts: o, features: r });
+          d({ accounts: a, features: i });
         } catch {}
       });
     }
-    #n(o, r) {
-      return new Promise((l, u) => {
-        this.#o(o, r, 'solana', (y, f) => {
-          y ? u(y) : l(f);
+    #n(a, i) {
+      return new Promise((d, n) => {
+        this.#o(a, i, 'solana', (h, y) => {
+          h ? n(h) : d(y);
         });
       });
     }
   };
-  function W(c) {
-    let o = ({ register: r }) => {
-      r(c);
+  function O(l) {
+    let a = ({ register: i }) => {
+      i(l);
     };
     try {
-      let r = window.navigator;
-      (r.wallets || (r.wallets = []),
-        Array.isArray(r.wallets)
-          ? r.wallets.push(o)
-          : typeof r.wallets.register == 'function' && r.wallets.register(c));
+      let i = window.navigator;
+      (i.wallets || (i.wallets = []),
+        Array.isArray(i.wallets)
+          ? i.wallets.push(a)
+          : typeof i.wallets.register == 'function' && i.wallets.register(l));
     } catch {}
     try {
-      window.dispatchEvent(new CustomEvent('wallet-standard:register-wallet', { detail: o }));
+      window.dispatchEvent(new CustomEvent('wallet-standard:register-wallet', { detail: a }));
     } catch {}
-    window.addEventListener('wallet-standard:app-ready', r => {
-      let l = r;
+    window.addEventListener('wallet-standard:app-ready', i => {
+      let d = i;
       try {
-        typeof l.detail == 'function' && l.detail(o);
+        typeof d.detail == 'function' && d.detail(a);
       } catch {}
     });
   }
   (function () {
-    let c = ' | KeepKeyInjected | ',
-      o = '2.1.0',
-      f = window,
-      w = { isInjected: !1, version: o, injectedAt: Date.now(), retryCount: 0 };
-    if (f.keepkeyInjectionState) {
-      let s = f.keepkeyInjectionState;
-      if ((console.warn(c, `Existing injection detected v${s.version}, current v${o}`), s.version >= o)) {
-        console.log(c, 'Skipping injection, newer or same version already present');
+    let l = ' | KeepKeyInjected | ',
+      a = '2.1.0',
+      y = window,
+      p = { isInjected: !1, version: a, injectedAt: Date.now(), retryCount: 0 };
+    if (y.keepkeyInjectionState) {
+      let o = y.keepkeyInjectionState;
+      if ((console.warn(l, `Existing injection detected v${o.version}, current v${a}`), o.version >= a)) {
+        console.log(l, 'Skipping injection, newer or same version already present');
         return;
       }
-      console.log(c, 'Upgrading injection to newer version');
+      console.log(l, 'Upgrading injection to newer version');
     }
-    ((f.keepkeyInjectionState = w), console.log(c, `Initializing KeepKey Injection v${o}`));
-    let k = {
+    ((y.keepkeyInjectionState = p), console.log(l, `Initializing KeepKey Injection v${a}`));
+    let C = {
         siteUrl: window.location.href,
         scriptSource: 'KeepKey Extension',
-        version: o,
+        version: a,
         injectedTime: new Date().toISOString(),
         origin: window.location.origin,
         protocol: window.location.protocol,
       },
       b = 0,
-      p = new Map(),
-      m = [],
-      E = !1;
+      E = new Map(),
+      v = [],
+      I = !1;
     setInterval(() => {
-      let s = Date.now();
-      p.forEach((n, t) => {
-        s - n.timestamp > 3e5 &&
-          (console.warn(c, `Callback timeout for request ${t} (${n.method})`),
-          n.callback(new Error('Request timeout')),
-          p.delete(t));
+      let o = Date.now();
+      E.forEach((t, s) => {
+        o - t.timestamp > 3e5 &&
+          (console.warn(l, `Callback timeout for request ${s} (${t.method})`),
+          t.callback(new Error('Request timeout')),
+          E.delete(s));
       });
     }, 5e3);
-    let O = s => {
-        (m.length >= 100 && (console.warn(c, 'Message queue full, removing oldest message'), m.shift()), m.push(s));
+    let f = o => {
+        (v.length >= 100 && (console.warn(l, 'Message queue full, removing oldest message'), v.shift()), v.push(o));
       },
-      T = () => {
-        if (E)
-          for (; m.length > 0; ) {
-            let s = m.shift();
-            s && window.postMessage(s, window.location.origin);
+      k = () => {
+        if (I)
+          for (; v.length > 0; ) {
+            let o = v.shift();
+            o && window.postMessage(o, window.location.origin);
           }
       },
-      R = (s = 0) =>
-        new Promise(n => {
-          let t = ++b,
+      T = (o = 0) =>
+        new Promise(t => {
+          let s = ++b,
             e = setTimeout(() => {
-              s < 3
-                ? (console.log(c, `Verification attempt ${s + 1} failed, retrying...`),
+              o < 3
+                ? (console.log(l, `Verification attempt ${o + 1} failed, retrying...`),
                   setTimeout(
                     () => {
-                      R(s + 1).then(n);
+                      T(o + 1).then(t);
                     },
-                    100 * Math.pow(2, s),
+                    100 * Math.pow(2, o),
                   ))
-                : (console.error(c, 'Failed to verify injection after max retries'),
-                  (w.lastError = 'Failed to verify injection'),
-                  n(!1));
+                : (console.error(l, 'Failed to verify injection after max retries'),
+                  (p.lastError = 'Failed to verify injection'),
+                  t(!1));
             }, 1e3),
-            i = a => {
-              var d, g, h;
-              a.source === window &&
-                ((d = a.data) == null ? void 0 : d.source) === 'keepkey-content' &&
-                ((g = a.data) == null ? void 0 : g.type) === 'INJECTION_CONFIRMED' &&
-                ((h = a.data) == null ? void 0 : h.requestId) === t &&
+            c = r => {
+              var g, u, m;
+              r.source === window &&
+                ((g = r.data) == null ? void 0 : g.source) === 'keepkey-content' &&
+                ((u = r.data) == null ? void 0 : u.type) === 'INJECTION_CONFIRMED' &&
+                ((m = r.data) == null ? void 0 : m.requestId) === s &&
                 (clearTimeout(e),
-                window.removeEventListener('message', i),
-                (E = !0),
-                (w.isInjected = !0),
-                console.log(c, 'Injection verified successfully'),
-                T(),
-                n(!0));
+                window.removeEventListener('message', c),
+                (I = !0),
+                (p.isInjected = !0),
+                console.log(l, 'Injection verified successfully'),
+                k(),
+                t(!0));
             };
-          (window.addEventListener('message', i),
+          (window.addEventListener('message', c),
             window.postMessage(
-              { source: 'keepkey-injected', type: 'INJECTION_VERIFY', requestId: t, version: o, timestamp: Date.now() },
+              { source: 'keepkey-injected', type: 'INJECTION_VERIFY', requestId: s, version: a, timestamp: Date.now() },
               window.location.origin,
             ));
         });
-    function v(s, n = [], t, e) {
-      let i = c + ' | walletRequest | ';
-      if (!s || typeof s != 'string') {
-        (console.error(i, 'Invalid method:', s), e(new Error('Invalid method')));
+    function w(o, t = [], s, e) {
+      let c = l + ' | walletRequest | ';
+      if (!o || typeof o != 'string') {
+        (console.error(c, 'Invalid method:', o), e(new Error('Invalid method')));
         return;
       }
-      Array.isArray(n) || (console.warn(i, 'Params not an array, wrapping:', n), (n = [n]));
+      Array.isArray(t) || (console.warn(c, 'Params not an array, wrapping:', t), (t = [t]));
       try {
-        let a = ++b,
-          d = {
-            id: a,
-            method: s,
-            params: n,
-            chain: t,
-            siteUrl: k.siteUrl,
-            scriptSource: k.scriptSource,
-            version: k.version,
+        let r = ++b,
+          g = {
+            id: r,
+            method: o,
+            params: t,
+            chain: s,
+            siteUrl: C.siteUrl,
+            scriptSource: C.scriptSource,
+            version: C.version,
             requestTime: new Date().toISOString(),
             referrer: document.referrer,
             href: window.location.href,
@@ -269,158 +334,158 @@
             platform: navigator.platform,
             language: navigator.language,
           };
-        p.set(a, { callback: e, timestamp: Date.now(), method: s });
-        let g = {
+        E.set(r, { callback: e, timestamp: Date.now(), method: o });
+        let u = {
           source: 'keepkey-injected',
           type: 'WALLET_REQUEST',
-          requestId: a,
-          requestInfo: d,
+          requestId: r,
+          requestInfo: g,
           timestamp: Date.now(),
         };
-        E
-          ? window.postMessage(g, window.location.origin)
-          : (console.log(i, 'Content script not ready, queueing request'), O(g));
-      } catch (a) {
-        (console.error(i, 'Error in walletRequest:', a), e(a));
+        I
+          ? window.postMessage(u, window.location.origin)
+          : (console.log(c, 'Content script not ready, queueing request'), f(u));
+      } catch (r) {
+        (console.error(c, 'Error in walletRequest:', r), e(r));
       }
     }
-    window.addEventListener('message', s => {
-      let n = c + ' | message | ';
-      if (s.source !== window) return;
-      let t = s.data;
-      if (!(!t || typeof t != 'object')) {
-        if (t.source === 'keepkey-content' && t.type === 'INJECTION_CONFIRMED') {
-          ((E = !0), T());
+    window.addEventListener('message', o => {
+      let t = l + ' | message | ';
+      if (o.source !== window) return;
+      let s = o.data;
+      if (!(!s || typeof s != 'object')) {
+        if (s.source === 'keepkey-content' && s.type === 'INJECTION_CONFIRMED') {
+          ((I = !0), k());
           return;
         }
-        if (t.source === 'keepkey-content' && t.type === 'WALLET_RESPONSE' && t.requestId) {
-          let e = p.get(t.requestId);
+        if (s.source === 'keepkey-content' && s.type === 'WALLET_RESPONSE' && s.requestId) {
+          let e = E.get(s.requestId);
           e
-            ? (t.error ? e.callback(t.error) : e.callback(null, t.result), p.delete(t.requestId))
-            : console.warn(n, 'No callback found for requestId:', t.requestId);
+            ? (s.error ? e.callback(s.error) : e.callback(null, s.result), E.delete(s.requestId))
+            : console.warn(t, 'No callback found for requestId:', s.requestId);
         }
       }
     });
-    class M {
+    class B {
       events = new Map();
-      on(n, t) {
-        (this.events.has(n) || this.events.set(n, new Set()), this.events.get(n).add(t));
+      on(t, s) {
+        (this.events.has(t) || this.events.set(t, new Set()), this.events.get(t).add(s));
       }
-      off(n, t) {
+      off(t, s) {
         var e;
-        (e = this.events.get(n)) == null || e.delete(t);
+        (e = this.events.get(t)) == null || e.delete(s);
       }
-      removeListener(n, t) {
-        this.off(n, t);
+      removeListener(t, s) {
+        this.off(t, s);
       }
-      removeAllListeners(n) {
-        n ? this.events.delete(n) : this.events.clear();
+      removeAllListeners(t) {
+        t ? this.events.delete(t) : this.events.clear();
       }
-      emit(n, ...t) {
+      emit(t, ...s) {
         var e;
-        (e = this.events.get(n)) == null ||
-          e.forEach(i => {
+        (e = this.events.get(t)) == null ||
+          e.forEach(c => {
             try {
-              i(...t);
-            } catch (a) {
-              console.error(c, `Error in event handler for ${n}:`, a);
+              c(...s);
+            } catch (r) {
+              console.error(l, `Error in event handler for ${t}:`, r);
             }
           });
       }
-      once(n, t) {
-        let e = (...i) => {
-          (t(...i), this.off(n, e));
+      once(t, s) {
+        let e = (...c) => {
+          (s(...c), this.off(t, e));
         };
-        this.on(n, e);
+        this.on(t, e);
       }
     }
-    function A(s) {
-      console.log(c, 'Creating wallet object for chain:', s);
-      let n = new M(),
-        t = {
+    function A(o) {
+      console.log(l, 'Creating wallet object for chain:', o);
+      let t = new B(),
+        s = {
           network: 'mainnet',
           isKeepKey: !0,
           isMetaMask: !0,
-          isConnected: () => E,
-          request: ({ method: e, params: i = [] }) =>
-            new Promise((a, d) => {
-              v(e, i, s, (g, h) => {
-                g ? d(g) : a(h);
+          isConnected: () => I,
+          request: ({ method: e, params: c = [] }) =>
+            new Promise((r, g) => {
+              w(e, c, o, (u, m) => {
+                u ? g(u) : r(m);
               });
             }),
-          send: (e, i, a) => {
-            if ((e.chain || (e.chain = s), typeof a == 'function')) {
-              v(e.method, e.params || i, s, (d, g) => {
-                d ? a(d) : a(null, { id: e.id, jsonrpc: '2.0', result: g });
+          send: (e, c, r) => {
+            if ((e.chain || (e.chain = o), typeof r == 'function')) {
+              w(e.method, e.params || c, o, (g, u) => {
+                g ? r(g) : r(null, { id: e.id, jsonrpc: '2.0', result: u });
               });
               return;
             } else
               return (
-                console.warn(c, 'Synchronous send is deprecated and may not work properly'),
+                console.warn(l, 'Synchronous send is deprecated and may not work properly'),
                 { id: e.id, jsonrpc: '2.0', result: null }
               );
           },
-          sendAsync: (e, i, a) => {
-            e.chain || (e.chain = s);
-            let d = a || i;
-            if (typeof d != 'function') {
-              console.error(c, 'sendAsync requires a callback function');
+          sendAsync: (e, c, r) => {
+            e.chain || (e.chain = o);
+            let g = r || c;
+            if (typeof g != 'function') {
+              console.error(l, 'sendAsync requires a callback function');
               return;
             }
-            v(e.method, e.params || i, s, (g, h) => {
-              g ? d(g) : d(null, { id: e.id, jsonrpc: '2.0', result: h });
+            w(e.method, e.params || c, o, (u, m) => {
+              u ? g(u) : g(null, { id: e.id, jsonrpc: '2.0', result: m });
             });
           },
-          on: (e, i) => (n.on(e, i), t),
-          off: (e, i) => (n.off(e, i), t),
-          removeListener: (e, i) => (n.removeListener(e, i), t),
-          removeAllListeners: e => (n.removeAllListeners(e), t),
-          emit: (e, ...i) => (n.emit(e, ...i), t),
-          once: (e, i) => (n.once(e, i), t),
-          enable: () => t.request({ method: 'eth_requestAccounts' }),
+          on: (e, c) => (t.on(e, c), s),
+          off: (e, c) => (t.off(e, c), s),
+          removeListener: (e, c) => (t.removeListener(e, c), s),
+          removeAllListeners: e => (t.removeAllListeners(e), s),
+          emit: (e, ...c) => (t.emit(e, ...c), s),
+          once: (e, c) => (t.once(e, c), s),
+          enable: () => s.request({ method: 'eth_requestAccounts' }),
           _metamask: { isUnlocked: () => Promise.resolve(!0) },
         };
       return (
-        s === 'ethereum' &&
-          ((t.chainId = '0x1'),
-          (t.networkVersion = '1'),
-          (t.selectedAddress = null),
-          (t._handleAccountsChanged = e => {
-            ((t.selectedAddress = e[0] || null), n.emit('accountsChanged', e));
+        o === 'ethereum' &&
+          ((s.chainId = '0x1'),
+          (s.networkVersion = '1'),
+          (s.selectedAddress = null),
+          (s._handleAccountsChanged = e => {
+            ((s.selectedAddress = e[0] || null), t.emit('accountsChanged', e));
           }),
-          (t._handleChainChanged = e => {
-            ((t.chainId = e), n.emit('chainChanged', e));
+          (s._handleChainChanged = e => {
+            ((s.chainId = e), t.emit('chainChanged', e));
           }),
-          (t._handleConnect = e => {
-            n.emit('connect', e);
+          (s._handleConnect = e => {
+            t.emit('connect', e);
           }),
-          (t._handleDisconnect = e => {
-            ((t.selectedAddress = null), n.emit('disconnect', e));
+          (s._handleDisconnect = e => {
+            ((s.selectedAddress = null), t.emit('disconnect', e));
           })),
-        t
+        s
       );
     }
-    function C(s) {
-      let n = {
+    function S(o) {
+      let t = {
           uuid: '350670db-19fa-4704-a166-e52e178b59d4',
           name: 'KeepKey',
           icon: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAIKADAAQAAAABAAAAIAAAAACshmLzAAADUklEQVRYCb1XTUgUYRie3bXEWhVLQaUsgwVLoUtEQjUJiZX0A0GX7BIZXurkOTSvdo2kvETHAsOshFgqOqhlRD9C7SGS1JTCsj1krU7PM+w7zMzOzuzMqi88+73v9z7vz3zzzTeziuIgmqbFgG5gBPguFOgq4CXLIMwCo0AXEJN4zxHkEuA6kAIMkUBMqMZk7so/UG8AUcnjOIKwFXgHZIgEwKFmOHOfYO4aySVjmAoc7O4R0EB7lYS5h9K1jBJ6A7CuAfXG7OopbKLXkh4dccNZ7jlsi0gAJlWLI5jBPWFsTK5AGxCRImswFqDGWanDBo6IsYbjUanFbmrFWIHxD3IsmfJsgB4y2aJuF4UrUC5GnuNtxJeEQqEoAb3LJV+F4ctlHwkZXDULv8fEKQCHB4+rCJ9ngKcIGUTVRubT027y8yR9bOM4mhKTTwNJZD4miaDXAG8dqzlMShw3YRCZRVAr7vU4g5F/D4ZBoJK2H+Em9CsfEdBoKn4K9jPAd3G9sMPqZEzpRPzAwRfWJpN9EfZSRkAOE5LD7wrw8dkpwRh55VMm27fqt4FiVBjGBTaxEm4Db8d+4BPtIOK3AdbYCPC1qh/haGIS9gHgDeBbgjTAIkXAfTRxkgaamMNwCHgB+BMk4Decq0hGkFQbka/WMyZ/EeyHNo6TuSwx3Nn8gHQVIYOkOhB5Gp4zcdbBHiDvZ2pRuzozru2euKuDOucg/KliTAjKKMa9ksBpxBLrbzRwVfifOnB4RR2g3QSH3Cfx5FRdc2KoGstroUeQKh47vnAwWvUKjsPcA/wWdBUkjRAgZdsznO8D5xLGC/Opxc3NiQeV9uIsgkNDaUoMFpNDLleAn0cTQNBjGaFW6fn2Wrky/dI6abPOl9eN9deoWhjLloCv3+bPy7w3/9kzfvjX120g1cuSdsJ47xm1CgS9AaxCErlbV6qJ02W1nq22lG75AtIHWQEeJpOYaAT6gBQQWC5XNCjc7dkkHFKWe6v3FcLfbzRAMlcC6IC6C+gGxgCectZnCRMuopVG1v+Nx04sYINlxLH4wI6W52UFhT+Q41b2Nl0qeLnwZPGQucNHrXN6ZDG94RQuO688XbwNFzvjlSuwH03wEW8H+Bf/dxrUOWdc+H8mKXtEpGpY3AAAAABJRU5ErkJggg==',
           rdns: 'com.keepkey.client',
         },
-        t = new CustomEvent('eip6963:announceProvider', { detail: Object.freeze({ info: n, provider: s }) });
-      (console.log(c, 'Announcing EIP-6963 provider'), window.dispatchEvent(t));
+        s = new CustomEvent('eip6963:announceProvider', { detail: Object.freeze({ info: t, provider: o }) });
+      (console.log(l, 'Announcing EIP-6963 provider'), window.dispatchEvent(s));
     }
     async function j() {
-      let s = c + ' | mountWallet | ';
-      console.log(s, 'Starting wallet mount process');
-      let n = A('ethereum'),
-        t = {
+      let o = l + ' | mountWallet | ';
+      console.log(o, 'Starting wallet mount process');
+      let t = A('ethereum'),
+        s = {
           binance: A('binance'),
           bitcoin: A('bitcoin'),
           bitcoincash: A('bitcoincash'),
           dogecoin: A('dogecoin'),
           dash: A('dash'),
-          ethereum: n,
+          ethereum: t,
           keplr: A('keplr'),
           litecoin: A('litecoin'),
           thorchain: A('thorchain'),
@@ -432,7 +497,7 @@
           bitcoincash: A('bitcoincash'),
           dogecoin: A('dogecoin'),
           dash: A('dash'),
-          ethereum: n,
+          ethereum: t,
           osmosis: A('osmosis'),
           cosmos: A('cosmos'),
           litecoin: A('litecoin'),
@@ -440,59 +505,59 @@
           mayachain: A('mayachain'),
           ripple: A('ripple'),
         },
-        i = (a, d) => {
-          f[a] && console.warn(s, `${a} already exists, checking if override is allowed`);
+        c = (r, g) => {
+          y[r] && console.warn(o, `${r} already exists, checking if override is allowed`);
           try {
-            (Object.defineProperty(f, a, { value: d, writable: !1, configurable: !0 }),
-              console.log(s, `Successfully mounted window.${a}`));
-          } catch (g) {
-            (console.error(s, `Failed to mount window.${a}:`, g), (w.lastError = `Failed to mount ${a}`));
+            (Object.defineProperty(y, r, { value: g, writable: !1, configurable: !0 }),
+              console.log(o, `Successfully mounted window.${r}`));
+          } catch (u) {
+            (console.error(o, `Failed to mount window.${r}:`, u), (p.lastError = `Failed to mount ${r}`));
           }
         };
-      (i('ethereum', n),
-        i('xfi', t),
-        i('keepkey', e),
+      (c('ethereum', t),
+        c('xfi', s),
+        c('keepkey', e),
         window.addEventListener('eip6963:requestProvider', () => {
-          (console.log(s, 'Re-announcing provider on request'), C(n));
+          (console.log(o, 'Re-announcing provider on request'), S(t));
         }),
-        C(n),
+        S(t),
         setTimeout(() => {
-          (console.log(s, 'Delayed EIP-6963 announcement for late-loading dApps'), C(n));
+          (console.log(o, 'Delayed EIP-6963 announcement for late-loading dApps'), S(t));
         }, 100));
       try {
-        let a = new I(v);
-        (W(a), console.log(s, 'Solana wallet registered via Wallet Standard'));
-      } catch (a) {
-        console.error(s, 'Failed to register Solana wallet:', a);
+        let r = new U(w);
+        (O(r), console.log(o, 'Solana wallet registered via Wallet Standard'));
+      } catch (r) {
+        console.error(o, 'Failed to register Solana wallet:', r);
       }
-      (window.addEventListener('message', a => {
-        var d, g, h;
-        (((d = a.data) == null ? void 0 : d.type) === 'CHAIN_CHANGED' &&
-          (console.log(s, 'Chain changed:', a.data),
-          n.emit('chainChanged', (g = a.data.provider) == null ? void 0 : g.chainId)),
-          ((h = a.data) == null ? void 0 : h.type) === 'ACCOUNTS_CHANGED' &&
-            (console.log(s, 'Accounts changed:', a.data),
-            n._handleAccountsChanged && n._handleAccountsChanged(a.data.accounts || [])));
+      (window.addEventListener('message', r => {
+        var g, u, m;
+        (((g = r.data) == null ? void 0 : g.type) === 'CHAIN_CHANGED' &&
+          (console.log(o, 'Chain changed:', r.data),
+          t.emit('chainChanged', (u = r.data.provider) == null ? void 0 : u.chainId)),
+          ((m = r.data) == null ? void 0 : m.type) === 'ACCOUNTS_CHANGED' &&
+            (console.log(o, 'Accounts changed:', r.data),
+            t._handleAccountsChanged && t._handleAccountsChanged(r.data.accounts || [])));
       }),
-        R().then(a => {
-          a
-            ? console.log(s, 'Injection verified successfully')
-            : (console.error(s, 'Failed to verify injection, wallet features may not work'),
-              (w.lastError = 'Injection not verified'));
+        T().then(r => {
+          r
+            ? console.log(o, 'Injection verified successfully')
+            : (console.error(o, 'Failed to verify injection, wallet features may not work'),
+              (p.lastError = 'Injection not verified'));
         }),
-        console.log(s, 'Wallet mount complete'));
+        console.log(o, 'Wallet mount complete'));
     }
     (j(),
       document.readyState === 'loading' &&
         document.addEventListener('DOMContentLoaded', () => {
           if (
-            (console.log(c, 'DOM loaded, re-announcing provider for late-loading dApps'),
-            f.ethereum && typeof f.dispatchEvent == 'function')
+            (console.log(l, 'DOM loaded, re-announcing provider for late-loading dApps'),
+            y.ethereum && typeof y.dispatchEvent == 'function')
           ) {
-            let s = f.ethereum;
-            C(s);
+            let o = y.ethereum;
+            S(o);
           }
         }),
-      console.log(c, 'Injection script loaded and initialized'));
+      console.log(l, 'Injection script loaded and initialized'));
   })();
 })();

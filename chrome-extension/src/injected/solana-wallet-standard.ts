@@ -170,6 +170,57 @@ export class KeepKeySolanaWallet {
         return outputs;
       },
     },
+
+    'solana:signIn': {
+      version: '1.0.0' as const,
+      signIn: async (...inputs: any[]) => {
+        const outputs: { account: WalletAccount; signedMessage: Uint8Array; signature: Uint8Array }[] = [];
+        for (const input of inputs) {
+          // Ensure connected
+          if (this.#accounts.length === 0) {
+            const address = this.#cachedAddress || (await this.#rpc('solana_connect', []));
+            if (address) this.#setConnected(address);
+          }
+          const account = this.#accounts[0];
+          if (!account) throw new Error('Not connected');
+
+          // Build SIWS message per CAIP-122 / EIP-4361
+          const domain = input?.domain || location.host;
+          const address = input?.address || account.address;
+          const uri = input?.uri || location.href;
+          const version = input?.version || '1';
+          const chainId = input?.chainId || 'mainnet';
+          const nonce = input?.nonce || Math.random().toString(36).substring(2);
+          const issuedAt = input?.issuedAt || new Date().toISOString();
+          const statement = input?.statement || '';
+
+          let msg = `${domain} wants you to sign in with your Solana account:\n${address}`;
+          if (statement) msg += `\n\n${statement}`;
+          msg += `\n\nURI: ${uri}`;
+          msg += `\nVersion: ${version}`;
+          msg += `\nChain ID: ${chainId}`;
+          msg += `\nNonce: ${nonce}`;
+          msg += `\nIssued At: ${issuedAt}`;
+          if (input?.expirationTime) msg += `\nExpiration Time: ${input.expirationTime}`;
+          if (input?.notBefore) msg += `\nNot Before: ${input.notBefore}`;
+          if (input?.requestId) msg += `\nRequest ID: ${input.requestId}`;
+          if (input?.resources?.length) {
+            msg += `\nResources:`;
+            for (const r of input.resources) msg += `\n- ${r}`;
+          }
+
+          const messageBytes = new TextEncoder().encode(msg);
+          const sigArray: number[] = await this.#rpc('solana_signMessage', [Array.from(messageBytes)]);
+
+          outputs.push({
+            account,
+            signedMessage: messageBytes,
+            signature: new Uint8Array(sigArray),
+          });
+        }
+        return outputs;
+      },
+    },
   };
 
   constructor(

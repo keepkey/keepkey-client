@@ -5,7 +5,8 @@ import { createProviderRpcError } from '../utils';
 
 const TAG = ' | solanaHandler | ';
 
-// Solana mainnet RPC for broadcasting (vault has NO broadcast endpoint)
+// Vault REST API and Solana mainnet RPC
+const VAULT_URL = 'http://localhost:1646';
 const SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com';
 
 // Cached address from device
@@ -101,22 +102,41 @@ async function requestUserApproval(
   }
 }
 
+/** Get the Bearer API key from the SDK for direct REST calls */
+function getApiKey(): string {
+  const sdk = wallet.getSdk();
+  return sdk.getClient?.()?.getApiKey?.() || '';
+}
+
 /**
- * Sign a Solana transaction via the KeepKey SDK.
+ * Sign a Solana transaction via direct REST call to the vault.
  *
- * SDK method: sdk.solana.solanaSignTransaction({ raw_tx: base64 })
- * Response: SignedTx { signature?: string, serializedTx?: string }
+ * POST /solana/sign-transaction { raw_tx: base64, address_n: [...] }
+ * Response: { signature: base64(64 bytes), serializedTx: base64(full signed tx) }
  *
  * The vault replaces the dummy 64-byte signature at bytes 1-64 in raw_tx
  * with the real Ed25519 signature from the device.
  */
-async function signTransactionViaSdk(txBase64: string): Promise<{ signature: string; serializedTx: string }> {
-  const sdk = wallet.getSdk();
-  const result = await sdk.solana.solanaSignTransaction({
-    raw_tx: txBase64,
-    address_n: SOLANA_ADDRESS_N,
+async function signTransactionViaRest(txBase64: string): Promise<{ signature: string; serializedTx: string }> {
+  const apiKey = getApiKey();
+  const resp = await fetch(`${VAULT_URL}/solana/sign-transaction`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      raw_tx: txBase64,
+      address_n: SOLANA_ADDRESS_N,
+    }),
   });
 
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw createProviderRpcError(-32603, `Vault sign failed (${resp.status}): ${text}`);
+  }
+
+  const result = await resp.json();
   if (!result.signature && !result.serializedTx) {
     throw createProviderRpcError(-32603, 'Vault returned empty sign result');
   }
@@ -125,6 +145,45 @@ async function signTransactionViaSdk(txBase64: string): Promise<{ signature: str
     signature: result.signature || '',
     serializedTx: result.serializedTx || result.serialized || '',
   };
+}
+
+/**
+ * Sign an arbitrary message via dedicated /solana/sign-message endpoint.
+ *
+ * Uses firmware message type 754 (SolanaSignMessage) which signs raw bytes
+ * directly via Ed25519 — unlike type 752 (SolanaSignTx) which parses
+ * bytes as a Solana transaction and fails on non-transaction data.
+ *
+ * Returns: { signature: base64(64 bytes), publicKey: base64(32 bytes) }
+ */
+async function signMessageViaRest(messageBase64: string): Promise<number[]> {
+  const apiKey = getApiKey();
+  const resp = await fetch(`${VAULT_URL}/solana/sign-message`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      message: messageBase64,
+      address_n: SOLANA_ADDRESS_N,
+    }),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw createProviderRpcError(-32603, `Vault sign-message failed (${resp.status}): ${text}`);
+  }
+
+  const result = await resp.json();
+  console.log(TAG, 'signMessageViaRest result keys:', Object.keys(result));
+
+  // Extract the 64-byte Ed25519 signature (base64-encoded)
+  if (result.signature) {
+    return fromBase64(result.signature);
+  }
+
+  throw createProviderRpcError(-32603, 'Vault returned no signature for message');
 }
 
 /**
@@ -187,8 +246,7 @@ export const handleSolanaRequest = async (
     }
 
     // ---- Sign message ----
-    // NOTE: Vault has NO sign-message endpoint.
-    // We use signTransaction with the message wrapped as raw_tx.
+    // Uses /solana/sign-transaction endpoint — device signs raw bytes.
     case 'solana_signMessage': {
       const messageArray: number[] = params[0];
       if (!messageArray || !Array.isArray(messageArray)) {
@@ -198,10 +256,9 @@ export const handleSolanaRequest = async (
       const event = buildEvent(requestInfo, method, params);
       await requestUserApproval(event, requestInfo, method, params, requireApproval);
 
-      // Pass message bytes as raw_tx — vault signs whatever it receives.
+      // Direct REST call — vault signs whatever raw bytes it receives
       const messageBase64 = toBase64(messageArray);
-      const signResult = await signTransactionViaSdk(messageBase64);
-      const signatureArray = fromBase64(signResult.signature);
+      const signatureArray = await signMessageViaRest(messageBase64);
 
       chrome.runtime.sendMessage({ action: 'signature_complete' }).catch(() => {});
       return signatureArray;
@@ -218,7 +275,7 @@ export const handleSolanaRequest = async (
       await requestUserApproval(txEvent, requestInfo, method, params, requireApproval);
 
       const txBase64 = toBase64(txArray);
-      const txSignResult = await signTransactionViaSdk(txBase64);
+      const txSignResult = await signTransactionViaRest(txBase64);
 
       // Return the fully signed transaction (vault replaces dummy sig at bytes 1-64)
       const signedTxArray = fromBase64(txSignResult.serializedTx);
@@ -237,9 +294,9 @@ export const handleSolanaRequest = async (
       const sendEvent = buildEvent(requestInfo, method, params);
       await requestUserApproval(sendEvent, requestInfo, method, params, requireApproval);
 
-      // Sign via SDK
+      // Sign via direct REST call
       const sendBase64 = toBase64(sendTxArray);
-      const signResult = await signTransactionViaSdk(sendBase64);
+      const signResult = await signTransactionViaRest(sendBase64);
 
       // Broadcast via Solana RPC (vault has no broadcast endpoint)
       const txSignature = await broadcastTransaction(signResult.serializedTx);
