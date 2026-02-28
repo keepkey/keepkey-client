@@ -8,7 +8,7 @@ import { requestStorage, web3ProviderStorage, assetContextStorage, blockchainDat
 import { EIP155_CHAINS } from '../chains';
 import { v4 as uuidv4 } from 'uuid';
 import { blockchainStorage } from '@extension/storage';
-import { ChainToNetworkId, caipToNetworkId } from '../chainConfig';
+import { ChainToNetworkId, caipToNetworkId, networkIdToIcon } from '../chainConfig';
 import * as wallet from '../wallet';
 
 const TAG = ' | ethereumHandler | ';
@@ -304,6 +304,23 @@ const switchToProvider = async (currentProvider: any, KEEPKEY_WALLET: any, tag: 
       ? currentProvider.providers.map((url: string) => url?.trim()).filter((url: string) => url && url.length > 0)
       : [],
   };
+
+  // Enrich with icon, pubkeys, and address (same as SET_ASSET_CONTEXT does)
+  if (!cleanedProvider.icon) {
+    cleanedProvider.icon = networkIdToIcon(cleanedProvider.networkId);
+  }
+  if (cleanedProvider.networkId.startsWith('eip155')) {
+    const allPubkeys = wallet.getPubkeys();
+    const evmPubkeys = allPubkeys.filter(
+      (pk: any) => pk.networks?.includes('eip155:*') || pk.networks?.includes(cleanedProvider.networkId),
+    );
+    if (evmPubkeys.length > 0) {
+      cleanedProvider.pubkeys = evmPubkeys;
+      if (!cleanedProvider.address && evmPubkeys[0]?.address) {
+        cleanedProvider.address = evmPubkeys[0].address;
+      }
+    }
+  }
 
   console.log(tag, 'Cleaned provider URL:', cleanedProvider.providerUrl);
 

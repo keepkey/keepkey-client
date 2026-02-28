@@ -13,6 +13,8 @@ export {
   caipToNetworkId,
   availableChainsByWallet,
   getChainEnumValue,
+  networkIdToIcon,
+  caipToIcon,
 } from '@extension/shared';
 
 // shortListSymbolToCaip and shortListNameToCaip are background-only (not needed by side-panel)

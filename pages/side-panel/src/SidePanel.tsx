@@ -130,7 +130,7 @@ const SidePanel = () => {
     }
   };
 
-  // Listen for state changes
+  // Listen for state changes and external asset context updates (e.g. dApp wallet_addEthereumChain)
   useEffect(() => {
     const messageListener = (message: any) => {
       if (message.type === 'KEEPKEY_STATE_CHANGED' && message.state !== undefined) {
@@ -139,13 +139,26 @@ const SidePanel = () => {
       if (message.type === 'TRANSACTION_CONTEXT_UPDATED' && message.id) {
         setTransactionContext(message.id);
       }
+      if (message.type === 'ASSET_CONTEXT_UPDATED' && message.assetContext?.networkId) {
+        const ctx = message.assetContext;
+        const asset = {
+          networkId: ctx.networkId,
+          caip: ctx.caip || ctx.networkId,
+          name: ctx.name || ctx.networkId,
+          symbol: ctx.symbol || ctx.nativeCurrency?.symbol || '',
+          icon: ctx.icon || '',
+          address: ctx.address || '',
+        };
+        setSelectedAsset(asset);
+        onAssetDetailOpen();
+      }
     };
 
     chrome.runtime.onMessage.addListener(messageListener);
     return () => {
       chrome.runtime.onMessage.removeListener(messageListener);
     };
-  }, []);
+  }, [onAssetDetailOpen]);
 
   // Format currency for display
   const formatCurrency = (value: number) => {

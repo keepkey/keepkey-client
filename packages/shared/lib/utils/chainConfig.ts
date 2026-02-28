@@ -8,7 +8,7 @@ export const Chain = {
   Arbitrum: 'ARB',
   Avalanche: 'AVAX',
   Base: 'BASE',
-  Binance: 'BNB',
+  // DO NOT add Binance Beacon Chain (BNB) — deprecated/broken chain, never re-add
   BinanceSmartChain: 'BSC',
   Bitcoin: 'BTC',
   BitcoinCash: 'BCH',
@@ -33,7 +33,7 @@ export const ChainToNetworkId: Record<string, string> = {
   ARB: 'eip155:42161',
   AVAX: 'eip155:43114',
   BSC: 'eip155:56',
-  BNB: 'binance:bnb-beacon-chain',
+  // DO NOT add BNB/binance:bnb-beacon-chain — deprecated/broken chain
   BCH: 'bip122:000000000000000000651ef99cb9fcbe',
   BTC: 'bip122:000000000019d6689c085ae165831e93',
   BASE: 'eip155:8453',
@@ -77,7 +77,6 @@ export const COIN_MAP_LONG: Record<string, string> = {
   ETH: 'ethereum',
   AVAX: 'avalanche',
   MATIC: 'polygon',
-  BNB: 'binance',
   XRP: 'ripple',
   SOL: 'solana',
 };
@@ -126,6 +125,7 @@ const NETWORK_SLIP44: Record<string, string> = {
   'cosmos:mayachain-mainnet-v1': 'slip44:931',
   'cosmos:osmosis-1': 'slip44:118',
   'ripple:4109c6f2045fc7eff4cde8f9905d19c2': 'slip44:144',
+  // DO NOT add binance:bnb-beacon-chain — Binance Beacon Chain is deprecated/broken, never re-add
   'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp': 'solana:So11111111111111111111111111111111111111112',
 };
 

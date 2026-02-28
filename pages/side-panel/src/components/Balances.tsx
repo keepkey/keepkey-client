@@ -3,7 +3,7 @@ import { Flex, Spinner, Avatar, Box, Text, Badge, Card, Stack, HStack } from '@c
 import { ChevronRightIcon } from '@chakra-ui/icons';
 import AssetSelect from './AssetSelect';
 import { blockchainDataStorage, blockchainStorage } from '@extension/storage';
-import { COIN_MAP_LONG, NetworkIdToChain } from '@extension/shared';
+import { COIN_MAP_LONG, NetworkIdToChain, networkIdToIcon } from '@extension/shared';
 
 const getChainDisplayName = (networkId: string): string => {
   if (networkId?.includes('eip155:1/')) return 'Ethereum';
@@ -51,7 +51,7 @@ const Balances = ({ onSelectAsset }: BalancesProps) => {
       for (const networkId of savedChains) {
         const chainName = (COIN_MAP_LONG as any)[(NetworkIdToChain as any)[networkId]] || 'unknown';
         let name = chainName;
-        let image = `https://api.keepkey.info/coins/${btoa(networkId + '/slip44:60').replace(/=+$/, '')}.png`;
+        let image = networkIdToIcon(networkId);
 
         if (chainName === 'unknown') {
           try {

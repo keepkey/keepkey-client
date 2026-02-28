@@ -72,7 +72,7 @@ const NETWORK_DISPLAY_NAMES: Record<string, string> = {
   'cosmos:osmosis-1': 'Osmosis',
   'ripple:4109c6f2045fc7eff4cde8f9905d19c2': 'Ripple',
   'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp': 'Solana',
-  'binance:bnb-beacon-chain': 'Binance',
+  // DO NOT add binance:bnb-beacon-chain — deprecated/broken chain
 };
 
 // Bitcoin script_type suffixes
@@ -324,8 +324,8 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
 
             // Restore selection from stored asset context
             chrome.runtime.sendMessage({ type: 'GET_ASSET_CONTEXT' }, ctxResponse => {
-              if (ctxResponse?.asset?.networkId) {
-                const stored = ctxResponse.asset;
+              const stored = ctxResponse?.assets;
+              if (stored?.networkId) {
                 const match = rows.find(r => r.networkId === stored.networkId);
                 if (match) {
                   setSelectedRow(match);
@@ -349,11 +349,15 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
       if (message.type === 'KEEPKEY_STATE_CHANGED' && message.state === 5) {
         fetchPubkeys();
       }
-      if (message.type === 'ASSET_CONTEXT_UPDATED' && message.asset?.networkId) {
-        const match = networkRows.find(r => r.networkId === message.asset.networkId);
+      if (message.type === 'ASSET_CONTEXT_UPDATED' && message.assetContext?.networkId) {
+        const nid = message.assetContext.networkId;
+        const match = networkRows.find(r => r.networkId === nid);
         if (match) {
           setSelectedRow(match);
           setActiveFamily(getChainFamily(match.networkId));
+        } else {
+          // Chain was added externally (e.g. via dApp wallet_addEthereumChain) — refresh rows
+          fetchPubkeys();
         }
       }
     };
