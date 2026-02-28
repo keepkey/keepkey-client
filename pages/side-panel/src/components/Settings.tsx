@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { VStack, HStack, Avatar, Text, Switch, Link, Button, Image, Box, useToast } from '@chakra-ui/react';
 import {
-  pioneerKeyStorage,
   maskingSettingsStorage,
   requestStorage,
   approvalStorage,
@@ -62,9 +61,6 @@ const Settings = () => {
       console.log(TAG, 'Clearing all custom storages...');
 
       // Clear specific storages
-      // await pioneerKeyStorage.set(() => '');
-      // console.log(TAG, 'Cleared Pioneer Key Storage');
-      //
       // await keepKeyApiKeyStorage.set(() => '');
       // console.log(TAG, 'Cleared API Key Storage');
       //

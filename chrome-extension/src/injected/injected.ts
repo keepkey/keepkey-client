@@ -8,13 +8,15 @@ import type {
   WalletProvider,
   KeepKeyWindow,
 } from './types';
+import { KeepKeySolanaWallet } from './solana-wallet-standard';
+import { registerSolanaWallet } from './solana-wallet-register';
 
 (function () {
   const TAG = ' | KeepKeyInjected | ';
-  const VERSION = '2.0.0';
+  const VERSION = '2.1.0';
   const MAX_RETRY_COUNT = 3;
   const RETRY_DELAY = 100; // ms
-  const CALLBACK_TIMEOUT = 30000; // 30 seconds
+  const CALLBACK_TIMEOUT = 300000; // 5 minutes (hardware wallet needs time)
   const MESSAGE_QUEUE_MAX = 100;
 
   const kWindow = window as KeepKeyWindow;
@@ -522,6 +524,16 @@ import type {
       console.log(tag, 'Delayed EIP-6963 announcement for late-loading dApps');
       announceProvider(ethereum);
     }, 100);
+
+    // Solana Wallet Standard registration (completely separate from Ethereum)
+    // Never touches window.solana — relies purely on wallet-standard registry
+    try {
+      const solanaWallet = new KeepKeySolanaWallet(walletRequest);
+      registerSolanaWallet(solanaWallet);
+      console.log(tag, 'Solana wallet registered via Wallet Standard');
+    } catch (e) {
+      console.error(tag, 'Failed to register Solana wallet:', e);
+    }
 
     // Handle chain changes and other events
     window.addEventListener('message', (event: MessageEvent) => {

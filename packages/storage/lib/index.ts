@@ -1,7 +1,6 @@
 import { createStorage, StorageType, type BaseStorage, SessionAccessLevel } from './base';
 import {
   keepKeyApiKeyStorage,
-  pioneerKeyStorage,
   requestStorage,
   approvalStorage,
   completedStorage,
@@ -21,7 +20,6 @@ export type { DeviceInfo, StoredPubkeys, PubkeyStorageType } from './pubkeyStora
 
 export {
   chainIdStorage,
-  pioneerKeyStorage,
   keepKeyApiKeyStorage,
   web3ProviderStorage,
   requestStorage,
