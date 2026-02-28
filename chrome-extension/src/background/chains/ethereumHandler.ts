@@ -3,7 +3,7 @@
 */
 
 import { JsonRpcProvider } from 'ethers';
-import { createProviderRpcError } from '../utils';
+import { createProviderRpcError, ProviderRpcError } from '../utils';
 import { requestStorage, web3ProviderStorage, assetContextStorage, blockchainDataStorage } from '@extension/storage';
 import { EIP155_CHAINS } from '../chains';
 import { v4 as uuidv4 } from 'uuid';
@@ -35,11 +35,6 @@ type Event = {
   status: 'request' | 'approval' | 'completed';
   timestamp: string;
 };
-
-interface ProviderRpcError extends Error {
-  code: number;
-  data?: unknown;
-}
 
 let isPopupOpen = false; // Flag to track popup state
 

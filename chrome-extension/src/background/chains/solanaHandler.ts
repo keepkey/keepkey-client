@@ -11,9 +11,14 @@ const SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com';
 // Cached address from device
 let cachedAddress: string | null = null;
 
-/** Convert a number[] to base64 string */
+/** Convert a number[] to base64 string (chunked to avoid call-stack limit) */
 function toBase64(arr: number[]): string {
-  return btoa(String.fromCharCode(...arr));
+  const CHUNK = 8192;
+  let str = '';
+  for (let i = 0; i < arr.length; i += CHUNK) {
+    str += String.fromCharCode(...arr.slice(i, i + CHUNK));
+  }
+  return btoa(str);
 }
 
 /** Convert a base64 string to number[] */

@@ -14,20 +14,9 @@ import { handleOsmosisRequest } from './chains/osmosisHandler';
 import { handleMayaRequest } from './chains/mayaHandler';
 import { handleRippleRequest } from './chains/rippleHandler';
 import { handleSolanaRequest } from './chains/solanaHandler';
+import { createProviderRpcError, ProviderRpcError } from './utils';
 
 const TAG = ' | METHODS | ';
-
-interface ProviderRpcError extends Error {
-  code: number;
-  data?: unknown;
-}
-
-export const createProviderRpcError = (code: number, message: string, data?: unknown): ProviderRpcError => {
-  const error = new Error(message) as ProviderRpcError;
-  error.code = code;
-  if (data) error.data = data;
-  return error;
-};
 
 let isPopupOpen = false; // Flag to track popup state
 let popupWindowId: number | null = null; // Track the popup window ID

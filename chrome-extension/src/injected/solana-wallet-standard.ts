@@ -131,7 +131,7 @@ export class KeepKeySolanaWallet {
 
     'solana:signTransaction': {
       version: '1.0.0' as const,
-      supportedTransactionVersions: ['legacy', 0] as const,
+      supportedTransactionVersions: new Set(['legacy', 0] as const),
       signTransaction: async (...inputs: { transaction: Uint8Array; account: WalletAccount; chain?: string }[]) => {
         const outputs: { signedTransaction: Uint8Array }[] = [];
         for (const { transaction } of inputs) {

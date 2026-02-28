@@ -76,7 +76,7 @@
       },
       'solana:signTransaction': {
         version: '1.0.0',
-        supportedTransactionVersions: ['legacy', 0],
+        supportedTransactionVersions: new Set(['legacy', 0]),
         signTransaction: async (...a) => {
           let c = [];
           for (let { transaction: u } of a) {
