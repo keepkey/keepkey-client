@@ -35,6 +35,8 @@ import AssetDetail from './components/AssetDetail';
 import DonutChart from './components/DonutChart';
 import NetworkAccountHeader from './components/NetworkAccountHeader';
 
+const HEADER_HEIGHT = '60px';
+
 const SidePanel = () => {
   const [balances, setBalances] = useState<any[]>([]);
   const [totalUsdBalance, setTotalUsdBalance] = useState<number>(0);
@@ -72,6 +74,13 @@ const SidePanel = () => {
     chrome.runtime.sendMessage({ type: 'SET_ASSET_CONTEXT', asset }, () => {
       onAssetDetailOpen();
     });
+  };
+
+  // Handle closing asset detail — clear context so header returns to branding
+  const handleAssetDetailClose = () => {
+    onAssetDetailClose();
+    setSelectedAsset(null);
+    chrome.runtime.sendMessage({ type: 'CLEAR_ASSET_CONTEXT' });
   };
 
   // Handle global send action
@@ -152,6 +161,9 @@ const SidePanel = () => {
         setSelectedAsset(asset);
         onAssetDetailOpen();
       }
+      if (message.type === 'ASSET_CONTEXT_CLEARED') {
+        setSelectedAsset(null);
+      }
     };
 
     chrome.runtime.onMessage.addListener(messageListener);
@@ -221,59 +233,64 @@ const SidePanel = () => {
   };
 
   return (
-    <Flex direction="column" width="100%" height="100vh" p={4}>
-      {/* Header */}
-      <NetworkAccountHeader
-        keepkeyState={keepkeyState}
-        isRefreshing={isRefreshing}
-        onSettingsOpen={onSettingsOpen}
-        onRefresh={refreshBalances}
-        onSelectNetwork={handleAssetSelect}
-      />
-
-      {/* Total Balance & Quick Actions - Only when paired and on home screen */}
-      {keepkeyState === 5 && !transactionContext && (
-        <Box mb={3} textAlign="center">
-          {balances.length > 0 && totalUsdBalance > 0 && (
-            <Box mb={2}>
-              <DonutChart balances={balances} totalUsd={totalUsdBalance} />
-            </Box>
-          )}
-          <Heading size="lg" color="white" mb={2}>
-            {formatCurrency(totalUsdBalance)}
-          </Heading>
-          <HStack spacing={3} justify="center">
-            <Button
-              leftIcon={<ArrowUpIcon />}
-              colorScheme="blue"
-              variant="solid"
-              size="sm"
-              onClick={handleGlobalSend}
-              isDisabled={balances.length === 0}>
-              Send
-            </Button>
-            <Button
-              leftIcon={<ArrowDownIcon />}
-              colorScheme="green"
-              variant="solid"
-              size="sm"
-              onClick={handleGlobalReceive}
-              isDisabled={balances.length === 0}>
-              Receive
-            </Button>
-          </HStack>
-        </Box>
-      )}
-
-      {/* Main content */}
-      <Box flex={1} overflowY="auto">
-        {renderContent()}
+    <Flex direction="column" width="100%" height="100vh">
+      {/* Sticky header — floats above drawers */}
+      <Box position="sticky" top={0} zIndex={1500} bg="gray.900" px={4} pt={4} pb={1} h={HEADER_HEIGHT} flexShrink={0}>
+        <NetworkAccountHeader
+          keepkeyState={keepkeyState}
+          isRefreshing={isRefreshing}
+          onSettingsOpen={onSettingsOpen}
+          onRefresh={refreshBalances}
+          onSelectNetwork={handleAssetSelect}
+        />
       </Box>
 
+      {/* Scrollable body below header */}
+      <Flex direction="column" flex={1} overflowY="auto" px={4} pb={4}>
+        {/* Total Balance & Quick Actions - Only when paired and on home screen */}
+        {keepkeyState === 5 && !transactionContext && (
+          <Box mb={3} textAlign="center">
+            {balances.length > 0 && totalUsdBalance > 0 && (
+              <Box mb={2}>
+                <DonutChart balances={balances} totalUsd={totalUsdBalance} />
+              </Box>
+            )}
+            <Heading size="lg" color="white" mb={2}>
+              {formatCurrency(totalUsdBalance)}
+            </Heading>
+            <HStack spacing={3} justify="center">
+              <Button
+                leftIcon={<ArrowUpIcon />}
+                colorScheme="blue"
+                variant="solid"
+                size="sm"
+                onClick={handleGlobalSend}
+                isDisabled={balances.length === 0}>
+                Send
+              </Button>
+              <Button
+                leftIcon={<ArrowDownIcon />}
+                colorScheme="green"
+                variant="solid"
+                size="sm"
+                onClick={handleGlobalReceive}
+                isDisabled={balances.length === 0}>
+                Receive
+              </Button>
+            </HStack>
+          </Box>
+        )}
+
+        {/* Main content */}
+        <Box flex={1} overflowY="auto">
+          {renderContent()}
+        </Box>
+      </Flex>
+
       {/* Asset Detail Drawer */}
-      <Drawer isOpen={isAssetDetailOpen} placement="bottom" onClose={onAssetDetailClose} size="full">
+      <Drawer isOpen={isAssetDetailOpen} placement="bottom" onClose={handleAssetDetailClose} size="full">
         <DrawerOverlay bg="blackAlpha.800" />
-        <DrawerContent bg="gray.900" h="100vh">
+        <DrawerContent bg="gray.900" h={`calc(100vh - ${HEADER_HEIGHT})`} mt={HEADER_HEIGHT}>
           <DrawerHeader borderBottomWidth="1px" borderColor="whiteAlpha.200" py={3}>
             <Flex align="center" w="full">
               <IconButton
@@ -281,7 +298,7 @@ const SidePanel = () => {
                 icon={<ChevronLeftIcon boxSize={6} />}
                 variant="ghost"
                 size="sm"
-                onClick={onAssetDetailClose}
+                onClick={handleAssetDetailClose}
                 mr={2}
               />
               <Text fontWeight="semibold" fontSize="lg">
@@ -321,7 +338,7 @@ const SidePanel = () => {
       {/* Send Drawer */}
       <Drawer isOpen={isSendOpen} placement="bottom" onClose={onSendClose} size="full">
         <DrawerOverlay bg="blackAlpha.800" />
-        <DrawerContent bg="gray.900" h="100vh">
+        <DrawerContent bg="gray.900" h={`calc(100vh - ${HEADER_HEIGHT})`} mt={HEADER_HEIGHT}>
           <DrawerHeader borderBottomWidth="1px" borderColor="whiteAlpha.200" py={3}>
             <Flex align="center" w="full">
               <IconButton
@@ -346,7 +363,7 @@ const SidePanel = () => {
       {/* Receive Drawer */}
       <Drawer isOpen={isReceiveOpen} placement="bottom" onClose={onReceiveClose} size="full">
         <DrawerOverlay bg="blackAlpha.800" />
-        <DrawerContent bg="gray.900" h="100vh">
+        <DrawerContent bg="gray.900" h={`calc(100vh - ${HEADER_HEIGHT})`} mt={HEADER_HEIGHT}>
           <DrawerHeader borderBottomWidth="1px" borderColor="whiteAlpha.200" py={3}>
             <Flex align="center" w="full">
               <IconButton
