@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Flex, Spinner, Avatar, Box, Text, Badge, Card, Stack, HStack } from '@chakra-ui/react';
 import { ChevronRightIcon } from '@chakra-ui/icons';
 import AssetSelect from './AssetSelect';
-import { blockchainDataStorage, blockchainStorage } from '@extension/storage';
-import { COIN_MAP_LONG, NetworkIdToChain, networkIdToIcon } from '@extension/shared';
+import { COIN_MAP_LONG, NetworkIdToChain } from '@extension/shared';
 
 const getChainDisplayName = (networkId: string): string => {
   if (networkId?.includes('eip155:1/')) return 'Ethereum';
@@ -42,58 +41,15 @@ const Balances = ({ onSelectAsset }: BalancesProps) => {
 
   const formatUsd = (value: string) => parseFloat(value).toFixed(2);
 
-  // Load custom-added chains from storage
-  const loadAddedAssets = async (): Promise<any[]> => {
-    try {
-      const savedChains = await blockchainStorage.getAllBlockchains();
-      const added: any[] = [];
-
-      for (const networkId of savedChains) {
-        const chainName = (COIN_MAP_LONG as any)[(NetworkIdToChain as any)[networkId]] || 'unknown';
-        let name = chainName;
-        let image = networkIdToIcon(networkId);
-
-        if (chainName === 'unknown') {
-          try {
-            const assetData = await blockchainDataStorage.getBlockchainData(networkId);
-            if (assetData?.name) {
-              name = assetData.name;
-              image = assetData.image || image;
-            }
-          } catch (e) {
-            console.error(`Error fetching asset data for ${networkId}:`, e);
-          }
-        }
-
-        added.push({
-          networkId,
-          caip: networkId + '/slip44:60',
-          name,
-          icon: image,
-          manual: true,
-        });
-      }
-      return added;
-    } catch (e) {
-      console.error(e);
-      return [];
-    }
-  };
-
   // Fetch assets and balances on mount
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
 
-      chrome.runtime.sendMessage({ type: 'GET_ASSETS' }, async response => {
+      // GET_ASSETS now includes both static and custom chains
+      chrome.runtime.sendMessage({ type: 'GET_ASSETS' }, response => {
         if (response?.assets) {
-          const addedAssets = await loadAddedAssets();
-          const assetMap = new Map();
-          response.assets.forEach((a: any) => assetMap.set(a.networkId, a));
-          addedAssets.forEach((a: any) => {
-            if (!assetMap.has(a.networkId)) assetMap.set(a.networkId, a);
-          });
-          setAssets(Array.from(assetMap.values()));
+          setAssets(response.assets);
         }
       });
 
@@ -176,39 +132,26 @@ const Balances = ({ onSelectAsset }: BalancesProps) => {
                         <Badge size="sm" colorScheme="gray" variant="subtle" fontSize="10px" px={2} borderRadius="full">
                           {chainName}
                         </Badge>
-                        {asset.manual && (
-                          <Badge size="sm" colorScheme="purple" fontSize="10px">
-                            Custom
-                          </Badge>
-                        )}
                       </Flex>
-                      {asset.manual ? (
-                        <Text fontSize="sm" color="whiteAlpha.600">
-                          Tap to view balance
-                        </Text>
-                      ) : (
-                        <HStack spacing={2} mt={0.5}>
-                          <Text fontSize="md" color="white" fontWeight="medium">
-                            {integer}.{largePart}
-                            {largePart === '0000' && (
-                              <Text as="span" fontSize="xs" color="whiteAlpha.600">
-                                {smallPart}
-                              </Text>
-                            )}
-                            <Text as="span" color="whiteAlpha.700" ml={1} fontSize="sm">
-                              {asset.symbol}
+                      <HStack spacing={2} mt={0.5}>
+                        <Text fontSize="md" color="white" fontWeight="medium">
+                          {integer}.{largePart}
+                          {largePart === '0000' && (
+                            <Text as="span" fontSize="xs" color="whiteAlpha.600">
+                              {smallPart}
                             </Text>
+                          )}
+                          <Text as="span" color="whiteAlpha.700" ml={1} fontSize="sm">
+                            {asset.symbol}
                           </Text>
-                        </HStack>
-                      )}
-                    </Box>
-                    {!asset.manual && (
-                      <Flex direction="column" align="flex-end" minW="80px">
-                        <Text fontWeight="semibold" color="white" fontSize="md">
-                          ${formatUsd(totalUsdValue.toString())}
                         </Text>
-                      </Flex>
-                    )}
+                      </HStack>
+                    </Box>
+                    <Flex direction="column" align="flex-end" minW="80px">
+                      <Text fontWeight="semibold" color="white" fontSize="md">
+                        ${formatUsd(totalUsdValue.toString())}
+                      </Text>
+                    </Flex>
                     <ChevronRightIcon color="whiteAlpha.400" ml={2} />
                   </Flex>
                 </Card>

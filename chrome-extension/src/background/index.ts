@@ -15,6 +15,7 @@ import {
   exampleSidebarStorage,
   web3ProviderStorage,
   blockchainDataStorage,
+  blockchainStorage,
   assetContextStorage,
   ethAccountsStorage,
   customEvmNetworksStorage,
@@ -245,6 +246,50 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
           address: t.pubkey || t.address || '',
           contractAddress: contractMatch ? contractMatch[1] : tok.contractAddress || tok.contract || '',
         });
+      }
+
+      // Enrich with direct RPC balances for custom EVM chains Pioneer doesn't know about
+      try {
+        const savedChains = await blockchainStorage.getAllBlockchains();
+        const coveredNetworks = new Set(balances.filter((b: any) => b.isNative).map((b: any) => b.networkId));
+        const evmAddress = allPubkeys.find((pk: any) => pk.networks?.includes('eip155:*'))?.address;
+
+        if (evmAddress) {
+          for (const networkId of savedChains) {
+            if (coveredNetworks.has(networkId)) continue;
+            if (!networkId.startsWith('eip155:')) continue;
+
+            const chainData = await blockchainDataStorage.getBlockchainData(networkId);
+            if (!chainData?.providerUrl) continue;
+
+            try {
+              const rpcProvider = new JsonRpcProvider(chainData.providerUrl);
+              const rawBal = await Promise.race([
+                rpcProvider.getBalance(evmAddress),
+                new Promise<bigint>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+              ]);
+              const balStr = (Number(rawBal) / 1e18).toString();
+              const caip = chainData.caip || `${networkId}/slip44:60`;
+              balances.push({
+                networkId,
+                caip,
+                symbol: chainData.symbol || chainData.nativeCurrency?.symbol || '',
+                name: chainData.name || networkId,
+                balance: balStr,
+                valueUsd: '0',
+                priceUsd: '0',
+                icon: chainData.icon || `https://api.keepkey.info/coins/${btoa(caip).replace(/=+$/, '')}.png`,
+                isNative: true,
+                address: evmAddress,
+              });
+              console.log(`[fetchBalances] RPC balance for ${chainData.name}: ${balStr}`);
+            } catch (e: any) {
+              console.warn(`[fetchBalances] RPC balance failed for ${networkId}:`, e.message);
+            }
+          }
+        }
+      } catch (e: any) {
+        console.warn('[fetchBalances] Custom chain enrichment error:', e.message);
       }
 
       cachedBalances = balances;
@@ -812,21 +857,43 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         }
 
         case 'GET_ASSETS': {
-          // Return available chain assets from static config with full metadata
+          // Return available chain assets from static config + custom-added chains
           try {
-            const assets = Object.entries(ChainToNetworkId).map(([symbol, networkId]) => {
+            const assetMap = new Map<string, any>();
+
+            // Static chains
+            for (const [symbol, networkId] of Object.entries(ChainToNetworkId)) {
               const name = COIN_MAP_LONG[symbol] || symbol.toLowerCase();
               const caip = shortListSymbolToCaip[symbol] || networkId;
-              return {
+              assetMap.set(networkId, {
                 symbol,
                 networkId,
                 name: name.charAt(0).toUpperCase() + name.slice(1),
                 caip,
                 icon: `https://api.keepkey.info/coins/${btoa(caip).replace(/=+$/, '')}.png`,
                 chain: symbol,
-              };
-            });
-            sendResponse({ assets });
+              });
+            }
+
+            // Custom chains from storage (dApp-added via wallet_addEthereumChain)
+            const savedChains = await blockchainStorage.getAllBlockchains();
+            for (const networkId of savedChains) {
+              if (assetMap.has(networkId)) continue;
+              const data = await blockchainDataStorage.getBlockchainData(networkId);
+              if (data) {
+                const caip = data.caip || `${networkId}/slip44:60`;
+                assetMap.set(networkId, {
+                  symbol: data.symbol || data.nativeCurrency?.symbol || '',
+                  networkId,
+                  name: data.name || networkId,
+                  caip,
+                  icon: data.icon || `https://api.keepkey.info/coins/${btoa(caip).replace(/=+$/, '')}.png`,
+                  chain: data.symbol || '',
+                });
+              }
+            }
+
+            sendResponse({ assets: Array.from(assetMap.values()) });
           } catch (error) {
             console.error('Error fetching assets:', error);
             sendResponse({ error: 'Failed to fetch assets' });
