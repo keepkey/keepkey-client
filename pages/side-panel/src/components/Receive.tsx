@@ -241,6 +241,7 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
 
   // Get address type label - show Account 0, 1, 2 etc.
   const getAddressType = (pubkey: any, index: number) => {
+    if (!pubkey) return `Account ${index}`;
     // Try to extract account number from note if available
     if (pubkey.note) {
       const match = pubkey.note.match(/account\s*(\d+)/i);

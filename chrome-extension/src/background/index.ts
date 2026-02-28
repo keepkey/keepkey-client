@@ -488,6 +488,24 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             try {
               console.log(tag, 'Setting asset context:', asset);
 
+              // Enrich asset with pubkeys from wallet so Asset.tsx has addresses
+              if (asset.networkId) {
+                const networkPubkeys = wallet.getPubkeys(asset.networkId);
+                // For EVM wildcard, also try the base eip155 network
+                if (networkPubkeys.length === 0 && asset.networkId.startsWith('eip155')) {
+                  const evmPubkeys = wallet
+                    .getPubkeys()
+                    .filter((pk: any) => pk.networks?.includes('eip155:*') || pk.networks?.includes(asset.networkId));
+                  if (evmPubkeys.length > 0) asset.pubkeys = evmPubkeys;
+                } else {
+                  asset.pubkeys = networkPubkeys;
+                }
+                // Set address from first pubkey
+                if (!asset.address && asset.pubkeys?.[0]?.address) {
+                  asset.address = asset.pubkeys[0].address;
+                }
+              }
+
               // Store in assetContextStorage for GET_ASSET_CONTEXT
               await assetContextStorage.updateContext(asset);
 
@@ -514,7 +532,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                 }
 
                 if (providerData) {
-                  await web3ProviderStorage.setWeb3Provider(providerData);
+                  await web3ProviderStorage.saveWeb3Provider(providerData);
                 }
               }
 
@@ -581,59 +599,20 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         }
 
         case 'GET_TX_HISTORY': {
-          try {
-            console.log(tag, 'GET_TX_HISTORY');
-            // eslint-disable-next-line prefer-const
-            let { networkId, fromBlock, toBlock } = message;
-            if (!toBlock) toBlock = 'latest';
-            if (!fromBlock) fromBlock = 'latest';
-
-            const response = await fetch(
-              `${PIONEER_API}/api/v1/txs?networkId=${encodeURIComponent(networkId)}&address=${encodeURIComponent(ADDRESS)}&fromBlock=${fromBlock}&toBlock=${toBlock}`,
-            );
-            const data = await response.json();
-            console.log('TX history:', data);
-            sendResponse(data);
-          } catch (error) {
-            console.error('Error fetching tx history:', error);
-            sendResponse({ error: 'Failed to fetch tx history' });
-          }
+          // TX history API disabled for now
+          sendResponse({ txs: [] });
           break;
         }
 
         case 'GET_DAPPS_BY_NETWORKID': {
-          try {
-            const { networkId } = message;
-            const response = await fetch(`${PIONEER_API}/api/v1/dapps?networkId=${encodeURIComponent(networkId)}`);
-            const data = await response.json();
-            sendResponse(data);
-          } catch (error) {
-            console.error('Error fetching dapps:', error);
-            sendResponse({ error: 'Failed to fetch dapps' });
-          }
+          // Dapps discovery disabled for now
+          sendResponse({ dapps: [] });
           break;
         }
 
         case 'DISCOVERY_DAPP': {
-          try {
-            const { networkId, url, name, description } = message;
-            const body = {
-              networks: [networkId],
-              url,
-              name,
-              description,
-            };
-            const response = await fetch(`${PIONEER_API}/api/v1/dapps/discover`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(body),
-            });
-            const data = await response.json();
-            sendResponse(data);
-          } catch (error) {
-            console.error('Error discovering dapp:', error);
-            sendResponse({ error: 'Failed to discover dapp' });
-          }
+          // Dapps discovery disabled for now
+          sendResponse({ success: false, error: 'Dapps discovery disabled' });
           break;
         }
 

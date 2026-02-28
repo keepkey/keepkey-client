@@ -273,7 +273,7 @@ export function Asset() {
         }
 
         // Fetch transaction history in parallel (non-blocking)
-        if (response.assets.networkId.indexOf('eip155') !== -1) {
+        if (response.assets.networkId?.includes('eip155')) {
           fetchTxHistory(response.assets.networkId);
         }
 
@@ -299,10 +299,18 @@ export function Asset() {
 
   const fetchEthereumBalance = (assetLoaded: any) => {
     setLoading(true);
-    const addressEth = assetLoaded.pubkeys[0]?.address;
+    const addressEth = assetLoaded.pubkeys?.[0]?.address || assetLoaded.address;
     if (!addressEth) {
-      console.error('No Ethereum address found');
-      setLoading(false);
+      // Fallback: fetch from background pubkeys for this network
+      chrome.runtime.sendMessage({ type: 'GET_PUBKEYS_FOR_NETWORK', networkId: assetLoaded.networkId }, resp => {
+        if (resp?.pubkeys?.[0]?.address) {
+          assetLoaded.address = resp.pubkeys[0].address;
+          fetchEthereumBalance(assetLoaded);
+        } else {
+          console.error('No Ethereum address found');
+          setLoading(false);
+        }
+      });
       return;
     }
 
@@ -344,12 +352,18 @@ export function Asset() {
         return;
       }
       if (response && response.balances) {
-        let filteredBalances = response.balances.filter((balance: any) => balance.caip === assetLoaded.caip);
+        // Filter by caip or networkId
+        let filteredBalances = response.balances.filter(
+          (balance: any) => balance.caip === assetLoaded?.caip || balance.networkId === assetLoaded?.networkId,
+        );
 
         //if balances > 1 then sum all balances
         if (filteredBalances.length > 1) {
-          const totalBalance = filteredBalances.reduce((acc, balance) => acc + Number(balance.balance), 0);
-          filteredBalances = [{ balance: totalBalance, symbol: assetLoaded.symbol }];
+          const totalBalance = filteredBalances.reduce(
+            (acc: number, balance: any) => acc + Number(balance.balance || 0),
+            0,
+          );
+          filteredBalances = [{ balance: totalBalance, symbol: assetLoaded?.symbol || '', caip: assetLoaded?.caip }];
         }
 
         setBalances(filteredBalances);
@@ -383,12 +397,14 @@ export function Asset() {
     }
   };
 
-  const filteredPubkeys = pubkeys.filter((pubkey: Pubkey) => {
-    if (asset?.networkId?.startsWith('eip155')) {
-      return pubkey.networks.some((networkId: any) => networkId.startsWith('eip155'));
-    }
-    return pubkey?.networks?.includes(asset.networkId);
-  });
+  const filteredPubkeys = asset?.networkId
+    ? pubkeys.filter((pubkey: Pubkey) => {
+        if (asset.networkId.startsWith('eip155')) {
+          return pubkey.networks?.some((networkId: any) => networkId.startsWith('eip155'));
+        }
+        return pubkey?.networks?.includes(asset.networkId);
+      })
+    : [];
 
   const handleReplaceTxClick = () => {
     setIsReplaceTxModalOpen(true);
