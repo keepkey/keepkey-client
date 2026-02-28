@@ -215,6 +215,7 @@ const SidePanel = () => {
         isRefreshing={isRefreshing}
         onSettingsOpen={onSettingsOpen}
         onRefresh={refreshBalances}
+        onSelectNetwork={handleAssetSelect}
       />
 
       {/* Total Balance & Quick Actions - Only when paired and on home screen */}

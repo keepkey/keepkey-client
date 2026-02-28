@@ -837,13 +837,17 @@ const signMessage = async (message, KEEPKEY_WALLET, ADDRESS: string) => {
     const output = await sdk.eth.ethSignMessage({ address: ADDRESS, message: hexMessage });
     console.log(`${tag} Transaction output: `, output);
 
+    // EIP-1193: personal_sign/eth_sign must return hex signature string, not object.
+    // Vault SDK returns { address, signature } — extract just the signature.
+    const signatureHex = output?.signature || output;
+
     // Notify popup that signature is complete
     chrome.runtime.sendMessage({
       action: 'signature_complete',
-      signature: output,
+      signature: signatureHex,
     });
 
-    return output;
+    return signatureHex;
   } catch (e) {
     console.error(e);
 
@@ -1001,13 +1005,17 @@ const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string) 
     const signedMessage = await sdk.eth.ethSignTypedData(HDWalletPayload);
     console.log(tag, '**** signedMessage: ', signedMessage);
 
+    // EIP-1193: eth_signTypedData_v4 must return hex signature string, not object.
+    // Vault SDK returns { address, signature } — extract just the signature.
+    const signatureHex = signedMessage?.signature || signedMessage;
+
     // Notify popup that signature is complete
     chrome.runtime.sendMessage({
       action: 'signature_complete',
-      signature: signedMessage,
+      signature: signatureHex,
     });
 
-    return signedMessage;
+    return signatureHex;
   } catch (e) {
     console.error(`${tag} Error: `, e);
 

@@ -281,34 +281,48 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
   }
 
   return (
-    <VStack align="stretch" gap={3} width="100%">
+    <VStack align="stretch" gap={2} width="100%">
       {/* Header */}
-      <Flex justify="space-between" align="center" mb={2}>
-        <Text fontSize="md" fontWeight="bold" color="whiteAlpha.900">
-          {isEvmNetwork ? 'ERC-20 Tokens' : isCosmosNetwork ? 'IBC Tokens' : 'Tokens'} ({tokens.length})
-        </Text>
-        <HStack gap={2}>
+      <Flex justify="space-between" align="center" mb={1}>
+        <HStack spacing={1}>
+          <Text
+            fontSize="xs"
+            fontWeight="semibold"
+            color="whiteAlpha.500"
+            textTransform="uppercase"
+            letterSpacing="wider">
+            {isEvmNetwork ? 'ERC-20' : isCosmosNetwork ? 'IBC' : 'Tokens'}
+          </Text>
+          <Text fontSize="xs" color="whiteAlpha.400">
+            ({tokens.length})
+          </Text>
+        </HStack>
+        <HStack gap={1}>
           {isEvmNetwork && (
             <Button
-              size="sm"
+              size="xs"
               variant="ghost"
-              colorScheme="whiteAlpha"
               onClick={() => setIsCustomTokenDialogOpen(true)}
-              leftIcon={<FaPlus />}
-              color="whiteAlpha.800"
-              _hover={{ bg: 'whiteAlpha.200' }}>
-              Add Token
+              leftIcon={<FaPlus size={8} />}
+              color="whiteAlpha.500"
+              fontSize="xs"
+              h="22px"
+              px={2}
+              _hover={{ bg: 'whiteAlpha.100', color: 'whiteAlpha.800' }}>
+              Add
             </Button>
           )}
           <Button
-            size="sm"
+            size="xs"
             variant="ghost"
-            colorScheme="whiteAlpha"
             onClick={handleRefresh}
             isLoading={isRefreshing}
-            leftIcon={<FaSync />}
-            color="whiteAlpha.800"
-            _hover={{ bg: 'whiteAlpha.200' }}>
+            leftIcon={<FaSync size={8} />}
+            color="whiteAlpha.500"
+            fontSize="xs"
+            h="22px"
+            px={2}
+            _hover={{ bg: 'whiteAlpha.100', color: 'whiteAlpha.800' }}>
             Refresh
           </Button>
         </HStack>
@@ -330,21 +344,20 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
           pr={2}
           sx={{
             '&::-webkit-scrollbar': {
-              width: '8px',
+              width: '4px',
             },
             '&::-webkit-scrollbar-track': {
-              background: 'rgba(255, 255, 255, 0.05)',
-              borderRadius: '10px',
+              background: 'transparent',
             },
             '&::-webkit-scrollbar-thumb': {
-              background: 'rgba(255, 255, 255, 0.2)',
-              borderRadius: '10px',
+              background: 'rgba(255, 255, 255, 0.15)',
+              borderRadius: '4px',
               _hover: {
-                background: 'rgba(255, 255, 255, 0.3)',
+                background: 'rgba(255, 255, 255, 0.25)',
               },
             },
           }}>
-          <VStack align="stretch" gap={2}>
+          <VStack align="stretch" gap={1}>
             {tokens.map((token: any, index: number) => {
               const tokenValueUsd = parseFloat(token.valueUsd || 0);
               const tokenBalance = parseFloat(token.balance || 0);
@@ -365,78 +378,53 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
               return (
                 <Box
                   key={`${token.caip}-${index}`}
-                  p={3}
-                  bg="rgba(255, 255, 255, 0.05)"
-                  borderRadius="lg"
-                  borderWidth="2px"
-                  borderColor="transparent"
-                  position="relative"
+                  px={2}
+                  py={1.5}
+                  bg="rgba(255, 255, 255, 0.03)"
+                  borderRadius="md"
+                  borderWidth="1px"
+                  borderColor="whiteAlpha.100"
                   cursor={isLoading ? 'wait' : 'pointer'}
                   opacity={isLoading ? 0.6 : 1}
                   pointerEvents={isLoading ? 'none' : 'auto'}
                   _hover={{
-                    bg: 'rgba(255, 255, 255, 0.08)',
-                    transform: 'translateY(-2px)',
-                    boxShadow: `0 4px 20px ${accentColor}`,
-                    borderColor: accentColor,
+                    bg: 'rgba(255, 255, 255, 0.07)',
+                    borderColor: 'whiteAlpha.200',
                   }}
                   _active={{
-                    transform: 'translateY(0px) scale(0.98)',
-                    boxShadow: `0 2px 10px ${accentColor}`,
+                    transform: 'scale(0.99)',
                   }}
-                  _before={{
-                    content: '""',
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    borderRadius: 'lg',
-                    padding: '2px',
-                    background: `linear-gradient(135deg, ${accentColor}, transparent)`,
-                    WebkitMask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
-                    WebkitMaskComposite: 'xor',
-                    maskComposite: 'exclude',
-                    pointerEvents: 'none',
-                    opacity: 0,
-                    transition: 'opacity 0.2s',
-                  }}
-                  sx={{
-                    '&:hover::before': {
-                      opacity: 1,
-                    },
-                  }}
-                  transition="all 0.2s"
+                  transition="all 0.15s"
                   onClick={() => handleTokenClick(token)}>
                   <Flex justify="space-between" align="center">
-                    <HStack gap={3}>
+                    <HStack gap={2}>
                       {isLoading ? (
                         <Flex
-                          boxSize="40px"
+                          boxSize="28px"
                           align="center"
                           justify="center"
                           bg="rgba(255, 255, 255, 0.08)"
                           borderRadius="md">
-                          <Spinner size="sm" color="blue.400" />
+                          <Spinner size="xs" color="blue.400" />
                         </Flex>
                       ) : (
-                        <IconWithFallback src={token.icon} alt={token.name || token.symbol} boxSize="40px" />
+                        <IconWithFallback src={token.icon} alt={token.name || token.symbol} boxSize="28px" />
                       )}
                       <VStack align="flex-start" gap={0} spacing={0}>
-                        <Text fontSize="sm" fontWeight="bold" color="whiteAlpha.900">
+                        <Text fontSize="xs" fontWeight="semibold" color="whiteAlpha.900" lineHeight="1.3">
                           {token.symbol || 'Unknown'}
                         </Text>
-                        <Text fontSize="xs" color="whiteAlpha.600">
+                        <Text fontSize="2xs" color="whiteAlpha.400" lineHeight="1.3">
                           {isLoading ? 'Loading...' : token.name || 'Unknown Token'}
                         </Text>
                       </VStack>
                     </HStack>
 
                     <VStack align="flex-end" gap={0} spacing={0}>
-                      <Text fontSize="sm" color="green.400" fontWeight="medium">
+                      <Text fontSize="xs" color="green.400" fontWeight="medium" lineHeight="1.3">
                         ${formatUsd(tokenValueUsd)}
                       </Text>
-                      <Text fontSize="xs" color="whiteAlpha.600">
+                      <Text fontSize="2xs" color="whiteAlpha.400" lineHeight="1.3">
                         {tokenBalance.toFixed(6)} {token.symbol}
                       </Text>
                     </VStack>

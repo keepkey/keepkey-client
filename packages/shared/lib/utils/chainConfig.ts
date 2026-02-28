@@ -106,3 +106,35 @@ export function getChainEnumValue(chainStr: string): string | undefined {
 
 // ---- caipToNetworkId ----
 export const caipToNetworkId = (caip: string): string => caip.split('/')[0];
+
+// ---- caipToIcon ----
+// Derive the keepkey.info icon URL from a CAIP identifier (matches vault v11 convention)
+export const caipToIcon = (caip: string): string =>
+  `https://api.keepkey.info/coins/${btoa(caip).replace(/=+$/, '')}.png`;
+
+// ---- networkIdToIcon ----
+// Derive icon URL from a networkId + slip44 convention (for EVM chains that share slip44:60)
+const NETWORK_SLIP44: Record<string, string> = {
+  'eip155:': 'slip44:60',
+  'bip122:000000000019d6689c085ae165831e93': 'slip44:0',
+  'bip122:000000000000000000651ef99cb9fcbe': 'slip44:145',
+  'bip122:00000000001a91e3dace36e2be3bf030': 'slip44:3',
+  'bip122:000007d91d1254d60e2dd1ae58038307': 'slip44:5',
+  'bip122:12a765e31ffd4059bada1e25190f6e98': 'slip44:2',
+  'cosmos:cosmoshub-4': 'slip44:118',
+  'cosmos:thorchain-mainnet-v1': 'slip44:931',
+  'cosmos:mayachain-mainnet-v1': 'slip44:931',
+  'cosmos:osmosis-1': 'slip44:118',
+  'ripple:4109c6f2045fc7eff4cde8f9905d19c2': 'slip44:144',
+  'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp': 'solana:So11111111111111111111111111111111111111112',
+};
+
+export function networkIdToIcon(networkId: string): string {
+  // Try exact match first
+  const slip44 = NETWORK_SLIP44[networkId];
+  if (slip44) return caipToIcon(`${networkId}/${slip44}`);
+  // Fallback: try prefix match (eip155: chains all use slip44:60)
+  if (networkId.startsWith('eip155:')) return caipToIcon(`${networkId}/slip44:60`);
+  // Last resort: encode just the networkId
+  return caipToIcon(networkId);
+}

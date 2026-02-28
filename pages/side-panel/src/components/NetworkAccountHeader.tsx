@@ -36,7 +36,7 @@ import {
   AddIcon,
   SmallCloseIcon,
 } from '@chakra-ui/icons';
-import { NetworkIdToChain, COIN_MAP_LONG } from '@extension/shared';
+import { NetworkIdToChain, COIN_MAP_LONG, ChainToNetworkId, networkIdToIcon, caipToIcon } from '@extension/shared';
 
 const stateNames: Record<number, string> = {
   0: 'unknown',
@@ -115,6 +115,7 @@ interface NetworkAccountHeaderProps {
   isRefreshing: boolean;
   onSettingsOpen: () => void;
   onRefresh: () => void;
+  onSelectNetwork?: (asset: any) => void;
 }
 
 function formatAddress(address: string): string {
@@ -123,12 +124,12 @@ function formatAddress(address: string): string {
   return `${address.slice(0, 8)}...${address.slice(-6)}`;
 }
 
-function getIconUrl(chainSymbol: string): string {
-  const longName = COIN_MAP_LONG[chainSymbol];
-  if (longName) {
-    return `https://pioneers.dev/coins/${longName}.png`;
-  }
-  return `https://pioneers.dev/coins/${chainSymbol.toLowerCase()}.png`;
+function getIconUrl(chainSymbol: string, networkId?: string): string {
+  // Use the canonical CAIP-based icon URL (matches vault v11 convention)
+  if (networkId) return networkIdToIcon(networkId);
+  const nid = (ChainToNetworkId as Record<string, string>)[chainSymbol];
+  if (nid) return networkIdToIcon(nid);
+  return `https://api.keepkey.info/coins/${btoa(chainSymbol.toLowerCase())}.png`;
 }
 
 interface CustomEvmNetwork {
@@ -176,7 +177,7 @@ function buildNetworkRows(pubkeys: any[], customEvmNetworks: CustomEvmNetwork[])
           key: rowKey,
           networkId,
           name,
-          icon: getIconUrl('BTC'),
+          icon: getIconUrl('BTC', networkId),
           address,
           pubkey: pk,
         });
@@ -194,7 +195,7 @@ function buildNetworkRows(pubkeys: any[], customEvmNetworks: CustomEvmNetwork[])
           key: rowKey,
           networkId,
           name: accountIndex > 0 ? `${name} (Account ${accountIndex})` : name,
-          icon: getIconUrl(evmInfo?.symbol || chainSymbol || 'ETH'),
+          icon: getIconUrl(evmInfo?.symbol || chainSymbol || 'ETH', networkId),
           address,
           pubkey: pk,
           accountIndex,
@@ -208,7 +209,7 @@ function buildNetworkRows(pubkeys: any[], customEvmNetworks: CustomEvmNetwork[])
           key: networkId,
           networkId,
           name,
-          icon: getIconUrl(chainSymbol || ''),
+          icon: getIconUrl(chainSymbol || '', networkId),
           address,
           pubkey: pk,
         });
@@ -231,7 +232,7 @@ function buildNetworkRows(pubkeys: any[], customEvmNetworks: CustomEvmNetwork[])
         key: rowKey,
         networkId,
         name: info.name,
-        icon: getIconUrl(info.symbol),
+        icon: getIconUrl(info.symbol, networkId),
         address,
         pubkey: primaryPk,
         accountIndex: 0,
@@ -248,7 +249,7 @@ function buildNetworkRows(pubkeys: any[], customEvmNetworks: CustomEvmNetwork[])
         key: rowKey,
         networkId: custom.networkId,
         name: custom.name,
-        icon: getIconUrl(custom.symbol),
+        icon: getIconUrl(custom.symbol, custom.networkId),
         address,
         pubkey: primaryPk,
         accountIndex: 0,
@@ -270,6 +271,7 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
   isRefreshing,
   onSettingsOpen,
   onRefresh,
+  onSelectNetwork,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [networkRows, setNetworkRows] = useState<NetworkRow[]>([]);
@@ -369,18 +371,22 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
 
   const handleRowClick = (row: NetworkRow) => {
     const chainSymbol = NetworkIdToChain[row.networkId];
-    chrome.runtime.sendMessage({
-      type: 'SET_ASSET_CONTEXT',
-      asset: {
-        networkId: row.networkId,
-        caip: row.networkId,
-        name: row.name,
-        symbol: chainSymbol || row.name,
-      },
-    });
+    const asset = {
+      networkId: row.networkId,
+      caip: row.networkId,
+      name: row.name,
+      symbol: chainSymbol || row.name,
+      icon: row.icon,
+      address: row.address,
+      pubkeys: row.pubkey ? [row.pubkey] : [],
+    };
+    chrome.runtime.sendMessage({ type: 'SET_ASSET_CONTEXT', asset });
     setSelectedRow(row);
     setActiveFamily(getChainFamily(row.networkId));
     setIsExpanded(false);
+    if (onSelectNetwork) {
+      onSelectNetwork(asset);
+    }
   };
 
   const handleBackToAll = () => {
@@ -592,7 +598,11 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
             bg="whiteAlpha.100"
             _hover={{ bg: 'whiteAlpha.200' }}
             transition="background 0.15s">
-            <Avatar size="xs" src={selectedRow ? selectedRow.icon : 'https://pioneers.dev/coins/keepkey.png'} mr={2} />
+            <Avatar
+              size="xs"
+              src={selectedRow ? selectedRow.icon : 'https://api.keepkey.info/coins/keepkey.png'}
+              mr={2}
+            />
             <Box minW={0} flex={1} textAlign="center">
               <Text fontSize="sm" fontWeight="semibold" color="white" isTruncated>
                 {selectedRow ? selectedRow.name : 'All Networks'}
@@ -607,7 +617,7 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
           </Flex>
         ) : (
           <Flex flex={1} alignItems="center" justifyContent="center">
-            <Avatar size="xs" src="https://pioneers.dev/coins/keepkey.png" mr={2} />
+            <Avatar size="xs" src="https://api.keepkey.info/coins/keepkey.png" mr={2} />
             <Text fontSize="sm" fontWeight="semibold" color="white">
               KeepKey
             </Text>

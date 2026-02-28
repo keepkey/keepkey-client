@@ -41,7 +41,7 @@ export async function init(): Promise<WalletState> {
       apiKey: savedApiKey,
       baseUrl: 'http://localhost:1646',
       serviceName: 'KeepKey Browser Extension',
-      serviceImageUrl: 'https://pioneers.dev/coins/keepkey.png',
+      serviceImageUrl: 'https://api.keepkey.info/coins/keepkey.png',
     });
 
     state.sdk = sdk;

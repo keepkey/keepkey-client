@@ -149,8 +149,8 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
       console.log(`[fetchBalances] Sending ${pioneerPubkeys.length} pubkeys to Pioneer API`);
       console.log(`[fetchBalances] Sample pubkeys:`, pioneerPubkeys.slice(0, 3));
 
-      // Use /api/v1/charts endpoint — no auth required, returns balances + tokens
-      const baseUrl = forceRefresh ? `${PIONEER_API}/api/v1/charts?forceRefresh=true` : `${PIONEER_API}/api/v1/charts`;
+      // Use /api/v1/charts/portfolio endpoint — blocking, includes Zapper/Unchained token fetch
+      const portfolioUrl = `${PIONEER_API}/api/v1/charts/portfolio`;
 
       // Split into address-based (EVM, Cosmos, etc.) and xpub-based (UTXO) batches
       // to prevent a bad xpub from poisoning the entire request
@@ -164,10 +164,10 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
       const fetchBatch = async (batch: typeof pioneerPubkeys, label: string) => {
         if (batch.length === 0) return { balances: [] as any[], tokens: [] as any[] };
         try {
-          const response = await fetch(baseUrl, {
+          const response = await fetch(portfolioUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pubkeys: batch }),
+            body: JSON.stringify({ pubkeys: batch, forceRefresh }),
           });
           if (!response.ok) {
             console.warn(`[fetchBalances] ${label} batch returned ${response.status}`);
@@ -211,26 +211,39 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
           balance: String(b.balance ?? '0'),
           valueUsd: String(b.valueUsd ?? '0'),
           priceUsd: String(b.priceUsd ?? '0'),
+          icon: b.icon || (caip ? `https://api.keepkey.info/coins/${btoa(caip).replace(/=+$/, '')}.png` : ''),
           isNative: true,
           address: b.address || b.pubkey || '',
         };
       });
 
       // Add token balances (ERC-20s etc.)
+      // /charts/portfolio returns tokens in nested format:
+      //   { assetCaip, networkId, pubkey, token: { symbol, name, balance, price, balanceUSD, icon, decimal } }
+      // OR flat format from /charts: { caip, symbol, balance, ... }
       for (const t of rawTokens) {
-        const caip = t.caip || '';
+        const isNested = t.token && typeof t.token === 'object';
+        const tok = isNested ? t.token : t;
+        const caip = t.assetCaip || t.caip || '';
         const networkId = t.networkId || caip.split('/')[0] || '';
+        const contractMatch = caip.match(/\/erc20:(0x[a-fA-F0-9]+)/);
         balances.push({
           networkId,
           caip,
-          symbol: t.symbol || '',
-          name: t.name || t.symbol || '',
-          balance: String(t.balance ?? '0'),
-          valueUsd: String(t.valueUsd ?? '0'),
-          priceUsd: String(t.priceUsd ?? '0'),
+          symbol: tok.symbol || tok.ticker || '',
+          name: tok.name || tok.symbol || '',
+          balance: String(tok.balance ?? '0'),
+          valueUsd: String(isNested ? (tok.balanceUSD ?? '0') : (tok.valueUsd ?? '0')),
+          priceUsd: String(isNested ? (tok.price ?? '0') : (tok.priceUsd ?? '0')),
+          icon:
+            tok.icon ||
+            tok.image ||
+            (caip ? `https://api.keepkey.info/coins/${btoa(caip).replace(/=+$/, '')}.png` : ''),
+          decimals: tok.decimal || tok.decimals,
           isNative: false,
-          address: t.address || t.pubkey || '',
-          contractAddress: t.contractAddress || t.contract || '',
+          token: true,
+          address: t.pubkey || t.address || '',
+          contractAddress: contractMatch ? contractMatch[1] : tok.contractAddress || tok.contract || '',
         });
       }
 
