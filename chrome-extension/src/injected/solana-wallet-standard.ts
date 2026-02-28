@@ -45,7 +45,7 @@ interface WalletAccount {
   features: readonly string[];
 }
 
-type ChangeListener = (props: { accounts: readonly WalletAccount[] }) => void;
+type ChangeListener = (props: { accounts?: readonly WalletAccount[]; features?: Record<string, unknown> }) => void;
 
 // ---------- Wallet class ----------
 
@@ -58,6 +58,7 @@ export class KeepKeySolanaWallet {
   ) => void;
 
   #accounts: WalletAccount[] = [];
+  #cachedAddress: string | null = null;
   readonly #listeners = new Set<ChangeListener>();
 
   // Wallet Standard required fields
@@ -68,6 +69,12 @@ export class KeepKeySolanaWallet {
 
   readonly chains = ['solana:mainnet'] as const;
 
+  static readonly ACCOUNT_FEATURES = [
+    'solana:signTransaction',
+    'solana:signAndSendTransaction',
+    'solana:signMessage',
+  ] as const;
+
   get accounts(): readonly WalletAccount[] {
     return this.#accounts;
   }
@@ -76,18 +83,15 @@ export class KeepKeySolanaWallet {
     'standard:connect': {
       version: '1.0.0' as const,
       connect: async () => {
-        const address = await this.#rpc('solana_connect', []);
+        // If already connected, just return
+        if (this.#accounts.length > 0) {
+          return { accounts: this.#accounts };
+        }
+        // Use cached address (from silent connect or localStorage) for instant response,
+        // otherwise fetch from vault
+        const address = this.#cachedAddress || (await this.#rpc('solana_connect', []));
         if (address) {
-          const publicKey = base58Decode(address);
-          this.#accounts = [
-            {
-              address,
-              publicKey,
-              chains: ['solana:mainnet'] as readonly string[],
-              features: ['solana:signTransaction', 'solana:signMessage'] as readonly string[],
-            },
-          ];
-          this.#emit();
+          this.#setConnected(address);
         }
         return { accounts: this.#accounts };
       },
@@ -98,7 +102,12 @@ export class KeepKeySolanaWallet {
       disconnect: async () => {
         await this.#rpc('solana_disconnect', []).catch(() => {});
         this.#accounts = [];
-        this.#emit();
+        try {
+          localStorage.removeItem('keepkey-solana');
+        } catch {
+          /* ignore */
+        }
+        this.#emitChange();
       },
     },
 
@@ -143,6 +152,24 @@ export class KeepKeySolanaWallet {
         return outputs;
       },
     },
+
+    'solana:signAndSendTransaction': {
+      version: '1.0.0' as const,
+      supportedTransactionVersions: new Set(['legacy', 0] as const),
+      signAndSendTransaction: async (
+        ...inputs: { transaction: Uint8Array; account: WalletAccount; chain?: string; options?: any }[]
+      ) => {
+        const outputs: { signature: Uint8Array }[] = [];
+        for (const { transaction } of inputs) {
+          const txSig: string = await this.#rpc('solana_signAndSendTransaction', [Array.from(transaction)]);
+          // txSig is a base58 transaction signature string — decode to bytes
+          outputs.push({
+            signature: base58Decode(txSig),
+          });
+        }
+        return outputs;
+      },
+    },
   };
 
   constructor(
@@ -154,15 +181,70 @@ export class KeepKeySolanaWallet {
     ) => void,
   ) {
     this.#walletRequest = walletRequest;
+
+    // Restore cached address from previous session for instant connect
+    try {
+      const cached = localStorage.getItem('keepkey-solana');
+      if (cached) {
+        const { address } = JSON.parse(cached);
+        if (address && typeof address === 'string') {
+          this.#cachedAddress = address;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+
+    // Silent connect: pre-fetch address from vault (no popup needed).
+    // Only caches the address — does NOT set accounts (adapter needs to
+    // go through its own connect() flow for proper React event emission).
+    this.#silentConnect();
   }
 
   // ---------- Internal helpers ----------
 
-  #emit() {
+  #makeAccount(address: string): WalletAccount {
+    return {
+      address,
+      publicKey: base58Decode(address),
+      chains: ['solana:mainnet'] as readonly string[],
+      features: [...KeepKeySolanaWallet.ACCOUNT_FEATURES] as readonly string[],
+    };
+  }
+
+  #setConnected(address: string) {
+    this.#accounts = [this.#makeAccount(address)];
+    try {
+      localStorage.setItem('keepkey-solana', JSON.stringify({ address }));
+    } catch {
+      /* ignore */
+    }
+    this.#emitChange();
+  }
+
+  async #silentConnect() {
+    try {
+      const address: string = await this.#rpc('solana_connect', []);
+      if (address && typeof address === 'string') {
+        this.#cachedAddress = address;
+        try {
+          localStorage.setItem('keepkey-solana', JSON.stringify({ address }));
+        } catch {
+          /* ignore */
+        }
+      }
+    } catch {
+      // Vault not ready or device not connected — ignore.
+      // User can manually connect later via standard:connect.
+    }
+  }
+
+  #emitChange() {
     const accounts = this.#accounts;
+    const features = this.features;
     this.#listeners.forEach(fn => {
       try {
-        fn({ accounts });
+        fn({ accounts, features });
       } catch {
         // swallow listener errors
       }

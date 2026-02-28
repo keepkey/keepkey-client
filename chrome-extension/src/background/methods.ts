@@ -212,45 +212,45 @@ export const handleWalletRequest = async (
         break;
       }
       case 'bitcoincash': {
-        return await handleBitcoinCashRequest(method, params, requestInfo, ADDRESS, _KEEPKEY_WALLET, requireApproval);
+        return await handleBitcoinCashRequest(method, params, requestInfo, ADDRESS, __KEEPKEY_WALLET, requireApproval);
         break;
       }
       case 'dogecoin': {
         console.log(tag, 'checkpoint handle doge');
-        return await handleDogecoinRequest(method, params, requestInfo, ADDRESS, _KEEPKEY_WALLET, requireApproval);
+        return await handleDogecoinRequest(method, params, requestInfo, ADDRESS, __KEEPKEY_WALLET, requireApproval);
         break;
       }
       case 'litecoin': {
         console.log(tag, 'checkpoint handle litecoin');
-        return await handleLitecoinRequest(method, params, requestInfo, ADDRESS, _KEEPKEY_WALLET, requireApproval);
+        return await handleLitecoinRequest(method, params, requestInfo, ADDRESS, __KEEPKEY_WALLET, requireApproval);
         break;
       }
       case 'dash': {
-        return await handleDashRequest(method, params, requestInfo, ADDRESS, _KEEPKEY_WALLET, requireApproval);
+        return await handleDashRequest(method, params, requestInfo, ADDRESS, __KEEPKEY_WALLET, requireApproval);
         break;
       }
       case 'thorchain': {
-        return await handleThorchainRequest(method, params, requestInfo, ADDRESS, _KEEPKEY_WALLET, requireApproval);
+        return await handleThorchainRequest(method, params, requestInfo, ADDRESS, __KEEPKEY_WALLET, requireApproval);
         break;
       }
       case 'osmosis': {
-        return await handleOsmosisRequest(method, params, requestInfo, ADDRESS, _KEEPKEY_WALLET, requireApproval);
+        return await handleOsmosisRequest(method, params, requestInfo, ADDRESS, __KEEPKEY_WALLET, requireApproval);
         break;
       }
       case 'cosmos': {
-        return await handleCosmosRequest(method, params, requestInfo, ADDRESS, _KEEPKEY_WALLET, requireApproval);
+        return await handleCosmosRequest(method, params, requestInfo, ADDRESS, __KEEPKEY_WALLET, requireApproval);
         break;
       }
       case 'ripple': {
-        return await handleRippleRequest(method, params, requestInfo, ADDRESS, _KEEPKEY_WALLET, requireApproval);
+        return await handleRippleRequest(method, params, requestInfo, ADDRESS, __KEEPKEY_WALLET, requireApproval);
         break;
       }
       case 'mayachain': {
-        return await handleMayaRequest(method, params, requestInfo, ADDRESS, _KEEPKEY_WALLET, requireApproval);
+        return await handleMayaRequest(method, params, requestInfo, ADDRESS, __KEEPKEY_WALLET, requireApproval);
         break;
       }
       case 'solana': {
-        return await handleSolanaRequest(method, params, requestInfo, ADDRESS, _KEEPKEY_WALLET, requireApproval);
+        return await handleSolanaRequest(method, params, requestInfo, ADDRESS, __KEEPKEY_WALLET, requireApproval);
         break;
       }
       default: {
