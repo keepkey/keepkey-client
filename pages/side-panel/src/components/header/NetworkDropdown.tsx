@@ -1,6 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { Flex, Text, Box, Avatar, Icon, Collapse, IconButton, Badge } from '@chakra-ui/react';
-import { ChevronDownIcon, ChevronUpIcon, ChevronLeftIcon, AddIcon, SmallCloseIcon } from '@chakra-ui/icons';
+import {
+  ChevronDownIcon,
+  ChevronUpIcon,
+  ChevronLeftIcon,
+  AddIcon,
+  SmallCloseIcon,
+  ExternalLinkIcon,
+} from '@chakra-ui/icons';
 import type { ChainFamily, NetworkItem } from './headerTypes';
 import { CHAIN_FAMILY_LABELS } from './headerConstants';
 import { getChainFamily } from './headerUtils';
@@ -192,7 +199,7 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
             </Text>
           )}
 
-          {/* Add Network */}
+          {/* Browse Chainlist.org */}
           <Flex
             alignItems="center"
             justifyContent="center"
@@ -202,14 +209,33 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
             _hover={{ bg: 'whiteAlpha.100' }}
             onClick={e => {
               e.stopPropagation();
-              onAddNetwork();
+              window.open('https://chainlist.org/', '_blank');
               setIsExpanded(false);
             }}
             borderTop="1px solid"
             borderColor="whiteAlpha.100">
-            <Icon as={AddIcon} boxSize={3} color="blue.300" mr={2} />
+            <Icon as={ExternalLinkIcon} boxSize={3} color="blue.300" mr={2} />
             <Text fontSize="xs" color="blue.300" fontWeight="medium">
-              Add Network
+              Browse Chainlist.org
+            </Text>
+          </Flex>
+
+          {/* Add Custom Network */}
+          <Flex
+            alignItems="center"
+            justifyContent="center"
+            px={3}
+            py={1.5}
+            cursor="pointer"
+            _hover={{ bg: 'whiteAlpha.100' }}
+            onClick={e => {
+              e.stopPropagation();
+              onAddNetwork();
+              setIsExpanded(false);
+            }}>
+            <Icon as={AddIcon} boxSize={3} color="whiteAlpha.500" mr={2} />
+            <Text fontSize="xs" color="whiteAlpha.500" fontWeight="medium">
+              Add Custom Network
             </Text>
           </Flex>
         </Box>

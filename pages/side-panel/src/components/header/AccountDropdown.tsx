@@ -44,51 +44,61 @@ const AccountDropdown: React.FC<AccountDropdownProps> = ({
     setIsExpanded(false);
   };
 
-  // Single account — no dropdown needed, just show address with copy
-  if (accounts.length <= 1 && !canAddAccount) {
-    return (
-      <Flex alignItems="center" px={2} py={1} minW={0}>
-        <Text fontSize="xs" fontFamily="mono" color="whiteAlpha.600" isTruncated maxW="100px">
-          {selected ? formatAddress(selected.address) : ''}
-        </Text>
-        {selected?.address && (
+  const hasMultiple = accounts.length > 1 || canAddAccount;
+
+  return (
+    <Box position="relative">
+      {/* Trigger — always interactive */}
+      <Flex
+        alignItems="center"
+        cursor={hasMultiple ? 'pointer' : 'default'}
+        onClick={() => hasMultiple && setIsExpanded(prev => !prev)}
+        px={2}
+        py={1}
+        borderRadius="md"
+        bg="whiteAlpha.50"
+        _hover={hasMultiple ? { bg: 'whiteAlpha.150' } : {}}
+        transition="background 0.15s"
+        minW={0}>
+        <Box minW={0} flex={1}>
+          {hasMultiple && (
+            <Text fontSize="xs" color="whiteAlpha.800" isTruncated maxW="80px">
+              {selected?.label || 'Account'}
+            </Text>
+          )}
+          <Text
+            fontSize="xs"
+            fontFamily="mono"
+            color="whiteAlpha.500"
+            isTruncated
+            maxW="100px"
+            cursor="pointer"
+            _hover={{ color: 'whiteAlpha.800' }}
+            onClick={e => {
+              e.stopPropagation();
+              if (selected?.address) handleCopy(selected.address, selected.key);
+            }}
+            title={selected?.address || ''}>
+            {selected ? formatAddress(selected.address) : ''}
+          </Text>
+        </Box>
+        {!hasMultiple && selected?.address && (
           <IconButton
             icon={copiedKey === selected.key ? <CheckIcon /> : <CopyIcon />}
             aria-label="Copy address"
             size="xs"
             variant="ghost"
             colorScheme={copiedKey === selected.key ? 'green' : 'gray'}
-            onClick={() => handleCopy(selected.address, selected.key)}
+            onClick={e => {
+              e.stopPropagation();
+              handleCopy(selected.address, selected.key);
+            }}
             ml={1}
           />
         )}
-      </Flex>
-    );
-  }
-
-  return (
-    <Box position="relative">
-      {/* Trigger */}
-      <Flex
-        alignItems="center"
-        cursor="pointer"
-        onClick={() => setIsExpanded(prev => !prev)}
-        px={2}
-        py={1}
-        borderRadius="md"
-        bg="whiteAlpha.50"
-        _hover={{ bg: 'whiteAlpha.150' }}
-        transition="background 0.15s"
-        minW={0}>
-        <Box minW={0} flex={1}>
-          <Text fontSize="xs" color="whiteAlpha.800" isTruncated maxW="80px">
-            {selected?.label || 'Account'}
-          </Text>
-          <Text fontSize="xs" fontFamily="mono" color="whiteAlpha.500" isTruncated maxW="80px">
-            {selected ? formatAddress(selected.address) : ''}
-          </Text>
-        </Box>
-        <Icon as={isExpanded ? ChevronUpIcon : ChevronDownIcon} boxSize={3} ml={1} color="whiteAlpha.700" />
+        {hasMultiple && (
+          <Icon as={isExpanded ? ChevronUpIcon : ChevronDownIcon} boxSize={3} ml={1} color="whiteAlpha.700" />
+        )}
       </Flex>
 
       {/* Dropdown panel */}

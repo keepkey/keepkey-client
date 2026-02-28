@@ -215,18 +215,35 @@ const SidePanel = () => {
         return <Balances onSelectAsset={handleAssetSelect} />;
       default:
         return (
-          <Flex direction="column" justifyContent="center" alignItems="center" height="100%">
-            <Text fontSize="2xl" fontWeight="bold" textAlign="center" mb={4}>
-              Welcome to the KeepKey Browser Extension
+          <Flex direction="column" justifyContent="center" alignItems="center" height="100%" minH="300px">
+            <Box mb={4} borderRadius="2xl" overflow="hidden" boxShadow="0 0 40px rgba(0, 200, 150, 0.15)">
+              <img
+                src="https://i.ibb.co/jR8WcJM/kk.gif"
+                alt="KeepKey"
+                style={{ maxWidth: '160px', borderRadius: '16px' }}
+              />
+            </Box>
+            <Text fontSize="xl" fontWeight="bold" textAlign="center" mb={1} color="white">
+              Welcome to KeepKey
+            </Text>
+            <Text fontSize="sm" color="whiteAlpha.600" mb={5} textAlign="center">
+              Your hardware wallet, in the browser
             </Text>
             <Button
               colorScheme="green"
               size="lg"
               onClick={refreshBalances}
               isLoading={isRefreshing}
-              disabled={isRefreshing}>
-              {isRefreshing ? <Spinner size="md" color="white" /> : 'Begin'}
+              disabled={isRefreshing}
+              px={8}
+              borderRadius="xl"
+              _hover={{ transform: 'scale(1.02)' }}
+              transition="all 0.2s">
+              {isRefreshing ? <Spinner size="md" color="white" /> : 'Get Started'}
             </Button>
+            <Box mt={6} opacity={0.25}>
+              <img src="/logo_vertical.svg" alt="KeepKey" style={{ maxWidth: '80px' }} />
+            </Box>
           </Flex>
         );
     }
@@ -235,7 +252,7 @@ const SidePanel = () => {
   return (
     <Flex direction="column" width="100%" height="100vh">
       {/* Sticky header — floats above drawers */}
-      <Box position="sticky" top={0} zIndex={1500} bg="gray.900" px={4} pt={4} pb={1} h={HEADER_HEIGHT} flexShrink={0}>
+      <Box position="sticky" top={0} zIndex={1500} bg="gray.900" px={4} pt={4} pb={1} flexShrink={0} overflow="visible">
         <NetworkAccountHeader
           keepkeyState={keepkeyState}
           isRefreshing={isRefreshing}
@@ -282,9 +299,7 @@ const SidePanel = () => {
         )}
 
         {/* Main content */}
-        <Box flex={1} overflowY="auto">
-          {renderContent()}
-        </Box>
+        <Box flex={1}>{renderContent()}</Box>
       </Flex>
 
       {/* Asset Detail Drawer */}
