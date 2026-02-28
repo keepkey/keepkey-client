@@ -72,7 +72,7 @@ const Balances = ({ setShowBack }: any) => {
         const blockchain = {
           networkId: networkId,
           name: chainName,
-          image: `https://api.keepkey.info/coins/${chainName}.png`,
+          image: `https://api.keepkey.info/coins/${btoa(networkId + '/slip44:60').replace(/=+$/, '')}.png`,
           isEnabled: true,
         };
 
@@ -86,7 +86,8 @@ const Balances = ({ setShowBack }: any) => {
             if (assetData && assetData.name) {
               blockchain.name = assetData.name;
               blockchain.image =
-                assetData.image || `https://api.keepkey.info/coins/${assetData.name.toLowerCase()}.png`;
+                assetData.image ||
+                `https://api.keepkey.info/coins/${btoa(networkId + '/slip44:60').replace(/=+$/, '')}.png`;
             }
           } catch (error) {
             console.error(`Error fetching asset data for networkId ${networkId}:`, error);

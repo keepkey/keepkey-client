@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   VStack,
-  Avatar,
   Box,
-  Stack,
   Flex,
   Text,
   Button,
@@ -11,38 +9,20 @@ import {
   Badge,
   Card,
   CardBody,
-  Tabs,
-  TabList,
-  Tab,
-  TabPanels,
-  TabPanel,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalFooter,
-  ModalBody,
-  ModalCloseButton,
-  Input,
   HStack,
   Image,
   Skeleton,
   SkeletonCircle,
-  Table,
-  Thead,
-  Tbody,
-  Tr,
-  Th,
-  Td,
-  TableContainer,
 } from '@chakra-ui/react';
 import { FaCoins } from 'react-icons/fa';
 import { Transfer } from './Transfer';
 import { Receive } from './Receive';
-import AppStore from './AppStore';
-import TransactionHistoryModal from './TransactionHistoryModal';
-import Tokens from './Tokens';
-import { COIN_MAP_LONG } from '@extension/shared';
+
+// TODO: Re-enable when stabilized:
+// import AppStore from './AppStore';              // Dapps tab
+// import TransactionHistoryModal from './TransactionHistoryModal'; // History modal
+// import Tokens from './Tokens';                  // Tokens tab
+// import { COIN_MAP_LONG } from '@extension/shared'; // Used by DataTable / cancel TX
 
 interface Pubkey {
   note: string;
@@ -53,7 +33,7 @@ interface Pubkey {
   networks: string[];
 }
 
-// Icon component with fallback for broken/empty images (reused from Tokens.tsx)
+// Icon component with fallback for broken/empty images
 const IconWithFallback = ({ src, alt, boxSize }: { src: string | null; alt: string; boxSize: string }) => {
   const [error, setError] = useState(false);
 
@@ -120,63 +100,8 @@ const IconWithFallback = ({ src, alt, boxSize }: { src: string | null; alt: stri
   );
 };
 
-// Component to render data as a formatted table
-const DataTable = ({ data, title }: { data: any; title?: string }) => {
-  const renderValue = (value: any): string => {
-    if (value === null || value === undefined) return 'N/A';
-    if (typeof value === 'boolean') return value ? 'Yes' : 'No';
-    if (Array.isArray(value)) return value.join(', ');
-    if (typeof value === 'object') return JSON.stringify(value);
-    return String(value);
-  };
-
-  const entries = Object.entries(data || {}).filter(([key, value]) => {
-    // Filter out complex nested objects for cleaner display
-    return typeof value !== 'object' || value === null || Array.isArray(value);
-  });
-
-  if (entries.length === 0) return null;
-
-  return (
-    <TableContainer
-      bg="rgba(0, 0, 0, 0.3)"
-      borderRadius="md"
-      border="1px solid"
-      borderColor="whiteAlpha.200"
-      maxH="500px"
-      overflowY="auto">
-      <Table size="sm" variant="simple">
-        <Thead position="sticky" top={0} bg="rgba(0, 0, 0, 0.5)" zIndex={1}>
-          <Tr>
-            <Th color="whiteAlpha.700" borderColor="whiteAlpha.200">
-              Property
-            </Th>
-            <Th color="whiteAlpha.700" borderColor="whiteAlpha.200">
-              Value
-            </Th>
-          </Tr>
-        </Thead>
-        <Tbody>
-          {entries.map(([key, value]) => (
-            <Tr key={key} _hover={{ bg: 'whiteAlpha.50' }}>
-              <Td color="blue.300" fontWeight="semibold" borderColor="whiteAlpha.200" fontFamily="mono" fontSize="xs">
-                {key}
-              </Td>
-              <Td
-                color="whiteAlpha.900"
-                borderColor="whiteAlpha.200"
-                fontFamily="mono"
-                fontSize="xs"
-                wordBreak="break-all">
-                {renderValue(value)}
-              </Td>
-            </Tr>
-          ))}
-        </Tbody>
-      </Table>
-    </TableContainer>
-  );
-};
+// TODO: Re-enable DataTable when Advanced Data tab is restored
+// const DataTable = ({ data, title }: { data: any; title?: string }) => { ... };
 
 export function Asset() {
   const [activeTab, setActiveTab] = useState<'send' | 'receive' | null>(null);
@@ -184,29 +109,13 @@ export function Asset() {
   const [balances, setBalances] = useState<any[]>([]);
   const [pubkeys, setPubkeys] = useState<Pubkey[]>([]);
   const [asset, setAsset] = useState<any>(null);
-  const [isEvm, setIsEvm] = useState<boolean>(false);
-  const [assetType, setAssetType] = useState<string>(''); // EVM TENDERMINT UTXO OTHER
-  const [showHistoryButton, setShowHistoryButton] = useState<boolean>(false);
-  const [showAllPubkeys, setShowAllPubkeys] = useState(false);
   const [isToken, setIsToken] = useState<boolean>(false);
   const [tokenMetadata, setTokenMetadata] = useState<any>(null);
 
-  // Modal state
-  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
-  const [isReplaceTxModalOpen, setIsReplaceTxModalOpen] = useState(false);
-  const [nonce, setNonce] = useState('');
-  const [fee, setFee] = useState('');
-
-  const fetchTxHistory = (networkId: any) => {
-    console.log('GET_TX_HISTORY');
-    chrome.runtime.sendMessage({ type: 'GET_TX_HISTORY', networkId }, response => {
-      if (chrome.runtime.lastError) {
-        console.error('Error fetching transaction history:', chrome.runtime.lastError.message);
-        return;
-      }
-      console.log('Transaction history response:', response);
-    });
-  };
+  // TODO: Re-enable when tabs section is restored:
+  // const [isEvm, setIsEvm] = useState<boolean>(false);
+  // const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  // const [isReplaceTxModalOpen, setIsReplaceTxModalOpen] = useState(false);
 
   useEffect(() => {
     fetchAssetContext();
@@ -221,6 +130,7 @@ export function Asset() {
     };
 
     chrome.runtime.onMessage.addListener(messageListener);
+    return () => chrome.runtime.onMessage.removeListener(messageListener);
   }, []);
 
   useEffect(() => {
@@ -234,7 +144,6 @@ export function Asset() {
       setIsToken(isTokenAsset);
 
       if (isTokenAsset) {
-        // Extract token metadata from asset context
         const contractAddress = asset.contractAddress || asset.caip?.split(':')[2] || null;
         setTokenMetadata({
           contractAddress,
@@ -266,22 +175,9 @@ export function Asset() {
       }
       if (response && response.assets) {
         setAsset(response.assets);
-        console.log('assetContext: ', response.assets);
 
         if (response.assets.pubkeys) {
           setPubkeys(response.assets.pubkeys);
-        }
-
-        // Fetch transaction history in parallel (non-blocking)
-        if (response.assets.networkId?.includes('eip155')) {
-          fetchTxHistory(response.assets.networkId);
-        }
-
-        // Set isEvm state based on networkId containing 'evm'
-        if (response.assets?.networkId && response.assets?.networkId?.includes('eip155')) {
-          setIsEvm(true);
-        } else {
-          setIsEvm(false);
         }
       } else {
         setLoading(false);
@@ -301,7 +197,6 @@ export function Asset() {
     setLoading(true);
     const addressEth = assetLoaded.pubkeys?.[0]?.address || assetLoaded.address;
     if (!addressEth) {
-      // Fallback: fetch from background pubkeys for this network
       chrome.runtime.sendMessage({ type: 'GET_PUBKEYS_FOR_NETWORK', networkId: assetLoaded.networkId }, resp => {
         if (resp?.pubkeys?.[0]?.address) {
           assetLoaded.address = resp.pubkeys[0].address;
@@ -352,12 +247,10 @@ export function Asset() {
         return;
       }
       if (response && response.balances) {
-        // Filter by caip or networkId
         let filteredBalances = response.balances.filter(
           (balance: any) => balance.caip === assetLoaded?.caip || balance.networkId === assetLoaded?.networkId,
         );
 
-        //if balances > 1 then sum all balances
         if (filteredBalances.length > 1) {
           const totalBalance = filteredBalances.reduce(
             (acc: number, balance: any) => acc + Number(balance.balance || 0),
@@ -381,78 +274,6 @@ export function Asset() {
     return balance.toFixed(4);
   };
 
-  const openUrl = (pubkey: Pubkey) => {
-    console.log('asset:  ', asset);
-    console.log('pubkey:  ', pubkey);
-    if (asset.explorerXpubLink) {
-      console.log('xpub detected!');
-      //use this
-      const url = `${asset.explorerXpubLink}${pubkey.pubkey}`;
-      window.open(url, '_blank');
-    } else {
-      console.log('address detected!');
-      //use this
-      const url = `${asset.explorerAddressLink}${pubkey.address || pubkey.pubkey}`;
-      window.open(url, '_blank');
-    }
-  };
-
-  const filteredPubkeys = asset?.networkId
-    ? pubkeys.filter((pubkey: Pubkey) => {
-        if (asset.networkId.startsWith('eip155')) {
-          return pubkey.networks?.some((networkId: any) => networkId.startsWith('eip155'));
-        }
-        return pubkey?.networks?.includes(asset.networkId);
-      })
-    : [];
-
-  const handleReplaceTxClick = () => {
-    setIsReplaceTxModalOpen(true);
-  };
-
-  const handleSubmitCancelTx = () => {
-    // Build and submit the cancel transaction using nonce and fee
-    // Placeholder for actual implementation
-
-    /*
-      Send a 0 amount tx to yourself with a forced nonce and forced 40pct high fee
-     */
-
-    const sendPayload = {
-      amount: { amount: inputAmount, denom: assetContext?.symbol },
-      recipient,
-      memo,
-      isMax,
-    };
-
-    let chain: string | undefined;
-    if (assetContext?.networkId) {
-      chain = assetContext?.networkId?.includes('eip155')
-        ? 'ethereum'
-        : NetworkIdToChain[assetContext.networkId]?.toLowerCase();
-
-      if (chain && COIN_MAP_LONG[chain.toUpperCase()]) {
-        chain = COIN_MAP_LONG[chain.toUpperCase()].toLowerCase();
-      }
-
-      if (!chain) {
-        throw new Error(`Unsupported chain or network ID: ${assetContext.networkId}`);
-      }
-    } else {
-      throw new Error('Network ID is undefined');
-    }
-
-    const requestInfo = {
-      method: 'transfer',
-      params: [sendPayload],
-      chain,
-      siteUrl: 'KeepKey Browser Extension',
-    };
-
-    // Close the modal
-    setIsReplaceTxModalOpen(false);
-  };
-
   return (
     <Flex direction="column" minHeight="100vh" width="100%">
       <Card>
@@ -472,7 +293,6 @@ export function Asset() {
 
               {/* Skeleton Buttons */}
               <VStack spacing={2} width="100%">
-                <Skeleton height="40px" width="100%" borderRadius="md" />
                 <Skeleton height="40px" width="100%" borderRadius="md" />
                 <Skeleton height="40px" width="100%" borderRadius="md" />
               </VStack>
@@ -514,24 +334,6 @@ export function Asset() {
                     </Text>
                   )}
                 </Box>
-                {/*<Box>*/}
-                {/*  {balances.length > 0 ? (*/}
-                {/*    balances.map((balance: any, index: any) => (*/}
-                {/*      <Text key={index}>*/}
-                {/*        <Text as="span" fontSize="lg">*/}
-                {/*          {formatBalance(Number(balance.balance))}*/}
-                {/*        </Text>*/}
-                {/*        <Box ml={3} display="inline">*/}
-                {/*          <Badge ml={2} colorScheme="teal">*/}
-                {/*            ({balance.symbol || asset.symbol})*/}
-                {/*          </Badge>*/}
-                {/*        </Box>*/}
-                {/*      </Text>*/}
-                {/*    ))*/}
-                {/*  ) : (*/}
-                {/*    <Text>No balance available</Text>*/}
-                {/*  )}*/}
-                {/*</Box>*/}
               </Flex>
 
               <Flex direction="column" align="center" mb={4} width="100%">
@@ -555,10 +357,6 @@ export function Asset() {
                     )}
                   </HStack>
                 </Button>
-
-                <Button my={2} size="md" variant="outline" width="100%" onClick={() => setIsHistoryModalOpen(true)}>
-                  View History
-                </Button>
               </Flex>
             </>
           ) : activeTab === 'send' ? (
@@ -573,106 +371,14 @@ export function Asset() {
         </CardBody>
       </Card>
 
-      <TransactionHistoryModal
-        isOpen={isHistoryModalOpen}
-        onClose={() => setIsHistoryModalOpen(false)}
-        pubkeys={filteredPubkeys}
-        asset={asset}
-        openUrl={openUrl}
-      />
-
-      {/* Replace TX Modal */}
-      <Modal isOpen={isReplaceTxModalOpen} onClose={() => setIsReplaceTxModalOpen(false)}>
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Build Cancel TX</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
-            <VStack spacing={4}></VStack>
-          </ModalBody>
-          <ModalFooter>
-            <Button colorScheme="blue" mr={3} onClick={handleSubmitCancelTx}>
-              Submit
-            </Button>
-            <Button variant="ghost" onClick={() => setIsReplaceTxModalOpen(false)}>
-              Cancel
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
-
-      <Box mt={4}>
-        <Tabs variant="enclosed" mt={4} defaultIndex={0}>
-          <TabList>
-            <Tab>Tokens</Tab>
-            <Tab>Dapps</Tab>
-            {isEvm && <Tab>Recent</Tab>}
-            <Tab>Advanced Data</Tab>
-          </TabList>
-          <TabPanels>
-            <TabPanel>
-              <Tokens asset={asset} networkId={asset?.networkId} />
-            </TabPanel>
-            <TabPanel>
-              <AppStore networkId={asset?.networkId} />
-            </TabPanel>
-            {isEvm && (
-              <TabPanel>
-                <Text>EVM support</Text>
-                <Button my={2} size="md" variant="outline" width="100%" onClick={handleReplaceTxClick}>
-                  Build Cancel TX
-                </Button>
-                <Text mt={2}>Stuck TX? Build a cancel transaction.</Text>
-              </TabPanel>
-            )}
-            <TabPanel>
-              <VStack align="stretch" spacing={4}>
-                <Text fontSize="lg" fontWeight="bold">
-                  Asset Data for {asset?.caip}
-                </Text>
-                <DataTable data={asset} />
-
-                {/* Additional data sections */}
-                {balances && balances.length > 0 && (
-                  <>
-                    <Text fontSize="md" fontWeight="bold" mt={4}>
-                      Balance Data
-                    </Text>
-                    {balances.map((balance, index) => (
-                      <DataTable key={index} data={balance} />
-                    ))}
-                  </>
-                )}
-
-                {filteredPubkeys && filteredPubkeys.length > 0 && (
-                  <>
-                    <Text fontSize="md" fontWeight="bold" mt={4}>
-                      Pubkey Data
-                    </Text>
-                    {filteredPubkeys.map((pubkey, index) => (
-                      <Box key={index} mb={3}>
-                        <Text fontSize="xs" color="whiteAlpha.600" mb={2}>
-                          Pubkey {index + 1}
-                        </Text>
-                        <DataTable data={pubkey} />
-                      </Box>
-                    ))}
-                  </>
-                )}
-
-                {isToken && tokenMetadata && (
-                  <>
-                    <Text fontSize="md" fontWeight="bold" mt={4}>
-                      Token Metadata
-                    </Text>
-                    <DataTable data={tokenMetadata} />
-                  </>
-                )}
-              </VStack>
-            </TabPanel>
-          </TabPanels>
-        </Tabs>
-      </Box>
+      {/* TODO: Re-enable tabs section when features are stabilized:
+       * - Tokens tab: <Tokens asset={asset} networkId={asset?.networkId} />
+       * - Dapps tab: <AppStore networkId={asset?.networkId} />
+       * - Recent tab (EVM only): Cancel/replace stuck transactions
+       * - Advanced Data tab: DataTable showing raw asset/pubkey/balance data
+       * - TransactionHistoryModal: View transaction history per pubkey
+       * - Replace TX Modal: Build cancel transactions with custom nonce/fee
+       */}
     </Flex>
   );
 }

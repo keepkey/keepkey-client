@@ -662,7 +662,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                 networkId,
                 name: name.charAt(0).toUpperCase() + name.slice(1),
                 caip,
-                icon: `https://pioneers.dev/coins/${name}.png`,
+                icon: `https://api.keepkey.info/coins/${btoa(caip).replace(/=+$/, '')}.png`,
                 chain: symbol,
               };
             });
