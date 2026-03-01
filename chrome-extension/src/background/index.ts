@@ -944,6 +944,61 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           break;
         }
 
+        case 'GET_EVM_BALANCE': {
+          // Fetch fresh native balance for a specific address on any EVM chain via RPC
+          const { networkId: evmNetworkId, address: evmAddress } = message;
+          try {
+            if (!evmNetworkId?.startsWith('eip155:') || !evmAddress) {
+              sendResponse({ balance: '0', valueUsd: '0', error: 'Invalid params' });
+              break;
+            }
+
+            // Find RPC URL — try custom chains first, then static list
+            let rpcUrl: string | undefined;
+            let chainName = evmNetworkId;
+            let chainSymbol = 'ETH';
+
+            const customChain = await blockchainDataStorage.getBlockchainData(evmNetworkId);
+            if (customChain?.providerUrl) {
+              rpcUrl = customChain.providerUrl;
+              chainName = customChain.name || evmNetworkId;
+              chainSymbol = customChain.nativeCurrency?.symbol || customChain.symbol || 'ETH';
+            } else if (EIP155_CHAINS[evmNetworkId]) {
+              rpcUrl = EIP155_CHAINS[evmNetworkId].rpc;
+              chainName = EIP155_CHAINS[evmNetworkId].name;
+            }
+
+            if (!rpcUrl) {
+              sendResponse({ balance: '0', valueUsd: '0', error: 'No RPC for network' });
+              break;
+            }
+
+            const rpcProvider = new JsonRpcProvider(rpcUrl);
+            const rawBal = await Promise.race([
+              rpcProvider.getBalance(evmAddress),
+              new Promise<bigint>((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
+            ]);
+            const balStr = (Number(rawBal) / 1e18).toString();
+
+            // Try to get USD price from cached balances for this network
+            const nativeCached = cachedBalances.find((b: any) => b.networkId === evmNetworkId && b.isNative);
+            const priceUsd = parseFloat(nativeCached?.priceUsd || '0');
+            const valueUsd = (parseFloat(balStr) * priceUsd).toString();
+
+            sendResponse({
+              balance: balStr,
+              valueUsd,
+              priceUsd: priceUsd.toString(),
+              symbol: nativeCached?.symbol || chainSymbol,
+              name: nativeCached?.name || chainName,
+            });
+          } catch (error: any) {
+            console.error(tag, 'GET_EVM_BALANCE error:', error.message);
+            sendResponse({ balance: '0', valueUsd: '0', error: error.message });
+          }
+          break;
+        }
+
         case 'GET_CHARTS': {
           try {
             let balances = cachedBalances;

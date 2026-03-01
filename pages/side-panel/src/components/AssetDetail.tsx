@@ -36,44 +36,42 @@ const AssetDetail = ({ asset, balances, onSend, onReceive }: AssetDetailProps) =
   const [loadingAddress, setLoadingAddress] = useState(false);
   const [events, setEvents] = useState<any[]>([]);
   const [eventsLoading, setEventsLoading] = useState(true);
+  const [liveBalance, setLiveBalance] = useState<number | null>(null);
+  const [liveUsdValue, setLiveUsdValue] = useState<number | null>(null);
+  const [livePriceUsd, setLivePriceUsd] = useState<number | null>(null);
   const toast = useToast();
 
-  // Get balance for this asset, filtered by selected account address when available
-  const selectedAddress = asset.address?.toLowerCase() || '';
-  const chainBalances = balances.filter(b => {
-    if (b.networkId !== asset.networkId) return false;
-    // If we have a selected address and the balance has an address, filter to match
-    if (selectedAddress && b.address && b.address.toLowerCase() !== selectedAddress) return false;
-    return true;
-  });
-  const nativeBalances = chainBalances.filter(b => b.isNative === true || b.caip === asset.caip);
-  let totalBalance = 0;
-  if (nativeBalances.length > 0) {
-    totalBalance = nativeBalances.reduce((acc, b) => acc + parseFloat(b.balance || '0'), 0);
-  } else {
-    const bal = chainBalances.find(b => b.caip === asset.caip);
-    totalBalance = parseFloat(bal?.balance || '0');
-  }
-  const totalUsdValue = chainBalances.reduce((sum, b) => sum + parseFloat(b.valueUsd || '0'), 0);
+  const isEvm = asset.networkId?.startsWith('eip155:');
 
-  // Price per unit from native balance
-  const nativeBal = nativeBalances[0] || balances.find(b => b.caip === asset.caip);
-  const priceUsd = nativeBal ? parseFloat(nativeBal.priceUsd || '0') : 0;
+  // Fallback: cached Pioneer balance for non-EVM or while loading
+  const chainBalances = balances.filter(b => b.networkId === asset.networkId);
+  const nativeBalances = chainBalances.filter(b => b.isNative === true);
+  const cachedBalance =
+    nativeBalances.length > 0
+      ? nativeBalances.reduce((acc, b) => acc + parseFloat(b.balance || '0'), 0)
+      : parseFloat(chainBalances.find(b => b.caip?.startsWith(asset.networkId))?.balance || '0');
+  const cachedUsdValue = chainBalances.reduce((sum, b) => sum + parseFloat(b.valueUsd || '0'), 0);
+  const cachedPriceUsd = nativeBalances[0] ? parseFloat(nativeBalances[0].priceUsd || '0') : 0;
+
+  // Use live data when available (EVM), fallback to cached
+  const totalBalance = liveBalance !== null ? liveBalance : cachedBalance;
+  const totalUsdValue = liveUsdValue !== null ? liveUsdValue : cachedUsdValue;
+  const priceUsd = livePriceUsd !== null ? livePriceUsd : cachedPriceUsd;
 
   // Build icon URL
   const iconUrl = asset.icon || `https://api.keepkey.info/coins/${btoa(asset.caip || '').replace(/=+$/, '')}.png`;
 
-  // Fetch address for this network
+  // Fetch address and live balance when asset changes
   useEffect(() => {
-    if (asset.pubkeys?.[0]?.address) {
-      setAddress(asset.pubkeys[0].address);
-      return;
-    }
-    if (asset.address) {
-      setAddress(asset.address);
-      return;
-    }
-    if (asset.networkId) {
+    // Reset live balance on asset change
+    setLiveBalance(null);
+    setLiveUsdValue(null);
+    setLivePriceUsd(null);
+
+    const accountAddress = asset.pubkeys?.[0]?.address || asset.address || '';
+    if (accountAddress) {
+      setAddress(accountAddress);
+    } else if (asset.networkId) {
       setLoadingAddress(true);
       chrome.runtime.sendMessage({ type: 'GET_PUBKEYS_FOR_NETWORK', networkId: asset.networkId }, response => {
         if (response?.pubkeys?.[0]) {
@@ -81,8 +79,23 @@ const AssetDetail = ({ asset, balances, onSend, onReceive }: AssetDetailProps) =
         }
         setLoadingAddress(false);
       });
+      return;
     }
-  }, [asset]);
+
+    // For EVM chains, fetch fresh balance for the selected account address via RPC
+    if (isEvm && accountAddress) {
+      chrome.runtime.sendMessage(
+        { type: 'GET_EVM_BALANCE', networkId: asset.networkId, address: accountAddress },
+        response => {
+          if (response && !response.error) {
+            setLiveBalance(parseFloat(response.balance || '0'));
+            setLiveUsdValue(parseFloat(response.valueUsd || '0'));
+            setLivePriceUsd(parseFloat(response.priceUsd || '0'));
+          }
+        },
+      );
+    }
+  }, [asset, isEvm]);
 
   // Load activity events filtered by networkId
   useEffect(() => {
