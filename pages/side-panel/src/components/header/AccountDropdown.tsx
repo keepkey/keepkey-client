@@ -147,6 +147,11 @@ const AccountDropdown: React.FC<AccountDropdownProps> = ({
                 <Text fontSize="xs" fontFamily="mono" color="whiteAlpha.600" isTruncated>
                   {formatAddress(account.address)}
                 </Text>
+                {account.path && (
+                  <Text fontSize="0.6rem" fontFamily="mono" color="whiteAlpha.400" isTruncated>
+                    {account.path}
+                  </Text>
+                )}
               </Box>
               {/* Remove button for non-default ETH accounts */}
               {onRemoveAccount && account.accountIndex !== undefined && !account.isDefault && (

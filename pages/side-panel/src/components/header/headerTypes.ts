@@ -15,6 +15,8 @@ export interface AccountItem {
   pubkey: any;
   scriptType?: string;
   accountIndex?: number;
+  /** Human-readable derivation path, e.g. "m/84'/0'/0'" */
+  path?: string;
   isDefault: boolean;
 }
 

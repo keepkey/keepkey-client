@@ -38,7 +38,7 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
     [pubkeys, selectedNetworkId, ethAccounts],
   );
 
-  const canAddAccount = selectedNetworkId === 'eip155:1';
+  const canAddAccount = selectedNetworkId?.startsWith('eip155:') ?? false;
 
   // Fetch pubkeys + persisted state
   const fetchPubkeys = useCallback(() => {

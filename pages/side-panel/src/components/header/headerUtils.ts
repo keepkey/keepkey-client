@@ -122,43 +122,28 @@ export function buildAccountList(pubkeys: any[], selectedNetworkId: string, ethA
 
 function buildEvmAccounts(pubkeys: any[], networkId: string, ethAccounts: number[]): AccountItem[] {
   const items: AccountItem[] = [];
-  const isEthereum = networkId === 'eip155:1';
 
-  // Find pubkeys that serve this network (either explicit or via wildcard)
-  const relevantPubkeys = pubkeys.filter(pk => {
+  // All ETH-derived pubkeys — any account's address is valid on every EVM chain.
+  // Account 0 has eip155:* wildcard, accounts 1+ have eip155:1 explicitly,
+  // but the address works on Polygon, Base, Arbitrum, etc. regardless.
+  const ethPubkeys = pubkeys.filter(pk => {
     const nets: string[] = pk.networks || [];
-    return nets.includes(networkId) || nets.includes('eip155:*');
+    return nets.includes('eip155:1') || nets.includes('eip155:*');
   });
 
-  if (isEthereum) {
-    // Show all ETH accounts
-    for (const idx of ethAccounts) {
-      const pk = relevantPubkeys.find(p => parseAccountIndex(p.note) === idx);
-      if (!pk) continue;
-      const address = pk.address || pk.master || '';
-      items.push({
-        key: `evm:account${idx}`,
-        label: idx === 0 ? 'Account 0 (Default)' : `Account ${idx}`,
-        address,
-        pubkey: pk,
-        accountIndex: idx,
-        isDefault: idx === 0,
-      });
-    }
-  } else {
-    // Non-ETH EVM: only account 0 (wildcard)
-    const pk = relevantPubkeys.find(p => parseAccountIndex(p.note) === 0) || relevantPubkeys[0];
-    if (pk) {
-      const address = pk.address || pk.master || '';
-      items.push({
-        key: 'evm:account0',
-        label: 'Account 0',
-        address,
-        pubkey: pk,
-        accountIndex: 0,
-        isDefault: true,
-      });
-    }
+  for (const idx of ethAccounts) {
+    const pk = ethPubkeys.find(p => parseAccountIndex(p.note) === idx);
+    if (!pk) continue;
+    const address = pk.address || pk.master || '';
+    items.push({
+      key: `evm:account${idx}`,
+      label: idx === 0 ? 'Account 0' : `Account ${idx}`,
+      address,
+      pubkey: pk,
+      accountIndex: idx,
+      path: idx === 0 ? "m/44'/60'/0'" : `m/44'/60'/${idx}'/0/0`,
+      isDefault: idx === 0,
+    });
   }
 
   return items;
