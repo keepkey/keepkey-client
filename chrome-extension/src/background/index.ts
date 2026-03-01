@@ -624,6 +624,12 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                 }
               }
 
+              // Update global ADDRESS for EVM signing when account changes
+              if (asset.networkId?.startsWith('eip155:') && asset.address) {
+                ADDRESS = asset.address;
+                console.log(tag, 'Updated global ADDRESS to:', ADDRESS);
+              }
+
               // Store in assetContextStorage for GET_ASSET_CONTEXT
               await assetContextStorage.updateContext(asset);
 

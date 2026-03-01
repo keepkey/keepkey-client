@@ -14,6 +14,36 @@ import * as wallet from '../wallet';
 const TAG = ' | ethereumHandler | ';
 const DOMAIN_WHITE_LIST = [];
 
+const HARDENED = 0x80000000;
+
+/**
+ * Derive the addressNList for the currently selected ETH account.
+ * Looks up the pubkey matching ADDRESS to find its account index.
+ * Falls back to account 0 path if not found.
+ */
+const getAddressNListForAddress = (address: string): number[] => {
+  const DEFAULT_PATH = [HARDENED + 44, HARDENED + 60, HARDENED + 0, 0, 0];
+  if (!address) return DEFAULT_PATH;
+
+  const allPubkeys = wallet.getPubkeys();
+  const normalizedAddr = address.toLowerCase();
+  const match = allPubkeys.find(
+    (pk: any) =>
+      (pk.networks?.includes('eip155:1') || pk.networks?.includes('eip155:*')) &&
+      (pk.address?.toLowerCase() === normalizedAddr || pk.master?.toLowerCase() === normalizedAddr),
+  );
+
+  if (!match?.note) return DEFAULT_PATH;
+
+  const accountMatch = match.note.match(/account\s*(\d+)/i);
+  const accountIndex = accountMatch ? parseInt(accountMatch[1], 10) : 0;
+
+  if (accountIndex === 0) {
+    return [HARDENED + 44, HARDENED + 60, HARDENED + 0, 0, 0];
+  }
+  return [HARDENED + 44, HARDENED + 60, HARDENED + accountIndex, 0, 0];
+};
+
 interface ChainInfo {
   chainId: string;
   name: string;
@@ -851,7 +881,11 @@ const signMessage = async (message, KEEPKEY_WALLET, ADDRESS: string) => {
     }
 
     const sdk = wallet.getSdk();
-    const output = await sdk.eth.ethSignMessage({ address: ADDRESS, message: hexMessage });
+    const output = await sdk.eth.ethSignMessage({
+      address: ADDRESS,
+      addressNList: getAddressNListForAddress(ADDRESS),
+      message: hexMessage,
+    });
     console.log(`${tag} Transaction output: `, output);
 
     // EIP-1193: personal_sign/eth_sign must return hex signature string, not object.
@@ -953,7 +987,7 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
 
     const input: any = {
       from: transaction.from,
-      addressNList: [2147483692, 2147483708, 2147483648, 0, 0],
+      addressNList: getAddressNListForAddress(transaction.from),
       data: transaction.data || '0x',
       nonce: transaction.nonce,
       gasLimit: transaction.gasLimit,
@@ -1013,7 +1047,7 @@ const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string) 
     const { domain, types, message, primaryType } = JSON.parse(typedData);
     const HDWalletPayload = {
       address: ADDRESS,
-      addressNList: [2147483692, 2147483708, 2147483648, 0, 0],
+      addressNList: getAddressNListForAddress(ADDRESS),
       typedData: { domain, types, message, primaryType },
     };
     console.log(tag, '**** HDWalletPayload: ', HDWalletPayload);

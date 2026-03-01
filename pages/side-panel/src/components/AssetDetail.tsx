@@ -38,14 +38,20 @@ const AssetDetail = ({ asset, balances, onSend, onReceive }: AssetDetailProps) =
   const [eventsLoading, setEventsLoading] = useState(true);
   const toast = useToast();
 
-  // Get balance for this asset
-  const chainBalances = balances.filter(b => b.networkId === asset.networkId);
+  // Get balance for this asset, filtered by selected account address when available
+  const selectedAddress = asset.address?.toLowerCase() || '';
+  const chainBalances = balances.filter(b => {
+    if (b.networkId !== asset.networkId) return false;
+    // If we have a selected address and the balance has an address, filter to match
+    if (selectedAddress && b.address && b.address.toLowerCase() !== selectedAddress) return false;
+    return true;
+  });
   const nativeBalances = chainBalances.filter(b => b.isNative === true || b.caip === asset.caip);
   let totalBalance = 0;
   if (nativeBalances.length > 0) {
     totalBalance = nativeBalances.reduce((acc, b) => acc + parseFloat(b.balance || '0'), 0);
   } else {
-    const bal = balances.find(b => b.caip === asset.caip);
+    const bal = chainBalances.find(b => b.caip === asset.caip);
     totalBalance = parseFloat(bal?.balance || '0');
   }
   const totalUsdValue = chainBalances.reduce((sum, b) => sum + parseFloat(b.valueUsd || '0'), 0);
