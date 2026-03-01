@@ -386,4 +386,17 @@ const checkForUrlChange = () => {
 // Check for URL changes periodically (for SPAs)
 setInterval(checkForUrlChange, 1000);
 
+// Listen for background → content script messages and relay to injected script
+// This enables EIP-1193 accountsChanged / chainChanged events for dApps
+chrome.runtime.onMessage.addListener((message: any) => {
+  if (message.type === 'ACCOUNTS_CHANGED') {
+    console.log(TAG, 'Relaying ACCOUNTS_CHANGED to page:', message.accounts);
+    window.postMessage({ type: 'ACCOUNTS_CHANGED', accounts: message.accounts }, '*');
+  }
+  if (message.type === 'CHAIN_CHANGED') {
+    console.log(TAG, 'Relaying CHAIN_CHANGED to page:', message.provider?.chainId);
+    window.postMessage({ type: 'CHAIN_CHANGED', provider: message.provider }, '*');
+  }
+});
+
 console.log(TAG, 'Content script loaded');

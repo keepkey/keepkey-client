@@ -366,10 +366,31 @@ const switchToProvider = async (currentProvider: any, KEEPKEY_WALLET: any, tag: 
   await web3ProviderStorage.saveWeb3Provider(cleanedProvider);
   await assetContextStorage.updateContext(cleanedProvider);
 
-  // Notify listeners with cleaned provider
+  // Notify extension UI listeners
   chrome.runtime.sendMessage({ type: 'PROVIDER_CHANGED', provider: cleanedProvider });
   chrome.runtime.sendMessage({ type: 'ASSET_CONTEXT_UPDATED', assetContext: cleanedProvider });
-  chrome.runtime.sendMessage({ type: 'CHAIN_CHANGED', provider: cleanedProvider });
+
+  // EIP-1193: Notify dApps via content script relay
+  chrome.tabs.query({}, tabs => {
+    for (const tab of tabs) {
+      if (!tab.id) continue;
+      chrome.tabs
+        .sendMessage(tab.id, {
+          type: 'CHAIN_CHANGED',
+          provider: { chainId: cleanedProvider.chainId },
+        })
+        .catch(() => {});
+      // Also send accountsChanged with current address since chain context may affect visible account
+      if (cleanedProvider.address) {
+        chrome.tabs
+          .sendMessage(tab.id, {
+            type: 'ACCOUNTS_CHANGED',
+            accounts: [cleanedProvider.address],
+          })
+          .catch(() => {});
+      }
+    }
+  });
   console.log(tag, 'Chain switched successfully');
 };
 

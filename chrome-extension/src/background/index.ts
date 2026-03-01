@@ -625,6 +625,11 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                 }
               }
 
+              // Track previous address/chain to detect changes for dApp notification
+              const prevAddress = ADDRESS;
+              const prevProvider = await web3ProviderStorage.getWeb3Provider();
+              const prevChainId = prevProvider?.chainId;
+
               // Update global ADDRESS for EVM signing when account changes
               if (asset.networkId?.startsWith('eip155:') && asset.address) {
                 ADDRESS = asset.address;
@@ -635,6 +640,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               await assetContextStorage.updateContext(asset);
 
               // If eip155 then set web3 provider
+              let newChainId: string | undefined;
               if (asset.networkId && asset.networkId.includes('eip155')) {
                 // Try to get provider data from custom chains first (user-added networks)
                 let providerData = await blockchainDataStorage.getBlockchainData(asset.networkId);
@@ -658,6 +664,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
 
                 if (providerData) {
                   await web3ProviderStorage.saveWeb3Provider(providerData);
+                  newChainId = providerData.chainId;
                 }
               }
 
@@ -667,6 +674,37 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                   assetContext: asset,
                 })
                 .catch(() => {});
+
+              // EIP-1193: Notify dApps of account/chain changes via content script relay
+              if (asset.networkId?.startsWith('eip155:')) {
+                const addressChanged = asset.address && asset.address !== prevAddress;
+                const chainChanged = newChainId && newChainId !== prevChainId;
+
+                if (addressChanged || chainChanged) {
+                  chrome.tabs.query({}, tabs => {
+                    for (const tab of tabs) {
+                      if (!tab.id) continue;
+                      if (addressChanged) {
+                        chrome.tabs
+                          .sendMessage(tab.id, {
+                            type: 'ACCOUNTS_CHANGED',
+                            accounts: [ADDRESS],
+                          })
+                          .catch(() => {});
+                      }
+                      if (chainChanged) {
+                        chrome.tabs
+                          .sendMessage(tab.id, {
+                            type: 'CHAIN_CHANGED',
+                            provider: { chainId: newChainId },
+                          })
+                          .catch(() => {});
+                      }
+                    }
+                  });
+                }
+              }
+
               sendResponse(asset);
             } catch (error) {
               console.error('Error setting asset context:', error);
