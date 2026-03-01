@@ -19,6 +19,7 @@ const HARDENED = 0x80000000;
 /**
  * Derive the addressNList for the currently selected ETH account.
  * Looks up the pubkey matching ADDRESS to find its account index.
+ * Uses explicit accountIndex field (set during path enrichment), with note regex as fallback.
  * Falls back to account 0 path if not found.
  */
 const getAddressNListForAddress = (address: string): number[] => {
@@ -33,10 +34,17 @@ const getAddressNListForAddress = (address: string): number[] => {
       (pk.address?.toLowerCase() === normalizedAddr || pk.master?.toLowerCase() === normalizedAddr),
   );
 
-  if (!match?.note) return DEFAULT_PATH;
+  if (!match) return DEFAULT_PATH;
 
-  const accountMatch = match.note.match(/account\s*(\d+)/i);
-  const accountIndex = accountMatch ? parseInt(accountMatch[1], 10) : 0;
+  // Prefer explicit accountIndex (set during pubkey enrichment in wallet.ts)
+  let accountIndex: number;
+  if (match.accountIndex !== undefined) {
+    accountIndex = match.accountIndex;
+  } else {
+    // Fallback: parse from note field
+    const accountMatch = match.note?.match(/account\s*(\d+)/i);
+    accountIndex = accountMatch ? parseInt(accountMatch[1], 10) : 0;
+  }
 
   if (accountIndex === 0) {
     return [HARDENED + 44, HARDENED + 60, HARDENED + 0, 0, 0];

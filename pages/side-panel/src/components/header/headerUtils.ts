@@ -22,7 +22,10 @@ export function getIconUrl(chainSymbol: string, networkId?: string): string {
   return `https://api.keepkey.info/coins/${btoa(chainSymbol.toLowerCase())}.png`;
 }
 
-export function parseAccountIndex(note?: string): number {
+export function parseAccountIndex(note?: string, accountIndex?: number): number {
+  // Prefer explicit accountIndex (set during pubkey enrichment)
+  if (accountIndex !== undefined) return accountIndex;
+  // Fallback: parse from note field
   if (!note) return 0;
   const match = note.match(/account\s*(\d+)/i);
   return match ? parseInt(match[1], 10) : 0;
@@ -132,7 +135,7 @@ function buildEvmAccounts(pubkeys: any[], networkId: string, ethAccounts: number
   });
 
   for (const idx of ethAccounts) {
-    const pk = ethPubkeys.find(p => parseAccountIndex(p.note) === idx);
+    const pk = ethPubkeys.find(p => parseAccountIndex(p.note, p.accountIndex) === idx);
     if (!pk) continue;
     const address = pk.address || pk.master || '';
     items.push({

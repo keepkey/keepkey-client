@@ -8,7 +8,7 @@ globalThis.Buffer = Buffer;
 import packageJson from '../../package.json';
 import * as wallet from './wallet';
 import { handleWalletRequest } from './methods';
-import { JsonRpcProvider } from 'ethers';
+import { JsonRpcProvider, formatEther } from 'ethers';
 import { ChainToNetworkId, Chain, COIN_MAP_LONG, shortListSymbolToCaip, NetworkIdToChain } from './chainConfig';
 import {
   requestStorage,
@@ -336,6 +336,7 @@ const onStart = async function () {
             addressNListMaster: [HARDENED + 44, HARDENED + 60, HARDENED + idx, 0, 0],
             curve: 'secp256k1',
             showDisplay: false,
+            accountIndex: idx,
           });
           needsRefresh = true;
         }
@@ -751,6 +752,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               addressNListMaster: [HARDENED + 44, HARDENED + 60, HARDENED + accountIndex, 0, 0],
               curve: 'secp256k1',
               showDisplay: false,
+              accountIndex,
             };
             wallet.addPath(path);
             const pubkeys = await wallet.refreshPubkeys();
@@ -978,10 +980,15 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               rpcProvider.getBalance(evmAddress),
               new Promise<bigint>((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
             ]);
-            const balStr = (Number(rawBal) / 1e18).toString();
+            const balStr = formatEther(rawBal);
 
             // Try to get USD price from cached balances for this network
-            const nativeCached = cachedBalances.find((b: any) => b.networkId === evmNetworkId && b.isNative);
+            let nativeCached = cachedBalances.find((b: any) => b.networkId === evmNetworkId && b.isNative);
+            // Fallback: L2 chains (Base, Arbitrum, Optimism, etc.) use ETH as native gas —
+            // if no cached price for this specific chain, use Ethereum mainnet ETH price.
+            if (!nativeCached?.priceUsd && evmNetworkId !== 'eip155:1') {
+              nativeCached = cachedBalances.find((b: any) => b.networkId === 'eip155:1' && b.isNative) || nativeCached;
+            }
             const priceUsd = parseFloat(nativeCached?.priceUsd || '0');
             const valueUsd = (parseFloat(balStr) * priceUsd).toString();
 

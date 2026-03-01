@@ -95,7 +95,7 @@ const AssetDetail = ({ asset, balances, onSend, onReceive }: AssetDetailProps) =
         },
       );
     }
-  }, [asset, isEvm]);
+  }, [asset.networkId, asset.address, asset.pubkeys?.[0]?.address, isEvm]);
 
   // Load activity events filtered by networkId
   useEffect(() => {

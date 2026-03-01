@@ -95,6 +95,7 @@ export interface PathConfig {
   blockchain?: string;
   symbol?: string;
   symbolSwapKit?: string;
+  accountIndex?: number;
 }
 
 const H = HARDENED;
@@ -109,6 +110,7 @@ export function getDefaultPaths(): PathConfig[] {
       addressNListMaster: [H + 44, H + 60, H + 0, 0, 0],
       curve: 'secp256k1',
       showDisplay: false,
+      accountIndex: 0,
     },
     {
       note: 'Bitcoin account 0',
@@ -306,6 +308,7 @@ export function getDefaultPaths(): PathConfig[] {
       addressNListMaster: [H + 44, H + 60, H + 1, 0, 0],
       curve: 'secp256k1',
       showDisplay: false,
+      accountIndex: 1,
     },
     {
       note: 'Ethereum account 2',
@@ -316,6 +319,7 @@ export function getDefaultPaths(): PathConfig[] {
       addressNListMaster: [H + 44, H + 60, H + 2, 0, 0],
       curve: 'secp256k1',
       showDisplay: false,
+      accountIndex: 2,
     },
   ];
 }

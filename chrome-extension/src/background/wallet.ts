@@ -120,6 +120,14 @@ async function fetchPubkeys(): Promise<void> {
     console.log(tag, 'Got', result.pubkeys?.length, 'pubkeys from device');
 
     if (result.pubkeys && result.pubkeys.length > 0) {
+      // Enrich pubkeys with accountIndex from path configs (SDK may strip unknown fields)
+      for (const pk of result.pubkeys) {
+        if (pk.accountIndex !== undefined) continue; // already set
+        const matchingPath = state.paths.find(p => p.note === pk.note);
+        if (matchingPath?.accountIndex !== undefined) {
+          pk.accountIndex = matchingPath.accountIndex;
+        }
+      }
       state.pubkeys = result.pubkeys;
     } else if (cachedPubkeys.length > 0) {
       console.log(tag, 'Using cached pubkeys as fallback');
