@@ -7,6 +7,7 @@ globalThis.Buffer = Buffer;
 
 import packageJson from '../../package.json';
 import * as wallet from './wallet';
+import { resetSolanaState } from './chains/solanaHandler';
 import { handleWalletRequest } from './methods';
 import { JsonRpcProvider, formatEther } from 'ethers';
 import { ChainToNetworkId, Chain, COIN_MAP_LONG, shortListSymbolToCaip, NetworkIdToChain } from './chainConfig';
@@ -312,6 +313,7 @@ const onStart = async function () {
   const tag = TAG + ' | onStart | ';
   try {
     console.log(tag, 'Starting...');
+    resetSolanaState(); // clear stale cached address before re-init
     await wallet.init();
     console.log(tag, 'Wallet initialized');
 

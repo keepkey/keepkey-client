@@ -9,10 +9,18 @@ const TAG = ' | solanaHandler | ';
 const VAULT_URL = 'http://localhost:1646';
 const SOLANA_RPC_URLS = [
   'https://api.mainnet-beta.solana.com',
-  'https://solana-mainnet.g.alchemy.com/v2/demo',
+  'https://mainnet.helius-rpc.com/?api-key=1d8740dc-e5f4-421c-b823-e1bad1889eff',
 ];
 
+let cachedRpcUrl: string | null = null;
+let cachedRpcTimestamp = 0;
+const RPC_CACHE_TTL = 60000; // cache healthy RPC for 60s
+
 async function getSolanaRpcUrl(): Promise<string> {
+  const now = Date.now();
+  if (cachedRpcUrl && now - cachedRpcTimestamp < RPC_CACHE_TTL) {
+    return cachedRpcUrl;
+  }
   for (const url of SOLANA_RPC_URLS) {
     try {
       const resp = await fetch(url, {
@@ -21,7 +29,11 @@ async function getSolanaRpcUrl(): Promise<string> {
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getHealth' }),
         signal: AbortSignal.timeout(3000),
       });
-      if (resp.ok) return url;
+      if (resp.ok) {
+        cachedRpcUrl = url;
+        cachedRpcTimestamp = now;
+        return url;
+      }
     } catch { /* try next */ }
   }
   return SOLANA_RPC_URLS[0]; // fallback to primary
