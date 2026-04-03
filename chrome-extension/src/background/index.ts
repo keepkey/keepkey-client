@@ -100,8 +100,8 @@ let balancesFetchInProgress: Promise<any[]> | null = null;
 const EVM_CAIPS = [...new Set(Object.values(shortListSymbolToCaip).filter(caip => caip.startsWith('eip155:')))];
 
 async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
-  // Deduplicate concurrent calls
-  if (balancesFetchInProgress) return balancesFetchInProgress;
+  // Deduplicate concurrent calls — but honor forceRefresh
+  if (balancesFetchInProgress && !forceRefresh) return balancesFetchInProgress;
 
   balancesFetchInProgress = (async () => {
     try {
