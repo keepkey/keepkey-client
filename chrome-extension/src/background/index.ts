@@ -103,7 +103,7 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
   // Deduplicate concurrent calls — but honor forceRefresh
   if (balancesFetchInProgress && !forceRefresh) return balancesFetchInProgress;
 
-  balancesFetchInProgress = (async () => {
+  const thisPromise: Promise<any[]> = (async () => {
     try {
       const allPubkeys = wallet.getPubkeys();
       if (allPubkeys.length === 0) return cachedBalances;
@@ -301,11 +301,16 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
       console.error('[fetchBalances] Error:', e.message || e);
       return cachedBalances;
     } finally {
-      balancesFetchInProgress = null;
+      // Only clear the in-flight ref if it still points to this promise — a newer
+      // forceRefresh call may have replaced it while we were running.
+      if (balancesFetchInProgress === thisPromise) {
+        balancesFetchInProgress = null;
+      }
     }
   })();
 
-  return balancesFetchInProgress;
+  balancesFetchInProgress = thisPromise;
+  return thisPromise;
 }
 
 const onStart = async function () {
