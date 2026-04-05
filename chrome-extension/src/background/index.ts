@@ -77,6 +77,11 @@ async function checkKeepKey() {
     if (KEEPKEY_STATE !== 4) {
       console.warn('KeepKey endpoint not found:', error?.message || error);
     }
+    // Clear cached per-chain state when transitioning from connected → disconnected
+    // so a hot-swapped device doesn't sign against a stale cached address.
+    if (prevState === 2 || prevState === 5) {
+      resetSolanaState();
+    }
     KEEPKEY_STATE = 4; // Set state to errored
     updateIcon();
     if (KEEPKEY_STATE !== prevState) pushStateChangeEvent();
