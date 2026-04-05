@@ -22,6 +22,7 @@ import {
   customEvmNetworksStorage,
 } from '@extension/storage';
 import { EIP155_CHAINS } from './chains';
+import { formatUserError } from './utils';
 
 const TAG = ' | background/index.js | ';
 console.log('Background script loaded');
@@ -62,6 +63,10 @@ function pushStateChangeEvent() {
     });
 }
 
+// Throttle device-probe attempts to avoid hammering the vault while in view-only mode.
+let lastDeviceProbeAt = 0;
+const DEVICE_PROBE_INTERVAL_MS = 15_000;
+
 async function checkKeepKey() {
   const prevState = KEEPKEY_STATE;
   try {
@@ -72,6 +77,26 @@ async function checkKeepKey() {
       }
       updateIcon();
       if (KEEPKEY_STATE !== prevState) pushStateChangeEvent();
+      // If the wallet is initialized but in view-only mode, try to upgrade by
+      // probing the device and re-fetching pubkeys (throttled).
+      const now = Date.now();
+      const mayProbe = now - lastDeviceProbeAt >= DEVICE_PROBE_INTERVAL_MS;
+      if (wallet.isInitialized() && !wallet.isDeviceConnected() && mayProbe) {
+        lastDeviceProbeAt = now;
+        wallet
+          .refreshFromDevice()
+          .then(upgraded => {
+            if (upgraded) {
+              console.log(TAG, 'Device reconnected — refreshed pubkeys from device');
+              pushStateChangeEvent();
+            }
+          })
+          .catch(e => console.warn(TAG, 'Device refresh failed:', (e as Error)?.message || e));
+      } else if (!wallet.isInitialized() && mayProbe) {
+        // First-run case: init failed earlier (no device, no cache) — retry.
+        lastDeviceProbeAt = now;
+        onStart();
+      }
     }
   } catch (error: any) {
     if (KEEPKEY_STATE !== 4) {
@@ -327,7 +352,18 @@ const onStart = async function () {
     await wallet.init();
     console.log(tag, 'Wallet initialized');
 
-    if (!wallet.isInitialized()) throw Error('Failed to INIT!');
+    if (!wallet.isInitialized()) {
+      // No device + no cached pubkeys. Show errored icon but don't crash the
+      // service worker — a later device plug-in will trigger a refresh.
+      console.warn(tag, 'No pubkeys available (no device and no cache). Plug in KeepKey to initialize.');
+      KEEPKEY_STATE = 4;
+      updateIcon();
+      pushStateChangeEvent();
+      return;
+    }
+    if (!wallet.isDeviceConnected()) {
+      console.log(tag, 'Running in view-only mode — signing will require device reconnect');
+    }
 
     // Load persisted ETH accounts and derive any beyond account 0
     try {
@@ -436,7 +472,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               const result = await handleWalletRequest(requestInfo, chain, method, params, null, ADDRESS);
               sendResponse({ result });
             } catch (error) {
-              sendResponse({ error: error.message });
+              sendResponse({ error: formatUserError(error) });
             }
           } else {
             sendResponse({ error: 'Invalid request: missing method' });

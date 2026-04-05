@@ -74,8 +74,30 @@ const SOLANA_ADDRESS_N = [
   0x80000000 + 0, // 0x80000000
 ];
 
+const SOLANA_NETWORK_ID = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp';
+const SOLANA_PUBKEY_NOTE = 'Solana account 0';
+
 async function getSolanaAddress(): Promise<string> {
   if (cachedAddress) return cachedAddress;
+
+  // Try the persisted wallet pubkey cache first — works in watch-only mode.
+  const walletAddress = wallet.getAddressForNetwork(SOLANA_NETWORK_ID);
+  if (walletAddress) {
+    cachedAddress = walletAddress;
+    return walletAddress;
+  }
+
+  // Not cached — need the device.
+  if (!wallet.isDeviceConnected()) {
+    // Try one probe in case device was plugged in after start
+    const reachable = await wallet.probeDevice();
+    if (!reachable) {
+      throw createProviderRpcError(
+        -32603,
+        'KeepKey device not connected and no cached Solana address. Plug in your device to derive one.',
+      );
+    }
+  }
 
   const sdk = wallet.getSdk();
   const result = await sdk.address.solanaGetAddress({ address_n: SOLANA_ADDRESS_N });
@@ -86,6 +108,25 @@ async function getSolanaAddress(): Promise<string> {
   }
 
   cachedAddress = address;
+
+  // Persist to the shared pubkey cache so future watch-only sessions have it.
+  try {
+    await wallet.addPubkey({
+      note: SOLANA_PUBKEY_NOTE,
+      networks: [SOLANA_NETWORK_ID],
+      type: 'address',
+      address,
+      pubkey: address,
+      addressNList: SOLANA_ADDRESS_N,
+      addressNListMaster: SOLANA_ADDRESS_N,
+      curve: 'ed25519',
+      script_type: 'solana',
+      accountIndex: 0,
+    });
+  } catch (e) {
+    console.warn(TAG, 'Failed to cache Solana address:', e);
+  }
+
   return address;
 }
 
