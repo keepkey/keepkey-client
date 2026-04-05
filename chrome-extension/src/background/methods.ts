@@ -14,7 +14,7 @@ import { handleOsmosisRequest } from './chains/osmosisHandler';
 import { handleMayaRequest } from './chains/mayaHandler';
 import { handleRippleRequest } from './chains/rippleHandler';
 import { handleSolanaRequest } from './chains/solanaHandler';
-import { createProviderRpcError, ProviderRpcError } from './utils';
+import { createProviderRpcError, ProviderRpcError, formatUserError } from './utils';
 
 const TAG = ' | METHODS | ';
 
@@ -275,6 +275,9 @@ export const handleWalletRequest = async (
     if (errorMessage.indexOf('unrecognized address') >= 0) {
       errorMessage = 'Please restart KeepKey Desktop, invalid state';
     }
+
+    // Translate "No device connected" SdkError into user-facing message
+    errorMessage = formatUserError({ message: errorMessage });
 
     //push error to the popup
     chrome.runtime.sendMessage({

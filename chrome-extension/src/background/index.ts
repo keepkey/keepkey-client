@@ -7,6 +7,7 @@ globalThis.Buffer = Buffer;
 
 import packageJson from '../../package.json';
 import * as wallet from './wallet';
+import { resetSolanaState } from './chains/solanaHandler';
 import { handleWalletRequest } from './methods';
 import { JsonRpcProvider, formatEther } from 'ethers';
 import { ChainToNetworkId, Chain, COIN_MAP_LONG, shortListSymbolToCaip, NetworkIdToChain } from './chainConfig';
@@ -21,6 +22,7 @@ import {
   customEvmNetworksStorage,
 } from '@extension/storage';
 import { EIP155_CHAINS } from './chains';
+import { formatUserError } from './utils';
 
 const TAG = ' | background/index.js | ';
 console.log('Background script loaded');
@@ -61,6 +63,10 @@ function pushStateChangeEvent() {
     });
 }
 
+// Throttle device-probe attempts to avoid hammering the vault while in view-only mode.
+let lastDeviceProbeAt = 0;
+const DEVICE_PROBE_INTERVAL_MS = 15_000;
+
 async function checkKeepKey() {
   const prevState = KEEPKEY_STATE;
   try {
@@ -71,10 +77,35 @@ async function checkKeepKey() {
       }
       updateIcon();
       if (KEEPKEY_STATE !== prevState) pushStateChangeEvent();
+      // If the wallet is initialized but in view-only mode, try to upgrade by
+      // probing the device and re-fetching pubkeys (throttled).
+      const now = Date.now();
+      const mayProbe = now - lastDeviceProbeAt >= DEVICE_PROBE_INTERVAL_MS;
+      if (wallet.isInitialized() && !wallet.isDeviceConnected() && mayProbe) {
+        lastDeviceProbeAt = now;
+        wallet
+          .refreshFromDevice()
+          .then(upgraded => {
+            if (upgraded) {
+              console.log(TAG, 'Device reconnected — refreshed pubkeys from device');
+              pushStateChangeEvent();
+            }
+          })
+          .catch(e => console.warn(TAG, 'Device refresh failed:', (e as Error)?.message || e));
+      } else if (!wallet.isInitialized() && mayProbe) {
+        // First-run case: init failed earlier (no device, no cache) — retry.
+        lastDeviceProbeAt = now;
+        onStart();
+      }
     }
   } catch (error: any) {
     if (KEEPKEY_STATE !== 4) {
       console.warn('KeepKey endpoint not found:', error?.message || error);
+    }
+    // Clear cached per-chain state when transitioning from connected → disconnected
+    // so a hot-swapped device doesn't sign against a stale cached address.
+    if (prevState === 2 || prevState === 5) {
+      resetSolanaState();
     }
     KEEPKEY_STATE = 4; // Set state to errored
     updateIcon();
@@ -100,10 +131,10 @@ let balancesFetchInProgress: Promise<any[]> | null = null;
 const EVM_CAIPS = [...new Set(Object.values(shortListSymbolToCaip).filter(caip => caip.startsWith('eip155:')))];
 
 async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
-  // Deduplicate concurrent calls
-  if (balancesFetchInProgress) return balancesFetchInProgress;
+  // Deduplicate concurrent calls — but honor forceRefresh
+  if (balancesFetchInProgress && !forceRefresh) return balancesFetchInProgress;
 
-  balancesFetchInProgress = (async () => {
+  const thisPromise: Promise<any[]> = (async () => {
     try {
       const allPubkeys = wallet.getPubkeys();
       if (allPubkeys.length === 0) return cachedBalances;
@@ -301,21 +332,38 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
       console.error('[fetchBalances] Error:', e.message || e);
       return cachedBalances;
     } finally {
-      balancesFetchInProgress = null;
+      // Only clear the in-flight ref if it still points to this promise — a newer
+      // forceRefresh call may have replaced it while we were running.
+      if (balancesFetchInProgress === thisPromise) {
+        balancesFetchInProgress = null;
+      }
     }
   })();
 
-  return balancesFetchInProgress;
+  balancesFetchInProgress = thisPromise;
+  return thisPromise;
 }
 
 const onStart = async function () {
   const tag = TAG + ' | onStart | ';
   try {
     console.log(tag, 'Starting...');
+    resetSolanaState(); // clear stale cached address before re-init
     await wallet.init();
     console.log(tag, 'Wallet initialized');
 
-    if (!wallet.isInitialized()) throw Error('Failed to INIT!');
+    if (!wallet.isInitialized()) {
+      // No device + no cached pubkeys. Show errored icon but don't crash the
+      // service worker — a later device plug-in will trigger a refresh.
+      console.warn(tag, 'No pubkeys available (no device and no cache). Plug in KeepKey to initialize.');
+      KEEPKEY_STATE = 4;
+      updateIcon();
+      pushStateChangeEvent();
+      return;
+    }
+    if (!wallet.isDeviceConnected()) {
+      console.log(tag, 'Running in view-only mode — signing will require device reconnect');
+    }
 
     // Load persisted ETH accounts and derive any beyond account 0
     try {
@@ -424,7 +472,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               const result = await handleWalletRequest(requestInfo, chain, method, params, null, ADDRESS);
               sendResponse({ result });
             } catch (error) {
-              sendResponse({ error: error.message });
+              sendResponse({ error: formatUserError(error) });
             }
           } else {
             sendResponse({ error: 'Invalid request: missing method' });

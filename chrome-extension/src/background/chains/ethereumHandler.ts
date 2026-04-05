@@ -2,7 +2,7 @@
     Ethereum Provider Refactored
 */
 
-import { JsonRpcProvider } from 'ethers';
+import { JsonRpcProvider, parseEther } from 'ethers';
 import { createProviderRpcError, ProviderRpcError } from '../utils';
 import { requestStorage, web3ProviderStorage, assetContextStorage, blockchainDataStorage } from '@extension/storage';
 import { EIP155_CHAINS } from '../chains';
@@ -129,6 +129,15 @@ const RPC_RETRY_DELAY = 60000; // Don't retry failed RPC for 1 minute
 // Helper function to get the provider with RPC failover
 const getProvider = async (): Promise<JsonRpcProvider> => {
   const tag = TAG + ' | getProvider | ';
+
+  // Clean up expired RPC failure entries
+  const now = Date.now();
+  for (const [url, failedAt] of failedRpcs) {
+    if (now - failedAt >= RPC_RETRY_DELAY) {
+      failedRpcs.delete(url);
+    }
+  }
+
   const currentProvider = await web3ProviderStorage.getWeb3Provider();
   console.log(tag, 'currentProvider from storage:', currentProvider);
 
@@ -148,7 +157,6 @@ const getProvider = async (): Promise<JsonRpcProvider> => {
   console.log(tag, 'Available RPCs:', rpcUrls.length);
 
   // Filter out recently failed RPCs
-  const now = Date.now();
   const availableRpcs = rpcUrls.filter(url => {
     const failedAt = failedRpcs.get(url);
     if (failedAt && now - failedAt < RPC_RETRY_DELAY) {
@@ -214,8 +222,7 @@ const handleEthChainId = async () => {
 
 const handleNetVersion = async () => {
   const currentProvider = await web3ProviderStorage.getWeb3Provider();
-  const netVersion = currentProvider.chainId.toString();
-  return convertHexToDecimalChainId(netVersion).toString();
+  return currentProvider.chainId.toString();
 };
 
 const handleEthGetBlockByNumber = async params => {
@@ -293,7 +300,7 @@ const handleEthEstimateGas = async params => {
 const handleEthGasPrice = async () => {
   const provider = await getProvider();
   const feeData = await provider.getFeeData();
-  return '0x' + feeData.gasPrice.toString(16);
+  return feeData.gasPrice ? '0x' + feeData.gasPrice.toString(16) : '0x0';
 };
 
 const handleEthGetCode = async params => {
@@ -440,7 +447,7 @@ const handleWalletSwitchEthereumChain = async (params, KEEPKEY_WALLET) => {
 };
 
 // Handle wallet_addEthereumChain - add new chain with user approval
-const handleWalletAddEthereumChain = async (params, KEEPKEY_WALLET) => {
+const handleWalletAddEthereumChain = async (params, KEEPKEY_WALLET, requestInfo, requireApproval) => {
   const tag = TAG + ' | handleWalletAddEthereumChain | ';
   console.log(tag, 'Add Chain params: ', params);
   console.log(tag, 'KEEPKEY_WALLET exists:', !!KEEPKEY_WALLET);
@@ -503,9 +510,25 @@ const handleWalletAddEthereumChain = async (params, KEEPKEY_WALLET) => {
 
   console.log(tag, 'Cleaned provider config:', newProvider);
 
-  // TODO: Show user approval dialog here
-  // For now, auto-approve - but we should ask user permission
-  console.log(tag, 'Auto-approving chain addition (TODO: add user prompt)');
+  // Require user approval before adding chain
+  const approvalEvent = {
+    id: uuidv4(),
+    networkId,
+    chain: 'ethereum',
+    type: 'wallet_addEthereumChain',
+    request: params,
+    status: 'request' as const,
+    timestamp: new Date().toISOString(),
+    unsignedTx: null,
+    chainName: params[0].chainName,
+    chainId: chainIdHex,
+    requestInfo,
+  };
+  await requestStorage.addEvent(approvalEvent);
+  const approval = await requireApproval(networkId, requestInfo, 'ethereum', 'wallet_addEthereumChain', params[0]);
+  if (!approval?.success) {
+    throw createProviderRpcError(4001, 'User rejected adding the chain');
+  }
 
   // Store the custom chain
   await blockchainStorage.addBlockchain(newProvider.networkId);
@@ -620,10 +643,7 @@ const handleSigningMethods = async (method, params, requestInfo, ADDRESS, KEEPKE
 };
 
 const convertToHex = (amountInEther: string) => {
-  const weiMultiplier = BigInt(1e18); // 1 Ether = 1e18 Wei
-  const amountInWei = BigInt(parseFloat(amountInEther || '0') * 1e18); // Convert Ether to Wei
-
-  // Convert the amount in Wei to a hex string
+  const amountInWei = parseEther(amountInEther || '0');
   return '0x' + amountInWei.toString(16);
 };
 
@@ -642,8 +662,7 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
 
   // Build EVM transfer locally
   const provider = await getProvider();
-  const amountWei =
-    '0x' + BigInt(Math.floor(parseFloat(params[0].amount?.amount || params[0].amount || '0') * 1e18)).toString(16);
+  const amountWei = '0x' + parseEther(params[0].amount?.amount || params[0].amount || '0').toString(16);
   const chainId = currentProviderCtx?.chainId || '1';
 
   requestInfo.id = uuidv4();
@@ -817,7 +836,7 @@ export const handleEthereumRequest = async (
       return await handleWalletSwitchEthereumChain(params, KEEPKEY_WALLET);
 
     case 'wallet_addEthereumChain':
-      return await handleWalletAddEthereumChain(params, KEEPKEY_WALLET);
+      return await handleWalletAddEthereumChain(params, KEEPKEY_WALLET, requestInfo, requireApproval);
 
     case 'wallet_getSnaps':
       return await handleWalletGetSnaps();
@@ -869,8 +888,12 @@ const processApprovedEvent = async (method: string, params: any, KEEPKEY_WALLET:
     let result;
     switch (method) {
       case 'personal_sign':
+        // EIP-191 personal_sign: params = [message, address]. Prefer the dApp-supplied
+        // address so multi-account wallets sign with the correct derivation path.
+        result = await signMessage(params[0], KEEPKEY_WALLET, params[1] || ADDRESS);
+        break;
       case 'eth_sign':
-        result = await signMessage(params[0], KEEPKEY_WALLET, ADDRESS);
+        result = await signMessage(params[1], KEEPKEY_WALLET, params[0]);
         break;
       case 'eth_sendTransaction':
         result = await sendTransaction(params, KEEPKEY_WALLET, ADDRESS, id);
@@ -1073,7 +1096,8 @@ const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string) 
   try {
     console.log(tag, '**** params: ', params);
     const typedData = params[1];
-    const { domain, types, message, primaryType } = JSON.parse(typedData);
+    const parsed = typeof typedData === 'string' ? JSON.parse(typedData) : typedData;
+    const { domain, types, message, primaryType } = parsed;
     const HDWalletPayload = {
       address: ADDRESS,
       addressNList: getAddressNListForAddress(ADDRESS),

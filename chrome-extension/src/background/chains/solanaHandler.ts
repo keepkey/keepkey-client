@@ -7,10 +7,45 @@ const TAG = ' | solanaHandler | ';
 
 // Vault REST API and Solana mainnet RPC
 const VAULT_URL = 'http://localhost:1646';
-const SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com';
+const SOLANA_RPC_URLS = [
+  'https://api.mainnet-beta.solana.com',
+  'https://mainnet.helius-rpc.com/?api-key=1d8740dc-e5f4-421c-b823-e1bad1889eff',
+];
+
+let cachedRpcUrl: string | null = null;
+let cachedRpcTimestamp = 0;
+const RPC_CACHE_TTL = 60000; // cache healthy RPC for 60s
+
+async function getSolanaRpcUrl(): Promise<string> {
+  const now = Date.now();
+  if (cachedRpcUrl && now - cachedRpcTimestamp < RPC_CACHE_TTL) {
+    return cachedRpcUrl;
+  }
+  for (const url of SOLANA_RPC_URLS) {
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getHealth' }),
+        signal: AbortSignal.timeout(3000),
+      });
+      if (resp.ok) {
+        cachedRpcUrl = url;
+        cachedRpcTimestamp = now;
+        return url;
+      }
+    } catch { /* try next */ }
+  }
+  return SOLANA_RPC_URLS[0]; // fallback to primary
+}
 
 // Cached address from device
 let cachedAddress: string | null = null;
+
+/** Reset cached state (call when device disconnects or wallet re-inits) */
+export function resetSolanaState() {
+  cachedAddress = null;
+}
 
 /** Convert a number[] to base64 string (chunked to avoid call-stack limit) */
 function toBase64(arr: number[]): string {
@@ -24,7 +59,11 @@ function toBase64(arr: number[]): string {
 
 /** Convert a base64 string to number[] */
 function fromBase64(b64: string): number[] {
-  return Array.from(atob(b64), c => c.charCodeAt(0));
+  try {
+    return Array.from(atob(b64), c => c.charCodeAt(0));
+  } catch (e: any) {
+    throw createProviderRpcError(-32603, `Failed to decode base64 response: ${e.message}`);
+  }
 }
 
 // BIP44 path for Solana: m/44'/501'/0'/0'
@@ -35,8 +74,30 @@ const SOLANA_ADDRESS_N = [
   0x80000000 + 0, // 0x80000000
 ];
 
+const SOLANA_NETWORK_ID = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp';
+const SOLANA_PUBKEY_NOTE = 'Solana account 0';
+
 async function getSolanaAddress(): Promise<string> {
   if (cachedAddress) return cachedAddress;
+
+  // Try the persisted wallet pubkey cache first — works in watch-only mode.
+  const walletAddress = wallet.getAddressForNetwork(SOLANA_NETWORK_ID);
+  if (walletAddress) {
+    cachedAddress = walletAddress;
+    return walletAddress;
+  }
+
+  // Not cached — need the device.
+  if (!wallet.isDeviceConnected()) {
+    // Try one probe in case device was plugged in after start
+    const reachable = await wallet.probeDevice();
+    if (!reachable) {
+      throw createProviderRpcError(
+        -32603,
+        'KeepKey device not connected and no cached Solana address. Plug in your device to derive one.',
+      );
+    }
+  }
 
   const sdk = wallet.getSdk();
   const result = await sdk.address.solanaGetAddress({ address_n: SOLANA_ADDRESS_N });
@@ -47,6 +108,25 @@ async function getSolanaAddress(): Promise<string> {
   }
 
   cachedAddress = address;
+
+  // Persist to the shared pubkey cache so future watch-only sessions have it.
+  try {
+    await wallet.addPubkey({
+      note: SOLANA_PUBKEY_NOTE,
+      networks: [SOLANA_NETWORK_ID],
+      type: 'address',
+      address,
+      pubkey: address,
+      addressNList: SOLANA_ADDRESS_N,
+      addressNListMaster: SOLANA_ADDRESS_N,
+      curve: 'ed25519',
+      script_type: 'solana',
+      accountIndex: 0,
+    });
+  } catch (e) {
+    console.warn(TAG, 'Failed to cache Solana address:', e);
+  }
+
   return address;
 }
 
@@ -105,7 +185,11 @@ async function requestUserApproval(
 /** Get the Bearer API key from the SDK for direct REST calls */
 function getApiKey(): string {
   const sdk = wallet.getSdk();
-  return sdk.getClient?.()?.getApiKey?.() || '';
+  const key = sdk.getClient?.()?.getApiKey?.();
+  if (!key) {
+    throw createProviderRpcError(-32603, 'API key not available — vault may not be connected');
+  }
+  return key;
 }
 
 /**
@@ -119,17 +203,26 @@ function getApiKey(): string {
  */
 async function signTransactionViaRest(txBase64: string): Promise<{ signature: string; serializedTx: string }> {
   const apiKey = getApiKey();
-  const resp = await fetch(`${VAULT_URL}/solana/sign-transaction`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      raw_tx: txBase64,
-      address_n: SOLANA_ADDRESS_N,
-    }),
-  });
+  let resp: Response;
+  try {
+    resp = await fetch(`${VAULT_URL}/solana/sign-transaction`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        raw_tx: txBase64,
+        address_n: SOLANA_ADDRESS_N,
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+  } catch (e: any) {
+    if (e.name === 'TimeoutError' || e.name === 'AbortError') {
+      throw createProviderRpcError(-32603, 'Vault signing timed out');
+    }
+    throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
+  }
 
   if (!resp.ok) {
     const text = await resp.text().catch(() => '');
@@ -137,13 +230,14 @@ async function signTransactionViaRest(txBase64: string): Promise<{ signature: st
   }
 
   const result = await resp.json();
-  if (!result.signature && !result.serializedTx) {
-    throw createProviderRpcError(-32603, 'Vault returned empty sign result');
+  const serializedTx = result.serializedTx || result.serialized || '';
+  if (!serializedTx) {
+    throw createProviderRpcError(-32603, 'Vault returned no signed transaction data');
   }
 
   return {
     signature: result.signature || '',
-    serializedTx: result.serializedTx || result.serialized || '',
+    serializedTx,
   };
 }
 
@@ -158,17 +252,26 @@ async function signTransactionViaRest(txBase64: string): Promise<{ signature: st
  */
 async function signMessageViaRest(messageBase64: string): Promise<number[]> {
   const apiKey = getApiKey();
-  const resp = await fetch(`${VAULT_URL}/solana/sign-message`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      message: messageBase64,
-      address_n: SOLANA_ADDRESS_N,
-    }),
-  });
+  let resp: Response;
+  try {
+    resp = await fetch(`${VAULT_URL}/solana/sign-message`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        message: messageBase64,
+        address_n: SOLANA_ADDRESS_N,
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+  } catch (e: any) {
+    if (e.name === 'TimeoutError' || e.name === 'AbortError') {
+      throw createProviderRpcError(-32603, 'Vault sign-message timed out');
+    }
+    throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
+  }
 
   if (!resp.ok) {
     const text = await resp.text().catch(() => '');
@@ -191,16 +294,26 @@ async function signMessageViaRest(messageBase64: string): Promise<number[]> {
  * Vault has NO broadcast endpoint — we send directly to Solana RPC.
  */
 async function broadcastTransaction(signedTxBase64: string): Promise<string> {
-  const response = await fetch(SOLANA_RPC_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'sendTransaction',
-      params: [signedTxBase64, { encoding: 'base64' }],
-    }),
-  });
+  const rpcUrl = await getSolanaRpcUrl();
+  let response: Response;
+  try {
+    response = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'sendTransaction',
+        params: [signedTxBase64, { encoding: 'base64' }],
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+  } catch (e: any) {
+    if (e.name === 'TimeoutError' || e.name === 'AbortError') {
+      throw createProviderRpcError(-32603, 'Solana RPC broadcast timed out');
+    }
+    throw createProviderRpcError(-32603, `Solana RPC connection failed: ${e.message}`);
+  }
 
   if (!response.ok) {
     throw createProviderRpcError(-32603, `Solana RPC broadcast failed: ${response.status}`);
@@ -306,6 +419,7 @@ export const handleSolanaRequest = async (
           action: 'transaction_complete',
           txHash: txSignature,
           explorerTxLink: 'https://solscan.io/tx/',
+          networkId: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
         })
         .catch(() => {});
 

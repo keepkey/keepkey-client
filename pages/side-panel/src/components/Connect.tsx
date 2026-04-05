@@ -57,7 +57,7 @@ const Connect: React.FC<ConnectProps> = ({ setIsConnecting }) => {
       if (window) {
         setTimeout(() => {
           window.location.assign('keepkey://launch');
-          window.open('https://keepkey.com/launch', '_blank');
+          window.open('https://keepkey.com/get-started', '_blank');
         }, 100); // Adding a slight delay before launching the URL
       }
     } catch (error) {
@@ -77,24 +77,28 @@ const Connect: React.FC<ConnectProps> = ({ setIsConnecting }) => {
         textAlign="center"
         boxShadow="lg">
         <Image src={'https://i.ibb.co/jR8WcJM/kk.gif'} alt="KeepKey" />
-        <Text fontSize="lg" mb={4}>
-          Plug in your KeepKey to get started...
+        <Text fontSize="lg" fontWeight="bold" mb={2}>
+          KeepKey Vault Required
+        </Text>
+        <Text fontSize="sm" mb={4} color="gray.500">
+          The KeepKey Vault desktop app must be running to use this extension.
         </Text>
         <Stack direction="column" spacing={4} mb={4}>
           <Button colorScheme="blue" onClick={launchKeepKey}>
-            Launch KeepKey Desktop
+            Launch KeepKey Vault
           </Button>
 
-          <br />
-          <h3>Already running?</h3>
+          <Text fontSize="xs" color="gray.400">
+            Already running?
+          </Text>
           <Button colorScheme="teal" onClick={connectKeepkey}>
-            Connect to your KeepKey
+            Retry Connection
           </Button>
         </Stack>
         <Text fontSize="sm" mt={4}>
-          Dont have a KeepKey?{' '}
+          Don't have KeepKey Vault?{' '}
           <Button variant="link" color="teal.500" onClick={openKeepKeyLink}>
-            Buy a KeepKey
+            Download at keepkey.com
           </Button>
         </Text>
       </Card>
