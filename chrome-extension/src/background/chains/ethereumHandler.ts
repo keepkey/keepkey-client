@@ -517,13 +517,13 @@ const handleWalletAddEthereumChain = async (params, KEEPKEY_WALLET, requestInfo,
     chain: 'ethereum',
     type: 'wallet_addEthereumChain',
     request: params,
-    status: 'request',
+    status: 'request' as const,
     timestamp: new Date().toISOString(),
+    unsignedTx: null,
     chainName: params[0].chainName,
     chainId: chainIdHex,
     requestInfo,
   };
-  // @ts-expect-error
   await requestStorage.addEvent(approvalEvent);
   const approval = await requireApproval(networkId, requestInfo, 'ethereum', 'wallet_addEthereumChain', params[0]);
   if (!approval?.success) {
@@ -888,7 +888,9 @@ const processApprovedEvent = async (method: string, params: any, KEEPKEY_WALLET:
     let result;
     switch (method) {
       case 'personal_sign':
-        result = await signMessage(params[0], KEEPKEY_WALLET, ADDRESS);
+        // EIP-191 personal_sign: params = [message, address]. Prefer the dApp-supplied
+        // address so multi-account wallets sign with the correct derivation path.
+        result = await signMessage(params[0], KEEPKEY_WALLET, params[1] || ADDRESS);
         break;
       case 'eth_sign':
         result = await signMessage(params[1], KEEPKEY_WALLET, params[0]);
