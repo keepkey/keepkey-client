@@ -30,7 +30,7 @@ const Loading: React.FC<ConnectProps> = ({ setIsConnecting, keepkeyState }) => {
         <Box textAlign="center">
           <h2>Status: {keepkeyState}</h2>
           <Spinner size="6xl" />
-          <Text mt={4}>Connecting to KeepKey...</Text>
+          <Text mt={4}>Connecting to KeepKey Vault...</Text>
         </Box>
       </Card>
     </Box>
