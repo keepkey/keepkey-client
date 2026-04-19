@@ -1,96 +1,127 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { Box, Spinner } from '@chakra-ui/react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { Box, Spinner, Flex, Text } from '@chakra-ui/react';
 import { requestStorage } from '@extension/storage';
 import Transaction from './Transaction';
+
+// Events older than this are treated as abandoned and dropped on load.
+const MAX_EVENT_AGE_MINUTES = 10;
+// How long to show the empty state before auto-closing the popup. Long enough
+// for the post-sign "signature_complete" → cleanup → Transaction.tsx window.close()
+// to settle, short enough that a stuck/no-event popup doesn't linger.
+const EMPTY_STATE_AUTO_CLOSE_MS = 3000;
 
 const EventsViewer = () => {
   const [events, setEvents] = useState<any[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState<boolean>(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const autoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Function to calculate the age of the event in minutes
-  const getEventAgeInMinutes = (timestamp: string) => {
-    const eventTime = new Date(timestamp).getTime();
-    const currentTime = Date.now();
-    const ageInMinutes = (currentTime - eventTime) / 60000; // Convert milliseconds to minutes
-    return ageInMinutes;
-  };
-
-  // Optimized event fetching to prevent endless loops
   const fetchEvents = useCallback(async () => {
-    setLoading(true); // Show spinner while fetching events
-    const storedEvents = await requestStorage.getEvents();
-    const validEvents = [];
+    try {
+      const storedEvents = (await requestStorage.getEvents()) || [];
+      const now = Date.now();
+      const valid: any[] = [];
 
-    for (const event of storedEvents) {
-      const ageInMinutes = getEventAgeInMinutes(event.timestamp);
-      if (ageInMinutes <= 10) {
-        validEvents.push(event); // Keep events that are within 10 minutes
-      } else {
-        await requestStorage.removeEventById(event.id); // Remove events older than 10 minutes
+      for (const event of storedEvents) {
+        const ageMs = now - new Date(event.timestamp).getTime();
+        if (ageMs <= MAX_EVENT_AGE_MINUTES * 60_000) {
+          valid.push(event);
+        } else {
+          // Fire-and-forget; don't block the fetch on cleanup.
+          void requestStorage.removeEventById(event.id);
+        }
       }
+
+      setEvents(valid.reverse());
+      setFetchError(null);
+    } catch (e: any) {
+      console.error('EventsViewer: fetchEvents failed', e);
+      setFetchError(e?.message || 'Failed to load pending requests');
+    } finally {
+      setLoading(false);
     }
-
-    // Set the valid events and reverse them to show latest first
-    setEvents(validEvents.reverse());
-    setLoading(false); // Stop spinner after events are loaded
-
-    // If no events are found, close the window
-    // if (validEvents.length === 0) {
-    //   window.close();
-    // }
   }, []);
 
   useEffect(() => {
     fetchEvents();
+    // Live-refresh when events are added/removed by the background.
+    const unsubscribe = requestStorage.subscribe?.(() => {
+      fetchEvents();
+    });
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
   }, [fetchEvents]);
 
-  const nextEvent = () => {
-    if (currentIndex < events.length - 1) {
-      setCurrentIndex(currentIndex + 1);
-      resetTransactionState();
+  // Auto-close the popup if we're sitting in the empty state — guards against
+  // the "popup open, no events, no way forward" case (e.g. dapp cancelled the
+  // request, or storage cleanup ran before the window closed itself).
+  useEffect(() => {
+    if (loading || fetchError) return;
+    if (events.length > 0) {
+      if (autoCloseTimerRef.current) {
+        clearTimeout(autoCloseTimerRef.current);
+        autoCloseTimerRef.current = null;
+      }
+      return;
     }
-  };
+    autoCloseTimerRef.current = setTimeout(() => {
+      console.log('EventsViewer: empty state timeout, closing popup');
+      window.close();
+    }, EMPTY_STATE_AUTO_CLOSE_MS);
+    return () => {
+      if (autoCloseTimerRef.current) {
+        clearTimeout(autoCloseTimerRef.current);
+        autoCloseTimerRef.current = null;
+      }
+    };
+  }, [events.length, loading, fetchError]);
 
-  const previousEvent = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex(currentIndex - 1);
-      resetTransactionState();
+  // Keep currentIndex in bounds when the event list shrinks.
+  useEffect(() => {
+    if (events.length > 0 && currentIndex >= events.length) {
+      setCurrentIndex(events.length - 1);
     }
-  };
-
-  const clearRequestEvents = async () => {
-    await requestStorage.clearEvents();
-    fetchEvents();
-    setCurrentIndex(0);
-  };
-
-  // Reset transaction state when switching between events
-  const resetTransactionState = () => {
-    // Here you can reset any transaction-related state
-    setLoading(false);
-  };
+  }, [events.length, currentIndex]);
 
   return (
     <Box maxW="100vw" overflowX="hidden" p={4}>
-      {/* Show spinner if events are being fetched */}
-      {loading && <Spinner />}
+      {loading && (
+        <Flex direction="column" align="center" justify="center" minH="200px" gap={3}>
+          <Spinner />
+          <Text fontSize="sm" opacity={0.7}>
+            Loading pending requests...
+          </Text>
+        </Flex>
+      )}
 
-      {/* Only show event details if events are loaded */}
-      {events.length > 0 && !loading ? (
-        <Box>
-          {/* Show the age of the current event */}
-          {/*<Text fontSize="md" fontWeight="medium">*/}
-          {/*  Chain: {events[currentIndex].chain}*/}
-          {/*  <br />*/}
-          {/*  Event Age: {Math.floor(getEventAgeInMinutes(events[currentIndex].timestamp))} minutes*/}
-          {/*</Text>*/}
+      {!loading && fetchError && (
+        <Flex direction="column" align="center" justify="center" minH="200px" gap={3} p={4}>
+          <Text fontWeight="bold">Couldn't load pending requests</Text>
+          <Text fontSize="sm" opacity={0.7}>
+            {fetchError}
+          </Text>
+          <Text fontSize="xs" opacity={0.5} mt={2}>
+            This window will close automatically.
+          </Text>
+        </Flex>
+      )}
 
-          {/* Pass the current event to the Transaction component */}
-          <Transaction event={events[currentIndex]} reloadEvents={fetchEvents} />
-        </Box>
-      ) : (
-        <div>No events</div>
+      {!loading && !fetchError && events.length > 0 && (
+        <Transaction event={events[currentIndex]} reloadEvents={fetchEvents} />
+      )}
+
+      {!loading && !fetchError && events.length === 0 && (
+        <Flex direction="column" align="center" justify="center" minH="200px" gap={3}>
+          <Text fontWeight="bold">No pending requests</Text>
+          <Text fontSize="sm" opacity={0.7}>
+            Nothing to approve right now.
+          </Text>
+          <Text fontSize="xs" opacity={0.5} mt={2}>
+            This window will close automatically.
+          </Text>
+        </Flex>
       )}
     </Box>
   );
