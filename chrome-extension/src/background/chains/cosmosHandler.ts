@@ -103,6 +103,7 @@ export const handleCosmosRequest = async (
         await requestStorage.updateEventById(requestInfo.id, response);
         chrome.runtime.sendMessage({
           action: 'transaction_complete',
+          eventId: requestInfo.id,
           txHash,
           explorerTxLink: 'https://www.mintscan.io/cosmos/tx/',
         });

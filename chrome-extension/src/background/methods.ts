@@ -18,58 +18,79 @@ import { createProviderRpcError, ProviderRpcError, formatUserError } from './uti
 
 const TAG = ' | METHODS | ';
 
-let isPopupOpen = false; // Flag to track popup state
-let popupWindowId: number | null = null; // Track the popup window ID
+const POPUP_URL = chrome.runtime.getURL('popup/index.html');
 
-const openPopup = function () {
+// Single window-close listener registered at module load, not per-open.
+// Listeners watching for "this popup closed" subscribe via onPopupClosed().
+const popupCloseListeners = new Set<(windowId: number) => void>();
+const onPopupClosed = (listener: (windowId: number) => void): (() => void) => {
+  popupCloseListeners.add(listener);
+  return () => {
+    popupCloseListeners.delete(listener);
+  };
+};
+chrome.windows.onRemoved.addListener(windowId => {
+  popupCloseListeners.forEach(fn => {
+    try {
+      fn(windowId);
+    } catch (e) {
+      console.error(TAG, 'popup close listener threw', e);
+    }
+  });
+});
+
+// Track the current approval popup's windowId. Source of truth is
+// chrome.windows.getAll(), not this variable — the variable is an optimistic
+// cache that can be stale after a service worker restart.
+let popupWindowId: number | null = null;
+
+// Find an already-open approval popup by URL. Survives service worker restarts.
+const findExistingPopup = async (): Promise<chrome.windows.Window | null> => {
+  try {
+    const windows = await chrome.windows.getAll({ populate: true, windowTypes: ['popup'] });
+    for (const w of windows) {
+      const tabs = w.tabs || [];
+      if (tabs.some(t => t.url === POPUP_URL || t.pendingUrl === POPUP_URL)) {
+        return w;
+      }
+    }
+  } catch (e) {
+    console.error(TAG, 'findExistingPopup failed', e);
+  }
+  return null;
+};
+
+// Returns the popup windowId once the popup is guaranteed to exist. Focuses
+// an existing popup if one is already open; otherwise creates a new one.
+const openPopup = async (): Promise<number | null> => {
   const tag = TAG + ' | openPopup | ';
   try {
-    // If popup is already open, focus it instead of creating a new one
-    if (isPopupOpen && popupWindowId !== null) {
+    const existing = await findExistingPopup();
+    if (existing?.id != null) {
+      popupWindowId = existing.id;
       console.log(tag, 'Popup already open, focusing existing window:', popupWindowId);
-      chrome.windows.update(popupWindowId, { focused: true }).catch(err => {
-        console.error(tag, 'Failed to focus existing popup, creating new one:', err);
-        isPopupOpen = false;
-        popupWindowId = null;
-        openPopup();
-      });
-      return;
+      try {
+        await chrome.windows.update(popupWindowId, { focused: true });
+      } catch (e) {
+        console.warn(tag, 'Failed to focus existing popup', e);
+      }
+      return popupWindowId;
     }
 
     console.log(tag, 'Opening popup');
-    isPopupOpen = true;
-    chrome.windows.create(
-      {
-        url: chrome.runtime.getURL('popup/index.html'), // Adjust the URL to your popup file
-        type: 'popup',
-        width: 360,
-        height: 900,
-      },
-      window => {
-        if (chrome.runtime.lastError) {
-          console.error('Error creating popup:', chrome.runtime.lastError);
-          isPopupOpen = false;
-          popupWindowId = null;
-        } else {
-          console.log('Popup window created:', window);
-          popupWindowId = window?.id || null;
-
-          // Listen for when the popup is closed
-          chrome.windows.onRemoved.addListener(function windowClosedListener(windowId) {
-            if (windowId === popupWindowId) {
-              console.log(tag, 'Popup closed, resetting state');
-              isPopupOpen = false;
-              popupWindowId = null;
-              chrome.windows.onRemoved.removeListener(windowClosedListener);
-            }
-          });
-        }
-      },
-    );
+    const created = await chrome.windows.create({
+      url: POPUP_URL,
+      type: 'popup',
+      width: 360,
+      height: 900,
+    });
+    popupWindowId = created?.id ?? null;
+    console.log(tag, 'Popup window created:', popupWindowId);
+    return popupWindowId;
   } catch (e) {
     console.error(tag, e);
-    isPopupOpen = false;
     popupWindowId = null;
+    return null;
   }
 };
 
@@ -153,22 +174,41 @@ const requireApproval = async function (
     //   throw new Error('Event not saved');
     // }
 
-    openPopup();
+    const activePopupId = await openPopup();
 
-    // Wait for user's decision and return the result
+    // Wait for user's decision and return the result. Cleans up on ANY of:
+    //   - user approves/rejects in popup (eth_sign_response arrives)
+    //   - popup window is closed (treated as implicit reject)
     return new Promise(resolve => {
-      const listener = (message: any, sender: chrome.runtime.MessageSender, sendResponse: any) => {
-        if (message.action === 'eth_sign_response' && message.response.eventId === requestInfo.id) {
+      let settled = false;
+      let unsubClose: (() => void) | null = null;
+
+      const cleanup = () => {
+        chrome.runtime.onMessage.removeListener(listener);
+        if (unsubClose) unsubClose();
+      };
+
+      const listener = (message: any) => {
+        if (message?.action === 'eth_sign_response' && message?.response?.eventId === requestInfo.id) {
+          if (settled) return;
+          settled = true;
           console.log(tag, 'Received eth_sign_response for event:', message.response.eventId);
-          chrome.runtime.onMessage.removeListener(listener);
-          if (message.response.decision === 'accept') {
-            resolve({ success: true });
-          } else {
-            resolve({ success: false });
-          }
+          cleanup();
+          resolve({ success: message.response.decision === 'accept' });
         }
       };
       chrome.runtime.onMessage.addListener(listener);
+
+      unsubClose = onPopupClosed((closedId: number) => {
+        // If we couldn't determine the popup windowId at open time, treat any
+        // popup close as potentially ours — safer than hanging forever.
+        if (activePopupId != null && closedId !== activePopupId) return;
+        if (settled) return;
+        settled = true;
+        console.log(tag, 'Popup closed without response, rejecting approval for event:', requestInfo.id);
+        cleanup();
+        resolve({ success: false });
+      });
     });
   } catch (e) {
     console.error(tag, e);

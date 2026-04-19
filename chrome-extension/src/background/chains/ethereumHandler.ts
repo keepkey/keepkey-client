@@ -74,46 +74,6 @@ type Event = {
   timestamp: string;
 };
 
-let isPopupOpen = false; // Flag to track popup state
-
-const openPopup = function () {
-  const tag = TAG + ' | openPopup | ';
-  try {
-    console.log(tag, 'Opening popup');
-    chrome.windows.create(
-      {
-        url: chrome.runtime.getURL('popup/index.html'), // Adjust the URL to your popup file
-        type: 'popup',
-        width: 400,
-        height: 600,
-      },
-      window => {
-        if (chrome.runtime.lastError) {
-          console.error('Error creating popup:', chrome.runtime.lastError);
-          isPopupOpen = false;
-        } else {
-          console.log('Popup window created:', window);
-
-          // Optionally, handle the popup window focus or other behaviors
-        }
-      },
-    );
-  } catch (e) {
-    console.error(tag, e);
-  }
-};
-
-const requireUnlock = async function () {
-  const tag = TAG + ' | requireUnlock | ';
-  try {
-    console.log(tag, 'requireUnlock for domain');
-    openPopup();
-  } catch (e) {
-    console.error(e);
-    isPopupOpen = false;
-  }
-};
-
 const convertHexToDecimalChainId = (hexChainId: string): number => {
   return parseInt(hexChainId, 16);
 };
@@ -757,6 +717,7 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
     // Notify transaction completion
     chrome.runtime.sendMessage({
       action: 'transaction_complete',
+      eventId: requestInfo.id,
       txHash: txid,
       explorerTxLink: currentProviderCtx?.explorerTxLink,
       networkId,
@@ -890,10 +851,10 @@ const processApprovedEvent = async (method: string, params: any, KEEPKEY_WALLET:
       case 'personal_sign':
         // EIP-191 personal_sign: params = [message, address]. Prefer the dApp-supplied
         // address so multi-account wallets sign with the correct derivation path.
-        result = await signMessage(params[0], KEEPKEY_WALLET, params[1] || ADDRESS);
+        result = await signMessage(params[0], KEEPKEY_WALLET, params[1] || ADDRESS, id);
         break;
       case 'eth_sign':
-        result = await signMessage(params[1], KEEPKEY_WALLET, params[0]);
+        result = await signMessage(params[1], KEEPKEY_WALLET, params[0], id);
         break;
       case 'eth_sendTransaction':
         result = await sendTransaction(params, KEEPKEY_WALLET, ADDRESS, id);
@@ -901,7 +862,7 @@ const processApprovedEvent = async (method: string, params: any, KEEPKEY_WALLET:
       case 'eth_signTypedData':
       case 'eth_signTypedData_v3':
       case 'eth_signTypedData_v4':
-        result = await signTypedData(params, KEEPKEY_WALLET, ADDRESS);
+        result = await signTypedData(params, KEEPKEY_WALLET, ADDRESS, id);
         break;
       case 'eth_signTransaction':
         result = await signTransaction(params[0], KEEPKEY_WALLET);
@@ -919,7 +880,7 @@ const processApprovedEvent = async (method: string, params: any, KEEPKEY_WALLET:
   }
 };
 
-const signMessage = async (message, KEEPKEY_WALLET, ADDRESS: string) => {
+const signMessage = async (message, KEEPKEY_WALLET, ADDRESS: string, eventId?: string) => {
   const tag = TAG + ' [signMessage] ';
   try {
     console.log(tag, '**** message: ', message);
@@ -947,6 +908,7 @@ const signMessage = async (message, KEEPKEY_WALLET, ADDRESS: string) => {
     // Notify popup that signature is complete
     chrome.runtime.sendMessage({
       action: 'signature_complete',
+      eventId,
       signature: signatureHex,
     });
 
@@ -1091,7 +1053,7 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
   }
 };
 
-const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string) => {
+const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string, eventId?: string) => {
   const tag = ' | signTypedData | ';
   try {
     console.log(tag, '**** params: ', params);
@@ -1116,6 +1078,7 @@ const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string) 
     // Notify popup that signature is complete
     chrome.runtime.sendMessage({
       action: 'signature_complete',
+      eventId,
       signature: signatureHex,
     });
 
@@ -1204,6 +1167,7 @@ const sendTransaction = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string
     //push event
     chrome.runtime.sendMessage({
       action: 'transaction_complete',
+      eventId: id,
       txHash: txHash,
       explorerTxLink: currentProvider.explorerTxLink,
       networkId: currentProvider.networkId,

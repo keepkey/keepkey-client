@@ -103,6 +103,7 @@ export const handleRippleRequest = async (
         await requestStorage.updateEventById(requestInfo.id, response);
         chrome.runtime.sendMessage({
           action: 'transaction_complete',
+          eventId: requestInfo.id,
           txHash,
           explorerTxLink: 'https://xrpscan.com/tx/',
         });

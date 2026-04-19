@@ -55,7 +55,7 @@ export const handleBitcoinCashRequest = async (
           chrome.runtime.sendMessage({ action: 'utxo_build_tx', unsignedTx: requestInfo });
         } catch (e) {
           console.error(e);
-          chrome.runtime.sendMessage({ action: 'transaction_error', error: JSON.stringify(e) });
+          chrome.runtime.sendMessage({ action: 'transaction_error', eventId: requestInfo.id, error: JSON.stringify(e) });
         }
       };
       buildTx();
@@ -104,6 +104,7 @@ export const handleBitcoinCashRequest = async (
         await requestStorage.updateEventById(requestInfo.id, response);
         chrome.runtime.sendMessage({
           action: 'transaction_complete',
+          eventId: requestInfo.id,
           txHash,
           explorerTxLink: 'https://blockchair.com/bitcoin-cash/transaction/',
         });

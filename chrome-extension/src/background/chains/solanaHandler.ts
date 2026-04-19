@@ -132,8 +132,11 @@ async function getSolanaAddress(): Promise<string> {
 
 /** Build the event object for popup approval flow */
 function buildEvent(requestInfo: any, method: string, params: any[]) {
+  // Ensure requestInfo.id is set so callers downstream (including message payloads
+  // that tag chrome.runtime events with eventId) reference the same id we store.
+  if (!requestInfo.id) requestInfo.id = uuidv4();
   return {
-    id: requestInfo.id || uuidv4(),
+    id: requestInfo.id,
     networkId: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
     chain: 'solana',
     href: requestInfo.href,
@@ -373,7 +376,7 @@ export const handleSolanaRequest = async (
       const messageBase64 = toBase64(messageArray);
       const signatureArray = await signMessageViaRest(messageBase64);
 
-      chrome.runtime.sendMessage({ action: 'signature_complete' }).catch(() => {});
+      chrome.runtime.sendMessage({ action: 'signature_complete', eventId: requestInfo.id }).catch(() => {});
       return signatureArray;
     }
 
@@ -393,7 +396,7 @@ export const handleSolanaRequest = async (
       // Return the fully signed transaction (vault replaces dummy sig at bytes 1-64)
       const signedTxArray = fromBase64(txSignResult.serializedTx);
 
-      chrome.runtime.sendMessage({ action: 'signature_complete' }).catch(() => {});
+      chrome.runtime.sendMessage({ action: 'signature_complete', eventId: requestInfo.id }).catch(() => {});
       return signedTxArray;
     }
 
@@ -417,6 +420,7 @@ export const handleSolanaRequest = async (
       chrome.runtime
         .sendMessage({
           action: 'transaction_complete',
+          eventId: requestInfo.id,
           txHash: txSignature,
           explorerTxLink: 'https://solscan.io/tx/',
           networkId: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
