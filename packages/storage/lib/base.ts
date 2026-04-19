@@ -168,6 +168,9 @@ export function createStorage<D = string>(key: string, fallback: D, config?: Sto
   };
 
   const set = async (valueOrUpdate: ValueOrUpdate<D>) => {
+    if (cache === null) {
+      cache = await _getDataFromStorage();
+    }
     cache = await updateCache(valueOrUpdate, cache);
 
     await chrome.storage[storageType].set({ [key]: serialize(cache) });
