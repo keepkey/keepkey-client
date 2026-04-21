@@ -126,6 +126,18 @@ let ADDRESS = '';
 // ---- Balance fetching via Pioneer API ----
 let cachedBalances: any[] = [];
 let balancesFetchInProgress: Promise<any[]> | null = null;
+// Monotonic sequence so an earlier, slower fetch can't clobber a later fetch's
+// result when they overlap. Bumped each time a new fetch actually starts work
+// (not for calls that return the in-flight dedup promise).
+let latestFetchId = 0;
+
+function pushBalancesUpdated() {
+  chrome.runtime
+    .sendMessage({ type: 'BALANCES_UPDATED' })
+    .catch(() => {
+      // No popup/sidebar listening — ignore.
+    });
+}
 
 // All EVM CAPIPs (deduplicated) — used to fan out EVM wildcard addresses
 const EVM_CAIPS = [...new Set(Object.values(shortListSymbolToCaip).filter(caip => caip.startsWith('eip155:')))];
@@ -134,6 +146,7 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
   // Deduplicate concurrent calls — but honor forceRefresh
   if (balancesFetchInProgress && !forceRefresh) return balancesFetchInProgress;
 
+  const myFetchId = ++latestFetchId;
   const thisPromise: Promise<any[]> = (async () => {
     try {
       const allPubkeys = wallet.getPubkeys();
@@ -380,10 +393,21 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
         console.warn('[fetchBalances] Custom chain enrichment error:', e.message);
       }
 
-      cachedBalances = balances;
       console.log(
         `[fetchBalances] Got ${balances.length} balance entries (${balances.filter((b: any) => b.isNative).length} native, ${balances.filter((b: any) => !b.isNative).length} tokens)`,
       );
+      // Only commit to the cache and notify listeners if we are still the most
+      // recent fetch. Without this guard an earlier, slower request that started
+      // before the Solana pubkey existed could finish after a later forced
+      // refetch and clobber the cache back to a pre-Solana snapshot.
+      if (myFetchId === latestFetchId) {
+        cachedBalances = balances;
+        pushBalancesUpdated();
+      } else {
+        console.log(
+          `[fetchBalances] discarding result from superseded fetch #${myFetchId} (latest: #${latestFetchId})`,
+        );
+      }
       return balances;
     } catch (e: any) {
       console.error('[fetchBalances] Error:', e.message || e);

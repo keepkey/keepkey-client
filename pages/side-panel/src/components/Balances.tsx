@@ -53,27 +53,30 @@ const Balances = ({ onSelectAsset }: BalancesProps) => {
 
   const formatUsd = (value: string) => parseFloat(value).toFixed(2);
 
-  // Fetch assets and balances on mount
+  // Fetch assets once; refresh balances on mount and on background BALANCES_UPDATED push
   useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
+    chrome.runtime.sendMessage({ type: 'GET_ASSETS' }, response => {
+      if (response?.assets) setAssets(response.assets);
+    });
 
-      // GET_ASSETS now includes both static and custom chains
-      chrome.runtime.sendMessage({ type: 'GET_ASSETS' }, response => {
-        if (response?.assets) {
-          setAssets(response.assets);
-        }
-      });
-
+    const refreshBalances = () => {
       chrome.runtime.sendMessage({ type: 'GET_APP_BALANCES' }, response => {
-        if (response?.balances) {
-          setBalances(response.balances);
-        }
+        if (response?.balances) setBalances(response.balances);
         setLoading(false);
       });
     };
 
-    fetchData();
+    refreshBalances();
+
+    // Cold-start: background may land Solana + SPL tokens after the panel
+    // mounts and paints a pre-Solana snapshot. Listen for BALANCES_UPDATED
+    // pushes so the UI reflects the latest cache without the user having to
+    // refresh manually.
+    const listener = (message: any) => {
+      if (message?.type === 'BALANCES_UPDATED') refreshBalances();
+    };
+    chrome.runtime.onMessage.addListener(listener);
+    return () => chrome.runtime.onMessage.removeListener(listener);
   }, []);
 
   // Sort assets by total USD value descending
