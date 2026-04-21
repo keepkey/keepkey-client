@@ -29,18 +29,21 @@ const TAG = ' | METHODS | ';
 // ignores the request. Matches the sidebar's event-age eviction window.
 const APPROVAL_TIMEOUT_MS = 10 * 60_000;
 
-const findTargetWindowId = async (): Promise<number | null> => {
+const findTargetWindowId = async (preferred?: number | null): Promise<number | null> => {
   try {
-    const tabs = await chrome.tabs.query({});
-    const webTabs = tabs.filter(
-      t =>
-        t.url &&
-        !t.url.startsWith('chrome://') &&
-        !t.url.startsWith('chrome-extension://') &&
-        !t.url.startsWith('about:'),
-    );
-    webTabs.sort((a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0));
-    if (webTabs[0]?.windowId != null) return webTabs[0].windowId;
+    // ALWAYS prefer the sender tab's own window when we know it — that's
+    // the browser window the dApp is running in, and the side panel
+    // MUST open there. Falling through to "most recently accessed web
+    // tab" meant a request originating in Window A could surface its
+    // approval UI in Window B.
+    if (preferred != null) {
+      try {
+        const w = await chrome.windows.get(preferred);
+        if (w?.id != null) return w.id;
+      } catch {
+        // Window closed between request and approval — fall through.
+      }
+    }
     const current = await chrome.windows.getLastFocused({});
     return current?.id ?? null;
   } catch {
@@ -48,13 +51,13 @@ const findTargetWindowId = async (): Promise<number | null> => {
   }
 };
 
-const openSidePanel = async (): Promise<void> => {
+const openSidePanel = async (requestInfo: any): Promise<void> => {
   const tag = TAG + ' | openSidePanel | ';
   // Firefox has no sidePanel API; the user sees the badge and approval
   // remains unreachable until task #5 wires a Firefox-specific surface.
   if (!chrome.sidePanel?.open) return;
   try {
-    const windowId = await findTargetWindowId();
+    const windowId = await findTargetWindowId(requestInfo?.__senderWindowId);
     if (windowId == null) {
       console.warn(tag, 'No target window found — user must click the extension icon to open the panel');
       return;
@@ -161,7 +164,7 @@ const requireApproval = async function (
     // }
 
     setApprovalBadge(true);
-    await openSidePanel();
+    await openSidePanel(requestInfo);
 
     // Wait for user's decision. Resolves on ANY of:
     //   - user approves/rejects in sidebar (eth_sign_response arrives)

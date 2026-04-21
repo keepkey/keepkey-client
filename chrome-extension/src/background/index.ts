@@ -573,6 +573,18 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           const { requestInfo } = message;
           const { method, params, chain } = requestInfo;
 
+          // Tag the request with the sender's browser tab/window so the
+          // approval side panel opens in the SAME window the dApp lives
+          // in — not whichever web tab was focused last. Using "most
+          // recently accessed" risked surfacing a signing prompt in a
+          // completely different browser window than the one that
+          // triggered it, which is a real phishing / mis-sign risk now
+          // that the sidebar is the sole approval surface.
+          if (sender?.tab) {
+            requestInfo.__senderTabId = sender.tab.id;
+            requestInfo.__senderWindowId = sender.tab.windowId;
+          }
+
           if (method) {
             try {
               // KEEPKEY_WALLET and ADDRESS are passed for backward compat with handler signatures
@@ -1028,6 +1040,20 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               delete next[removeNetId];
               return next;
             });
+            // If the removed network was actively selected, the asset
+            // context and web3 provider still point at it — the signer
+            // would keep using a chain the user just deleted. Clear both
+            // and tell the sidebar so it can drop its drawer / header
+            // selection.
+            const currentCtx = await assetContextStorage.get().catch(() => null);
+            const currentProvider = await web3ProviderStorage.getWeb3Provider().catch(() => null);
+            if ((currentCtx as any)?.networkId === removeNetId) {
+              await assetContextStorage.clearContext().catch(() => {});
+              chrome.runtime.sendMessage({ type: 'ASSET_CONTEXT_CLEARED' }).catch(() => {});
+            }
+            if ((currentProvider as any)?.networkId === removeNetId) {
+              await web3ProviderStorage.clearWeb3Provider().catch(() => {});
+            }
             sendResponse({ success: true, networks });
           } catch (error) {
             console.error('Error removing custom EVM network:', error);
