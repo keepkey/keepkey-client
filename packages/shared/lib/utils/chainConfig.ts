@@ -126,7 +126,10 @@ const NETWORK_SLIP44: Record<string, string> = {
   'cosmos:osmosis-1': 'slip44:118',
   'ripple:4109c6f2045fc7eff4cde8f9905d19c2': 'slip44:144',
   // DO NOT add binance:bnb-beacon-chain — Binance Beacon Chain is deprecated/broken, never re-add
-  'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp': 'solana:So11111111111111111111111111111111111111112',
+  // Native SOL uses slip44:501 — the wSOL SPL CAIP (So111…) 404s on
+  // keepkey.info/coins, which caused the Solana network badge to render as a
+  // letter-fallback "S" instead of the logo.
+  'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp': 'slip44:501',
 };
 
 export function networkIdToIcon(networkId: string): string {
