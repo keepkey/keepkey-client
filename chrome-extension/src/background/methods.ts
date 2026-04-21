@@ -322,6 +322,7 @@ export const handleWalletRequest = async (
     //push error to the popup
     chrome.runtime.sendMessage({
       action: 'transaction_error',
+      eventId: requestInfo?.id,
       error: errorMessage,
     });
 
