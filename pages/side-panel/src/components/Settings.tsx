@@ -164,7 +164,7 @@ const Settings = () => {
         </Button>
       </Link>
 
-      <Image src="/kk.webp" alt="KeepKey" />
+      <Image src="/kk.gif" alt="KeepKey" />
 
       <VStack spacing={4} align="stretch">
         <Text fontSize="md" fontWeight="bold">
