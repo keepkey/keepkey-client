@@ -91,6 +91,10 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
   useEffect(() => {
     const handleMessage = (message: any) => {
       console.log('message received:', message);
+      // Only handle messages addressed to THIS event. Messages without an
+      // eventId are legacy/unscoped; accept them for backward compatibility
+      // so nothing hangs if an older handler is still in flight.
+      if (message?.eventId && message.eventId !== event.id) return;
       if (message.action === 'transaction_complete') {
         // Play success sound after device signs transaction
         try {

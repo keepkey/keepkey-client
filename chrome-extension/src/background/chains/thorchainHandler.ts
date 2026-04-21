@@ -105,6 +105,7 @@ export const handleThorchainRequest = async (
         await requestStorage.updateEventById(requestInfo.id, response);
         chrome.runtime.sendMessage({
           action: 'transaction_complete',
+          eventId: requestInfo.id,
           txHash,
           explorerTxLink: 'https://runescan.io/tx/',
         });

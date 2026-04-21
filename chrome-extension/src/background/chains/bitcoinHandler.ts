@@ -85,6 +85,7 @@ export const handleBitcoinRequest = async (
           console.error(e);
           chrome.runtime.sendMessage({
             action: 'transaction_error',
+            eventId: requestInfo.id,
             error: JSON.stringify(e),
           });
         }
@@ -145,6 +146,7 @@ export const handleBitcoinRequest = async (
 
           chrome.runtime.sendMessage({
             action: 'transaction_complete',
+            eventId: requestInfo.id,
             txHash: txHash,
             explorerTxLink: 'https://mempool.space/tx/',
           });
@@ -153,6 +155,7 @@ export const handleBitcoinRequest = async (
           console.error(tag, e);
           chrome.runtime.sendMessage({
             action: 'transaction_error',
+            eventId: requestInfo.id,
             error: JSON.stringify(e),
           });
         }
