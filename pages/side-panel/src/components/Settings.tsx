@@ -12,6 +12,7 @@ import {
   keepKeyApiKeyStorage,
   web3ProviderStorage,
   customEvmNetworksStorage,
+  ethAccountsStorage,
 } from '@extension/storage';
 
 const TAG = ' | Settings | ';
@@ -84,6 +85,12 @@ const Settings = () => {
         // so omitting it from the clear meant "reset everything" left the
         // list intact and stale networks kept showing up after clear.
         customEvmNetworksStorage.set(() => []),
+        // Extra ETH accounts persist separately from paths/pubkeys — on
+        // startup the background rehydrates saved indices and re-adds the
+        // derivation paths. Without clearing this, "All persisted data has
+        // been removed" was a lie that reappeared at the next reload.
+        // Reset to [0] (account 0 is the implicit baseline).
+        ethAccountsStorage.set(() => [0]),
       ]);
 
       const failures = results.filter(r => r.status === 'rejected');
