@@ -50,7 +50,7 @@ export function EvmTransaction({ transaction, reloadEvents, handleResponse }: an
 
           {/* Fees Tab */}
           <TabPanel>
-            {transaction.type !== 'personal_sign' && (
+            {transaction.type !== 'personal_sign' && transaction.type !== 'eth_sign' && (
               <>
                 <RequestFeeCard transaction={transaction} />
               </>
