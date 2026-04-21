@@ -254,6 +254,32 @@ export function addPath(path: PathConfig): void {
 }
 
 /**
+ * Remove a path (and its corresponding pubkey) by matching note.
+ * Counterpart to addPath so callers that remove accounts from storage
+ * can also clear the runtime signer state — otherwise the wallet keeps
+ * signing against a path that no longer appears in the UI.
+ * Persists the updated pubkey list if a device is known.
+ */
+export async function removePathByNote(note: string): Promise<void> {
+  const tag = TAG + ' | removePathByNote | ';
+  const beforePaths = state.paths.length;
+  const beforePubkeys = state.pubkeys.length;
+  state.paths = state.paths.filter(p => p.note !== note);
+  state.pubkeys = state.pubkeys.filter((pk: any) => pk.note !== note);
+  console.log(
+    tag,
+    `Removed ${beforePaths - state.paths.length} paths and ${beforePubkeys - state.pubkeys.length} pubkeys for note: ${note}`,
+  );
+  if (state.deviceInfo) {
+    try {
+      await pubkeyStorage.savePubkeys(state.pubkeys, state.deviceInfo);
+    } catch (e) {
+      console.warn(tag, 'Failed to persist pubkeys after removal:', e);
+    }
+  }
+}
+
+/**
  * Append a pubkey entry to state and persist to cache. Used for addresses
  * derived outside of the batch xpub flow (e.g. Solana via solanaGetAddress).
  * Replaces any existing entry with the same `note`.
