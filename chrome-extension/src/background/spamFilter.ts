@@ -250,19 +250,28 @@ export function detectSpamToken(token: TokenBalanceEntry, userOverride?: TokenVi
 
 /**
  * Filter spam tokens from a balance array.
- * Only filters non-native (token) entries — native chain balances are always kept.
+ *
+ * Only `confirmed` spam (URL-shaped names, phishing keywords, suspicious
+ * symbols, fake stablecoins, dust airdrops) and user-marked-hidden tokens
+ * are dropped. `possible` spam (the low-USD-value heuristic) is KEPT —
+ * the tier-6 `< $1` rule is too coarse to drop silently when there is no
+ * override UI: legitimate small holdings, fresh custom tokens, testnet-
+ * like balances, and anything with missing price data all land there.
+ * Callers that want to visually de-emphasize possible-spam can call
+ * `detectSpamToken` themselves and render accordingly.
+ *
+ * Native chain balances are always kept regardless of classification.
  */
 export function filterSpamTokens(
   balances: TokenBalanceEntry[],
   overrides?: Map<string, TokenVisibilityStatus>,
 ): TokenBalanceEntry[] {
   return balances.filter(b => {
-    // Always keep native chain balances
     if (b.isNative) return true;
 
     const override = overrides?.get(b.caip?.toLowerCase() || '') ?? null;
     const result = detectSpamToken(b, override);
-    return !result.isSpam;
+    return !(result.isSpam && result.level === 'confirmed');
   });
 }
 
