@@ -11,6 +11,7 @@ import {
   dappStorage,
   keepKeyApiKeyStorage,
   web3ProviderStorage,
+  customEvmNetworksStorage,
 } from '@extension/storage';
 
 const TAG = ' | Settings | ';
@@ -79,6 +80,10 @@ const Settings = () => {
         blockchainDataStorage.set(() => ({})),
         dappStorage.set(() => []),
         web3ProviderStorage.clearWeb3Provider(),
+        // User-added EVM networks. The header dropdown reads this directly,
+        // so omitting it from the clear meant "reset everything" left the
+        // list intact and stale networks kept showing up after clear.
+        customEvmNetworksStorage.set(() => []),
       ]);
 
       const failures = results.filter(r => r.status === 'rejected');
