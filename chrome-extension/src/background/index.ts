@@ -577,45 +577,6 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           break;
         }
 
-        case 'open_sidebar':
-        case 'OPEN_SIDEBAR': {
-          console.log(tag, 'Opening sidebar ** ');
-          chrome.tabs.query({}, tabs => {
-            if (chrome.runtime.lastError) {
-              console.error('Error querying tabs:', chrome.runtime.lastError);
-              return;
-            }
-
-            const webPageTabs = tabs.filter(tab => {
-              return (
-                tab.url &&
-                !tab.url.startsWith('chrome://') &&
-                !tab.url.startsWith('chrome-extension://') &&
-                !tab.url.startsWith('about:')
-              );
-            });
-
-            if (webPageTabs.length > 0) {
-              webPageTabs.sort((a, b) => b.lastAccessed - a.lastAccessed);
-              const tab = webPageTabs[0];
-              const windowId = tab.windowId;
-
-              console.log(tag, 'Opening sidebar in tab:', tab);
-
-              chrome.sidePanel.open({ windowId }, () => {
-                if (chrome.runtime.lastError) {
-                  console.error('Error opening side panel:', chrome.runtime.lastError);
-                } else {
-                  console.log('Side panel opened successfully.');
-                }
-              });
-            } else {
-              console.error('No suitable web page tabs found to open the side panel.');
-            }
-          });
-          break;
-        }
-
         case 'GET_KEEPKEY_STATE': {
           sendResponse({ state: KEEPKEY_STATE });
           break;

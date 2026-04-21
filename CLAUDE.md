@@ -144,13 +144,13 @@ Note: Firefox extensions are temporary and need reloading after browser restart
 pnpm i <package> -w
 
 # Install for specific workspace
-pnpm i <package> -F @extension/popup
+pnpm i <package> -F @extension/sidepanel
 
 # Run command in specific workspace
 pnpm -F @extension/e2e e2e
 
 # Build specific packages
-turbo build --filter=@extension/popup
+turbo build --filter=@extension/sidepanel
 ```
 
 ## State Management
@@ -168,7 +168,7 @@ Icon changes based on state (online/offline variants).
 ## Critical Files & Entry Points
 
 - **Background Script**: `chrome-extension/src/background/index.ts`
-- **Popup Entry**: `pages/popup/src/index.tsx`
+- **Side-panel Entry**: `pages/side-panel/src/index.tsx` (also hosts dApp approval overlay under `src/approval/`)
 - **Manifest Config**: `chrome-extension/manifest.js`
 - **Chain Handlers**: `chrome-extension/src/background/chains/*.ts`
 - **Storage Types**: `packages/storage/lib/types.ts`
