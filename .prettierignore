@@ -9,3 +9,6 @@ node_modules
 LICENSE
 *.md
 pnpm-lock.yaml
+# esbuild-minified build artifact — prettier would un-minify it,
+# bloating the shipped bundle and making diffs noisy every build.
+chrome-extension/public/injected.js
