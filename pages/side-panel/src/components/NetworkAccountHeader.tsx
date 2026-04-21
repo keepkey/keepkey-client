@@ -236,7 +236,7 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
           </Flex>
         ) : (
           <Flex flex={1} alignItems="center" justifyContent="center">
-            <Avatar size="xs" src="https://api.keepkey.info/coins/keepkey.png" mr={2} />
+            <Avatar size="xs" src="/kk-logo.png" name="KeepKey" mr={2} />
             <Text fontSize="sm" fontWeight="semibold" color="white">
               KeepKey
             </Text>

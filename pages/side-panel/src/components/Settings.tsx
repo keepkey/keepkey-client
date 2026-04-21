@@ -131,7 +131,7 @@ const Settings = () => {
         provider: {
           name: 'KeepKey',
           uuid: '350670db-19fa-4704-a166-e52e178b59d4',
-          icon: 'https://api.keepkey.info/coins/keepkey.png',
+          icon: chrome.runtime.getURL('kk-logo.png'),
           rdns: 'com.keepkey',
         },
       },
@@ -164,7 +164,7 @@ const Settings = () => {
         </Button>
       </Link>
 
-      <Image src={'https://i.ibb.co/jR8WcJM/kk.gif'} alt="KeepKey" />
+      <Image src="/kk.webp" alt="KeepKey" />
 
       <VStack spacing={4} align="stretch">
         <Text fontSize="md" fontWeight="bold">
@@ -174,11 +174,7 @@ const Settings = () => {
         {/* MetaMask Masking */}
         <HStack w="100%" justifyContent="space-between">
           <HStack>
-            <Avatar
-              size="md"
-              name="MetaMask"
-              src="https://upload.wikimedia.org/wikipedia/commons/thumb/3/36/MetaMask_Fox.svg/1200px-MetaMask_Fox.svg.png"
-            />
+            <Avatar size="md" name="MetaMask" src="/brand/metamask-fox.svg" />
             <Text>Enable MetaMask Masking</Text>
           </HStack>
           <Switch size="md" isChecked={maskingSettings.enableMetaMaskMasking} onChange={toggleMetaMaskMasking} />
@@ -188,7 +184,7 @@ const Settings = () => {
         <Box position="relative" w="100%">
           <HStack w="100%" justifyContent="space-between" opacity={isComingSoon('Xfi') ? 0.5 : 1}>
             <HStack>
-              <Avatar size="md" name="Xfi" src="https://cdn.iconscout.com/icon/free/png-512/binance-67-433984.png" />
+              <Avatar size="md" name="Xfi" />
               <Text>Enable Xfi Masking</Text>
             </HStack>
             <Switch
@@ -220,11 +216,7 @@ const Settings = () => {
         <Box position="relative" w="100%">
           <HStack w="100%" justifyContent="space-between" opacity={isComingSoon('Keplr') ? 0.5 : 1}>
             <HStack>
-              <Avatar
-                size="md"
-                name="Keplr"
-                src="https://cdn.dealspotr.com/io-images/logo/keplr.jpg?fit=contain&trim=true&flatten=true&extend=10&width=500&height=500"
-              />
+              <Avatar size="md" name="Keplr" src="/brand/keplr.png" />
               <Text>Enable Keplr Masking</Text>
             </HStack>
             <Switch

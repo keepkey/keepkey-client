@@ -19,7 +19,7 @@ export function getIconUrl(chainSymbol: string, networkId?: string): string {
   if (networkId) return networkIdToIcon(networkId);
   const nid = (ChainToNetworkId as Record<string, string>)[chainSymbol];
   if (nid) return networkIdToIcon(nid);
-  return `https://api.keepkey.info/coins/${btoa(chainSymbol.toLowerCase())}.png`;
+  return '';
 }
 
 export function parseAccountIndex(note?: string, accountIndex?: number): number {

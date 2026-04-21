@@ -110,7 +110,7 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
         _hover={{ bg: 'whiteAlpha.200' }}
         transition="background 0.15s"
         minW={0}>
-        <Avatar size="2xs" src={selected?.icon || 'https://api.keepkey.info/coins/keepkey.png'} mr={1.5} />
+        {selected?.icon && <Avatar size="2xs" src={selected.icon} name={selected.name} mr={1.5} />}
         <Text fontSize="xs" fontWeight="semibold" color="white" isTruncated maxW="90px">
           {selected?.name || 'Network'}
         </Text>
