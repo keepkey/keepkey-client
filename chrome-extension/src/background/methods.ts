@@ -18,79 +18,65 @@ import { createProviderRpcError, ProviderRpcError, formatUserError } from './uti
 
 const TAG = ' | METHODS | ';
 
-const POPUP_URL = chrome.runtime.getURL('popup/index.html');
+// Approval requests are dApp-triggered, which means we're NOT inside a user
+// gesture. `chrome.sidePanel.open()` requires a recent user gesture, so the
+// call below may be ignored. The fallback path is the action badge plus
+// `setPanelBehavior({openPanelOnActionClick: true})` wired in index.ts —
+// the user clicks the extension icon (a real user gesture), the sidebar
+// opens, and its `requestStorage` subscription picks up the pending event.
+//
+// Hard timeout on the promise so nothing hangs forever if the user
+// ignores the request. Matches the sidebar's event-age eviction window.
+const APPROVAL_TIMEOUT_MS = 10 * 60_000;
 
-// Single window-close listener registered at module load, not per-open.
-// Listeners watching for "this popup closed" subscribe via onPopupClosed().
-const popupCloseListeners = new Set<(windowId: number) => void>();
-const onPopupClosed = (listener: (windowId: number) => void): (() => void) => {
-  popupCloseListeners.add(listener);
-  return () => {
-    popupCloseListeners.delete(listener);
-  };
-};
-chrome.windows.onRemoved.addListener(windowId => {
-  popupCloseListeners.forEach(fn => {
-    try {
-      fn(windowId);
-    } catch (e) {
-      console.error(TAG, 'popup close listener threw', e);
-    }
-  });
-});
-
-// Track the current approval popup's windowId. Source of truth is
-// chrome.windows.getAll(), not this variable — the variable is an optimistic
-// cache that can be stale after a service worker restart.
-let popupWindowId: number | null = null;
-
-// Find an already-open approval popup by URL. Survives service worker restarts.
-const findExistingPopup = async (): Promise<chrome.windows.Window | null> => {
+const findTargetWindowId = async (): Promise<number | null> => {
   try {
-    const windows = await chrome.windows.getAll({ populate: true, windowTypes: ['popup'] });
-    for (const w of windows) {
-      const tabs = w.tabs || [];
-      if (tabs.some(t => t.url === POPUP_URL || t.pendingUrl === POPUP_URL)) {
-        return w;
-      }
-    }
-  } catch (e) {
-    console.error(TAG, 'findExistingPopup failed', e);
+    const tabs = await chrome.tabs.query({});
+    const webTabs = tabs.filter(
+      t =>
+        t.url &&
+        !t.url.startsWith('chrome://') &&
+        !t.url.startsWith('chrome-extension://') &&
+        !t.url.startsWith('about:'),
+    );
+    webTabs.sort((a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0));
+    if (webTabs[0]?.windowId != null) return webTabs[0].windowId;
+    const current = await chrome.windows.getLastFocused({});
+    return current?.id ?? null;
+  } catch {
+    return null;
   }
-  return null;
 };
 
-// Returns the popup windowId once the popup is guaranteed to exist. Focuses
-// an existing popup if one is already open; otherwise creates a new one.
-const openPopup = async (): Promise<number | null> => {
-  const tag = TAG + ' | openPopup | ';
+const openSidePanel = async (): Promise<void> => {
+  const tag = TAG + ' | openSidePanel | ';
+  // Firefox has no sidePanel API; the user sees the badge and approval
+  // remains unreachable until task #5 wires a Firefox-specific surface.
+  if (!chrome.sidePanel?.open) return;
   try {
-    const existing = await findExistingPopup();
-    if (existing?.id != null) {
-      popupWindowId = existing.id;
-      console.log(tag, 'Popup already open, focusing existing window:', popupWindowId);
-      try {
-        await chrome.windows.update(popupWindowId, { focused: true });
-      } catch (e) {
-        console.warn(tag, 'Failed to focus existing popup', e);
-      }
-      return popupWindowId;
+    const windowId = await findTargetWindowId();
+    if (windowId == null) {
+      console.warn(tag, 'No target window found — user must click the extension icon to open the panel');
+      return;
     }
-
-    console.log(tag, 'Opening popup');
-    const created = await chrome.windows.create({
-      url: POPUP_URL,
-      type: 'popup',
-      width: 360,
-      height: 900,
-    });
-    popupWindowId = created?.id ?? null;
-    console.log(tag, 'Popup window created:', popupWindowId);
-    return popupWindowId;
+    try {
+      await chrome.sidePanel.open({ windowId });
+      console.log(tag, 'Side panel opened for windowId:', windowId);
+    } catch (e) {
+      // Expected when no recent user gesture — badge path takes over.
+      console.warn(tag, 'sidePanel.open failed (likely no user gesture), falling back to badge', e);
+    }
   } catch (e) {
     console.error(tag, e);
-    popupWindowId = null;
-    return null;
+  }
+};
+
+const setApprovalBadge = (pending: boolean) => {
+  try {
+    chrome.action.setBadgeText({ text: pending ? '!' : '' });
+    if (pending) chrome.action.setBadgeBackgroundColor({ color: '#e74c3c' });
+  } catch (e) {
+    console.warn(TAG, 'setApprovalBadge failed', e);
   }
 };
 
@@ -174,18 +160,20 @@ const requireApproval = async function (
     //   throw new Error('Event not saved');
     // }
 
-    const activePopupId = await openPopup();
+    setApprovalBadge(true);
+    await openSidePanel();
 
-    // Wait for user's decision and return the result. Cleans up on ANY of:
-    //   - user approves/rejects in popup (eth_sign_response arrives)
-    //   - popup window is closed (treated as implicit reject)
+    // Wait for user's decision. Resolves on ANY of:
+    //   - user approves/rejects in sidebar (eth_sign_response arrives)
+    //   - APPROVAL_TIMEOUT_MS elapses without a response (treated as reject)
     return new Promise(resolve => {
       let settled = false;
-      let unsubClose: (() => void) | null = null;
+      let timer: ReturnType<typeof setTimeout> | null = null;
 
       const cleanup = () => {
         chrome.runtime.onMessage.removeListener(listener);
-        if (unsubClose) unsubClose();
+        if (timer != null) clearTimeout(timer);
+        setApprovalBadge(false);
       };
 
       const listener = (message: any) => {
@@ -199,30 +187,17 @@ const requireApproval = async function (
       };
       chrome.runtime.onMessage.addListener(listener);
 
-      unsubClose = onPopupClosed((closedId: number) => {
-        // If we couldn't determine the popup windowId at open time, treat any
-        // popup close as potentially ours — safer than hanging forever.
-        if (activePopupId != null && closedId !== activePopupId) return;
+      timer = setTimeout(() => {
         if (settled) return;
         settled = true;
-        console.log(tag, 'Popup closed without response, rejecting approval for event:', requestInfo.id);
+        console.log(tag, 'Approval timed out, rejecting for event:', requestInfo.id);
         cleanup();
         resolve({ success: false });
-      });
+      }, APPROVAL_TIMEOUT_MS);
     });
   } catch (e) {
     console.error(tag, e);
     return { success: false }; // Return failure in case of error
-  }
-};
-
-const requireUnlock = async function () {
-  const tag = TAG + ' | requireUnlock | ';
-  try {
-    console.log(tag, 'requireUnlock for domain');
-    // openPopup();
-  } catch (e) {
-    console.error(e);
   }
 };
 

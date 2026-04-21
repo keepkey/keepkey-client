@@ -28,6 +28,16 @@ const TAG = ' | background/index.js | ';
 console.log('Background script loaded');
 console.log('Version:', packageJson.version);
 
+// Make clicking the extension icon open the side panel. Required because
+// `chrome.sidePanel.open()` from a dApp-triggered approval flow isn't a
+// user gesture and may be ignored — the icon click is the guaranteed
+// fallback path. No-op on Firefox (no sidePanel API).
+if (chrome.sidePanel?.setPanelBehavior) {
+  chrome.sidePanel
+    .setPanelBehavior({ openPanelOnActionClick: true })
+    .catch(e => console.warn(TAG, 'setPanelBehavior failed', e));
+}
+
 const PIONEER_API = 'https://api.keepkey.info';
 
 const KEEPKEY_STATES = {
@@ -132,11 +142,9 @@ let balancesFetchInProgress: Promise<any[]> | null = null;
 let latestFetchId = 0;
 
 function pushBalancesUpdated() {
-  chrome.runtime
-    .sendMessage({ type: 'BALANCES_UPDATED' })
-    .catch(() => {
-      // No popup/sidebar listening — ignore.
-    });
+  chrome.runtime.sendMessage({ type: 'BALANCES_UPDATED' }).catch(() => {
+    // No popup/sidebar listening — ignore.
+  });
 }
 
 // All EVM CAPIPs (deduplicated) — used to fan out EVM wildcard addresses
@@ -274,8 +282,7 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
           for (const raw of allEntries) {
             const entry = normalizeSolanaCasing({ ...raw });
             const caipPath = (entry.caip || '').split('/')[1] || '';
-            const isToken =
-              entry.type === 'token' || caipPath.startsWith('token:') || caipPath.startsWith('spl:');
+            const isToken = entry.type === 'token' || caipPath.startsWith('token:') || caipPath.startsWith('spl:');
             if (isToken) tokens.push(entry);
             else natives.push(entry);
           }
