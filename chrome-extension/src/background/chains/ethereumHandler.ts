@@ -496,6 +496,9 @@ const handleWalletAddEthereumChain = async (params, KEEPKEY_WALLET, requestInfo,
   await requestStorage.addEvent(approvalEvent);
   const approval = await requireApproval(networkId, requestInfo, 'ethereum', 'wallet_addEthereumChain', params[0]);
   if (!approval?.success) {
+    // UI removes the event on reject, but guard against duplicate state if
+    // reject came from the approval timeout instead of the user button.
+    await requestStorage.removeEventById(requestInfo.id).catch(() => {});
     throw createProviderRpcError(4001, 'User rejected adding the chain');
   }
 
@@ -506,6 +509,20 @@ const handleWalletAddEthereumChain = async (params, KEEPKEY_WALLET, requestInfo,
 
   // Switch to the newly added chain
   await switchToProvider(newProvider, KEEPKEY_WALLET, tag);
+
+  // Unlike signing methods this flow has no txHash and no on-device step,
+  // so neither signMessage nor sendTransaction emit anything for us. Clean
+  // up the pending event ourselves and reuse `signature_complete` — it's
+  // the contract the sidebar uses to dismiss the overlay without trying
+  // to build a TxidPage (transaction_complete would demand a txHash).
+  await requestStorage.removeEventById(requestInfo.id).catch(() => {});
+  chrome.runtime
+    .sendMessage({
+      action: 'signature_complete',
+      eventId: requestInfo.id,
+    })
+    .catch(() => {});
+
   return null;
 };
 
