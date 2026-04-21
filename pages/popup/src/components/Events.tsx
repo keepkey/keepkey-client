@@ -78,12 +78,11 @@ const EventsViewer = () => {
     };
   }, [events.length, loading, fetchError]);
 
-  // Keep currentIndex in bounds when the event list shrinks.
-  useEffect(() => {
-    if (events.length > 0 && currentIndex >= events.length) {
-      setCurrentIndex(events.length - 1);
-    }
-  }, [events.length, currentIndex]);
+  // Clamp currentIndex inline so a mid-render shrink of the events list never
+  // hands `undefined` to <Transaction />. Doing this in a useEffect leaves a
+  // one-render gap where events[currentIndex] is undefined and crashes the
+  // child before the effect can snap the index back.
+  const safeIndex = events.length > 0 ? Math.min(currentIndex, events.length - 1) : 0;
 
   return (
     <Box maxW="100vw" overflowX="hidden" p={4}>
@@ -109,7 +108,7 @@ const EventsViewer = () => {
       )}
 
       {!loading && !fetchError && events.length > 0 && (
-        <Transaction event={events[currentIndex]} reloadEvents={fetchEvents} />
+        <Transaction event={events[safeIndex]} reloadEvents={fetchEvents} />
       )}
 
       {!loading && !fetchError && events.length === 0 && (
