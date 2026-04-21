@@ -1,8 +1,7 @@
 import { useMemo, useEffect, useState } from 'react';
 import { Avatar, Box, Text, VStack, Stack, Badge, Image } from '@chakra-ui/react';
 
-// KeepKey logo URL with fallback
-const KEEPKEY_LOGO = 'https://api.keepkey.info/coins/keepkey.png';
+const KEEPKEY_LOGO = '/kk-logo.png';
 const KEEPKEY_LOGO_FALLBACK = '/icon-128.png';
 
 interface IProps {

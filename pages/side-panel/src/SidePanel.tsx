@@ -217,11 +217,7 @@ const SidePanel = () => {
         return (
           <Flex direction="column" justifyContent="center" alignItems="center" height="100%" minH="300px">
             <Box mb={4} borderRadius="2xl" overflow="hidden" boxShadow="0 0 40px rgba(0, 200, 150, 0.15)">
-              <img
-                src="https://i.ibb.co/jR8WcJM/kk.gif"
-                alt="KeepKey"
-                style={{ maxWidth: '160px', borderRadius: '16px' }}
-              />
+              <img src="/kk.webp" alt="KeepKey" style={{ maxWidth: '160px', borderRadius: '16px' }} />
             </Box>
             <Text fontSize="xl" fontWeight="bold" textAlign="center" mb={1} color="white">
               Welcome to KeepKey

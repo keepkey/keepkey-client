@@ -28,7 +28,7 @@ export default function ProjectInfoCard({ transaction }: any) {
   return (
     <Box textAlign="center">
       <Stack align="center">
-        <Avatar src={'https://api.keepkey.info/coins/keepkey.png'} size="xl" bg="gray.700" />
+        <Avatar src="/kk-logo.png" name="KeepKey" size="xl" bg="gray.700" />
       </Stack>
       <Stack align="center">
         <Text fontSize="2xl" data-testid="session-info-card-text">
