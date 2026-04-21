@@ -274,10 +274,13 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
     );
   }
 
-  // Handle token selection from dropdown
+  // Handle token selection from dropdown. Same accountIndex-preserve
+  // rule as Tokens.tsx — without it the receive QR can silently revert
+  // to account 0 after a token switch inside the drawer.
   const handleTokenSelect = (token: any) => {
     setLoading(true);
-    chrome.runtime.sendMessage({ type: 'SET_ASSET_CONTEXT', asset: token }, () => {
+    const merged = { ...token, accountIndex: token.accountIndex ?? assetContext?.accountIndex };
+    chrome.runtime.sendMessage({ type: 'SET_ASSET_CONTEXT', asset: merged }, () => {
       if (chrome.runtime.lastError) {
         console.error('Error setting asset context:', chrome.runtime.lastError.message);
         setLoading(false);

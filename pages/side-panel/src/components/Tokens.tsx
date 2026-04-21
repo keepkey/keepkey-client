@@ -166,8 +166,11 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
     // Set loading state for this specific token
     setLoadingTokenId(token.caip);
 
-    // Send message to background to set asset context
-    // NOTE: Background expects `asset` not `assetContext.assets`
+    // Send message to background to set asset context. Carry
+    // accountIndex through from the parent asset — without it
+    // GET_PUBKEY_CONTEXT falls back to scoped[0] and Receive/Send
+    // silently regress to account 0 the moment a user drills into
+    // a token from the asset detail view.
     chrome.runtime.sendMessage(
       {
         type: 'SET_ASSET_CONTEXT',
@@ -180,8 +183,9 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
           networkId: token.networkId,
           contractAddress: token.contractAddress,
           decimals: token.decimals,
-          token: true, // Mark as token
+          token: true,
           pubkeys: asset?.pubkeys || [],
+          accountIndex: asset?.accountIndex,
         },
       },
       response => {

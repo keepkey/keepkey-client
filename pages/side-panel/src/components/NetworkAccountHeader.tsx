@@ -24,6 +24,9 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
   const [customEvmNetworks, setCustomEvmNetworks] = useState<CustomEvmNetwork[]>([]);
   const [isAddingAccount, setIsAddingAccount] = useState(false);
   const [hasAssetContext, setHasAssetContext] = useState(false);
+  // Held across pubkey load so the auto-select effect can land on the
+  // restored account instead of snapping back to the default.
+  const [desiredAccountIndex, setDesiredAccountIndex] = useState<number | null>(null);
   const toast = useToast();
 
   const { isOpen: isNetworkModalOpen, onOpen: onNetworkModalOpen, onClose: onNetworkModalClose } = useDisclosure();
@@ -56,12 +59,18 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
           if (response?.balances) {
             setPubkeys(response.balances);
 
-            // Restore selection from stored asset context
+            // Restore selection from stored asset context. Carries
+            // accountIndex too so multi-account EVM picks survive a
+            // reload — without this the auto-select effect below
+            // snapped back to Account 0 every time.
             chrome.runtime.sendMessage({ type: 'GET_ASSET_CONTEXT' }, ctxResponse => {
               const stored = ctxResponse?.assets;
               if (stored?.networkId) {
                 setSelectedNetworkId(stored.networkId);
                 setHasAssetContext(true);
+                if (stored.accountIndex !== undefined && stored.accountIndex !== null) {
+                  setDesiredAccountIndex(stored.accountIndex);
+                }
               }
             });
           }
@@ -94,13 +103,28 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
     return () => chrome.runtime.onMessage.removeListener(listener);
   }, [fetchPubkeys]);
 
-  // Auto-select default account when network changes
+  // Auto-select an account when network changes. Priority:
+  //   1. Restore target (from persisted asset context on reload)
+  //   2. Current selection if still valid
+  //   3. isDefault → first account
   useEffect(() => {
-    if (accounts.length > 0 && !accounts.find(a => a.key === selectedAccountKey)) {
-      const defaultAcc = accounts.find(a => a.isDefault) || accounts[0];
-      setSelectedAccountKey(defaultAcc.key);
+    if (accounts.length === 0) return;
+    if (selectedAccountKey && accounts.find(a => a.key === selectedAccountKey)) return;
+
+    if (desiredAccountIndex !== null) {
+      const target = accounts.find(a => a.accountIndex === desiredAccountIndex);
+      if (target) {
+        setSelectedAccountKey(target.key);
+        setDesiredAccountIndex(null); // one-shot — don't keep overriding manual picks
+        return;
+      }
+      // Restore target doesn't exist (e.g. account was removed) — fall through.
+      setDesiredAccountIndex(null);
     }
-  }, [accounts, selectedAccountKey]);
+
+    const defaultAcc = accounts.find(a => a.isDefault) || accounts[0];
+    setSelectedAccountKey(defaultAcc.key);
+  }, [accounts, selectedAccountKey, desiredAccountIndex]);
 
   // Helpers to fire SET_ASSET_CONTEXT and notify parent
   const setAssetContext = useCallback(
