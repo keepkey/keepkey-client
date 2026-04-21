@@ -54,20 +54,16 @@ const EventsViewer = () => {
     };
   }, [fetchEvents]);
 
-  // Auto-close the popup if we're sitting in the empty state — guards against
-  // the "popup open, no events, no way forward" case (e.g. dapp cancelled the
-  // request, or storage cleanup ran before the window closed itself).
+  // Auto-close the popup whenever there's nothing the user can act on —
+  // empty state (dapp cancelled, cleanup ran, no pending request) OR a fetch
+  // failure (storage corruption/null). Both UIs tell the user the window
+  // will close itself, so the timer needs to cover both.
   useEffect(() => {
-    if (loading || fetchError) return;
-    if (events.length > 0) {
-      if (autoCloseTimerRef.current) {
-        clearTimeout(autoCloseTimerRef.current);
-        autoCloseTimerRef.current = null;
-      }
-      return;
-    }
+    if (loading) return;
+    const shouldAutoClose = fetchError !== null || events.length === 0;
+    if (!shouldAutoClose) return;
     autoCloseTimerRef.current = setTimeout(() => {
-      console.log('EventsViewer: empty state timeout, closing popup');
+      console.log('EventsViewer: dead-end state timeout, closing popup');
       window.close();
     }, EMPTY_STATE_AUTO_CLOSE_MS);
     return () => {
