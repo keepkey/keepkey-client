@@ -642,8 +642,13 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
 
         case 'RESET_APP': {
           console.log(tag, 'Resetting app...');
+          // Reply FIRST so the caller sees the ack before the service worker
+          // reload tears down the message channel. Every other handler in
+          // this file returns `{ success: true }` — align here too so UI
+          // callers that branch on `response?.success` don't log/toast a
+          // false failure on a successful reset.
+          sendResponse({ success: true });
           chrome.runtime.reload();
-          sendResponse({ result: true });
           break;
         }
 
