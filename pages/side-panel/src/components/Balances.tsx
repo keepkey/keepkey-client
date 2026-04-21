@@ -1,5 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Flex, Spinner, Avatar, Box, Text, Badge, Card, Stack, HStack } from '@chakra-ui/react';
+import {
+  Flex,
+  Spinner,
+  Avatar,
+  Box,
+  Text,
+  Badge,
+  Card,
+  Stack,
+  HStack,
+  Skeleton,
+  SkeletonCircle,
+} from '@chakra-ui/react';
 import { ChevronRightIcon } from '@chakra-ui/icons';
 import AssetSelect from './AssetSelect';
 import { COIN_MAP_LONG, NetworkIdToChain } from '@extension/shared';
@@ -80,12 +92,193 @@ const Balances = ({ onSelectAsset }: BalancesProps) => {
   }
 
   if (loading) {
+    const SkeletonRow = ({ delay = 0 }: { delay?: number }) => (
+      <Card
+        borderRadius="lg"
+        p={3}
+        mb={2}
+        width="100%"
+        bg="rgba(255, 255, 255, 0.03)"
+        border="1px solid"
+        borderColor="whiteAlpha.100"
+        position="relative"
+        overflow="hidden"
+        sx={{
+          '&::after': {
+            content: '""',
+            position: 'absolute',
+            inset: 0,
+            background:
+              'linear-gradient(90deg, transparent 0%, rgba(56, 178, 172, 0.06) 45%, rgba(56, 178, 172, 0.14) 50%, rgba(56, 178, 172, 0.06) 55%, transparent 100%)',
+            backgroundSize: '200% 100%',
+            animation: 'kk-shimmer 2.2s ease-in-out infinite',
+            animationDelay: `${delay}s`,
+            pointerEvents: 'none',
+          },
+        }}>
+        <Flex align="center" width="100%">
+          <SkeletonCircle size="10" startColor="whiteAlpha.100" endColor="whiteAlpha.300" />
+          <Box ml={3} flex="1" minWidth="0">
+            <HStack spacing={2}>
+              <Skeleton height="14px" width="60px" borderRadius="sm" startColor="whiteAlpha.100" endColor="whiteAlpha.300" />
+              <Skeleton height="14px" width="44px" borderRadius="full" startColor="whiteAlpha.100" endColor="whiteAlpha.200" />
+            </HStack>
+            <Skeleton mt={2} height="12px" width="96px" borderRadius="sm" startColor="whiteAlpha.100" endColor="whiteAlpha.300" />
+          </Box>
+          <Flex direction="column" align="flex-end" minW="80px">
+            <Skeleton height="14px" width="56px" borderRadius="sm" startColor="whiteAlpha.100" endColor="whiteAlpha.300" />
+          </Flex>
+        </Flex>
+      </Card>
+    );
+
     return (
-      <Flex direction="column" justifyContent="center" alignItems="center" width="100%" flex="1" minH="60vh" gap={3}>
-        <Spinner size="xl" color="teal.400" thickness="3px" speed="0.8s" />
-        <Text color="whiteAlpha.600" fontSize="sm">
-          Loading balances…
-        </Text>
+      <Flex direction="column" width="100%" flex="1" position="relative" overflow="hidden">
+        <style>{`
+          @keyframes kk-shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+          }
+          @keyframes kk-breathe {
+            0%, 100% { opacity: 0.035; transform: scale(1); }
+            50% { opacity: 0.07; transform: scale(1.02); }
+          }
+          @keyframes kk-spin-cw {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+          @keyframes kk-spin-ccw {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(-360deg); }
+          }
+          @keyframes kk-glow {
+            0%, 100% {
+              box-shadow: 0 0 18px 2px rgba(56, 178, 172, 0.25), 0 0 36px 6px rgba(56, 178, 172, 0.10);
+              transform: scale(1);
+            }
+            50% {
+              box-shadow: 0 0 28px 4px rgba(56, 178, 172, 0.45), 0 0 52px 10px rgba(56, 178, 172, 0.18);
+              transform: scale(1.08);
+            }
+          }
+          @keyframes kk-dot-pulse {
+            0%, 100% { opacity: 0.4; transform: scale(0.85); }
+            50% { opacity: 1; transform: scale(1.15); }
+          }
+          @keyframes kk-text-fade {
+            0%, 100% { opacity: 0.45; letter-spacing: 0.25em; }
+            50% { opacity: 0.85; letter-spacing: 0.35em; }
+          }
+        `}</style>
+
+        {/* Subtle KK watermark behind everything */}
+        <Box
+          position="absolute"
+          inset={0}
+          pointerEvents="none"
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          sx={{ animation: 'kk-breathe 4s ease-in-out infinite' }}>
+          <Box
+            as="img"
+            src={chrome.runtime.getURL('kk-logo.png')}
+            alt=""
+            width="200px"
+            borderRadius="2xl"
+            filter="grayscale(1) brightness(1.4) contrast(0.9)"
+          />
+        </Box>
+
+        {/* Hero spinner above the skeletons */}
+        <Flex
+          direction="column"
+          align="center"
+          gap={3}
+          pt={2}
+          pb={5}
+          position="relative"
+          zIndex={2}>
+          <Box position="relative" width="88px" height="88px">
+            {/* Soft pulsing glow */}
+            <Box
+              position="absolute"
+              top="50%"
+              left="50%"
+              width="56px"
+              height="56px"
+              borderRadius="full"
+              transform="translate(-50%, -50%)"
+              bg="rgba(56, 178, 172, 0.15)"
+              sx={{ animation: 'kk-glow 2.4s ease-in-out infinite' }}
+            />
+            {/* Outer ring — clockwise, teal */}
+            <Box
+              position="absolute"
+              inset={0}
+              borderRadius="full"
+              border="3px solid transparent"
+              borderTopColor="teal.300"
+              borderRightColor="teal.400"
+              sx={{ animation: 'kk-spin-cw 1.4s cubic-bezier(0.5, 0, 0.5, 1) infinite' }}
+            />
+            {/* Middle ring — counter-clockwise, paler */}
+            <Box
+              position="absolute"
+              top="10px"
+              left="10px"
+              right="10px"
+              bottom="10px"
+              borderRadius="full"
+              border="2px solid transparent"
+              borderBottomColor="teal.200"
+              borderLeftColor="whiteAlpha.400"
+              sx={{ animation: 'kk-spin-ccw 2.1s cubic-bezier(0.4, 0, 0.6, 1) infinite' }}
+            />
+            {/* Inner ring — clockwise, thin */}
+            <Box
+              position="absolute"
+              top="22px"
+              left="22px"
+              right="22px"
+              bottom="22px"
+              borderRadius="full"
+              border="1.5px solid transparent"
+              borderTopColor="whiteAlpha.600"
+              sx={{ animation: 'kk-spin-cw 0.9s linear infinite' }}
+            />
+            {/* Breathing center dot */}
+            <Box
+              position="absolute"
+              top="50%"
+              left="50%"
+              width="10px"
+              height="10px"
+              borderRadius="full"
+              transform="translate(-50%, -50%)"
+              bg="teal.300"
+              boxShadow="0 0 10px 2px rgba(56, 178, 172, 0.6)"
+              sx={{ animation: 'kk-dot-pulse 1.2s ease-in-out infinite' }}
+            />
+          </Box>
+          <Text
+            color="whiteAlpha.700"
+            fontSize="xs"
+            textTransform="uppercase"
+            fontWeight="medium"
+            sx={{ animation: 'kk-text-fade 2.2s ease-in-out infinite' }}>
+            Fetching balances
+          </Text>
+        </Flex>
+
+        {/* Skeleton rows matching the real asset card layout */}
+        <Stack width="100%" position="relative" zIndex={1}>
+          <SkeletonRow delay={0} />
+          <SkeletonRow delay={0.15} />
+          <SkeletonRow delay={0.3} />
+          <SkeletonRow delay={0.45} />
+          <SkeletonRow delay={0.6} />
+        </Stack>
       </Flex>
     );
   }
