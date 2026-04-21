@@ -14,7 +14,8 @@ import { handleOsmosisRequest } from './chains/osmosisHandler';
 import { handleMayaRequest } from './chains/mayaHandler';
 import { handleRippleRequest } from './chains/rippleHandler';
 import { handleSolanaRequest } from './chains/solanaHandler';
-import { createProviderRpcError, ProviderRpcError, formatUserError } from './utils';
+import type { ProviderRpcError } from './utils';
+import { createProviderRpcError, formatUserError } from './utils';
 
 const TAG = ' | METHODS | ';
 

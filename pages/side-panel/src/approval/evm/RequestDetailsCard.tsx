@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, Fragment } from 'react';
 import { Box, Spinner, Flex } from '@chakra-ui/react';
-import React, { Fragment } from 'react';
 import LegacyTx from './txTypes/legacy';
 import Eip712Tx from './txTypes/eip712';
 import PersonalSignTx from './txTypes/personalSign';

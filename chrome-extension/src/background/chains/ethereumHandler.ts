@@ -4,10 +4,15 @@
 
 import { JsonRpcProvider, parseEther } from 'ethers';
 import { createProviderRpcError, ProviderRpcError } from '../utils';
-import { requestStorage, web3ProviderStorage, assetContextStorage, blockchainDataStorage } from '@extension/storage';
+import {
+  requestStorage,
+  web3ProviderStorage,
+  assetContextStorage,
+  blockchainDataStorage,
+  blockchainStorage,
+} from '@extension/storage';
 import { EIP155_CHAINS } from '../chains';
 import { v4 as uuidv4 } from 'uuid';
-import { blockchainStorage } from '@extension/storage';
 import { ChainToNetworkId, caipToNetworkId, networkIdToIcon } from '../chainConfig';
 import * as wallet from '../wallet';
 
@@ -588,7 +593,7 @@ const handleSigningMethods = async (method, params, requestInfo, ADDRESS, KEEPKE
   console.log(tag, 'networkId:', networkId);
   if (!networkId) throw Error('Failed to set context before sending!');
   // Require user approval
-  let unsignedTx = params[0];
+  const unsignedTx = params[0];
   requestInfo.id = uuidv4();
   const event = {
     id: requestInfo.id,

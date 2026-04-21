@@ -63,7 +63,7 @@ export function Transfer(): JSX.Element {
   const headingColor = useColorModeValue('teal.500', 'teal.300');
 
   const onStart = async () => {
-    let tag = TAG + ' | onStart | ';
+    const tag = TAG + ' | onStart | ';
     try {
       // Post-Pioneer the asset context carries a scalar `balance` string,
       // not the `balances[]` array the old SDK packed. Reading the array

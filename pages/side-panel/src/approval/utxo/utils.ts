@@ -1,5 +1,5 @@
 // utils.ts
-import { TransactionInput, TransactionOutput, Transaction } from './types'; // Adjust the path as necessary
+import type { TransactionInput, TransactionOutput, Transaction } from './types'; // Adjust the path as necessary
 import { useToast } from '@chakra-ui/react';
 
 const updateEventById = async (id, updatedTransaction) => {
