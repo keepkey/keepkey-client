@@ -979,6 +979,29 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           const { network } = message;
           try {
             const networks = await customEvmNetworksStorage.addNetwork(network);
+            // Mirror into the storages the SET_ASSET_CONTEXT handler reads
+            // for provider config. Without this, the header dropdown renders
+            // the new network (from customEvmNetworksStorage) but selecting
+            // it falls through to EIP155_CHAINS, which doesn't know about
+            // it, and the provider is never configured.
+            const cleanRpc = (network.rpc || '').trim();
+            const cleanExplorer = (network.explorerUrl || '').trim();
+            const chainIdHex = '0x' + Number(network.chainId).toString(16);
+            await blockchainDataStorage.addBlockchainData(network.networkId, {
+              chainId: chainIdHex,
+              caip: `${network.networkId}/slip44:60`,
+              name: network.name,
+              symbol: network.symbol,
+              explorer: cleanExplorer,
+              explorerAddressLink: cleanExplorer ? `${cleanExplorer}/address/` : '',
+              explorerTxLink: cleanExplorer ? `${cleanExplorer}/tx/` : '',
+              blockExplorerUrls: cleanExplorer ? [cleanExplorer] : [],
+              providerUrl: cleanRpc,
+              providers: cleanRpc ? [cleanRpc] : [],
+              nativeCurrency: { name: network.symbol, symbol: network.symbol, decimals: 18 },
+              type: 'evm',
+            } as any);
+            await blockchainStorage.addBlockchain(network.networkId);
             sendResponse({ success: true, networks });
           } catch (error) {
             console.error('Error adding custom EVM network:', error);
@@ -991,6 +1014,15 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           const { networkId: removeNetId } = message;
           try {
             const networks = await customEvmNetworksStorage.removeNetwork(removeNetId);
+            await blockchainStorage.removeBlockchain(removeNetId);
+            // blockchainDataStorage has no remove API; drop the key via the
+            // raw set helper so we don't leave an orphaned provider entry.
+            await blockchainDataStorage.set((prev: any) => {
+              if (!prev || !(removeNetId in prev)) return prev || {};
+              const next = { ...prev };
+              delete next[removeNetId];
+              return next;
+            });
             sendResponse({ success: true, networks });
           } catch (error) {
             console.error('Error removing custom EVM network:', error);
@@ -1196,9 +1228,18 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
 
         case 'GET_CHARTS': {
           try {
+            const { networkIds } = message;
             let balances = cachedBalances;
             if (balances.length === 0 && wallet.isInitialized()) {
               balances = await fetchBalancesFromPioneer();
+            }
+            // Honor the networkIds filter the UI hooks send. Previously this
+            // parameter was ignored and "discover tokens for this network"
+            // returned the global set, making stale/unrelated balances leak
+            // into single-network views.
+            if (Array.isArray(networkIds) && networkIds.length > 0) {
+              const allow = new Set<string>(networkIds);
+              balances = balances.filter((b: any) => allow.has(b.networkId));
             }
             const totalValueUsd = balances.reduce((sum: number, b: any) => sum + parseFloat(b.valueUsd || '0'), 0);
             sendResponse({
