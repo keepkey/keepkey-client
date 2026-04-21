@@ -13,12 +13,18 @@ console.log(TAG, 'Content script initializing');
 let injectionAttempts = 0;
 let isInjected = false;
 
-// Validate message origin (configurable)
+// Validate message origin. Defence-in-depth on top of the
+// `event.source === window` check below: that guard already blocks
+// cross-frame injection, and this one rejects anything whose origin
+// doesn't match the frame we're installed in. The content script is
+// injected per-frame, so window.location.origin is the "right" origin
+// for every message we legitimately handle. `null` origins (sandboxed
+// iframes, data: URLs) are allowed for same-window messages — they're
+// common in test harnesses and can't forge arbitrary origins.
 function isAllowedOrigin(origin: string): boolean {
-  // In production, this should check against user settings
-  // For now, allow all origins but log them
-  console.log(TAG, 'Message from origin:', origin);
-  return true; // TODO: Implement proper origin validation
+  if (origin === window.location.origin) return true;
+  if (origin === 'null') return true;
+  return false;
 }
 
 // Validate message structure
@@ -155,14 +161,17 @@ window.addEventListener('message', (event: MessageEvent) => {
 
         console.log(TAG, 'Received response from background:', response);
 
-        // Send response back to injected script
+        // Send response back to injected script. `|| null` would collapse
+        // legitimate `false` / `0` / `''` results into null — wrong for any
+        // JSON-RPC method with a falsy success value (e.g. a boolean
+        // negative). Use explicit undefined checks.
         window.postMessage(
           {
             source: 'keepkey-content',
             type: 'WALLET_RESPONSE',
             requestId,
-            result: response?.result || null,
-            error: response?.error || null,
+            result: response?.result !== undefined ? response.result : null,
+            error: response?.error ?? null,
           } as WalletMessage,
           '*',
         );

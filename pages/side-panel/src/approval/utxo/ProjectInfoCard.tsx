@@ -18,7 +18,7 @@ export default function ProjectInfoCard({ transaction }: any) {
   // const validation = currentRequestVerifyContext?.verified.validation;
   // const { icons, name, url } = metadata;
   // let name = transaction?.siteUrl
-  let url = transaction?.siteUrl;
+  const url = transaction?.siteUrl;
 
   useEffect(() => {
     // Check URL

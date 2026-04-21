@@ -34,11 +34,7 @@ const TxidPage = ({ txHash, explorerUrl, onClose }: { txHash: string; explorerUr
   };
 
   const handleClose = () => {
-    if (onClose) {
-      onClose();
-    } else {
-      window.close();
-    }
+    onClose?.();
   };
 
   const truncatedHash = txHash.length > 20 ? `${txHash.slice(0, 10)}...${txHash.slice(-10)}` : txHash;

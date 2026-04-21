@@ -274,10 +274,13 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
     );
   }
 
-  // Handle token selection from dropdown
+  // Handle token selection from dropdown. Same accountIndex-preserve
+  // rule as Tokens.tsx — without it the receive QR can silently revert
+  // to account 0 after a token switch inside the drawer.
   const handleTokenSelect = (token: any) => {
     setLoading(true);
-    chrome.runtime.sendMessage({ type: 'SET_ASSET_CONTEXT', asset: token }, () => {
+    const merged = { ...token, accountIndex: token.accountIndex ?? assetContext?.accountIndex };
+    chrome.runtime.sendMessage({ type: 'SET_ASSET_CONTEXT', asset: merged }, () => {
       if (chrome.runtime.lastError) {
         console.error('Error setting asset context:', chrome.runtime.lastError.message);
         setLoading(false);
@@ -314,12 +317,22 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
 
   return (
     <VStack spacing={4} align="center" p={4} h="full">
-      {/* Token Selector - at the very top, deduplicated by symbol */}
+      {/* Token Selector — dedup by CAIP so tokens that share a ticker but
+          live on different chains (or different contracts within the same
+          chain) don't collapse. Deduping by `symbol` alone let e.g. bridged
+          vs native USDC collapse into one entry and could land a user on a
+          QR for the wrong asset. CAIP is the canonical unique ID; if it's
+          absent we fall back to `${networkId}|${contract}|${symbol}` so
+          incomplete entries still get distinct keys. */}
       {balances.length > 0 &&
         (() => {
-          // Deduplicate tokens by symbol to avoid showing same chain multiple times
+          const keyFor = (t: any): string =>
+            t.caip || `${t.networkId || ''}|${t.contractAddress || ''}|${t.symbol || ''}`;
+          const seen = new Set<string>();
           const uniqueTokens = balances.reduce((acc: any[], token) => {
-            if (!acc.find(t => t.symbol === token.symbol)) {
+            const k = keyFor(token);
+            if (!seen.has(k)) {
+              seen.add(k);
               acc.push(token);
             }
             return acc;

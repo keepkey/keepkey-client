@@ -4,10 +4,15 @@
 
 import { JsonRpcProvider, parseEther } from 'ethers';
 import { createProviderRpcError, ProviderRpcError } from '../utils';
-import { requestStorage, web3ProviderStorage, assetContextStorage, blockchainDataStorage } from '@extension/storage';
+import {
+  requestStorage,
+  web3ProviderStorage,
+  assetContextStorage,
+  blockchainDataStorage,
+  blockchainStorage,
+} from '@extension/storage';
 import { EIP155_CHAINS } from '../chains';
 import { v4 as uuidv4 } from 'uuid';
-import { blockchainStorage } from '@extension/storage';
 import { ChainToNetworkId, caipToNetworkId, networkIdToIcon } from '../chainConfig';
 import * as wallet from '../wallet';
 
@@ -470,9 +475,18 @@ const handleWalletAddEthereumChain = async (params, KEEPKEY_WALLET, requestInfo,
 
   console.log(tag, 'Cleaned provider config:', newProvider);
 
-  // Require user approval before adding chain
+  // Require user approval before adding chain. The event id MUST match
+  // requestInfo.id — methods.ts:requireApproval() keys its eth_sign_response
+  // listener on requestInfo.id, and the sidebar echoes the stored event.id
+  // back. The previous code stored a fresh uuid while leaving requestInfo.id
+  // alone, so approvals never resolved and every wallet_addEthereumChain
+  // silently timed out after 10 minutes. Match the pattern used by
+  // handleSigningMethods / handleTransfer below: mutate requestInfo.id to a
+  // uuid first (collision-safe across concurrent dApp requests) and then
+  // use it as the event id.
+  requestInfo.id = uuidv4();
   const approvalEvent = {
-    id: uuidv4(),
+    id: requestInfo.id,
     networkId,
     chain: 'ethereum',
     type: 'wallet_addEthereumChain',
@@ -487,6 +501,9 @@ const handleWalletAddEthereumChain = async (params, KEEPKEY_WALLET, requestInfo,
   await requestStorage.addEvent(approvalEvent);
   const approval = await requireApproval(networkId, requestInfo, 'ethereum', 'wallet_addEthereumChain', params[0]);
   if (!approval?.success) {
+    // UI removes the event on reject, but guard against duplicate state if
+    // reject came from the approval timeout instead of the user button.
+    await requestStorage.removeEventById(requestInfo.id).catch(() => {});
     throw createProviderRpcError(4001, 'User rejected adding the chain');
   }
 
@@ -497,6 +514,20 @@ const handleWalletAddEthereumChain = async (params, KEEPKEY_WALLET, requestInfo,
 
   // Switch to the newly added chain
   await switchToProvider(newProvider, KEEPKEY_WALLET, tag);
+
+  // Unlike signing methods this flow has no txHash and no on-device step,
+  // so neither signMessage nor sendTransaction emit anything for us. Clean
+  // up the pending event ourselves and reuse `signature_complete` — it's
+  // the contract the sidebar uses to dismiss the overlay without trying
+  // to build a TxidPage (transaction_complete would demand a txHash).
+  await requestStorage.removeEventById(requestInfo.id).catch(() => {});
+  chrome.runtime
+    .sendMessage({
+      action: 'signature_complete',
+      eventId: requestInfo.id,
+    })
+    .catch(() => {});
+
   return null;
 };
 
@@ -562,7 +593,7 @@ const handleSigningMethods = async (method, params, requestInfo, ADDRESS, KEEPKE
   console.log(tag, 'networkId:', networkId);
   if (!networkId) throw Error('Failed to set context before sending!');
   // Require user approval
-  let unsignedTx = params[0];
+  const unsignedTx = params[0];
   requestInfo.id = uuidv4();
   const event = {
     id: requestInfo.id,

@@ -22,7 +22,15 @@ const requestAssetContext = () => {
   });
 };
 
-const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => void }) => {
+const Transaction = ({
+  event,
+  reloadEvents,
+  onDismiss,
+}: {
+  event: any;
+  reloadEvents: () => void;
+  onDismiss: () => void;
+}) => {
   const [transactionType, setTransactionType] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [awaitingDeviceApproval, setAwaitingDeviceApproval] = useState<boolean>(false);
@@ -50,16 +58,6 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
     // No need to construct it here
   }, []);
 
-  const openSidebar = () => {
-    chrome.runtime.sendMessage({ type: 'OPEN_SIDEBAR' }, response => {
-      if (response?.success) {
-        console.log('Sidebar opened successfully');
-      } else {
-        console.error('Failed to open sidebar:', response?.error);
-      }
-    });
-  };
-
   const cancelRequest = () => {
     chrome.runtime.sendMessage({ type: 'RESET_APP' }, response => {
       if (response?.success) {
@@ -80,7 +78,6 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
         await requestStorage.removeEventById(event.id);
         reloadEvents();
       } else if (decision === 'accept') {
-        openSidebar();
         setAwaitingDeviceApproval(true);
       }
     } catch (error) {
@@ -125,25 +122,23 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
           console.error('Error playing sound:', e);
         }
 
-        // For signatures (not transactions), clean up and close popup
-        console.log('Signature complete, closing popup');
+        // For signatures (not transactions), clean up and dismiss the overlay
+        console.log('Signature complete, dismissing approval overlay');
         setAwaitingDeviceApproval(false);
         setTransactionInProgress(false);
 
-        // Remove the event from storage and close popup
+        // Remove the event from storage and dismiss overlay
         requestStorage
           .removeEventById(event.id)
           .then(() => {
-            // Close the popup window after a brief delay to show success
             setTimeout(() => {
-              window.close();
+              onDismiss();
             }, 500);
           })
           .catch(error => {
             console.error('Error removing event:', error);
-            // Close anyway even if there's an error
             setTimeout(() => {
-              window.close();
+              onDismiss();
             }, 500);
           });
       } else if (message.action === 'transaction_error') {
@@ -156,19 +151,17 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
           errorDetails.includes('user rejected') ||
           errorDetails.includes('User rejected')
         ) {
-          console.log('User denied transaction, closing popup');
-          // Remove event and close popup after brief delay
+          console.log('User denied transaction, dismissing approval overlay');
           requestStorage
             .removeEventById(event.id)
             .then(() => {
               setTimeout(() => {
-                window.close();
+                onDismiss();
               }, 1000);
             })
             .catch(() => {
-              // Close anyway even if removal fails
               setTimeout(() => {
-                window.close();
+                onDismiss();
               }, 1000);
             });
         } else {
@@ -226,7 +219,7 @@ const Transaction = ({ event, reloadEvents }: { event: any; reloadEvents: () => 
         await requestStorage.removeEventById(event.id);
         await approvalStorage.addEvent(updatedEvent);
         reloadEvents();
-        chrome.runtime.sendMessage({ action: 'open_sidebar' });
+        onDismiss();
       } catch (error) {
         console.error('Error closing tab and storing event:', error);
       }

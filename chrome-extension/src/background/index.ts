@@ -23,10 +23,21 @@ import {
 } from '@extension/storage';
 import { EIP155_CHAINS } from './chains';
 import { formatUserError } from './utils';
+import { filterSpamTokens } from './spamFilter';
 
 const TAG = ' | background/index.js | ';
 console.log('Background script loaded');
 console.log('Version:', packageJson.version);
+
+// Make clicking the extension icon open the side panel. Required because
+// `chrome.sidePanel.open()` from a dApp-triggered approval flow isn't a
+// user gesture and may be ignored — the icon click is the guaranteed
+// fallback path. No-op on Firefox (no sidePanel API).
+if (chrome.sidePanel?.setPanelBehavior) {
+  chrome.sidePanel
+    .setPanelBehavior({ openPanelOnActionClick: true })
+    .catch(e => console.warn(TAG, 'setPanelBehavior failed', e));
+}
 
 const PIONEER_API = 'https://api.keepkey.info';
 
@@ -132,11 +143,9 @@ let balancesFetchInProgress: Promise<any[]> | null = null;
 let latestFetchId = 0;
 
 function pushBalancesUpdated() {
-  chrome.runtime
-    .sendMessage({ type: 'BALANCES_UPDATED' })
-    .catch(() => {
-      // No popup/sidebar listening — ignore.
-    });
+  chrome.runtime.sendMessage({ type: 'BALANCES_UPDATED' }).catch(() => {
+    // No popup/sidebar listening — ignore.
+  });
 }
 
 // All EVM CAPIPs (deduplicated) — used to fan out EVM wildcard addresses
@@ -274,8 +283,7 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
           for (const raw of allEntries) {
             const entry = normalizeSolanaCasing({ ...raw });
             const caipPath = (entry.caip || '').split('/')[1] || '';
-            const isToken =
-              entry.type === 'token' || caipPath.startsWith('token:') || caipPath.startsWith('spl:');
+            const isToken = entry.type === 'token' || caipPath.startsWith('token:') || caipPath.startsWith('spl:');
             if (isToken) tokens.push(entry);
             else natives.push(entry);
           }
@@ -301,8 +309,9 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
         return cachedBalances;
       }
 
-      // Transform native balances
-      const balances: any[] = rawBalances.map((b: any) => {
+      // Transform native balances. `let` because we reassign after spam
+      // filtering below; token entries are appended earlier, filtered later.
+      let balances: any[] = rawBalances.map((b: any) => {
         const caip = b.caip || '';
         const networkId = b.networkId || caip.split('/')[0] || '';
         return {
@@ -391,6 +400,14 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
         }
       } catch (e: any) {
         console.warn('[fetchBalances] Custom chain enrichment error:', e.message);
+      }
+
+      const preFilterCount = balances.length;
+      balances = filterSpamTokens(balances);
+      if (balances.length !== preFilterCount) {
+        console.log(
+          `[fetchBalances] Spam filter dropped ${preFilterCount - balances.length}/${preFilterCount} token entries`,
+        );
       }
 
       console.log(
@@ -556,6 +573,18 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           const { requestInfo } = message;
           const { method, params, chain } = requestInfo;
 
+          // Tag the request with the sender's browser tab/window so the
+          // approval side panel opens in the SAME window the dApp lives
+          // in — not whichever web tab was focused last. Using "most
+          // recently accessed" risked surfacing a signing prompt in a
+          // completely different browser window than the one that
+          // triggered it, which is a real phishing / mis-sign risk now
+          // that the sidebar is the sole approval surface.
+          if (sender?.tab) {
+            requestInfo.__senderTabId = sender.tab.id;
+            requestInfo.__senderWindowId = sender.tab.windowId;
+          }
+
           if (method) {
             try {
               // KEEPKEY_WALLET and ADDRESS are passed for backward compat with handler signatures
@@ -567,45 +596,6 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           } else {
             sendResponse({ error: 'Invalid request: missing method' });
           }
-          break;
-        }
-
-        case 'open_sidebar':
-        case 'OPEN_SIDEBAR': {
-          console.log(tag, 'Opening sidebar ** ');
-          chrome.tabs.query({}, tabs => {
-            if (chrome.runtime.lastError) {
-              console.error('Error querying tabs:', chrome.runtime.lastError);
-              return;
-            }
-
-            const webPageTabs = tabs.filter(tab => {
-              return (
-                tab.url &&
-                !tab.url.startsWith('chrome://') &&
-                !tab.url.startsWith('chrome-extension://') &&
-                !tab.url.startsWith('about:')
-              );
-            });
-
-            if (webPageTabs.length > 0) {
-              webPageTabs.sort((a, b) => b.lastAccessed - a.lastAccessed);
-              const tab = webPageTabs[0];
-              const windowId = tab.windowId;
-
-              console.log(tag, 'Opening sidebar in tab:', tab);
-
-              chrome.sidePanel.open({ windowId }, () => {
-                if (chrome.runtime.lastError) {
-                  console.error('Error opening side panel:', chrome.runtime.lastError);
-                } else {
-                  console.log('Side panel opened successfully.');
-                }
-              });
-            } else {
-              console.error('No suitable web page tabs found to open the side panel.');
-            }
-          });
           break;
         }
 
@@ -664,8 +654,13 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
 
         case 'RESET_APP': {
           console.log(tag, 'Resetting app...');
+          // Reply FIRST so the caller sees the ack before the service worker
+          // reload tears down the message channel. Every other handler in
+          // this file returns `{ success: true }` — align here too so UI
+          // callers that branch on `response?.success` don't log/toast a
+          // false failure on a successful reset.
+          sendResponse({ success: true });
           chrome.runtime.reload();
-          sendResponse({ result: true });
           break;
         }
 
@@ -855,9 +850,38 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         }
 
         case 'GET_PUBKEY_CONTEXT': {
-          // Return first pubkey as context
-          const pubkeys = wallet.getPubkeys();
-          sendResponse({ pubkeyContext: pubkeys.length > 0 ? pubkeys[0] : null });
+          // Scope to the currently selected asset so Receive shows the correct
+          // address. Returning pubkeys[0] unconditionally meant a multi-account
+          // or multi-chain wallet would surface account-0 / Bitcoin for every
+          // asset switch — a foot-gun serious enough to send funds to the
+          // wrong place. Fall back to pubkeys[0] only if no asset context is
+          // set (cold-start before any selection).
+          try {
+            const ctx = await assetContextStorage.get();
+            const allPubkeys = wallet.getPubkeys();
+            let chosen: any = null;
+
+            if (ctx?.networkId) {
+              const scoped = wallet.getPubkeys(ctx.networkId);
+              if (scoped.length > 0) {
+                // Prefer a pubkey whose accountIndex matches the ctx (asset
+                // carries accountIndex when the UI drilled into a non-default
+                // account); otherwise the first match on this network.
+                chosen =
+                  (ctx as any).accountIndex !== undefined
+                    ? scoped.find((pk: any) => pk.accountIndex === (ctx as any).accountIndex)
+                    : null;
+                if (!chosen) chosen = scoped[0];
+              }
+            }
+
+            if (!chosen) chosen = allPubkeys[0] ?? null;
+            sendResponse({ pubkeyContext: chosen });
+          } catch (e) {
+            console.error('GET_PUBKEY_CONTEXT failed:', e);
+            const pubkeys = wallet.getPubkeys();
+            sendResponse({ pubkeyContext: pubkeys[0] ?? null });
+          }
           break;
         }
 
@@ -944,7 +968,12 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           const { accountIndex: removeIdx } = message;
           try {
             const accounts = await ethAccountsStorage.removeAccount(removeIdx);
-            sendResponse({ success: true, accounts });
+            // Without clearing runtime state the signer and pubkey list keep
+            // the removed account — the UI shows it gone while the wallet
+            // still holds it, and the next request could sign against the
+            // supposedly-removed account.
+            await wallet.removePathByNote(`Ethereum account ${removeIdx}`);
+            sendResponse({ success: true, accounts, pubkeys: wallet.getPubkeys() });
           } catch (error) {
             console.error('Error removing ETH account:', error);
             sendResponse({ error: 'Failed to remove ETH account' });
@@ -967,6 +996,29 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           const { network } = message;
           try {
             const networks = await customEvmNetworksStorage.addNetwork(network);
+            // Mirror into the storages the SET_ASSET_CONTEXT handler reads
+            // for provider config. Without this, the header dropdown renders
+            // the new network (from customEvmNetworksStorage) but selecting
+            // it falls through to EIP155_CHAINS, which doesn't know about
+            // it, and the provider is never configured.
+            const cleanRpc = (network.rpc || '').trim();
+            const cleanExplorer = (network.explorerUrl || '').trim();
+            const chainIdHex = '0x' + Number(network.chainId).toString(16);
+            await blockchainDataStorage.addBlockchainData(network.networkId, {
+              chainId: chainIdHex,
+              caip: `${network.networkId}/slip44:60`,
+              name: network.name,
+              symbol: network.symbol,
+              explorer: cleanExplorer,
+              explorerAddressLink: cleanExplorer ? `${cleanExplorer}/address/` : '',
+              explorerTxLink: cleanExplorer ? `${cleanExplorer}/tx/` : '',
+              blockExplorerUrls: cleanExplorer ? [cleanExplorer] : [],
+              providerUrl: cleanRpc,
+              providers: cleanRpc ? [cleanRpc] : [],
+              nativeCurrency: { name: network.symbol, symbol: network.symbol, decimals: 18 },
+              type: 'evm',
+            } as any);
+            await blockchainStorage.addBlockchain(network.networkId);
             sendResponse({ success: true, networks });
           } catch (error) {
             console.error('Error adding custom EVM network:', error);
@@ -979,6 +1031,29 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           const { networkId: removeNetId } = message;
           try {
             const networks = await customEvmNetworksStorage.removeNetwork(removeNetId);
+            await blockchainStorage.removeBlockchain(removeNetId);
+            // blockchainDataStorage has no remove API; drop the key via the
+            // raw set helper so we don't leave an orphaned provider entry.
+            await blockchainDataStorage.set((prev: any) => {
+              if (!prev || !(removeNetId in prev)) return prev || {};
+              const next = { ...prev };
+              delete next[removeNetId];
+              return next;
+            });
+            // If the removed network was actively selected, the asset
+            // context and web3 provider still point at it — the signer
+            // would keep using a chain the user just deleted. Clear both
+            // and tell the sidebar so it can drop its drawer / header
+            // selection.
+            const currentCtx = await assetContextStorage.get().catch(() => null);
+            const currentProvider = await web3ProviderStorage.getWeb3Provider().catch(() => null);
+            if ((currentCtx as any)?.networkId === removeNetId) {
+              await assetContextStorage.clearContext().catch(() => {});
+              chrome.runtime.sendMessage({ type: 'ASSET_CONTEXT_CLEARED' }).catch(() => {});
+            }
+            if ((currentProvider as any)?.networkId === removeNetId) {
+              await web3ProviderStorage.clearWeb3Provider().catch(() => {});
+            }
             sendResponse({ success: true, networks });
           } catch (error) {
             console.error('Error removing custom EVM network:', error);
@@ -1184,9 +1259,18 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
 
         case 'GET_CHARTS': {
           try {
+            const { networkIds } = message;
             let balances = cachedBalances;
             if (balances.length === 0 && wallet.isInitialized()) {
               balances = await fetchBalancesFromPioneer();
+            }
+            // Honor the networkIds filter the UI hooks send. Previously this
+            // parameter was ignored and "discover tokens for this network"
+            // returned the global set, making stale/unrelated balances leak
+            // into single-network views.
+            if (Array.isArray(networkIds) && networkIds.length > 0) {
+              const allow = new Set<string>(networkIds);
+              balances = balances.filter((b: any) => allow.has(b.networkId));
             }
             const totalValueUsd = balances.reduce((sum: number, b: any) => sum + parseFloat(b.valueUsd || '0'), 0);
             sendResponse({

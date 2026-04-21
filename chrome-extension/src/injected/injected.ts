@@ -484,11 +484,23 @@ import { registerSolanaWallet } from './solana-wallet-register';
       ripple: createWalletObject('ripple'),
     };
 
-    // Mount providers with conflict detection
-    const mountProvider = (name: string, provider: any) => {
-      if ((kWindow as any)[name]) {
-        console.warn(tag, `${name} already exists, checking if override is allowed`);
-        // TODO: Add user preference check here
+    // Mount providers without stomping existing wallets.
+    //
+    // Modern dApps use EIP-6963 for multi-wallet discovery (announced below),
+    // so we don't need to own `window.ethereum`. Overwriting another wallet's
+    // provider is a dApp-compatibility landmine — it breaks that wallet's
+    // connection flow, corrupts its event state, and is hard to debug.
+    //
+    // Policy:
+    //   - `window.keepkey`  → always mount (our own namespace, no collision risk)
+    //   - `window.ethereum` → only mount if nothing is there; otherwise rely
+    //                          on EIP-6963 announceProvider for discovery
+    //   - `window.xfi`      → only mount if nothing is there (XDEFI's namespace)
+    const mountProvider = (name: string, provider: any, { force = false } = {}) => {
+      const existing = (kWindow as any)[name];
+      if (existing && !force) {
+        console.warn(tag, `window.${name} already present — yielding to it (EIP-6963 still announced for discovery)`);
+        return;
       }
 
       try {
@@ -504,10 +516,12 @@ import { registerSolanaWallet } from './solana-wallet-register';
       }
     };
 
-    // Mount providers
+    // Mount providers — `keepkey` is forced because it's our own namespace
+    // and previous page-load state (e.g. from a stale injection) should not
+    // block us from rebinding to the current request pipeline.
     mountProvider('ethereum', ethereum);
     mountProvider('xfi', xfi);
-    mountProvider('keepkey', keepkey);
+    mountProvider('keepkey', keepkey, { force: true });
 
     // CRITICAL: Set up EIP-6963 listener BEFORE announcing
     // This ensures we catch any immediate requests

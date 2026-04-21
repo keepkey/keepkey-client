@@ -78,12 +78,12 @@ export default function RequestDetailsCard({ transaction }: any) {
                       {input.txid}
                     </Text>
                   </HStack>
-                {/*  <HStack justify="space-between">*/}
-                {/*    <Badge colorScheme="green">Amount</Badge>*/}
-                {/*    <Text fontSize="sm" fontWeight="medium">*/}
-                {/*      {Number(input.amount)}*/}
-                {/*    </Text>*/}
-                {/*  </HStack>*/}
+                  {/*  <HStack justify="space-between">*/}
+                  {/*    <Badge colorScheme="green">Amount</Badge>*/}
+                  {/*    <Text fontSize="sm" fontWeight="medium">*/}
+                  {/*      {Number(input.amount)}*/}
+                  {/*    </Text>*/}
+                  {/*  </HStack>*/}
                 </VStack>
               </Box>
             ))}

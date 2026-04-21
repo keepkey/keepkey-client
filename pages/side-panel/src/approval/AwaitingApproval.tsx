@@ -2,7 +2,7 @@ import React from 'react';
 import { Flex, Card, CardBody, Image, Heading, Button, CloseButton } from '@chakra-ui/react';
 import holdAndReleaseIcon from '../assets/svg/hold-and-release.svg';
 
-const AwaitingApproval = ({ onCancel }: { onCancel: () => void; onClose: () => void }) => {
+const AwaitingApproval = ({ onCancel }: { onCancel: () => void }) => {
   return (
     <Flex justify="center" align="center" height="100vh">
       <Card width="400px" boxShadow="lg" borderRadius="lg" overflow="hidden" position="relative">

@@ -3,7 +3,8 @@
  * Enables view-only mode by caching device pubkeys in chrome.storage.local
  */
 
-import { BaseStorage, createStorage, StorageType } from './base';
+import type { BaseStorage } from './base';
+import { createStorage, StorageType } from './base';
 
 // Storage key constants
 const STORAGE_KEYS = {

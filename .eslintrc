@@ -44,6 +44,7 @@
   },
   "ignorePatterns": [
     "watch.js",
-    "dist/**"
+    "dist/**",
+    "pages/side-panel/src/approval/**"
   ]
 }

@@ -25,16 +25,6 @@ import RequestMethodCard from './RequestMethodCard';
 import ProjectFeeCard from './ProjectFeeCard';
 import ProjectInfoCard from './ProjectInfoCard';
 
-const openSidebar = () => {
-  chrome.runtime.sendMessage({ type: 'OPEN_SIDEBAR' }, response => {
-    if (response?.success) {
-      console.log('Sidebar opened successfully');
-    } else {
-      console.error('Failed to open sidebar:', response?.error);
-    }
-  });
-};
-
 const triggerTransactionContextUpdate = (transactionId: string) => {
   chrome.runtime.sendMessage({ type: 'TRANSACTION_CONTEXT_UPDATED', id: transactionId }, response => {
     if (response?.success) {
@@ -88,7 +78,6 @@ export function UtxoTransaction({ transaction: initialTransaction, handleRespons
   const handleReload = () => {
     setIsLoading(true);
     fetchTransactionData(transaction.id);
-    openSidebar();
     triggerTransactionContextUpdate(transaction.id);
   };
 

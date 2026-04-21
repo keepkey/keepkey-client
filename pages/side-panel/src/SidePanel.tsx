@@ -23,6 +23,7 @@ import {
 } from '@chakra-ui/react';
 import { ArrowUpIcon, ArrowDownIcon, ChevronLeftIcon } from '@chakra-ui/icons';
 import { withErrorBoundary, withSuspense } from '@extension/shared';
+import { requestStorage } from '@extension/storage';
 
 import Connect from './components/Connect';
 import Loading from './components/Loading';
@@ -34,6 +35,11 @@ import { Receive } from './components/Receive';
 import AssetDetail from './components/AssetDetail';
 import DonutChart from './components/DonutChart';
 import NetworkAccountHeader from './components/NetworkAccountHeader';
+import Transaction from './approval/Transaction';
+
+// Events older than this are dropped on load — an abandoned-tab pending
+// request shouldn't hijack the sidebar forever.
+const MAX_EVENT_AGE_MINUTES = 10;
 
 const HEADER_HEIGHT = '60px';
 
@@ -46,6 +52,7 @@ const SidePanel = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<any>(null);
   const [balancesInitialLoading, setBalancesInitialLoading] = useState(true);
+  const [pendingEvent, setPendingEvent] = useState<any | null>(null);
 
   // Disclosures for drawers/modals
   const { isOpen: isSettingsOpen, onOpen: onSettingsOpen, onClose: onSettingsClose } = useDisclosure();
@@ -86,13 +93,23 @@ const SidePanel = () => {
     chrome.runtime.sendMessage({ type: 'CLEAR_ASSET_CONTEXT' });
   };
 
+  // Prefer native chain rows over ERC-20 / SPL tokens when picking a
+  // default for global Send / Receive. Picking the highest-USD raw row
+  // meant a stablecoin or token could hijack the default action — a
+  // behavior change from the asset-centric UX and a surprise for users
+  // who expect "Send" to mean "send from my main chain wallet".
+  const pickDefaultAsset = () => {
+    if (balances.length === 0) return null;
+    const byUsd = (a: any, b: any) => parseFloat(b.valueUsd || '0') - parseFloat(a.valueUsd || '0');
+    const natives = balances.filter((b: any) => b.isNative).sort(byUsd);
+    if (natives.length > 0) return natives[0];
+    return [...balances].sort(byUsd)[0];
+  };
+
   // Handle global send action
   const handleGlobalSend = () => {
-    if (balances.length > 0) {
-      const sortedBalances = [...balances].sort(
-        (a, b) => parseFloat(b.valueUsd || '0') - parseFloat(a.valueUsd || '0'),
-      );
-      const defaultToken = sortedBalances[0];
+    const defaultToken = pickDefaultAsset();
+    if (defaultToken) {
       chrome.runtime.sendMessage({ type: 'SET_ASSET_CONTEXT', asset: defaultToken }, () => {
         onSendOpen();
       });
@@ -101,11 +118,8 @@ const SidePanel = () => {
 
   // Handle global receive action
   const handleGlobalReceive = () => {
-    if (balances.length > 0) {
-      const sortedBalances = [...balances].sort(
-        (a, b) => parseFloat(b.valueUsd || '0') - parseFloat(a.valueUsd || '0'),
-      );
-      const defaultToken = sortedBalances[0];
+    const defaultToken = pickDefaultAsset();
+    if (defaultToken) {
       chrome.runtime.sendMessage({ type: 'SET_ASSET_CONTEXT', asset: defaultToken }, () => {
         onReceiveOpen();
       });
@@ -142,6 +156,41 @@ const SidePanel = () => {
     }
   };
 
+  // Subscribe to requestStorage so any dApp-triggered approval request shown
+  // here takes over the panel as an overlay. Abandoned events beyond the age
+  // window are evicted on load so a stuck request can't wedge the UI.
+  const fetchPendingEvent = useCallback(async () => {
+    try {
+      const events = (await requestStorage.getEvents()) || [];
+      const now = Date.now();
+      const fresh: any[] = [];
+      for (const ev of events) {
+        const ageMs = now - new Date(ev.timestamp).getTime();
+        if (ageMs <= MAX_EVENT_AGE_MINUTES * 60_000) {
+          fresh.push(ev);
+        } else {
+          void requestStorage.removeEventById(ev.id);
+        }
+      }
+      // Newest-first — matches popup behavior; user sees the freshest request.
+      fresh.reverse();
+      setPendingEvent(fresh[0] ?? null);
+    } catch (e) {
+      console.error('SidePanel: fetchPendingEvent failed', e);
+      setPendingEvent(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPendingEvent();
+    const unsubscribe = requestStorage.subscribe?.(() => {
+      fetchPendingEvent();
+    });
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [fetchPendingEvent]);
+
   // Listen for state changes and external asset context updates (e.g. dApp wallet_addEthereumChain)
   useEffect(() => {
     const messageListener = (message: any) => {
@@ -153,8 +202,14 @@ const SidePanel = () => {
       }
       if (message.type === 'ASSET_CONTEXT_UPDATED' && message.assetContext?.networkId) {
         const ctx = message.assetContext;
+        // Pass the full context through. The old projection dropped
+        // accountIndex, pubkeys, contractAddress, decimals, balances —
+        // anything the asset-detail / send / receive flows read to
+        // stay consistent with the rest of the sidebar. Fill in the
+        // display-required fields with sensible fallbacks when the
+        // context was minimally populated.
         const asset = {
-          networkId: ctx.networkId,
+          ...ctx,
           caip: ctx.caip || ctx.networkId,
           name: ctx.name || ctx.networkId,
           symbol: ctx.symbol || ctx.nativeCurrency?.symbol || '',
@@ -254,6 +309,17 @@ const SidePanel = () => {
         );
     }
   };
+
+  // Pending dApp approval takes over the panel. We intentionally skip rendering
+  // the usual header/balances below so the user can't accidentally navigate
+  // while an approval is live — matches the old popup's singular-focus UX.
+  if (pendingEvent) {
+    return (
+      <Flex direction="column" width="100%" height="100vh" bg="gray.900" overflowY="auto" p={4}>
+        <Transaction event={pendingEvent} reloadEvents={fetchPendingEvent} onDismiss={fetchPendingEvent} />
+      </Flex>
+    );
+  }
 
   return (
     <Flex direction="column" width="100%" height="100vh">

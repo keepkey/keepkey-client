@@ -6,16 +6,6 @@ import ProjectInfoCard from './ProjectInfoCard';
 import RequestDetailsCard from './RequestDetailsCard';
 import RequestDataCard from './RequestDataCard';
 
-const openSidebar = () => {
-  chrome.runtime.sendMessage({ type: 'OPEN_SIDEBAR' }, response => {
-    if (response?.success) {
-      console.log('Sidebar opened successfully');
-    } else {
-      console.error('Failed to open sidebar:', response?.error);
-    }
-  });
-};
-
 const triggerTransactionContextUpdate = (transactionId: string) => {
   chrome.runtime.sendMessage({ type: 'TRANSACTION_CONTEXT_UPDATED', id: transactionId }, response => {
     if (response?.success) {
@@ -58,7 +48,6 @@ export function TendermintTransaction({ transaction: initialTransaction, handleR
   const handleReload = () => {
     console.log('Reloading transaction with id:', transaction.id);
     fetchTransactionData(transaction.id);
-    openSidebar();
     triggerTransactionContextUpdate(transaction.id);
   };
 
