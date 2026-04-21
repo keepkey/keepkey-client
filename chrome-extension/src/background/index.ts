@@ -833,9 +833,38 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         }
 
         case 'GET_PUBKEY_CONTEXT': {
-          // Return first pubkey as context
-          const pubkeys = wallet.getPubkeys();
-          sendResponse({ pubkeyContext: pubkeys.length > 0 ? pubkeys[0] : null });
+          // Scope to the currently selected asset so Receive shows the correct
+          // address. Returning pubkeys[0] unconditionally meant a multi-account
+          // or multi-chain wallet would surface account-0 / Bitcoin for every
+          // asset switch — a foot-gun serious enough to send funds to the
+          // wrong place. Fall back to pubkeys[0] only if no asset context is
+          // set (cold-start before any selection).
+          try {
+            const ctx = await assetContextStorage.get();
+            const allPubkeys = wallet.getPubkeys();
+            let chosen: any = null;
+
+            if (ctx?.networkId) {
+              const scoped = wallet.getPubkeys(ctx.networkId);
+              if (scoped.length > 0) {
+                // Prefer a pubkey whose accountIndex matches the ctx (asset
+                // carries accountIndex when the UI drilled into a non-default
+                // account); otherwise the first match on this network.
+                chosen =
+                  (ctx as any).accountIndex !== undefined
+                    ? scoped.find((pk: any) => pk.accountIndex === (ctx as any).accountIndex)
+                    : null;
+                if (!chosen) chosen = scoped[0];
+              }
+            }
+
+            if (!chosen) chosen = allPubkeys[0] ?? null;
+            sendResponse({ pubkeyContext: chosen });
+          } catch (e) {
+            console.error('GET_PUBKEY_CONTEXT failed:', e);
+            const pubkeys = wallet.getPubkeys();
+            sendResponse({ pubkeyContext: pubkeys[0] ?? null });
+          }
           break;
         }
 
@@ -922,7 +951,12 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           const { accountIndex: removeIdx } = message;
           try {
             const accounts = await ethAccountsStorage.removeAccount(removeIdx);
-            sendResponse({ success: true, accounts });
+            // Without clearing runtime state the signer and pubkey list keep
+            // the removed account — the UI shows it gone while the wallet
+            // still holds it, and the next request could sign against the
+            // supposedly-removed account.
+            await wallet.removePathByNote(`Ethereum account ${removeIdx}`);
+            sendResponse({ success: true, accounts, pubkeys: wallet.getPubkeys() });
           } catch (error) {
             console.error('Error removing ETH account:', error);
             sendResponse({ error: 'Failed to remove ETH account' });
