@@ -50,6 +50,13 @@ const AssetDetail = ({ asset, balances, onSend, onReceive }: AssetDetailProps) =
     nativeBalances.length > 0
       ? nativeBalances.reduce((acc, b) => acc + parseFloat(b.balance || '0'), 0)
       : parseFloat(chainBalances.find(b => b.caip?.startsWith(asset.networkId))?.balance || '0');
+
+  if (asset.networkId === 'ton:-239') {
+    console.log('[TON-DEBUG AssetDetail] asset:', asset);
+    console.log('[TON-DEBUG AssetDetail] balances prop length:', balances.length);
+    console.log('[TON-DEBUG AssetDetail] chainBalances:', chainBalances);
+    console.log('[TON-DEBUG AssetDetail] cachedBalance:', cachedBalance);
+  }
   const cachedUsdValue = chainBalances.reduce((sum, b) => sum + parseFloat(b.valueUsd || '0'), 0);
   const cachedPriceUsd = nativeBalances[0] ? parseFloat(nativeBalances[0].priceUsd || '0') : 0;
 

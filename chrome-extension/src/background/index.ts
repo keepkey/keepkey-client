@@ -8,6 +8,8 @@ globalThis.Buffer = Buffer;
 import packageJson from '../../package.json';
 import * as wallet from './wallet';
 import { resetSolanaState, prefetchSolanaPubkey } from './chains/solanaHandler';
+import { resetTonState, prefetchTonAddress } from './chains/tonHandler';
+import { resetTronState, prefetchTronPubkey } from './chains/tronHandler';
 import { handleWalletRequest } from './methods';
 import { JsonRpcProvider, formatEther } from 'ethers';
 import { ChainToNetworkId, Chain, COIN_MAP_LONG, shortListSymbolToCaip, NetworkIdToChain } from './chainConfig';
@@ -117,6 +119,8 @@ async function checkKeepKey() {
     // so a hot-swapped device doesn't sign against a stale cached address.
     if (prevState === 2 || prevState === 5) {
       resetSolanaState();
+      resetTronState();
+      resetTonState();
     }
     KEEPKEY_STATE = 4; // Set state to errored
     updateIcon();
@@ -210,11 +214,18 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
       const chartsPortfolioUrl = `${PIONEER_API}/api/v1/charts/portfolio`;
 
       const solanaPubkeys = pioneerPubkeys.filter(p => p.caip.toLowerCase().startsWith('solana:'));
-      const nonSolana = pioneerPubkeys.filter(p => !p.caip.toLowerCase().startsWith('solana:'));
-      const addressPubkeys = nonSolana.filter(
+      const tronPubkeys = pioneerPubkeys.filter(p => p.caip.toLowerCase().startsWith('tron:'));
+      const tonPubkeys = pioneerPubkeys.filter(p => p.caip.toLowerCase().startsWith('ton:'));
+      const generic = pioneerPubkeys.filter(
+        p =>
+          !p.caip.toLowerCase().startsWith('solana:') &&
+          !p.caip.toLowerCase().startsWith('tron:') &&
+          !p.caip.toLowerCase().startsWith('ton:'),
+      );
+      const addressPubkeys = generic.filter(
         p => !p.pubkey.startsWith('xpub') && !p.pubkey.startsWith('zpub') && !p.pubkey.startsWith('ypub'),
       );
-      const xpubPubkeys = nonSolana.filter(
+      const xpubPubkeys = generic.filter(
         p => p.pubkey.startsWith('xpub') || p.pubkey.startsWith('zpub') || p.pubkey.startsWith('ypub'),
       );
 
@@ -295,13 +306,107 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
         }
       };
 
-      const [addressResult, xpubResult, solanaResult] = await Promise.all([
+      // Tron lives outside /charts/portfolio coverage and outside the
+      // Solana-shaped /portfolio endpoint too. Use the dedicated Pioneer
+      // accountInfo route, one request per address. Price USD comes back as
+      // 0 (Pioneer doesn't return a TRX market entry) — balance quantity is
+      // still accurate so Send math works; USD value lights up once a market
+      // feed is wired in.
+      const fetchTronBatch = async (batch: typeof pioneerPubkeys) => {
+        if (batch.length === 0) return { balances: [] as any[], tokens: [] as any[] };
+        const out: any[] = [];
+        await Promise.all(
+          batch.map(async p => {
+            try {
+              const url = `${PIONEER_API}/api/v1/tron/accountInfo/${encodeURIComponent(p.pubkey)}`;
+              const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
+              if (!resp.ok) return;
+              const json = await resp.json();
+              // Shape: { success, data: { balance: "26.739864", ... } }
+              // Pioneer already returns TRX as a decimal string here, unlike
+              // Solana which returns lamports — no conversion needed.
+              const bal = json?.data?.balance;
+              if (bal === undefined || bal === null) return;
+              out.push({
+                networkId: 'tron:27Lqcw',
+                caip: p.caip,
+                symbol: 'TRX',
+                name: 'Tron',
+                balance: String(bal),
+                valueUsd: '0',
+                priceUsd: '0',
+                icon: 'https://api.keepkey.info/coins/' + btoa(p.caip).replace(/=+$/, '') + '.png',
+                isNative: true,
+                address: p.pubkey,
+              });
+            } catch (e: any) {
+              console.warn('[fetchBalances] tron accountInfo failed for', p.pubkey, e.message);
+            }
+          }),
+        );
+        console.log(`[fetchBalances] tron batch: ${out.length} natives`);
+        return { balances: out, tokens: [] as any[] };
+      };
+
+      const fetchTonBatch = async (batch: typeof pioneerPubkeys) => {
+        if (batch.length === 0) return { balances: [] as any[], tokens: [] as any[] };
+        const out: any[] = [];
+        await Promise.all(
+          batch.map(async p => {
+            try {
+              const url = `${PIONEER_API}/api/v1/ton/accountInfo/${encodeURIComponent(p.pubkey)}`;
+              const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
+              if (!resp.ok) return;
+              const json = await resp.json();
+              // Shape: { success, data: { seqno, balance: "<nanoTON string>", wallet_version } }
+              // Pioneer returns the raw nanoTON integer — convert to TON (9 decimals)
+              // for UI display, matching the decimal-balance convention Solana/TRON use.
+              // Pioneer's /api/v1/ton/accountInfo returns `balance` as a
+              // decimal TON string already (e.g. "15.701798194"), NOT
+              // nanoTON. The old comment claimed nanoTON and divided by
+              // 1e9 — that turned a real 15.7 TON balance into
+              // 1.5701798194e-8 and made the asset page / send page
+              // show 0.0000 TON. Shape verified against Pioneer's live
+              // response for UQDzK5… on 2026-04-21.
+              const bal = json?.data?.balance;
+              if (bal === undefined || bal === null) return;
+              const ton = String(bal);
+              out.push({
+                networkId: 'ton:-239',
+                caip: p.caip,
+                symbol: 'TON',
+                name: 'Ton',
+                balance: ton,
+                valueUsd: '0',
+                priceUsd: '0',
+                icon: 'https://api.keepkey.info/coins/' + btoa(p.caip).replace(/=+$/, '') + '.png',
+                isNative: true,
+                address: p.pubkey,
+              });
+            } catch (e: any) {
+              console.warn('[fetchBalances] ton accountInfo failed for', p.pubkey, e.message);
+            }
+          }),
+        );
+        console.log(`[fetchBalances] ton batch: ${out.length} natives`);
+        return { balances: out, tokens: [] as any[] };
+      };
+
+      const [addressResult, xpubResult, solanaResult, tronResult, tonResult] = await Promise.all([
         fetchBatch(addressPubkeys, 'address'),
         fetchBatch(xpubPubkeys, 'xpub'),
         fetchSolanaBatch(solanaPubkeys),
+        fetchTronBatch(tronPubkeys),
+        fetchTonBatch(tonPubkeys),
       ]);
 
-      const rawBalances: any[] = [...addressResult.balances, ...xpubResult.balances, ...solanaResult.balances];
+      const rawBalances: any[] = [
+        ...addressResult.balances,
+        ...xpubResult.balances,
+        ...solanaResult.balances,
+        ...tronResult.balances,
+        ...tonResult.balances,
+      ];
       const rawTokens: any[] = [...addressResult.tokens, ...xpubResult.tokens, ...solanaResult.tokens];
 
       if (rawBalances.length === 0 && rawTokens.length === 0) {
@@ -413,13 +518,37 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
       console.log(
         `[fetchBalances] Got ${balances.length} balance entries (${balances.filter((b: any) => b.isNative).length} native, ${balances.filter((b: any) => !b.isNative).length} tokens)`,
       );
-      // Only commit to the cache and notify listeners if we are still the most
-      // recent fetch. Without this guard an earlier, slower request that started
-      // before the Solana pubkey existed could finish after a later forced
-      // refetch and clobber the cache back to a pre-Solana snapshot.
-      if (myFetchId === latestFetchId) {
+      // Only commit if we are still the most recent fetch AND our pubkey
+      // snapshot hasn't been invalidated by a subsequent addPubkey. The
+      // id check alone is not enough: concurrent prefetches all bump
+      // latestFetchId at start, so a fetch that *started last* (highest
+      // id) wins the id check even if its snapshot was taken *before*
+      // prefetchTonAddress / prefetchSolanaPubkey / prefetchTronPubkey
+      // landed their dynamic pubkey. That's exactly how a
+      // post-prefetch "committed" snapshot can be missing TON — the
+      // fetch that came in latest was also the one that missed the
+      // add. Compare pubkey counts now vs at snapshot; if the set has
+      // grown, supersede ourselves so the next (already queued)
+      // force-refetch that DID see the new pubkey can commit cleanly.
+      const currentPubkeyCount = wallet.getPubkeys().length;
+      const snapshotStale = currentPubkeyCount > allPubkeys.length;
+      if (myFetchId === latestFetchId && !snapshotStale) {
         cachedBalances = balances;
+        // Native-row summary keyed by networkId — makes it easy to spot
+        // a chain that got dropped silently between fetches. One line
+        // per fetch commit; if a balance looks missing on the dashboard,
+        // this is the quickest place to see whether the cache actually
+        // has the row at all.
+        const nativeSummary = balances
+          .filter((b: any) => b.isNative)
+          .map((b: any) => `${b.networkId}=${b.balance}`)
+          .join('; ');
+        console.log(`[fetchBalances] #${myFetchId} committed. natives: ${nativeSummary}`);
         pushBalancesUpdated();
+      } else if (snapshotStale) {
+        console.log(
+          `[fetchBalances] discarding #${myFetchId} — pubkey set grew from ${allPubkeys.length} to ${currentPubkeyCount} since snapshot`,
+        );
       } else {
         console.log(
           `[fetchBalances] discarding result from superseded fetch #${myFetchId} (latest: #${latestFetchId})`,
@@ -447,6 +576,8 @@ const onStart = async function () {
   try {
     console.log(tag, 'Starting...');
     resetSolanaState(); // clear stale cached address before re-init
+    resetTronState();
+    resetTonState();
     await wallet.init();
     console.log(tag, 'Wallet initialized');
 
@@ -545,6 +676,22 @@ const onStart = async function () {
       // pubkey is registered, force a second balance fetch so Solana natives +
       // SPL tokens land in cachedBalances (fixes first-run race).
       prefetchSolanaPubkey()
+        .then(() => fetchBalancesFromPioneer(true))
+        .catch(() => {});
+
+      // Same race for Tron — firmware message type is separate from the batch
+      // xpub flow, so we derive lazily and force a refetch once the pubkey is
+      // cached. Balance lookup goes through the dedicated /tron/accountInfo
+      // endpoint inside fetchBalancesFromPioneer (TronGrid coverage).
+      prefetchTronPubkey()
+        .then(() => fetchBalancesFromPioneer(true))
+        .catch(() => {});
+
+      // Same story for TON — address is derived via /addresses/ton, not
+      // the xpub batch. Prefetch so the network shows up in the dropdown
+      // and trigger a rebalance once the TON pubkey is cached so the
+      // nanoTON → TON native balance lands.
+      prefetchTonAddress()
         .then(() => fetchBalancesFromPioneer(true))
         .catch(() => {});
     } else {
@@ -679,6 +826,9 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         case 'GET_ASSET_CONTEXT': {
           // Asset context lives in assetContextStorage (set by SET_ASSET_CONTEXT)
           const assetCtx = await assetContextStorage.get();
+          if ((assetCtx as any)?.networkId === 'ton:-239') {
+            console.log(tag, '[TON-DEBUG] GET_ASSET_CONTEXT returning:', JSON.stringify(assetCtx));
+          }
           sendResponse({ assets: assetCtx && Object.keys(assetCtx).length > 0 ? assetCtx : null });
           break;
         }
@@ -739,10 +889,16 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           if (asset && asset.caip) {
             try {
               console.log(tag, 'Setting asset context:', asset);
+              if (asset.networkId === 'ton:-239') {
+                console.log(tag, '[TON-DEBUG] incoming asset:', JSON.stringify(asset));
+              }
 
               // Enrich asset with pubkeys from wallet so Asset.tsx has addresses
               if (asset.networkId) {
                 const networkPubkeys = wallet.getPubkeys(asset.networkId);
+                if (asset.networkId === 'ton:-239') {
+                  console.log(tag, '[TON-DEBUG] wallet.getPubkeys("ton:-239") =', JSON.stringify(networkPubkeys));
+                }
                 // For EVM wildcard, also try the base eip155 network
                 if (networkPubkeys.length === 0 && asset.networkId.startsWith('eip155')) {
                   const evmPubkeys = wallet
@@ -758,6 +914,38 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                 }
               }
 
+              // Enrich asset with cached native balance so Send/Transfer can
+              // read a scalar `balance`. GET_ASSETS returns the catalog (no
+              // balance), so without this step the Transfer component saw
+              // `undefined` and fell back to 0 — Max/50% became no-ops and the
+              // "Sending X SOL" hero read 0. Prefer exact caip match, then the
+              // native row for the network.
+              if (asset.networkId && !asset.balance) {
+                const exact = asset.caip && cachedBalances.find((b: any) => b.caip === asset.caip);
+                const nativeFallback = cachedBalances.find((b: any) => b.networkId === asset.networkId && b.isNative);
+                const match = exact || nativeFallback;
+                if (asset.networkId === 'ton:-239') {
+                  const tonRows = cachedBalances.filter((b: any) => b.networkId === 'ton:-239');
+                  console.log(
+                    tag,
+                    '[TON-DEBUG] enrichment: cachedBalances.length=' +
+                      cachedBalances.length +
+                      ', ton rows=' +
+                      JSON.stringify(tonRows) +
+                      ', exactCaipMatch=' +
+                      !!exact +
+                      ', nativeFallbackMatch=' +
+                      !!nativeFallback,
+                  );
+                }
+                if (match) {
+                  asset.balance = match.balance;
+                  if (!asset.priceUsd) asset.priceUsd = match.priceUsd;
+                  if (!asset.valueUsd) asset.valueUsd = match.valueUsd;
+                  if (!asset.icon && match.icon) asset.icon = match.icon;
+                }
+              }
+
               // Track previous address/chain to detect changes for dApp notification
               const prevAddress = ADDRESS;
               const prevProvider = await web3ProviderStorage.getWeb3Provider();
@@ -770,6 +958,9 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               }
 
               // Store in assetContextStorage for GET_ASSET_CONTEXT
+              if (asset.networkId === 'ton:-239') {
+                console.log(tag, '[TON-DEBUG] final asset being stored:', JSON.stringify(asset));
+              }
               await assetContextStorage.updateContext(asset);
 
               // If eip155 then set web3 provider

@@ -205,6 +205,12 @@ const Transaction = ({
           case 'solana':
             setTransactionType('other');
             break;
+          case 'ton':
+            setTransactionType('other');
+            break;
+          case 'tron':
+            setTransactionType('other');
+            break;
           default:
             setTransactionType('unknown');
         }

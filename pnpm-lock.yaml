@@ -130,8 +130,8 @@ importers:
         specifier: ^6.13.2
         version: 6.15.0
       keepkey-vault-sdk:
-        specifier: ^2.0.1
-        version: 2.0.1
+        specifier: ^3.0.1
+        version: 3.0.1
       uuid:
         specifier: ^10.0.0
         version: 10.0.0
@@ -3671,8 +3671,8 @@ packages:
   jszip@3.10.1:
     resolution: {integrity: sha512-xXDvecyTpGLrqFrvkrUSoxxfJI5AH7U8zxxtVclpsUtMCq4JQ290LY8AW5c7Ggnr/Y/oK+bQMbqK2qmtk3pN4g==}
 
-  keepkey-vault-sdk@2.0.1:
-    resolution: {integrity: sha512-vfS7rNIbL3pPY7dq4kRpd3B87R/vFCtl0R+6tt4V29SbDGOUaNDxbb05o51k4+5ZOiJtNNIgBNrHVr2xk1k7Dg==}
+  keepkey-vault-sdk@3.0.1:
+    resolution: {integrity: sha512-410zUZirUO22SVSRUDM8HIxQwB7HefAdpKUfCTAqcVp6mKvQzyY90CRicQtXTdhaQmfrhaJIgmiIL0d16/PB/Q==}
 
   keyv@4.5.4:
     resolution: {integrity: sha512-oxVHkHR/EJf2CNXnWxRLW6mg7JyCCUcG0DtEGmL2ctUo1PNTin1PUil+r/+4r5MpVgC/fn1kjsx7mjSujKqIpw==}
@@ -8758,7 +8758,7 @@ snapshots:
       readable-stream: 2.3.8
       setimmediate: 1.0.5
 
-  keepkey-vault-sdk@2.0.1: {}
+  keepkey-vault-sdk@3.0.1: {}
 
   keyv@4.5.4:
     dependencies:

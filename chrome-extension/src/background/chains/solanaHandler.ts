@@ -34,7 +34,9 @@ async function getSolanaRpcUrl(): Promise<string> {
         cachedRpcTimestamp = now;
         return url;
       }
-    } catch { /* try next */ }
+    } catch {
+      /* try next */
+    }
   }
   return SOLANA_RPC_URLS[0]; // fallback to primary
 }
@@ -77,6 +79,117 @@ function fromBase64(b64: string): number[] {
   } catch (e: any) {
     throw createProviderRpcError(-32603, `Failed to decode base64 response: ${e.message}`);
   }
+}
+
+// ---------- Solana tx builder (inline, no @solana/web3.js dep) ----------
+
+const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+
+function base58Decode(str: string): Uint8Array {
+  const bytes: number[] = [0];
+  for (const char of str) {
+    const idx = BASE58_ALPHABET.indexOf(char);
+    if (idx === -1) throw new Error('Invalid base58 character');
+    let carry = idx;
+    for (let j = 0; j < bytes.length; j++) {
+      carry += bytes[j] * 58;
+      bytes[j] = carry & 0xff;
+      carry >>= 8;
+    }
+    while (carry > 0) {
+      bytes.push(carry & 0xff);
+      carry >>= 8;
+    }
+  }
+  for (const char of str) {
+    if (char !== '1') break;
+    bytes.push(0);
+  }
+  return new Uint8Array(bytes.reverse());
+}
+
+/** Solana compact-u16 varint. 1 byte <128, 2 bytes <16384, else 3 bytes. */
+function encodeCompactU16(n: number): number[] {
+  if (n < 0 || n > 0xffff) throw new Error('compact-u16 out of range');
+  if (n < 0x80) return [n];
+  if (n < 0x4000) return [(n & 0x7f) | 0x80, (n >> 7) & 0x7f];
+  return [(n & 0x7f) | 0x80, ((n >> 7) & 0x7f) | 0x80, (n >> 14) & 0x03];
+}
+
+async function getLatestBlockhash(): Promise<string> {
+  const rpcUrl = await getSolanaRpcUrl();
+  let resp: Response;
+  try {
+    resp = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getLatestBlockhash' }),
+      signal: AbortSignal.timeout(10000),
+    });
+  } catch (e: any) {
+    throw createProviderRpcError(-32603, `Solana RPC blockhash fetch failed: ${e.message}`);
+  }
+  const data = await resp.json().catch(() => ({}));
+  const blockhash = data?.result?.value?.blockhash;
+  if (!blockhash) throw createProviderRpcError(-32603, 'Solana RPC returned no blockhash');
+  return blockhash;
+}
+
+/**
+ * Build a legacy Solana System Program transfer transaction with a
+ * 64-byte zero signature placeholder. Vault's /solana/sign-transaction
+ * replaces bytes 1..65 with the real Ed25519 signature before returning.
+ *
+ * Layout:
+ *   sig_count(cu16=1) | zero_sig(64) | header(3) | num_keys(cu16=3)
+ *   sender(32) | recipient(32) | system_program(32=zeros)
+ *   blockhash(32) | num_instructions(cu16=1)
+ *   program_idx(u8=2) | num_accounts(cu16=2) | 0 1
+ *   data_len(cu16=12) | instruction(u32_le=2) | lamports(u64_le)
+ */
+function buildSolanaTransferTx(
+  senderBase58: string,
+  recipientBase58: string,
+  lamports: bigint,
+  blockhashBase58: string,
+): Uint8Array {
+  const senderKey = base58Decode(senderBase58);
+  const recipientKey = base58Decode(recipientBase58);
+  const blockhashBytes = base58Decode(blockhashBase58);
+  if (senderKey.length !== 32) throw createProviderRpcError(4000, 'Invalid sender pubkey');
+  if (recipientKey.length !== 32)
+    throw createProviderRpcError(4000, `Invalid recipient address (expected 32 bytes, got ${recipientKey.length})`);
+  if (blockhashBytes.length !== 32) throw createProviderRpcError(-32603, 'Invalid blockhash length');
+
+  const systemProgram = new Uint8Array(32); // 32 zero bytes
+
+  const data = new Uint8Array(12);
+  const dv = new DataView(data.buffer);
+  dv.setUint32(0, 2, true); // SystemProgram::Transfer discriminator
+  dv.setBigUint64(4, lamports, true);
+
+  const out: number[] = [];
+  // Signature section — placeholder
+  out.push(...encodeCompactU16(1));
+  for (let i = 0; i < 64; i++) out.push(0);
+  // Message header: (num_required_signatures, num_readonly_signed, num_readonly_unsigned)
+  out.push(1, 0, 1);
+  // Account keys
+  out.push(...encodeCompactU16(3));
+  for (const b of senderKey) out.push(b);
+  for (const b of recipientKey) out.push(b);
+  for (const b of systemProgram) out.push(b);
+  // Recent blockhash
+  for (const b of blockhashBytes) out.push(b);
+  // Instructions
+  out.push(...encodeCompactU16(1));
+  out.push(2); // program_id_index → systemProgram
+  out.push(...encodeCompactU16(2));
+  out.push(0, 1); // sender (signer), recipient
+  out.push(...encodeCompactU16(12));
+  for (const b of data) out.push(b);
+
+  return new Uint8Array(out);
 }
 
 // BIP44 path for Solana: m/44'/501'/0'/0'
@@ -411,6 +524,99 @@ export const handleSolanaRequest = async (
 
       chrome.runtime.sendMessage({ action: 'signature_complete', eventId: requestInfo.id }).catch(() => {});
       return signedTxArray;
+    }
+
+    // ---- Transfer (side-panel Send flow) ----
+    // Payload shape from Transfer.tsx:
+    //   params[0] = { caip, amount: { amount, denom }, recipient, memo, isMax }
+    // Build SOL transfer tx locally, stash it on the approval event so
+    // Transaction.tsx can render sender/recipient/amount, then sign via
+    // vault and broadcast via Solana RPC.
+    case 'transfer': {
+      const payload = params?.[0] || {};
+      const recipient: string = payload.recipient;
+      const amountSol: string = payload?.amount?.amount ?? payload?.amount ?? '';
+
+      if (!recipient) throw createProviderRpcError(4000, 'Missing recipient');
+      if (!amountSol) throw createProviderRpcError(4000, 'Missing amount');
+
+      const amountFloat = parseFloat(amountSol);
+      if (!Number.isFinite(amountFloat) || amountFloat <= 0) {
+        throw createProviderRpcError(4000, 'Invalid SOL amount');
+      }
+      // 1 SOL = 1_000_000_000 lamports. Round to avoid FP leftovers.
+      const lamports = BigInt(Math.round(amountFloat * 1e9));
+      if (lamports <= 0n) throw createProviderRpcError(4000, 'Amount too small');
+
+      const sender = await getSolanaAddress();
+      const blockhash = await getLatestBlockhash();
+      const txBytes = buildSolanaTransferTx(sender, recipient, lamports, blockhash);
+      const txBase64 = toBase64(Array.from(txBytes));
+
+      if (!requestInfo.id) requestInfo.id = uuidv4();
+      const event = {
+        id: requestInfo.id,
+        networkId: SOLANA_NETWORK_ID,
+        chain: 'solana',
+        href: requestInfo.href,
+        language: requestInfo.language,
+        platform: requestInfo.platform,
+        referrer: requestInfo.referrer,
+        requestTime: requestInfo.requestTime,
+        scriptSource: requestInfo.scriptSource,
+        siteUrl: requestInfo.siteUrl,
+        userAgent: requestInfo.userAgent,
+        injectScriptVersion: requestInfo.version,
+        requestInfo,
+        unsignedTx: {
+          from: sender,
+          to: recipient,
+          amount: amountSol,
+          lamports: lamports.toString(),
+          blockhash,
+          txBase64,
+        },
+        type: 'transfer',
+        request: params,
+        status: 'request',
+        timestamp: new Date().toISOString(),
+      };
+      // @ts-expect-error
+      const saved = await requestStorage.addEvent(event);
+      if (!saved) throw createProviderRpcError(-32603, 'Failed to create approval event');
+      chrome.runtime.sendMessage({ action: 'TRANSACTION_CONTEXT_UPDATED', id: event.id }).catch(() => {});
+
+      const approval = await requireApproval(SOLANA_NETWORK_ID, requestInfo, 'solana', method, params);
+      if (!approval?.success) {
+        throw createProviderRpcError(4001, 'User denied transaction');
+      }
+
+      const signResult = await signTransactionViaRest(txBase64);
+      const txSignature = await broadcastTransaction(signResult.serializedTx);
+
+      // Persist txid so the approval UI's success state can show it.
+      try {
+        const stored = await requestStorage.getEventById(requestInfo.id);
+        if (stored) {
+          stored.txid = txSignature;
+          stored.status = 'broadcasted';
+          await requestStorage.updateEventById(requestInfo.id, stored);
+        }
+      } catch (e) {
+        console.warn(tag, 'Failed to persist txid on event:', e);
+      }
+
+      chrome.runtime
+        .sendMessage({
+          action: 'transaction_complete',
+          eventId: requestInfo.id,
+          txHash: txSignature,
+          explorerTxLink: 'https://solscan.io/tx/',
+          networkId: SOLANA_NETWORK_ID,
+        })
+        .catch(() => {});
+
+      return txSignature;
     }
 
     // ---- Sign and send transaction ----

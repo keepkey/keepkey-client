@@ -176,7 +176,14 @@ const createAssetContextStorage = (): AssetContextStorage => {
   return {
     ...storage,
     updateContext: async (newContext: AssetContext) => {
-      await storage.set(prev => ({ ...prev, ...newContext }));
+      // REPLACE, not merge. The previous `{...prev, ...newContext}` let
+      // stale fields from an earlier asset (decimals, contractAddress,
+      // token flags) leak into the new context on switch — e.g. a
+      // user clicking TON after ETH would keep ETH's contract decimals
+      // around and the Send page's token-detection would misfire.
+      // Callers that want to update a single field should read-modify-
+      // write explicitly.
+      await storage.set(() => newContext);
     },
     clearContext: async () => {
       await storage.set(() => ({}));

@@ -24,6 +24,8 @@ export const Chain = {
   Ripple: 'XRP',
   Solana: 'SOL',
   THORChain: 'THOR',
+  Ton: 'TON',
+  Tron: 'TRX',
 } as const;
 
 export type ChainValue = (typeof Chain)[keyof typeof Chain];
@@ -49,6 +51,9 @@ export const ChainToNetworkId: Record<string, string> = {
   XRP: 'ripple:4109c6f2045fc7eff4cde8f9905d19c2',
   THOR: 'cosmos:thorchain-mainnet-v1',
   SOL: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
+  // Canonical CAIP-2 networkIds from keepkey-vault-v11/shared/chains.ts
+  TON: 'ton:-239',
+  TRX: 'tron:27Lqcw',
 };
 
 // ---- NetworkIdToChain (reverse map) ----
@@ -79,6 +84,8 @@ export const COIN_MAP_LONG: Record<string, string> = {
   MATIC: 'polygon',
   XRP: 'ripple',
   SOL: 'solana',
+  TON: 'ton',
+  TRX: 'tron',
 };
 
 // ---- availableChainsByWallet (replaces @pioneer-platform/pioneer-caip's version) ----
@@ -130,6 +137,8 @@ const NETWORK_SLIP44: Record<string, string> = {
   // keepkey.info/coins, which caused the Solana network badge to render as a
   // letter-fallback "S" instead of the logo.
   'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp': 'slip44:501',
+  'tron:27Lqcw': 'slip44:195',
+  'ton:-239': 'slip44:607',
 };
 
 export function networkIdToIcon(networkId: string): string {

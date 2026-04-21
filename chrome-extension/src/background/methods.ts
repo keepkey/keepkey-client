@@ -14,6 +14,8 @@ import { handleOsmosisRequest } from './chains/osmosisHandler';
 import { handleMayaRequest } from './chains/mayaHandler';
 import { handleRippleRequest } from './chains/rippleHandler';
 import { handleSolanaRequest } from './chains/solanaHandler';
+import { handleTronRequest } from './chains/tronHandler';
+import { handleTonRequest } from './chains/tonHandler';
 import type { ProviderRpcError } from './utils';
 import { createProviderRpcError, formatUserError } from './utils';
 
@@ -270,6 +272,15 @@ export const handleWalletRequest = async (
       }
       case 'solana': {
         return await handleSolanaRequest(method, params, requestInfo, ADDRESS, __KEEPKEY_WALLET, requireApproval);
+        break;
+      }
+      case 'tron':
+      case 'trx': {
+        return await handleTronRequest(method, params, requestInfo, ADDRESS, __KEEPKEY_WALLET, requireApproval);
+        break;
+      }
+      case 'ton': {
+        return await handleTonRequest(method, params, requestInfo, ADDRESS, __KEEPKEY_WALLET, requireApproval);
         break;
       }
       default: {

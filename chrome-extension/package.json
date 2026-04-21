@@ -21,7 +21,7 @@
     "@extension/storage": "workspace:*",
     "buffer": "^6.0.3",
     "ethers": "^6.13.2",
-    "keepkey-vault-sdk": "^2.0.1",
+    "keepkey-vault-sdk": "^3.0.1",
     "uuid": "^10.0.0",
     "webextension-polyfill": "^0.12.0",
     "@wallet-standard/wallet": "^1.1.0",
