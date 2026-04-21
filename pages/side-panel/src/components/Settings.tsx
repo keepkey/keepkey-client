@@ -12,6 +12,9 @@ import {
   keepKeyApiKeyStorage,
   web3ProviderStorage,
 } from '@extension/storage';
+
+const TAG = ' | Settings | ';
+
 const Settings = () => {
   const toast = useToast(); // For showing a success/failure message
   const [maskingSettings, setMaskingSettings] = useState({
@@ -60,44 +63,48 @@ const Settings = () => {
     try {
       console.log(TAG, 'Clearing all custom storages...');
 
-      // Clear specific storages
-      // await keepKeyApiKeyStorage.set(() => '');
-      // console.log(TAG, 'Cleared API Key Storage');
-      //
-      // await requestStorage.clearEvents();
-      // console.log(TAG, 'Cleared Request Storage');
-      //
-      // await approvalStorage.clearEvents();
-      // console.log(TAG, 'Cleared Approval Storage');
-      //
-      // await completedStorage.clearEvents();
-      // console.log(TAG, 'Cleared Completed Storage');
-      //
-      // await assetContextStorage.clearContext();
-      // console.log(TAG, 'Cleared Asset Context Storage');
+      // Each storage exposes its own "clear" affordance (clearEvents,
+      // clearContext, clearWeb3Provider) or the raw `.set` from the base
+      // storage helper. Run in parallel via allSettled so one failure
+      // doesn't strand the others. Masking settings are deliberately left
+      // alone — they're user preferences, not accumulated data, and
+      // "clear everything I added" shouldn't reset privacy toggles.
+      const results = await Promise.allSettled([
+        keepKeyApiKeyStorage.saveApiKey(''),
+        requestStorage.clearEvents(),
+        approvalStorage.clearEvents(),
+        completedStorage.clearEvents(),
+        assetContextStorage.clearContext(),
+        blockchainStorage.set(() => []),
+        blockchainDataStorage.set(() => ({})),
+        dappStorage.set(() => []),
+        web3ProviderStorage.clearWeb3Provider(),
+      ]);
 
-      await blockchainStorage.clear();
-      console.log(TAG, 'Cleared Blockchain Storage');
-
-      // await blockchainDataStorage.set(() => ({}));
-      // console.log(TAG, 'Cleared Blockchain Data Storage');
-      //
-      // await dappStorage.set(() => []);
-      // console.log(TAG, 'Cleared Dapp Storage');
-      //
-      // await web3ProviderStorage.clearWeb3Provider();
-      // console.log(TAG, 'Cleared Web3 Provider Storage');
-      //
-      // await maskingSettingsStorage.set(() => ({
-      //   enableMetaMaskMasking: false,
-      //   enableXfiMasking: false,
-      //   enableKeplrMasking: false,
-      // }));
-      console.log(TAG, 'Cleared Masking Settings Storage');
-
+      const failures = results.filter(r => r.status === 'rejected');
+      if (failures.length > 0) {
+        console.warn(TAG, `Clear-all completed with ${failures.length} failure(s):`, failures);
+      }
       console.log(TAG, 'All custom storages cleared successfully.');
+      toast({
+        title: failures.length === 0 ? 'Storage cleared' : 'Storage partially cleared',
+        description:
+          failures.length === 0
+            ? 'All persisted data has been removed.'
+            : `${results.length - failures.length}/${results.length} storages cleared. Check the console for details.`,
+        status: failures.length === 0 ? 'success' : 'warning',
+        duration: 4000,
+        isClosable: true,
+      });
     } catch (error) {
       console.error(TAG, 'Error clearing custom storages:', error);
+      toast({
+        title: 'Clear failed',
+        description: (error as Error)?.message || 'Unexpected error while clearing storages.',
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      });
     }
   };
 
