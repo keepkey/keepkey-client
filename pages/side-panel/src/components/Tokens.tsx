@@ -87,6 +87,15 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
   useEffect(() => {
     fetchTokens();
     loadCustomTokens();
+    // Refresh token list when background pushes a balance update — otherwise
+    // a user viewing the asset detail during a cold-start Solana refetch would
+    // see stale "No tokens" after the background lands SPL tokens.
+    const listener = (message: any) => {
+      if (message?.type === 'BALANCES_UPDATED') fetchTokens();
+    };
+    chrome.runtime.onMessage.addListener(listener);
+    return () => chrome.runtime.onMessage.removeListener(listener);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [asset, networkId]);
 
   // Load custom tokens from storage

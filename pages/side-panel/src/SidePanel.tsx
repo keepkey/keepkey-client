@@ -167,13 +167,20 @@ const SidePanel = () => {
       if (message.type === 'ASSET_CONTEXT_CLEARED') {
         setSelectedAsset(null);
       }
+      // Background pushes this after cachedBalances is refreshed. Without it,
+      // cold-start shows a pre-Solana snapshot because the panel only fetches
+      // once on state=5 and never re-queries when the background later lands
+      // Solana + SPL tokens after the initial fetch.
+      if (message.type === 'BALANCES_UPDATED') {
+        fetchTotalBalance();
+      }
     };
 
     chrome.runtime.onMessage.addListener(messageListener);
     return () => {
       chrome.runtime.onMessage.removeListener(messageListener);
     };
-  }, [onAssetDetailOpen]);
+  }, [onAssetDetailOpen, fetchTotalBalance]);
 
   // Format currency for display
   const formatCurrency = (value: number) => {
