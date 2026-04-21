@@ -45,6 +45,7 @@ const SidePanel = () => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<any>(null);
+  const [balancesInitialLoading, setBalancesInitialLoading] = useState(true);
 
   // Disclosures for drawers/modals
   const { isOpen: isSettingsOpen, onOpen: onSettingsOpen, onClose: onSettingsClose } = useDisclosure();
@@ -59,11 +60,13 @@ const SidePanel = () => {
         const total = response.balances.reduce((sum: number, b: any) => sum + parseFloat(b.valueUsd || '0'), 0);
         setTotalUsdBalance(total);
       }
+      setBalancesInitialLoading(false);
     });
   }, []);
 
   useEffect(() => {
     if (keepkeyState === 5) {
+      setBalancesInitialLoading(true);
       fetchTotalBalance();
     }
   }, [keepkeyState, fetchTotalBalance]);
@@ -260,8 +263,8 @@ const SidePanel = () => {
 
       {/* Scrollable body below header */}
       <Flex direction="column" flex={1} overflowY="auto" px={4} pb={4}>
-        {/* Total Balance & Quick Actions - Only when paired and on home screen */}
-        {keepkeyState === 5 && !transactionContext && (
+        {/* Total Balance & Quick Actions - Only when paired and on home screen, after initial load */}
+        {keepkeyState === 5 && !transactionContext && !balancesInitialLoading && (
           <Box mb={3} textAlign="center">
             {balances.length > 0 && totalUsdBalance > 0 && (
               <Box mb={2}>

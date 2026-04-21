@@ -7,7 +7,7 @@ globalThis.Buffer = Buffer;
 
 import packageJson from '../../package.json';
 import * as wallet from './wallet';
-import { resetSolanaState } from './chains/solanaHandler';
+import { resetSolanaState, prefetchSolanaPubkey } from './chains/solanaHandler';
 import { handleWalletRequest } from './methods';
 import { JsonRpcProvider, formatEther } from 'ethers';
 import { ChainToNetworkId, Chain, COIN_MAP_LONG, shortListSymbolToCaip, NetworkIdToChain } from './chainConfig';
@@ -440,6 +440,10 @@ const onStart = async function () {
 
       // Fetch balances in background (non-blocking)
       fetchBalancesFromPioneer().catch(e => console.warn(tag, 'Initial balance fetch failed:', e));
+
+      // Prefetch Solana pubkey so it shows up in the network dropdown without
+      // waiting for a dapp request. Non-blocking, silently no-ops in watch-only.
+      prefetchSolanaPubkey().catch(() => {});
     } else {
       console.error(tag, 'FAILED TO INIT, No Ethereum address found');
     }

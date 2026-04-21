@@ -47,6 +47,19 @@ export function resetSolanaState() {
   cachedAddress = null;
 }
 
+/**
+ * Prefetch the Solana pubkey at startup so the network shows up in the
+ * dropdown without waiting for a dapp-initiated Solana call. Non-throwing —
+ * silently skips when no device + no cached address.
+ */
+export async function prefetchSolanaPubkey(): Promise<void> {
+  try {
+    await getSolanaAddress();
+  } catch (e: any) {
+    console.log(TAG, 'Solana prefetch skipped:', e?.message || e);
+  }
+}
+
 /** Convert a number[] to base64 string (chunked to avoid call-stack limit) */
 function toBase64(arr: number[]): string {
   const CHUNK = 8192;

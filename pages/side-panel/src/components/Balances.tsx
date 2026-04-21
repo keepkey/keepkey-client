@@ -79,17 +79,23 @@ const Balances = ({ onSelectAsset }: BalancesProps) => {
     return <AssetSelect setShowBack={() => {}} setShowAssetSelect={setShowAssetSelect} />;
   }
 
+  if (loading) {
+    return (
+      <Flex direction="column" justifyContent="center" alignItems="center" width="100%" flex="1" minH="60vh" gap={3}>
+        <Spinner size="xl" color="teal.400" thickness="3px" speed="0.8s" />
+        <Text color="whiteAlpha.600" fontSize="sm">
+          Loading balances…
+        </Text>
+      </Flex>
+    );
+  }
+
   return (
-    <Flex flex="1" overflowY="auto" width="100%">
+    <Flex flex="1" overflowY="auto" width="100%" direction="column">
       <Stack width="100%">
-        {loading ? (
-          <Flex justifyContent="center" alignItems="center" width="100%">
-            <Spinner size="xl" />
-            <Text ml={2}>Loading...</Text>
-          </Flex>
-        ) : sortedAssets.length === 0 ? (
-          <Flex justifyContent="center" alignItems="center" width="100%">
-            <Text>No assets found</Text>
+        {sortedAssets.length === 0 ? (
+          <Flex justifyContent="center" alignItems="center" width="100%" minH="40vh">
+            <Text color="whiteAlpha.600">No assets found</Text>
           </Flex>
         ) : (
           <>
