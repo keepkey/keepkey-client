@@ -65,19 +65,21 @@ export function Transfer(): JSX.Element {
   const onStart = async () => {
     let tag = TAG + ' | onStart | ';
     try {
+      // Post-Pioneer the asset context carries a scalar `balance` string,
+      // not the `balances[]` array the old SDK packed. Reading the array
+      // alone left totalBalance at 0, which made Max / 50% useless. Try
+      // scalar first; fall back to summing the legacy array if present.
       let totalBalanceCalc = 0;
-      console.log(tag, 'balances: ', assetContext?.balances);
-      if (assetContext?.balances) {
-        // Loop through balances to calculate total balance
-        for (let i = 0; i < assetContext?.balances.length; i++) {
-          console.log(tag, assetContext?.balances[i]);
-
-          const balance = parseFloat(assetContext?.balances[i]?.balance) || 0; // Safely handle undefined balances
-          totalBalanceCalc += balance; // Accumulate total balance
+      const scalar = parseFloat(assetContext?.balance ?? '');
+      if (!Number.isNaN(scalar) && scalar > 0) {
+        totalBalanceCalc = scalar;
+      } else if (Array.isArray(assetContext?.balances)) {
+        for (const b of assetContext.balances) {
+          totalBalanceCalc += parseFloat(b?.balance) || 0;
         }
-        console.log('totalBalanceCalc: ', totalBalanceCalc);
-        setTotalBalance(totalBalanceCalc);
       }
+      console.log(tag, 'totalBalance:', totalBalanceCalc, 'ctx:', assetContext);
+      setTotalBalance(totalBalanceCalc);
     } catch (e) {
       console.error(e);
     }
