@@ -115,6 +115,12 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
         icon: net?.icon || '',
         address: account.address,
         pubkeys: account.pubkey ? [account.pubkey] : [],
+        // Carry the selected account index so GET_PUBKEY_CONTEXT in the
+        // background can scope its response to the right derivation on
+        // multi-account EVM chains. Without this the scoping logic always
+        // falls back to scoped[0], and Receive shows account 0's address
+        // even when the user picked account 2.
+        accountIndex: account.accountIndex,
       };
       chrome.runtime.sendMessage({ type: 'SET_ASSET_CONTEXT', asset });
       setHasAssetContext(true);
