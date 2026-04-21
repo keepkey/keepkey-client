@@ -23,6 +23,7 @@ import {
 } from '@extension/storage';
 import { EIP155_CHAINS } from './chains';
 import { formatUserError } from './utils';
+import { filterSpamTokens } from './spamFilter';
 
 const TAG = ' | background/index.js | ';
 console.log('Background script loaded');
@@ -308,8 +309,9 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
         return cachedBalances;
       }
 
-      // Transform native balances
-      const balances: any[] = rawBalances.map((b: any) => {
+      // Transform native balances. `let` because we reassign after spam
+      // filtering below; token entries are appended earlier, filtered later.
+      let balances: any[] = rawBalances.map((b: any) => {
         const caip = b.caip || '';
         const networkId = b.networkId || caip.split('/')[0] || '';
         return {
@@ -398,6 +400,14 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
         }
       } catch (e: any) {
         console.warn('[fetchBalances] Custom chain enrichment error:', e.message);
+      }
+
+      const preFilterCount = balances.length;
+      balances = filterSpamTokens(balances);
+      if (balances.length !== preFilterCount) {
+        console.log(
+          `[fetchBalances] Spam filter dropped ${preFilterCount - balances.length}/${preFilterCount} token entries`,
+        );
       }
 
       console.log(
