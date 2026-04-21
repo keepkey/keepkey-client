@@ -39,7 +39,7 @@ export const shortListSymbolToCaip: Record<string, string> = {
   AVAX: 'eip155:43114/slip44:60',
   BSC: 'eip155:56/slip44:60',
   BNB: 'eip155:56/slip44:60',
-  SOL: 'solana:5eykt4usfv8p8njdtrepy1vzqkqzkvdp/solana:so11111111111111111111111111111111111111112',
+  SOL: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp/slip44:501',
 };
 
 export const shortListNameToCaip: Record<string, string> = {
@@ -60,7 +60,7 @@ export const shortListNameToCaip: Record<string, string> = {
   ripple: 'ripple:4109c6f2045fc7eff4cde8f9905d19c2/slip44:144',
   optimism: 'eip155:10/slip44:60',
   base: 'eip155:8453/slip44:60',
-  solana: 'solana:5eykt4usfv8p8njdtrepy1vzqkqzkvdp/solana:so11111111111111111111111111111111111111112',
+  solana: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp/slip44:501',
 };
 
 // ---- bip32ToAddressNList ----

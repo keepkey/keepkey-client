@@ -181,22 +181,25 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
       console.log(`[fetchBalances] Sending ${pioneerPubkeys.length} pubkeys to Pioneer API`);
       console.log(`[fetchBalances] Sample pubkeys:`, pioneerPubkeys.slice(0, 3));
 
-      // Use /api/v1/charts/portfolio endpoint — blocking, includes Zapper/Unchained token fetch
-      const portfolioUrl = `${PIONEER_API}/api/v1/charts/portfolio`;
+      // Two Pioneer endpoints, chosen per chain:
+      //   /charts/portfolio — EVM + UTXO + Cosmos (unauthenticated, returns tokens via Zapper/Unchained).
+      //                       Returns EMPTY for Solana, so Solana pubkeys must NOT go here.
+      //   /portfolio        — Solana (authenticated). Returns natives + SPL tokens in one flat array.
+      const chartsPortfolioUrl = `${PIONEER_API}/api/v1/charts/portfolio`;
 
-      // Split into address-based (EVM, Cosmos, etc.) and xpub-based (UTXO) batches
-      // to prevent a bad xpub from poisoning the entire request
-      const addressPubkeys = pioneerPubkeys.filter(
+      const solanaPubkeys = pioneerPubkeys.filter(p => p.caip.toLowerCase().startsWith('solana:'));
+      const nonSolana = pioneerPubkeys.filter(p => !p.caip.toLowerCase().startsWith('solana:'));
+      const addressPubkeys = nonSolana.filter(
         p => !p.pubkey.startsWith('xpub') && !p.pubkey.startsWith('zpub') && !p.pubkey.startsWith('ypub'),
       );
-      const xpubPubkeys = pioneerPubkeys.filter(
+      const xpubPubkeys = nonSolana.filter(
         p => p.pubkey.startsWith('xpub') || p.pubkey.startsWith('zpub') || p.pubkey.startsWith('ypub'),
       );
 
       const fetchBatch = async (batch: typeof pioneerPubkeys, label: string) => {
         if (batch.length === 0) return { balances: [] as any[], tokens: [] as any[] };
         try {
-          const response = await fetch(portfolioUrl, {
+          const response = await fetch(chartsPortfolioUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ pubkeys: batch, forceRefresh }),
@@ -217,14 +220,68 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
         }
       };
 
-      // Fetch both batches in parallel
-      const [addressResult, xpubResult] = await Promise.all([
+      // Pioneer echoes CAIP/networkId back in lowercase even when sent mixed-case.
+      // The side-panel asset list uses canonical mixed-case network IDs from
+      // ChainToNetworkId, so strict b.networkId === asset.networkId matches fail.
+      // Rewrite Solana entries back to canonical casing before returning.
+      const SOL_NETWORK_CANONICAL = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp';
+      const normalizeSolanaCasing = (entry: any) => {
+        const caip = entry.caip || '';
+        const netId = entry.networkId || '';
+        if (netId.toLowerCase() === SOL_NETWORK_CANONICAL.toLowerCase()) {
+          entry.networkId = SOL_NETWORK_CANONICAL;
+        }
+        if (caip.toLowerCase().startsWith(SOL_NETWORK_CANONICAL.toLowerCase() + '/')) {
+          entry.caip = SOL_NETWORK_CANONICAL + caip.slice(SOL_NETWORK_CANONICAL.length);
+        }
+        return entry;
+      };
+
+      const fetchSolanaBatch = async (batch: typeof pioneerPubkeys) => {
+        if (batch.length === 0) return { balances: [] as any[], tokens: [] as any[] };
+        try {
+          const url = `${PIONEER_API}/api/v1/portfolio${forceRefresh ? '?forceRefresh=true' : ''}`;
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              // Pioneer requires a queryKey — any public key works for read-only lookups.
+              Authorization: `key:public-${Date.now()}`,
+            },
+            body: JSON.stringify({ pubkeys: batch }),
+          });
+          if (!response.ok) {
+            console.warn(`[fetchBalances] solana batch returned ${response.status}`);
+            return { balances: [] as any[], tokens: [] as any[] };
+          }
+          const json = await response.json();
+          const allEntries: any[] = json?.balances || [];
+          const natives: any[] = [];
+          const tokens: any[] = [];
+          for (const raw of allEntries) {
+            const entry = normalizeSolanaCasing({ ...raw });
+            const caipPath = (entry.caip || '').split('/')[1] || '';
+            const isToken =
+              entry.type === 'token' || caipPath.startsWith('token:') || caipPath.startsWith('spl:');
+            if (isToken) tokens.push(entry);
+            else natives.push(entry);
+          }
+          console.log(`[fetchBalances] solana batch: ${natives.length} natives, ${tokens.length} tokens`);
+          return { balances: natives, tokens };
+        } catch (e: any) {
+          console.warn('[fetchBalances] solana batch error:', e.message);
+          return { balances: [] as any[], tokens: [] as any[] };
+        }
+      };
+
+      const [addressResult, xpubResult, solanaResult] = await Promise.all([
         fetchBatch(addressPubkeys, 'address'),
         fetchBatch(xpubPubkeys, 'xpub'),
+        fetchSolanaBatch(solanaPubkeys),
       ]);
 
-      const rawBalances: any[] = [...addressResult.balances, ...xpubResult.balances];
-      const rawTokens: any[] = [...addressResult.tokens, ...xpubResult.tokens];
+      const rawBalances: any[] = [...addressResult.balances, ...xpubResult.balances, ...solanaResult.balances];
+      const rawTokens: any[] = [...addressResult.tokens, ...xpubResult.tokens, ...solanaResult.tokens];
 
       if (rawBalances.length === 0 && rawTokens.length === 0) {
         console.warn('[fetchBalances] Pioneer returned 0 balances for', pioneerPubkeys.length, 'pubkeys');
@@ -438,12 +495,17 @@ const onStart = async function () {
         await web3ProviderStorage.saveWeb3Provider(defaultProvider);
       }
 
-      // Fetch balances in background (non-blocking)
+      // Fetch balances in background (non-blocking). First pass covers EVM/UTXO
+      // quickly — on first run the Solana pubkey hasn't been derived yet, so it
+      // won't be in this request.
       fetchBalancesFromPioneer().catch(e => console.warn(tag, 'Initial balance fetch failed:', e));
 
-      // Prefetch Solana pubkey so it shows up in the network dropdown without
-      // waiting for a dapp request. Non-blocking, silently no-ops in watch-only.
-      prefetchSolanaPubkey().catch(() => {});
+      // Prefetch Solana pubkey so it shows up in the network dropdown. Once the
+      // pubkey is registered, force a second balance fetch so Solana natives +
+      // SPL tokens land in cachedBalances (fixes first-run race).
+      prefetchSolanaPubkey()
+        .then(() => fetchBalancesFromPioneer(true))
+        .catch(() => {});
     } else {
       console.error(tag, 'FAILED TO INIT, No Ethereum address found');
     }
