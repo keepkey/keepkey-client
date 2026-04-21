@@ -470,9 +470,18 @@ const handleWalletAddEthereumChain = async (params, KEEPKEY_WALLET, requestInfo,
 
   console.log(tag, 'Cleaned provider config:', newProvider);
 
-  // Require user approval before adding chain
+  // Require user approval before adding chain. The event id MUST match
+  // requestInfo.id — methods.ts:requireApproval() keys its eth_sign_response
+  // listener on requestInfo.id, and the sidebar echoes the stored event.id
+  // back. The previous code stored a fresh uuid while leaving requestInfo.id
+  // alone, so approvals never resolved and every wallet_addEthereumChain
+  // silently timed out after 10 minutes. Match the pattern used by
+  // handleSigningMethods / handleTransfer below: mutate requestInfo.id to a
+  // uuid first (collision-safe across concurrent dApp requests) and then
+  // use it as the event id.
+  requestInfo.id = uuidv4();
   const approvalEvent = {
-    id: uuidv4(),
+    id: requestInfo.id,
     networkId,
     chain: 'ethereum',
     type: 'wallet_addEthereumChain',
