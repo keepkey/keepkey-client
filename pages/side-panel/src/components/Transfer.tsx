@@ -120,26 +120,29 @@ export function Transfer(): JSX.Element {
   const setMaxAmount = () => {
     const tag = TAG + ' | setMaxAmount | ';
     try {
-      console.log(tag, assetContext?.balances);
-
-      // Initialize total balance
-      let totalBalance = 0;
-      if (assetContext?.balances) {
-        // Loop through balances to calculate total balance
-        for (let i = 0; i < assetContext?.balances.length; i++) {
-          console.log(tag, assetContext?.balances[i]);
-
-          const balance = parseFloat(assetContext?.balances[i]?.balance) || 0; // Safely handle undefined balances
-          totalBalance += balance; // Accumulate total balance
+      // Mirror onStart: scalar `balance` is the post-Pioneer shape;
+      // `balances[]` is the legacy array we still support as a fallback.
+      // The previous array-only path left Max as a no-op on every
+      // current asset context — user would tap Max and get an empty
+      // input.
+      let total = 0;
+      const scalar = parseFloat(assetContext?.balance ?? '');
+      if (!Number.isNaN(scalar) && scalar > 0) {
+        total = scalar;
+      } else if (Array.isArray(assetContext?.balances)) {
+        for (const b of assetContext.balances) {
+          total += parseFloat(b?.balance) || 0;
         }
-        console.log(tag, 'Total Balance:', totalBalance);
-        console.log(tag, 'Total Balance:', totalBalance.toString());
-        setInputAmount(totalBalance.toString());
-        console.log(tag, 'Total Balance:', totalBalance);
-
-        // Set the max amount and mark as max
-        setIsMax(true);
       }
+
+      if (total <= 0) {
+        console.log(tag, 'No spendable balance in asset context', assetContext);
+        return;
+      }
+
+      console.log(tag, 'Total Balance:', total);
+      setInputAmount(total.toString());
+      setIsMax(true);
     } catch (error) {
       console.error(`${TAG} setMaxAmount error:`, error);
     }
