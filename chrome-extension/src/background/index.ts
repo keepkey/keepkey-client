@@ -56,33 +56,43 @@ let KEEPKEY_STATE = 0;
 // MV3 service workers sometimes fail `chrome.action.setIcon({path})` with
 // "Failed to fetch" when the worker has just (re-)started — the extension's
 // file-map isn't always ready to serve its own packaged assets immediately.
-// Two guards below:
+// Guards:
 //   1. Deduplicate: don't re-invoke the API when the path hasn't changed
 //      (checkKeepKey fires updateIcon every 5s; 99% of those calls are
 //       redundant and each one is a chance to hit the transient error).
-//   2. Single retry after a short backoff if the first call fails.
+//   2. Retry by re-running updateIcon() — NOT by replaying the captured
+//      path. If KEEPKEY_STATE flipped during the 500 ms gap, re-running
+//      reads the current state and applies whatever is correct now,
+//      preventing a stale "online" icon from painting over a subsequent
+//      "errored" transition.
 let lastIconPath: string | null = null;
+let iconRetryPending = false;
 
-function setIconWithRetry(iconPath: string, attempt = 0) {
-  chrome.action.setIcon({ path: iconPath }, () => {
-    const err = chrome.runtime.lastError;
-    if (!err) return;
-    if (attempt < 1) {
-      setTimeout(() => setIconWithRetry(iconPath, attempt + 1), 500);
-      return;
-    }
-    console.warn('Failed to set extension icon after retry:', err.message, 'path:', iconPath);
-    lastIconPath = null; // clear dedup so next state change re-tries
-  });
+function currentIconPath(): string {
+  // Show green/online icon when connected (state 2) or paired (state 5)
+  return KEEPKEY_STATE === 2 || KEEPKEY_STATE === 5 ? './icon-128-online.png' : './icon-128.png';
 }
 
 function updateIcon() {
-  let iconPath = './icon-128.png';
-  // Show green/online icon when connected (state 2) or paired (state 5)
-  if (KEEPKEY_STATE === 2 || KEEPKEY_STATE === 5) iconPath = './icon-128-online.png';
+  const iconPath = currentIconPath();
   if (iconPath === lastIconPath) return;
   lastIconPath = iconPath;
-  setIconWithRetry(iconPath);
+
+  chrome.action.setIcon({ path: iconPath }, () => {
+    const err = chrome.runtime.lastError;
+    if (!err) return;
+    // Clear the dedupe so the retry path can actually re-apply an icon
+    // (even if it's the same string) and then call updateIcon() again.
+    // Re-running reads CURRENT state, so a state flip during the 500ms
+    // backoff doesn't leave us painting a stale icon.
+    lastIconPath = null;
+    if (iconRetryPending) return; // one retry in flight is enough
+    iconRetryPending = true;
+    setTimeout(() => {
+      iconRetryPending = false;
+      updateIcon();
+    }, 500);
+  });
 }
 
 function pushStateChangeEvent() {
@@ -342,15 +352,47 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
         }
       };
 
-      // TON + Tron previously had their own per-address /accountInfo
-      // fallbacks because unauthenticated /charts/portfolio dropped them
-      // silently and returned a priceless balance at best. With the key
-      // query param added above, /charts/portfolio returns both chains'
-      // natives with full priceUsd + valueUsd — and the same endpoint
-      // already handles tokens uniformly — so the dedicated fetchers are
-      // redundant. Dropping them collapses four round-trips into one
-      // per-fetch-cycle and restores USD display on the dashboard /
-      // send / asset pages for TON + Tron.
+      // TON + Tron happy path: authenticated /charts/portfolio returns
+      // them alongside everything else with full priceUsd + valueUsd.
+      // Partial-response safety net: Pioneer has been observed to
+      // silently omit TON / TRON rows (rate-limit edge cases,
+      // 0-balance pubkeys, upstream provider hiccups) even when the
+      // rest of the portfolio comes back fine. Without a fallback, a
+      // partial response would overwrite cachedBalances without those
+      // rows and the dashboard would flicker a chain off entirely. We
+      // call /api/v1/{ton,tron}/accountInfo targeted only at any
+      // TON/TRON pubkey absent from the portfolio response; price stays
+      // 0 on that fallback row — acceptable degradation vs losing the
+      // row completely.
+      const fetchAccountInfoFallback = async (
+        pk: { caip: string; pubkey: string },
+        chain: 'ton' | 'tron',
+      ): Promise<any | null> => {
+        try {
+          const url = `${PIONEER_API}/api/v1/${chain}/accountInfo/${encodeURIComponent(pk.pubkey)}`;
+          const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
+          if (!resp.ok) return null;
+          const json = await resp.json();
+          const bal = json?.data?.balance;
+          if (bal === undefined || bal === null) return null;
+          return {
+            networkId: chain === 'ton' ? 'ton:-239' : 'tron:27Lqcw',
+            caip: pk.caip,
+            symbol: chain === 'ton' ? 'TON' : 'TRX',
+            name: chain === 'ton' ? 'Ton' : 'Tron',
+            balance: String(bal),
+            valueUsd: '0',
+            priceUsd: '0',
+            icon: 'https://api.keepkey.info/coins/' + btoa(pk.caip).replace(/=+$/, '') + '.png',
+            isNative: true,
+            address: pk.pubkey,
+            _fallback: true,
+          };
+        } catch (e: any) {
+          console.warn(`[fetchBalances] ${chain} accountInfo fallback failed for ${pk.pubkey}:`, e.message);
+          return null;
+        }
+      };
 
       const [addressResult, xpubResult, solanaResult] = await Promise.all([
         fetchBatch(addressPubkeys, 'address'),
@@ -360,6 +402,34 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
 
       const rawBalances: any[] = [...addressResult.balances, ...xpubResult.balances, ...solanaResult.balances];
       const rawTokens: any[] = [...addressResult.tokens, ...xpubResult.tokens, ...solanaResult.tokens];
+
+      // Gap-patch any TON/TRON pubkey that the portfolio call silently
+      // dropped. Match by (networkId, pubkey/address) — lowercased both
+      // sides since Pioneer echoes lowercased networkIds.
+      const tonPubkeysForPatch = pioneerPubkeys.filter(p => p.caip.toLowerCase().startsWith('ton:'));
+      const tronPubkeysForPatch = pioneerPubkeys.filter(p => p.caip.toLowerCase().startsWith('tron:'));
+      if (tonPubkeysForPatch.length > 0 || tronPubkeysForPatch.length > 0) {
+        const covered = new Set<string>();
+        for (const b of rawBalances) {
+          const nid = (b?.networkId || '').toLowerCase();
+          if (nid === 'ton:-239' || nid.startsWith('tron:')) {
+            const addr = String(b.pubkey || b.address || '').toLowerCase();
+            if (addr) covered.add(`${nid}:${addr}`);
+          }
+        }
+        const missingTon = tonPubkeysForPatch.filter(p => !covered.has(`ton:-239:${p.pubkey.toLowerCase()}`));
+        const missingTron = tronPubkeysForPatch.filter(p => !covered.has(`tron:27lqcw:${p.pubkey.toLowerCase()}`));
+        if (missingTon.length > 0 || missingTron.length > 0) {
+          console.warn(
+            `[fetchBalances] /charts/portfolio partial: ${missingTon.length} TON + ${missingTron.length} TRON missing; patching from /accountInfo`,
+          );
+          const patches = await Promise.all([
+            ...missingTon.map(p => fetchAccountInfoFallback(p, 'ton')),
+            ...missingTron.map(p => fetchAccountInfoFallback(p, 'tron')),
+          ]);
+          for (const row of patches) if (row) rawBalances.push(row);
+        }
+      }
 
       if (rawBalances.length === 0 && rawTokens.length === 0) {
         console.warn('[fetchBalances] Pioneer returned 0 balances for', pioneerPubkeys.length, 'pubkeys');
