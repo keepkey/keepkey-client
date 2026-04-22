@@ -12,7 +12,6 @@ import { KeepKeySolanaWallet } from './solana-wallet-standard';
 import { registerSolanaWallet } from './solana-wallet-register';
 
 (function () {
-  const TAG = ' | KeepKeyInjected | ';
   const VERSION = '2.1.0';
   const MAX_RETRY_COUNT = 3;
   const RETRY_DELAY = 100; // ms
@@ -32,20 +31,15 @@ import { registerSolanaWallet } from './solana-wallet-register';
   // Check for existing injection with version comparison
   if (kWindow.keepkeyInjectionState) {
     const existing = kWindow.keepkeyInjectionState;
-    console.warn(TAG, `Existing injection detected v${existing.version}, current v${VERSION}`);
 
     // Only skip if same or newer version
     if (existing.version >= VERSION) {
-      console.log(TAG, 'Skipping injection, newer or same version already present');
       return;
     }
-    console.log(TAG, 'Upgrading injection to newer version');
   }
 
   // Set injection state
   kWindow.keepkeyInjectionState = injectionState;
-
-  console.log(TAG, `Initializing KeepKey Injection v${VERSION}`);
 
   // Enhanced source information
   const SOURCE_INFO = {
@@ -67,7 +61,6 @@ import { registerSolanaWallet } from './solana-wallet-register';
     const now = Date.now();
     callbacks.forEach((callback, id) => {
       if (now - callback.timestamp > CALLBACK_TIMEOUT) {
-        console.warn(TAG, `Callback timeout for request ${id} (${callback.method})`);
         callback.callback(new Error('Request timeout'));
         callbacks.delete(id);
       }
@@ -79,7 +72,6 @@ import { registerSolanaWallet } from './solana-wallet-register';
   // Manage message queue size
   const addToQueue = (message: WalletMessage) => {
     if (messageQueue.length >= MESSAGE_QUEUE_MAX) {
-      console.warn(TAG, 'Message queue full, removing oldest message');
       messageQueue.shift();
     }
     messageQueue.push(message);
@@ -103,7 +95,6 @@ import { registerSolanaWallet } from './solana-wallet-register';
       const verifyId = ++messageId;
       const timeout = setTimeout(() => {
         if (retryCount < MAX_RETRY_COUNT) {
-          console.log(TAG, `Verification attempt ${retryCount + 1} failed, retrying...`);
           setTimeout(
             () => {
               verifyInjection(retryCount + 1).then(resolve);
@@ -111,7 +102,6 @@ import { registerSolanaWallet } from './solana-wallet-register';
             RETRY_DELAY * Math.pow(2, retryCount),
           ); // Exponential backoff
         } else {
-          console.error(TAG, 'Failed to verify injection after max retries');
           injectionState.lastError = 'Failed to verify injection';
           resolve(false);
         }
@@ -128,7 +118,6 @@ import { registerSolanaWallet } from './solana-wallet-register';
           window.removeEventListener('message', handleVerification);
           isContentScriptReady = true;
           injectionState.isInjected = true;
-          console.log(TAG, 'Injection verified successfully');
           processQueue();
           resolve(true);
         }
@@ -157,17 +146,13 @@ import { registerSolanaWallet } from './solana-wallet-register';
     chain: ChainType,
     callback: (error: any, result?: any) => void,
   ) {
-    const tag = TAG + ' | walletRequest | ';
-
     // Validate inputs
     if (!method || typeof method !== 'string') {
-      console.error(tag, 'Invalid method:', method);
       callback(new Error('Invalid method'));
       return;
     }
 
     if (!Array.isArray(params)) {
-      console.warn(tag, 'Params not an array, wrapping:', params);
       params = [params];
     }
 
@@ -207,19 +192,15 @@ import { registerSolanaWallet } from './solana-wallet-register';
       if (isContentScriptReady) {
         window.postMessage(message, window.location.origin);
       } else {
-        console.log(tag, 'Content script not ready, queueing request');
         addToQueue(message);
       }
     } catch (error) {
-      console.error(tag, 'Error in walletRequest:', error);
       callback(error);
     }
   }
 
   // Listen for responses with enhanced validation
   window.addEventListener('message', (event: MessageEvent) => {
-    const tag = TAG + ' | message | ';
-
     // Security: Validate origin
     if (event.source !== window) return;
 
@@ -243,8 +224,6 @@ import { registerSolanaWallet } from './solana-wallet-register';
           callback.callback(null, data.result);
         }
         callbacks.delete(data.requestId);
-      } else {
-        console.warn(tag, 'No callback found for requestId:', data.requestId);
       }
     }
   });
@@ -280,8 +259,8 @@ import { registerSolanaWallet } from './solana-wallet-register';
       this.events.get(event)?.forEach(handler => {
         try {
           handler(...args);
-        } catch (error) {
-          console.error(TAG, `Error in event handler for ${event}:`, error);
+        } catch (_error) {
+          // swallow handler errors to avoid breaking other listeners
         }
       });
     }
@@ -297,8 +276,6 @@ import { registerSolanaWallet } from './solana-wallet-register';
 
   // Create wallet provider with proper typing
   function createWalletObject(chain: ChainType): WalletProvider {
-    console.log(TAG, 'Creating wallet object for chain:', chain);
-
     const eventEmitter = new EventEmitter();
 
     const wallet: WalletProvider = {
@@ -336,7 +313,6 @@ import { registerSolanaWallet } from './solana-wallet-register';
           return undefined;
         } else {
           // Sync send (deprecated, but required for compatibility)
-          console.warn(TAG, 'Synchronous send is deprecated and may not work properly');
           return { id: payload.id, jsonrpc: '2.0', result: null };
         }
       },
@@ -348,7 +324,6 @@ import { registerSolanaWallet } from './solana-wallet-register';
 
         const cb = callback || param1;
         if (typeof cb !== 'function') {
-          console.error(TAG, 'sendAsync requires a callback function');
           return;
         }
 
@@ -445,15 +420,11 @@ import { registerSolanaWallet } from './solana-wallet-register';
       detail: Object.freeze({ info, provider: ethereumProvider }),
     });
 
-    console.log(TAG, 'Announcing EIP-6963 provider');
     window.dispatchEvent(announceEvent);
   }
 
   // Mount wallet with proper state management
   async function mountWallet() {
-    const tag = TAG + ' | mountWallet | ';
-    console.log(tag, 'Starting wallet mount process');
-
     // Create wallet objects immediately - don't wait for verification
     const ethereum = createWalletObject('ethereum');
     const xfi: Record<string, WalletProvider> = {
@@ -499,7 +470,6 @@ import { registerSolanaWallet } from './solana-wallet-register';
     const mountProvider = (name: string, provider: any, { force = false } = {}) => {
       const existing = (kWindow as any)[name];
       if (existing && !force) {
-        console.warn(tag, `window.${name} already present — yielding to it (EIP-6963 still announced for discovery)`);
         return;
       }
 
@@ -509,9 +479,7 @@ import { registerSolanaWallet } from './solana-wallet-register';
           writable: false,
           configurable: true, // Allow reconfiguration for updates
         });
-        console.log(tag, `Successfully mounted window.${name}`);
-      } catch (e) {
-        console.error(tag, `Failed to mount window.${name}:`, e);
+      } catch (_e) {
         injectionState.lastError = `Failed to mount ${name}`;
       }
     };
@@ -526,7 +494,6 @@ import { registerSolanaWallet } from './solana-wallet-register';
     // CRITICAL: Set up EIP-6963 listener BEFORE announcing
     // This ensures we catch any immediate requests
     window.addEventListener('eip6963:requestProvider', () => {
-      console.log(tag, 'Re-announcing provider on request');
       announceProvider(ethereum);
     });
 
@@ -535,7 +502,6 @@ import { registerSolanaWallet } from './solana-wallet-register';
 
     // Also announce with a slight delay to catch late-loading dApps
     setTimeout(() => {
-      console.log(tag, 'Delayed EIP-6963 announcement for late-loading dApps');
       announceProvider(ethereum);
     }, 100);
 
@@ -544,19 +510,16 @@ import { registerSolanaWallet } from './solana-wallet-register';
     try {
       const solanaWallet = new KeepKeySolanaWallet(walletRequest);
       registerSolanaWallet(solanaWallet);
-      console.log(tag, 'Solana wallet registered via Wallet Standard');
-    } catch (e) {
-      console.error(tag, 'Failed to register Solana wallet:', e);
+    } catch (_e) {
+      // swallow; Solana registration is best-effort
     }
 
     // Handle chain changes and other events
     window.addEventListener('message', (event: MessageEvent) => {
       if (event.data?.type === 'CHAIN_CHANGED') {
-        console.log(tag, 'Chain changed:', event.data);
         ethereum.emit('chainChanged', event.data.provider?.chainId);
       }
       if (event.data?.type === 'ACCOUNTS_CHANGED') {
-        console.log(tag, 'Accounts changed:', event.data);
         if (ethereum._handleAccountsChanged) {
           ethereum._handleAccountsChanged(event.data.accounts || []);
         }
@@ -567,14 +530,9 @@ import { registerSolanaWallet } from './solana-wallet-register';
     // This is non-blocking for EIP-6963
     verifyInjection().then(verified => {
       if (!verified) {
-        console.error(tag, 'Failed to verify injection, wallet features may not work');
         injectionState.lastError = 'Injection not verified';
-      } else {
-        console.log(tag, 'Injection verified successfully');
       }
     });
-
-    console.log(tag, 'Wallet mount complete');
   }
 
   // Initialize immediately for EIP-6963 compliance
@@ -584,7 +542,6 @@ import { registerSolanaWallet } from './solana-wallet-register';
   // Also re-run when DOM is ready in case dApp loads later
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
-      console.log(TAG, 'DOM loaded, re-announcing provider for late-loading dApps');
       // Re-announce when DOM is ready
       if (kWindow.ethereum && typeof kWindow.dispatchEvent === 'function') {
         const ethereum = kWindow.ethereum as WalletProvider;
@@ -592,6 +549,4 @@ import { registerSolanaWallet } from './solana-wallet-register';
       }
     });
   }
-
-  console.log(TAG, 'Injection script loaded and initialized');
 })();

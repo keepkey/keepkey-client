@@ -53,16 +53,36 @@ const KEEPKEY_STATES = {
 };
 let KEEPKEY_STATE = 0;
 
+// MV3 service workers sometimes fail `chrome.action.setIcon({path})` with
+// "Failed to fetch" when the worker has just (re-)started — the extension's
+// file-map isn't always ready to serve its own packaged assets immediately.
+// Two guards below:
+//   1. Deduplicate: don't re-invoke the API when the path hasn't changed
+//      (checkKeepKey fires updateIcon every 5s; 99% of those calls are
+//       redundant and each one is a chance to hit the transient error).
+//   2. Single retry after a short backoff if the first call fails.
+let lastIconPath: string | null = null;
+
+function setIconWithRetry(iconPath: string, attempt = 0) {
+  chrome.action.setIcon({ path: iconPath }, () => {
+    const err = chrome.runtime.lastError;
+    if (!err) return;
+    if (attempt < 1) {
+      setTimeout(() => setIconWithRetry(iconPath, attempt + 1), 500);
+      return;
+    }
+    console.warn('Failed to set extension icon after retry:', err.message, 'path:', iconPath);
+    lastIconPath = null; // clear dedup so next state change re-tries
+  });
+}
+
 function updateIcon() {
   let iconPath = './icon-128.png';
   // Show green/online icon when connected (state 2) or paired (state 5)
   if (KEEPKEY_STATE === 2 || KEEPKEY_STATE === 5) iconPath = './icon-128-online.png';
-
-  chrome.action.setIcon({ path: iconPath }, () => {
-    if (chrome.runtime.lastError) {
-      console.error('Error setting icon:', chrome.runtime.lastError);
-    }
-  });
+  if (iconPath === lastIconPath) return;
+  lastIconPath = iconPath;
+  setIconWithRetry(iconPath);
 }
 
 function pushStateChangeEvent() {
@@ -208,20 +228,24 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
       console.log(`[fetchBalances] Sample pubkeys:`, pioneerPubkeys.slice(0, 3));
 
       // Two Pioneer endpoints, chosen per chain:
-      //   /charts/portfolio — EVM + UTXO + Cosmos (unauthenticated, returns tokens via Zapper/Unchained).
-      //                       Returns EMPTY for Solana, so Solana pubkeys must NOT go here.
-      //   /portfolio        — Solana (authenticated). Returns natives + SPL tokens in one flat array.
-      const chartsPortfolioUrl = `${PIONEER_API}/api/v1/charts/portfolio`;
+      //   /charts/portfolio — EVM + UTXO + Cosmos + TON + TRON (when authenticated
+      //                       via ?key=key:public-*). Returns natives + tokens +
+      //                       priceUsd + valueUsd in one call. Without the
+      //                       queryKey, Pioneer silently drops TON / TRON
+      //                       entries — which is what made dashboard balances
+      //                       appear with $0.00 USD. Returns EMPTY for Solana,
+      //                       so Solana pubkeys must go through /portfolio.
+      //   /portfolio        — Solana (same key-based auth). Returns natives +
+      //                       SPL tokens in one flat array.
+      //
+      // The queryKey just has to be a unique "key:public-*" string — Pioneer
+      // rate-limits by it but doesn't gate reads. Bumping on every fetch is
+      // fine; cached responses still serve fast.
+      const queryKey = `key:public-${Date.now()}`;
+      const chartsPortfolioUrl = `${PIONEER_API}/api/v1/charts/portfolio?key=${encodeURIComponent(queryKey)}`;
 
       const solanaPubkeys = pioneerPubkeys.filter(p => p.caip.toLowerCase().startsWith('solana:'));
-      const tronPubkeys = pioneerPubkeys.filter(p => p.caip.toLowerCase().startsWith('tron:'));
-      const tonPubkeys = pioneerPubkeys.filter(p => p.caip.toLowerCase().startsWith('ton:'));
-      const generic = pioneerPubkeys.filter(
-        p =>
-          !p.caip.toLowerCase().startsWith('solana:') &&
-          !p.caip.toLowerCase().startsWith('tron:') &&
-          !p.caip.toLowerCase().startsWith('ton:'),
-      );
+      const generic = pioneerPubkeys.filter(p => !p.caip.toLowerCase().startsWith('solana:'));
       const addressPubkeys = generic.filter(
         p => !p.pubkey.startsWith('xpub') && !p.pubkey.startsWith('zpub') && !p.pubkey.startsWith('ypub'),
       );
@@ -246,7 +270,19 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
           console.log(
             `[fetchBalances] ${label} batch: ${data.balances?.length || 0} balances, ${data.tokens?.length || 0} tokens`,
           );
-          return { balances: data.balances || [], tokens: data.tokens || [] };
+          // Surface TON / Tron entries so we can verify priceUsd + valueUsd
+          // are arriving from Pioneer (this was the reason they showed $0
+          // on the dashboard before the ?key query param was added).
+          const bals = Array.isArray(data.balances) ? data.balances : [];
+          for (const b of bals) {
+            const nid = (b?.networkId || '').toLowerCase();
+            if (nid === 'ton:-239' || nid.startsWith('tron:')) {
+              console.log(
+                `[fetchBalances][${label}] ${b.symbol} balance=${b.balance} price=${b.priceUsd} value=${b.valueUsd} caip=${b.caip}`,
+              );
+            }
+          }
+          return { balances: bals, tokens: data.tokens || [] };
         } catch (e: any) {
           console.warn(`[fetchBalances] ${label} batch error:`, e.message);
           return { balances: [] as any[], tokens: [] as any[] };
@@ -306,107 +342,23 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
         }
       };
 
-      // Tron lives outside /charts/portfolio coverage and outside the
-      // Solana-shaped /portfolio endpoint too. Use the dedicated Pioneer
-      // accountInfo route, one request per address. Price USD comes back as
-      // 0 (Pioneer doesn't return a TRX market entry) — balance quantity is
-      // still accurate so Send math works; USD value lights up once a market
-      // feed is wired in.
-      const fetchTronBatch = async (batch: typeof pioneerPubkeys) => {
-        if (batch.length === 0) return { balances: [] as any[], tokens: [] as any[] };
-        const out: any[] = [];
-        await Promise.all(
-          batch.map(async p => {
-            try {
-              const url = `${PIONEER_API}/api/v1/tron/accountInfo/${encodeURIComponent(p.pubkey)}`;
-              const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
-              if (!resp.ok) return;
-              const json = await resp.json();
-              // Shape: { success, data: { balance: "26.739864", ... } }
-              // Pioneer already returns TRX as a decimal string here, unlike
-              // Solana which returns lamports — no conversion needed.
-              const bal = json?.data?.balance;
-              if (bal === undefined || bal === null) return;
-              out.push({
-                networkId: 'tron:27Lqcw',
-                caip: p.caip,
-                symbol: 'TRX',
-                name: 'Tron',
-                balance: String(bal),
-                valueUsd: '0',
-                priceUsd: '0',
-                icon: 'https://api.keepkey.info/coins/' + btoa(p.caip).replace(/=+$/, '') + '.png',
-                isNative: true,
-                address: p.pubkey,
-              });
-            } catch (e: any) {
-              console.warn('[fetchBalances] tron accountInfo failed for', p.pubkey, e.message);
-            }
-          }),
-        );
-        console.log(`[fetchBalances] tron batch: ${out.length} natives`);
-        return { balances: out, tokens: [] as any[] };
-      };
+      // TON + Tron previously had their own per-address /accountInfo
+      // fallbacks because unauthenticated /charts/portfolio dropped them
+      // silently and returned a priceless balance at best. With the key
+      // query param added above, /charts/portfolio returns both chains'
+      // natives with full priceUsd + valueUsd — and the same endpoint
+      // already handles tokens uniformly — so the dedicated fetchers are
+      // redundant. Dropping them collapses four round-trips into one
+      // per-fetch-cycle and restores USD display on the dashboard /
+      // send / asset pages for TON + Tron.
 
-      const fetchTonBatch = async (batch: typeof pioneerPubkeys) => {
-        if (batch.length === 0) return { balances: [] as any[], tokens: [] as any[] };
-        const out: any[] = [];
-        await Promise.all(
-          batch.map(async p => {
-            try {
-              const url = `${PIONEER_API}/api/v1/ton/accountInfo/${encodeURIComponent(p.pubkey)}`;
-              const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
-              if (!resp.ok) return;
-              const json = await resp.json();
-              // Shape: { success, data: { seqno, balance: "<nanoTON string>", wallet_version } }
-              // Pioneer returns the raw nanoTON integer — convert to TON (9 decimals)
-              // for UI display, matching the decimal-balance convention Solana/TRON use.
-              // Pioneer's /api/v1/ton/accountInfo returns `balance` as a
-              // decimal TON string already (e.g. "15.701798194"), NOT
-              // nanoTON. The old comment claimed nanoTON and divided by
-              // 1e9 — that turned a real 15.7 TON balance into
-              // 1.5701798194e-8 and made the asset page / send page
-              // show 0.0000 TON. Shape verified against Pioneer's live
-              // response for UQDzK5… on 2026-04-21.
-              const bal = json?.data?.balance;
-              if (bal === undefined || bal === null) return;
-              const ton = String(bal);
-              out.push({
-                networkId: 'ton:-239',
-                caip: p.caip,
-                symbol: 'TON',
-                name: 'Ton',
-                balance: ton,
-                valueUsd: '0',
-                priceUsd: '0',
-                icon: 'https://api.keepkey.info/coins/' + btoa(p.caip).replace(/=+$/, '') + '.png',
-                isNative: true,
-                address: p.pubkey,
-              });
-            } catch (e: any) {
-              console.warn('[fetchBalances] ton accountInfo failed for', p.pubkey, e.message);
-            }
-          }),
-        );
-        console.log(`[fetchBalances] ton batch: ${out.length} natives`);
-        return { balances: out, tokens: [] as any[] };
-      };
-
-      const [addressResult, xpubResult, solanaResult, tronResult, tonResult] = await Promise.all([
+      const [addressResult, xpubResult, solanaResult] = await Promise.all([
         fetchBatch(addressPubkeys, 'address'),
         fetchBatch(xpubPubkeys, 'xpub'),
         fetchSolanaBatch(solanaPubkeys),
-        fetchTronBatch(tronPubkeys),
-        fetchTonBatch(tonPubkeys),
       ]);
 
-      const rawBalances: any[] = [
-        ...addressResult.balances,
-        ...xpubResult.balances,
-        ...solanaResult.balances,
-        ...tronResult.balances,
-        ...tonResult.balances,
-      ];
+      const rawBalances: any[] = [...addressResult.balances, ...xpubResult.balances, ...solanaResult.balances];
       const rawTokens: any[] = [...addressResult.tokens, ...xpubResult.tokens, ...solanaResult.tokens];
 
       if (rawBalances.length === 0 && rawTokens.length === 0) {
