@@ -48,12 +48,21 @@ export function EvmTransaction({ transaction, reloadEvents, handleResponse }: an
             <RequestDetailsCard transaction={transaction} />
           </TabPanel>
 
-          {/* Fees Tab */}
+          {/* Fees Tab — skip for methods that don't produce an on-chain tx */}
           <TabPanel>
-            {transaction.type !== 'personal_sign' && transaction.type !== 'eth_sign' && (
-              <>
-                <RequestFeeCard transaction={transaction} />
-              </>
+            {transaction.type !== 'personal_sign' &&
+              transaction.type !== 'eth_sign' &&
+              transaction.type !== 'wallet_addEthereumChain' && (
+                <>
+                  <RequestFeeCard transaction={transaction} />
+                </>
+              )}
+            {transaction.type === 'wallet_addEthereumChain' && (
+              <Flex justify="center" p={6}>
+                <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 14, textAlign: 'center' }}>
+                  No transaction fees — this flow only stores the RPC configuration locally.
+                </div>
+              </Flex>
             )}
           </TabPanel>
 

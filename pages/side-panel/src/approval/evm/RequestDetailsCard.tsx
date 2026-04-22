@@ -3,10 +3,12 @@ import { Box, Spinner, Flex } from '@chakra-ui/react';
 import LegacyTx from './txTypes/legacy';
 import Eip712Tx from './txTypes/eip712';
 import PersonalSignTx from './txTypes/personalSign';
+import AddEthereumChainTx from './txTypes/addEthereumChain';
 
-// Message-signing methods have no `unsignedTx` — we must not block them
-// behind the "waiting for transaction build" spinner meant for transfers.
-const MESSAGE_SIGN_METHODS = new Set(['personal_sign', 'eth_sign']);
+// Methods that don't produce an on-chain transaction — they have no
+// `unsignedTx` and must not be blocked behind the "waiting for
+// transaction build" spinner meant for transfers.
+const NO_UNSIGNED_TX_METHODS = new Set(['personal_sign', 'eth_sign', 'wallet_addEthereumChain']);
 
 // Function to request asset context from background script
 const requestAssetContext = () => {
@@ -48,15 +50,17 @@ export default function RequestDetailsCard({ transaction }: any) {
       case 'personal_sign':
       case 'eth_sign':
         return <PersonalSignTx transaction={transaction} />;
+      case 'wallet_addEthereumChain':
+        return <AddEthereumChainTx transaction={transaction} />;
       default:
         return <LegacyTx transaction={transaction} />;
     }
   };
 
   // Wait for the unsigned-tx build only for methods that produce one.
-  // Message-signing methods (personal_sign / eth_sign) never populate it.
-  const isMessageSign = MESSAGE_SIGN_METHODS.has(transaction?.type);
-  if (!isMessageSign && !transaction?.unsignedTx) {
+  // Message-signing and configuration-change methods never populate it.
+  const skipSpinner = NO_UNSIGNED_TX_METHODS.has(transaction?.type);
+  if (!skipSpinner && !transaction?.unsignedTx) {
     return (
       <Flex justifyContent="center" alignItems="center" height="100%">
         <Spinner size="xl" />

@@ -41,6 +41,15 @@ const Transaction = ({
   const [explorerUrl, setExplorerUrl] = useState<string | null>(null);
   const [showRefreshWarning, setShowRefreshWarning] = useState<boolean>(false);
 
+  // Some approved requests don't touch the device at all (config-only
+  // flows like wallet_addEthereumChain — the background stores the RPC,
+  // switches the web3 provider, then emits signature_complete straight
+  // away). Showing the "Please approve on your KeepKey" overlay for
+  // these flashes a wrong instruction at the user before the dismiss
+  // fires. Track them as a distinct state with a less alarming copy.
+  const NO_DEVICE_STEP_TYPES = new Set(['wallet_addEthereumChain']);
+  const hasDeviceStep = !NO_DEVICE_STEP_TYPES.has(event?.type);
+
   // Fetch the assetContext on component mount
   useEffect(() => {
     requestAssetContext()
@@ -78,7 +87,16 @@ const Transaction = ({
         await requestStorage.removeEventById(event.id);
         reloadEvents();
       } else if (decision === 'accept') {
-        setAwaitingDeviceApproval(true);
+        if (hasDeviceStep) {
+          setAwaitingDeviceApproval(true);
+        } else {
+          // Config-only flow (e.g. wallet_addEthereumChain). No device
+          // prompt; show the generic in-progress spinner instead so the
+          // user sees acknowledgement while the background finishes
+          // writing the chain and emits signature_complete, which will
+          // dismiss the overlay via onDismiss.
+          setTransactionInProgress(true);
+        }
       }
     } catch (error) {
       console.error('Error handling response:', error);
@@ -286,6 +304,21 @@ const Transaction = ({
     // Show the txid page if the transaction is complete
     // explorerUrl is optional - TxidPage can handle it being undefined
     return <TxidPage txHash={txHash} explorerUrl={explorerUrl || ''} onClose={handleCloseTab} />;
+  }
+
+  // No-device config flow that's been accepted: hide the review form
+  // and the "approve on device" overlay entirely. Render a minimal
+  // "Saving…" state while the background finishes writing the config
+  // and fires signature_complete (which dismisses via onDismiss).
+  if (transactionInProgress && !hasDeviceStep) {
+    return (
+      <Flex direction="column" justify="center" align="center" height="60vh" gap={4}>
+        <Spinner size="xl" thickness="4px" color="teal.300" />
+        <p style={{ color: 'rgba(255,255,255,0.7)', textAlign: 'center' }}>
+          {event?.type === 'wallet_addEthereumChain' ? 'Saving network configuration…' : 'Processing…'}
+        </p>
+      </Flex>
+    );
   }
 
   return (

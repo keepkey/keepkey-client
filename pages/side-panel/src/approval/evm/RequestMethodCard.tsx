@@ -51,6 +51,14 @@ const getMethodInfo = (txType: string, hasSmartContractExecution: boolean) => {
         color: 'yellow.400',
       };
 
+    case 'wallet_addEthereumChain':
+      return {
+        title: 'Add Network',
+        description: 'Configures a new EVM network using an RPC the site chose. No on-device step. Verify the RPC URL.',
+        icon: <WarningIcon boxSize={5} color="yellow.400" />,
+        color: 'yellow.400',
+      };
+
     default:
       return {
         title: 'Unknown Method',
