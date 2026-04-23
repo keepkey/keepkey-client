@@ -9,6 +9,51 @@ const MAX_INJECTION_RETRIES = 3;
 let injectionAttempts = 0;
 let isInjected = false;
 
+/**
+ * Masking settings snapshot, read once before injection. The injected
+ * script lives in the page's main world and has no chrome.storage access,
+ * so we have to hand the settings off via a DOM attribute on the script
+ * tag — it reads them synchronously at startup via
+ * `document.getElementById('keepkey-injected-script')?.dataset.masking`.
+ *
+ * Note: this snapshot is read-once per page load. Toggling a setting in
+ * the extension UI requires a page refresh to take effect — there's no
+ * live wire from the sidebar to an already-injected provider.
+ */
+interface MaskingSettings {
+  enableMetaMaskMasking: boolean;
+  enableXfiMasking: boolean;
+  enableKeplrMasking: boolean;
+}
+
+const MASKING_DEFAULTS: MaskingSettings = {
+  enableMetaMaskMasking: false,
+  enableXfiMasking: false,
+  enableKeplrMasking: false,
+};
+
+async function readMaskingSettings(): Promise<MaskingSettings> {
+  try {
+    const result = await chrome.storage.local.get('masking-settings');
+    const raw = result?.['masking-settings'];
+    if (!raw || typeof raw !== 'object') return MASKING_DEFAULTS;
+    return {
+      enableMetaMaskMasking: raw.enableMetaMaskMasking === true,
+      enableXfiMasking: raw.enableXfiMasking === true,
+      enableKeplrMasking: raw.enableKeplrMasking === true,
+    };
+  } catch {
+    return MASKING_DEFAULTS;
+  }
+}
+
+// Kick off the storage read at content-script load so it parallelises
+// with `waitForInjectionTarget()` — by the time we're ready to create
+// the <script> tag, the settings Promise is usually already resolved.
+// Avoids adding a serial round-trip that would widen the race against
+// sites doing synchronous `window.ethereum` detection on document_start.
+const maskingReady = readMaskingSettings();
+
 // Validate message origin. Defence-in-depth on top of the
 // `event.source === window` check below: that guard already blocks
 // cross-frame injection, and this one rejects anything whose origin
@@ -179,6 +224,10 @@ window.addEventListener('message', (event: MessageEvent) => {
 
 // Enhanced injection function with verification
 async function injectProviderScript(): Promise<boolean> {
+  // Masking read was kicked off at module load — should already be
+  // settled by now, so this await is effectively sync.
+  const masking = await maskingReady;
+
   return new Promise(resolve => {
     try {
       // Check if already injected
@@ -196,6 +245,7 @@ async function injectProviderScript(): Promise<boolean> {
       // Set script attributes for security
       script.setAttribute('data-version', '2.0.0');
       script.setAttribute('data-timestamp', Date.now().toString());
+      script.setAttribute('data-masking', JSON.stringify(masking));
 
       const timeout = setTimeout(() => {
         script.remove();

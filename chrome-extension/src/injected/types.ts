@@ -62,7 +62,8 @@ export type ChainType =
   | 'cosmos'
   | 'ripple'
   | 'keplr'
-  | 'solana';
+  | 'solana'
+  | 'tron';
 
 export interface WalletProvider {
   network: string;
@@ -97,4 +98,6 @@ export interface KeepKeyWindow extends Window {
   ethereum?: WalletProvider;
   xfi?: Record<ChainType, WalletProvider>;
   keepkey?: Record<ChainType, WalletProvider>;
+  tronLink?: any;
+  tronWeb?: any;
 }

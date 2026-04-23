@@ -1749,12 +1749,6 @@ exampleSidebarStorage
     console.error('Error fetching sidebar storage:', error);
   });
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === 'getMaskingSettings') {
-    chrome.storage.local.get(['enableMetaMaskMasking', 'enableXfiMasking', 'enableKeplrMasking'], result => {
-      console.log('getMaskingSettings result: ', result);
-      sendResponse(result);
-    });
-    return true;
-  }
-});
+// Masking settings are read directly by the content script from
+// chrome.storage.local before injection; there's no background handler
+// for them.
