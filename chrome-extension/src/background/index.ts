@@ -143,6 +143,21 @@ async function handleDeviceSwitch(newDeviceInfo: any) {
   // a fresh pubkey batch, then updates state.initialized.
   try {
     await wallet.refreshPubkeys();
+
+    // refreshPubkeys only hits getDefaultPaths() — the big batched
+    // derivation. Solana, Tron, and TON addresses are *dynamically*
+    // added at onStart via these prefetches (SOL needs solanaGetAddress,
+    // TRX needs tronGetAddress, TON needs tonGetAddress — none of which
+    // are in the xpub.getPublicKeys batch). Without re-running them on
+    // a device swap, those three chains end up with stale per-chain
+    // caches (zeroed out by resetXState above) and no pubkeys, so
+    // they'd vanish from the network dropdown until a user manually
+    // visited the asset or reloaded the extension.
+    //
+    // Fire in parallel — each is non-throwing, so an individual chain
+    // failure won't take the others down.
+    await Promise.allSettled([prefetchSolanaPubkey(), prefetchTronPubkey(), prefetchTonAddress()]);
+
     pushStateChangeEvent();
     pushBalancesUpdated();
     // Kick a fresh balance fetch in the background so the dashboard
