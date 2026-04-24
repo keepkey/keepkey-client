@@ -110,6 +110,66 @@ function pushStateChangeEvent() {
 let lastDeviceProbeAt = 0;
 const DEVICE_PROBE_INTERVAL_MS = 15_000;
 
+// Separate, longer throttle for the "already-connected, verify deviceId hasn't
+// changed" re-probe. Vault + device hot-swap is rare enough that 30s latency
+// on detection is fine; keeping this longer than the view-only probe avoids
+// doubling the getFeatures traffic on the steady-state path.
+let lastDeviceVerifyAt = 0;
+const DEVICE_VERIFY_INTERVAL_MS = 30_000;
+
+/**
+ * Called when we detect that the vault is now paired with a different
+ * KeepKey than the one we had cached. Clears every piece of state keyed
+ * to the previous device and re-fetches from the new one.
+ */
+async function handleDeviceSwitch(newDeviceInfo: any) {
+  const tag = TAG + ' | handleDeviceSwitch | ';
+  console.warn(tag, 'Device swap detected. Purging caches and re-fetching.');
+
+  // In-memory + storage cache owned by wallet.ts
+  await wallet.handleDeviceSwitch(newDeviceInfo);
+
+  // Balance caches — pubkey-keyed, so they're poisoned by the old device
+  cachedBalances = [];
+  balancesFetchInProgress = null;
+
+  // Per-chain address caches (Solana/Tron/TON each keep their own lookup
+  // cache above the pubkey layer)
+  resetSolanaState();
+  resetTronState();
+  resetTonState();
+
+  // Re-fetch against the new device. refreshPubkeys re-probes and pulls
+  // a fresh pubkey batch, then updates state.initialized.
+  try {
+    await wallet.refreshPubkeys();
+
+    // refreshPubkeys only hits getDefaultPaths() — the big batched
+    // derivation. Solana, Tron, and TON addresses are *dynamically*
+    // added at onStart via these prefetches (SOL needs solanaGetAddress,
+    // TRX needs tronGetAddress, TON needs tonGetAddress — none of which
+    // are in the xpub.getPublicKeys batch). Without re-running them on
+    // a device swap, those three chains end up with stale per-chain
+    // caches (zeroed out by resetXState above) and no pubkeys, so
+    // they'd vanish from the network dropdown until a user manually
+    // visited the asset or reloaded the extension.
+    //
+    // Fire in parallel — each is non-throwing, so an individual chain
+    // failure won't take the others down.
+    await Promise.allSettled([prefetchSolanaPubkey(), prefetchTronPubkey(), prefetchTonAddress()]);
+
+    pushStateChangeEvent();
+    pushBalancesUpdated();
+    // Kick a fresh balance fetch in the background so the dashboard
+    // swaps to the new device's balances without waiting for the next
+    // user-triggered refresh.
+    fetchBalancesFromPioneer(true).catch(e => console.warn(tag, 'Post-switch balance fetch failed:', e));
+  } catch (e) {
+    console.error(tag, 'Failed to re-fetch pubkeys after device switch:', (e as Error)?.message || e);
+    pushStateChangeEvent();
+  }
+}
+
 async function checkKeepKey() {
   const prevState = KEEPKEY_STATE;
   try {
@@ -139,6 +199,28 @@ async function checkKeepKey() {
         // First-run case: init failed earlier (no device, no cache) — retry.
         lastDeviceProbeAt = now;
         onStart();
+      } else if (wallet.isInitialized() && wallet.isDeviceConnected()) {
+        // Steady state: vault-up, device-connected. Periodically re-probe
+        // features to verify the same physical device is still paired. A
+        // hot-swap to a different KeepKey will look identical to the /docs
+        // endpoint but returns a different device_id from getFeatures.
+        const mayVerify = now - lastDeviceVerifyAt >= DEVICE_VERIFY_INTERVAL_MS;
+        if (mayVerify) {
+          lastDeviceVerifyAt = now;
+          const beforeId = wallet.getDeviceId();
+          wallet
+            .probeDevice()
+            .then(ok => {
+              if (!ok) return; // probe failure — next tick will set state=4
+              const afterId = wallet.getDeviceId();
+              if (beforeId && afterId && beforeId !== afterId) {
+                handleDeviceSwitch(wallet.getDeviceInfo()).catch(e =>
+                  console.error(TAG, 'handleDeviceSwitch failed:', e),
+                );
+              }
+            })
+            .catch(e => console.warn(TAG, 'Feature re-probe failed:', (e as Error)?.message || e));
+        }
       }
     }
   } catch (error: any) {
