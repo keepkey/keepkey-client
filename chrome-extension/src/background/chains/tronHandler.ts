@@ -603,8 +603,25 @@ export const handleTronRequest = async (
       // token display should teach decodeTronTx to look up decimals
       // from assetData or an on-chain call — not a fix for this PR.
       const decimals = decoded.kind === 'trc20-transfer' ? 0 : 6;
+      // For TRC-20 events, scope the caip to the specific token
+      // contract so the UI's ctx.caip-match gate only fires when the
+      // side-panel had THIS token selected. Otherwise a dApp USDT
+      // transfer with the user on the TRX asset page would match
+      // (both sides = tron:27Lqcw/slip44:195) and render with the TRX
+      // symbol/icon — the exact leak #48's gate was meant to block.
+      //
+      // Native TRX and generic contract-call stay on TRON_CAIP:
+      // trx-transfer is native TRX so matching the TRX context is
+      // correct; contract-call renders its own Contract/Function UI
+      // with a hardcoded 'TRX' fallback on the call_value row, so a
+      // partial caip-match can't leak the wrong symbol into anything
+      // user-facing.
+      const eventCaip =
+        decoded.kind === 'trc20-transfer' && decoded.contractAddress
+          ? `${TRON_NETWORK_ID}/token:${decoded.contractAddress}`
+          : TRON_CAIP;
       const event = buildEvent(requestInfo, 'transfer', params, {
-        caip: TRON_CAIP,
+        caip: eventCaip,
         from: sender,
         to: decoded.toAddress,
         amount: decoded.displayAmount,
