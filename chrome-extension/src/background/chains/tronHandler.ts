@@ -317,7 +317,11 @@ async function buildTrc20Transfer(
  * The vault's handler emulates emuWrap for the device, so this call may block
  * until the user confirms on the KeepKey.
  */
-async function signTronViaRest(rawDataHex: string, toAddress: string, amountRaw: string | number): Promise<string> {
+async function signTronViaRest(
+  rawDataHex: string,
+  toAddress: string,
+  amountRaw: string | number | bigint,
+): Promise<string> {
   const apiKey = getApiKey();
   let resp: Response;
   try {
@@ -331,10 +335,12 @@ async function signTronViaRest(rawDataHex: string, toAddress: string, amountRaw:
         addressNList: TRON_ADDRESS_N,
         raw_tx: rawDataHex,
         to_address: toAddress,
-        // Keep as-is — TRC-20 amounts can exceed Number.MAX_SAFE_INTEGER
-        // for 18-decimal tokens. Caller passes a decimal string; passing
-        // a number would overflow silently at ~2^53 base units.
-        amount: String(amountRaw),
+        // Stringify without going through Number — 18-decimal TRC-20
+        // amounts exceed Number.MAX_SAFE_INTEGER in base units and
+        // would silently round before hitting the vault. Handle bigint
+        // explicitly since String(bigint) works but the intent is
+        // clearer and future-proofed.
+        amount: typeof amountRaw === 'bigint' ? amountRaw.toString() : String(amountRaw),
       }),
       signal: AbortSignal.timeout(60000),
     });
@@ -408,7 +414,11 @@ interface DecodedTronTx {
   kind: 'trx-transfer' | 'trc20-transfer' | 'contract-call';
   ownerAddress: string; // base58
   toAddress: string; // base58 — recipient for transfers, contract address for generic calls
-  sunAmount: number; // native TRX in sun, TRC20 in token base units, contract-call in call_value (TRX)
+  // Raw base-units as a DECIMAL STRING so 18-decimal TRC-20 amounts
+  // survive the trip to the vault. Going through Number would truncate
+  // at ~2^53 base units (9e15 — fine for 6-decimal TRX/USDT, broken
+  // for 18-decimal tokens).
+  amountRaw: string;
   displayAmount: string; // human-readable
   contractAddress?: string; // base58, non-native
   functionSelector?: string; // hex, contract-call only
@@ -446,7 +456,7 @@ async function decodeTronTx(tx: any): Promise<DecodedTronTx> {
       kind: 'trx-transfer',
       ownerAddress: await normalizeAddr(v.owner_address),
       toAddress: await normalizeAddr(v.to_address),
-      sunAmount: v.amount,
+      amountRaw: String(v.amount),
       displayAmount: String(v.amount / 1_000_000),
     };
   }
@@ -474,7 +484,7 @@ async function decodeTronTx(tx: any): Promise<DecodedTronTx> {
         kind: 'trc20-transfer',
         ownerAddress,
         toAddress: recipientBase58,
-        sunAmount: Number(amount),
+        amountRaw: amount.toString(),
         displayAmount: amount.toString(),
         contractAddress,
       };
@@ -483,14 +493,14 @@ async function decodeTronTx(tx: any): Promise<DecodedTronTx> {
     // Generic contract call (swaps, stake, approve, etc.). The firmware
     // parses the raw_data itself and signs based on what it finds; our
     // hints here are purely for the side-panel approval UI. Route
-    // `call_value` (TRX attached to the call) to sunAmount so swaps that
-    // spend native TRX display the right outgoing amount.
+    // `call_value` (TRX attached to the call) to amountRaw so swaps
+    // that spend native TRX display the right outgoing amount.
     const callValue = typeof v.call_value === 'number' ? v.call_value : 0;
     return {
       kind: 'contract-call',
       ownerAddress,
       toAddress: contractAddress,
-      sunAmount: callValue,
+      amountRaw: String(callValue),
       displayAmount: String(callValue / 1_000_000),
       contractAddress,
       functionSelector: selector,
@@ -589,7 +599,8 @@ export const handleTronRequest = async (
         from: sender,
         to: decoded.toAddress,
         amount: decoded.displayAmount,
-        sun: decoded.sunAmount,
+        // String, not number — preserves precision for 18-decimal TRC-20.
+        amountRaw: decoded.amountRaw,
         contractAddress: decoded.contractAddress,
         functionSelector: decoded.functionSelector,
         tronGridTx: tx,
@@ -605,7 +616,7 @@ export const handleTronRequest = async (
         throw createProviderRpcError(4001, 'User denied transaction');
       }
 
-      const signatureHex = await signTronViaRest(tx.raw_data_hex, decoded.toAddress, decoded.sunAmount);
+      const signatureHex = await signTronViaRest(tx.raw_data_hex, decoded.toAddress, decoded.amountRaw);
 
       // Preserve any existing `signature` array from the dApp (multi-sig
       // case) and append ours; most dApps pass in an unsigned tx so this
