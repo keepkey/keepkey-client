@@ -439,8 +439,7 @@ export const handleTronRequest = async (
       let unsignedGrid: any;
       let signHintTo: string;
       let signHintAmountRaw: string;
-      let eventKind: 'transfer' | 'trc20-transfer';
-      let eventSun: number | string;
+      let decimals = 6; // TRX native and USDT/USDC-TRC20 are all 6
 
       if (trc20Contract) {
         // TRC-20 path. Decimals come from the asset context the
@@ -449,7 +448,6 @@ export const handleTronRequest = async (
         // best-effort fallback so a missing asset context doesn't block
         // the send — the vault firmware will display the raw amount
         // either way.
-        let decimals = 6;
         try {
           const assetCtx = await assetContextStorage.get();
           if ((assetCtx as any)?.caip === caip && typeof (assetCtx as any)?.decimals === 'number') {
@@ -464,8 +462,6 @@ export const handleTronRequest = async (
         unsignedGrid = await buildTrc20Transfer(sender, trc20Contract, recipient, amountBase);
         signHintTo = recipient;
         signHintAmountRaw = amountBase.toString();
-        eventKind = 'trc20-transfer';
-        eventSun = amountBase.toString();
       } else {
         // Native TRX path.
         const sunAmount = trxToSun(amountStr);
@@ -473,22 +469,35 @@ export const handleTronRequest = async (
         unsignedGrid = await buildTronTransfer(sender, recipient, sunAmount);
         signHintTo = recipient;
         signHintAmountRaw = String(sunAmount);
-        eventKind = 'transfer';
-        eventSun = sunAmount;
       }
 
-      // Persist the full TronGrid response on the event — we need raw_data +
-      // raw_data_hex at sign-time, and txID for the final broadcast payload.
+      // Persist the full TronGrid response on the event. Use
+      // type='transfer' for both native and TRC-20: the approval UI's
+      // RequestMethodCard renders "Unknown Method" for anything it
+      // doesn't recognise, and there's no semantic win from a separate
+      // sub-kind at the UI layer — the `contractAddress` and `caip`
+      // fields on unsignedTx let downstream code distinguish when it
+      // matters. `unsignedTx.payment.{destination,amount}` is the
+      // shape RequestDetailsCard reads to show the approval details;
+      // amount stays raw base-units so the UI's /decimals division
+      // works across 6- and 18-decimal tokens alike.
       if (!requestInfo.id) requestInfo.id = uuidv4();
-      const event = buildEvent(requestInfo, eventKind, params, {
+      const event = buildEvent(requestInfo, 'transfer', params, {
         caip,
         from: sender,
         to: recipient,
         amount: amountStr,
-        sun: eventSun,
+        amountRaw: signHintAmountRaw,
+        decimals,
         contractAddress: trc20Contract || undefined,
         tronGridTx: unsignedGrid,
         rawDataHex: unsignedGrid.raw_data_hex,
+        payment: {
+          destination: recipient,
+          amount: signHintAmountRaw,
+          decimals,
+          symbol: trc20Contract ? undefined : 'TRX', // symbol pulled from assetContext in UI otherwise
+        },
       });
       // @ts-expect-error addEvent is untyped on the storage wrapper
       const saved = await requestStorage.addEvent(event);

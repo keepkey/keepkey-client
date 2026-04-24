@@ -1,8 +1,33 @@
 import { useState, useEffect } from 'react';
 import { Box, Divider, Flex, Table, Tbody, Tr, Td, Badge, Avatar } from '@chakra-ui/react';
 
+/**
+ * Format a raw integer-string amount into a human-readable decimal using
+ * the given decimals count. Uses BigInt so 18-decimal TRC-20 amounts
+ * don't truncate at Number.MAX_SAFE_INTEGER. Falls back to the raw
+ * string for anything that can't be parsed as an integer (legacy rows
+ * that still write `amount: someNumber`).
+ */
+function formatAmount(amountRaw: unknown, decimals: number): string {
+  if (amountRaw == null) return 'N/A';
+  const str = String(amountRaw);
+  // Integer-string path (preferred): BigInt-safe.
+  if (/^\d+$/.test(str)) {
+    const whole = str.length > decimals ? str.slice(0, -decimals) : '0';
+    const frac = str.length > decimals ? str.slice(-decimals) : str.padStart(decimals, '0');
+    const trimmed = frac.replace(/0+$/, '');
+    return trimmed ? `${whole}.${trimmed}` : whole;
+  }
+  // Fallback: plain number coercion for rows that never got migrated
+  // off the pre-string payment shape. Loses precision for large
+  // amounts — acceptable since the vast majority of UI-displayed
+  // amounts fit in a Number.
+  const n = Number(str);
+  if (!Number.isFinite(n)) return str;
+  return String(n / Math.pow(10, decimals));
+}
+
 export default function RequestDetailsCard({ transaction }: any) {
-  const [isNative, setIsNative] = useState(true); // Toggle for hex/native
   const [assetContext, setAssetContext] = useState<any>(null);
 
   // Function to get asset context
@@ -31,6 +56,19 @@ export default function RequestDetailsCard({ transaction }: any) {
     fetchAssetContext();
   }, []);
 
+  // Decimals precedence: event-side payment hint (set by Tron handler),
+  // then asset context, then 6 (matches XRP drops + TRX sun — the two
+  // chains this renderer has historically served). Symbol follows the
+  // same cascade.
+  const payment = transaction?.unsignedTx?.payment;
+  const decimals: number =
+    typeof payment?.decimals === 'number'
+      ? payment.decimals
+      : typeof assetContext?.assets?.decimals === 'number'
+        ? assetContext.assets.decimals
+        : 6;
+  const symbol: string = payment?.symbol || assetContext?.assets?.symbol || '';
+
   return (
     <div>
       <Flex direction="column" mb={4}>
@@ -47,20 +85,26 @@ export default function RequestDetailsCard({ transaction }: any) {
                 <Td>
                   <Badge>To:</Badge>
                 </Td>
-                <Td>{transaction?.unsignedTx?.payment?.destination || 'N/A'}</Td>
+                <Td>{payment?.destination || 'N/A'}</Td>
               </Tr>
               <Tr>
                 <Td>
                   <Badge>Amount:</Badge>
                 </Td>
-                <Td>{transaction?.unsignedTx?.payment?.amount / 1000000 || 'N/A'}</Td>
-              </Tr>
-              <Tr>
                 <Td>
-                  <Badge>destinationTag:</Badge>
+                  {formatAmount(payment?.amount, decimals)} {symbol}
                 </Td>
-                <Td>{transaction?.unsignedTx?.payment?.destinationTag || 'none'}</Td>
               </Tr>
+              {/* Ripple only — suppress the row entirely for other chains
+                  so Tron/etc. don't display a misleading "none". */}
+              {payment?.destinationTag !== undefined && (
+                <Tr>
+                  <Td>
+                    <Badge>destinationTag:</Badge>
+                  </Td>
+                  <Td>{payment.destinationTag || 'none'}</Td>
+                </Tr>
+              )}
             </Tbody>
           </Table>
         </Box>
