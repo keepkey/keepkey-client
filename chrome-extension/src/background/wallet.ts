@@ -433,9 +433,12 @@ export function getDeviceId(): string | null {
 
 /**
  * Tear down everything keyed to the previously-connected device so the
- * next `init()` / `fetchPubkeys()` starts clean:
- *   - in-memory pubkeys + paths (paths get rebuilt by init)
- *   - persisted pubkey cache
+ * next `refreshPubkeys()` / `fetchPubkeys()` starts clean:
+ *   - in-memory pubkeys (cleared)
+ *   - paths (rebuilt to defaults — refreshPubkeys does NOT repopulate
+ *     them, so leaving paths empty would silently send an empty batch
+ *     to the device and return zero pubkeys)
+ *   - persisted pubkey cache (wiped)
  *   - `deviceConnected` flag (forces re-probe on next call)
  *
  * We intentionally keep `state.sdk` alive — the vault REST client can
@@ -448,7 +451,7 @@ export async function handleDeviceSwitch(newDeviceInfo: WalletState['deviceInfo'
   const tag = TAG + ' | handleDeviceSwitch | ';
   console.warn(tag, 'Device switch detected — clearing caches');
   state.pubkeys = [];
-  state.paths = [];
+  state.paths = getDefaultPaths();
   state.deviceInfo = newDeviceInfo;
   state.deviceConnected = false;
   state.initialized = false;
