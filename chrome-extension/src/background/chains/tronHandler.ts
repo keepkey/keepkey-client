@@ -1,4 +1,4 @@
-import { requestStorage } from '@extension/storage';
+import { requestStorage, assetContextStorage } from '@extension/storage';
 import { v4 as uuidv4 } from 'uuid';
 import * as wallet from '../wallet';
 import { createProviderRpcError } from '../utils';
@@ -182,11 +182,142 @@ async function buildTronTransfer(from: string, to: string, sunAmount: number): P
 }
 
 /**
+ * Base58 → 21-byte hex for Tron. Prefixed with 0x41; ABI encoding
+ * for a Solidity `address` drops the 0x41 and left-pads the remaining
+ * 20 bytes into a 32-byte slot.
+ *
+ * Inline minimal decoder to avoid a bs58 dep in the background bundle.
+ * Matches the injected-side decoder in tron-provider.ts so the two
+ * sides encode/decode consistently.
+ */
+const B58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+function base58DecodeToHex(addr: string): string {
+  const bytes: number[] = [0];
+  for (const char of addr) {
+    const idx = B58_ALPHABET.indexOf(char);
+    if (idx === -1) throw createProviderRpcError(4000, `Invalid base58 character in address: ${addr}`);
+    let carry = idx;
+    for (let j = 0; j < bytes.length; j++) {
+      carry += bytes[j] * 58;
+      bytes[j] = carry & 0xff;
+      carry >>= 8;
+    }
+    while (carry > 0) {
+      bytes.push(carry & 0xff);
+      carry >>= 8;
+    }
+  }
+  for (const char of addr) {
+    if (char !== '1') break;
+    bytes.push(0);
+  }
+  const full = bytes.reverse();
+  // Drop the 4-byte checksum; keep 0x41 + 20-byte hash
+  const payload = full.slice(0, 21);
+  if (payload.length !== 21 || payload[0] !== 0x41) {
+    throw createProviderRpcError(4000, `Invalid Tron address: ${addr}`);
+  }
+  return payload.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Convert a human-readable token amount ("1.5") to integer base units
+ * using the token's decimals. Float math drifts at high decimals, so
+ * we route through a padded-string conversion, matching trxToSun's
+ * approach for the native 6-decimal case.
+ */
+function toBaseUnits(amount: string, decimals: number): bigint {
+  const [whole, frac = ''] = String(amount).split('.');
+  const fracPadded = (frac + '0'.repeat(decimals)).slice(0, decimals);
+  const joined = `${whole}${fracPadded}`.replace(/^0+/, '') || '0';
+  try {
+    return BigInt(joined);
+  } catch {
+    throw createProviderRpcError(4000, `Invalid token amount: ${amount}`);
+  }
+}
+
+/**
+ * ABI-encode the parameters for TRC-20 `transfer(address,uint256)`.
+ * Returns 128 hex chars: 64 for the address (20 bytes left-padded to
+ * 32), 64 for the amount (uint256 big-endian).
+ */
+function encodeTrc20TransferParam(recipientBase58: string, amount: bigint): string {
+  const hex21 = base58DecodeToHex(recipientBase58); // "41xxxx...20bytes"
+  const hex20 = hex21.slice(2); // strip the 0x41 prefix for ABI encoding
+  const addrPadded = hex20.padStart(64, '0');
+  const amountPadded = amount.toString(16).padStart(64, '0');
+  return addrPadded + amountPadded;
+}
+
+/**
+ * Extract the TRC-20 contract address from an asset caip.
+ * Accepts both `tron:27Lqcw/token:T...` (our canonical) and
+ * `tron:0x2b6653dc/token:T...` (Pioneer's alternate) forms.
+ * Returns null for native-TRX caips.
+ */
+function parseTrc20Caip(caip: string): string | null {
+  const m = String(caip || '').match(/^tron:[^/]+\/(?:token|trc20):(T[1-9A-HJ-NP-Za-km-z]{33})$/);
+  return m ? m[1] : null;
+}
+
+/**
+ * Ask TronGrid to build the unsigned TriggerSmartContract tx for a
+ * TRC-20 `transfer(address,uint256)`. Same response shape as
+ * /createtransaction so signing + broadcast reuse the native path.
+ */
+async function buildTrc20Transfer(
+  from: string,
+  contractAddress: string,
+  recipient: string,
+  amountBaseUnits: bigint,
+): Promise<any> {
+  let resp: Response;
+  try {
+    resp = await fetch(`${TRONGRID_URL}/wallet/triggersmartcontract`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        owner_address: from,
+        contract_address: contractAddress,
+        function_selector: 'transfer(address,uint256)',
+        parameter: encodeTrc20TransferParam(recipient, amountBaseUnits),
+        // 100 TRX fee limit — matches the ballpark TronLink uses for
+        // USDT transfers. Too low and the tx revert-burns energy
+        // without moving tokens.
+        fee_limit: 100_000_000,
+        call_value: 0,
+        visible: true,
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+  } catch (e: any) {
+    throw createProviderRpcError(-32603, `TronGrid triggersmartcontract failed: ${e.message}`);
+  }
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw createProviderRpcError(-32603, `TronGrid TRC-20 build failed (${resp.status}): ${text}`);
+  }
+  const body: any = await resp.json();
+  if (body?.result?.result !== true) {
+    const msg = body?.result?.message
+      ? Buffer.from(String(body.result.message), 'hex').toString('utf8').trim()
+      : JSON.stringify(body?.result || body);
+    throw createProviderRpcError(-32603, `TronGrid TRC-20 build rejected: ${msg}`);
+  }
+  const tx = body?.transaction;
+  if (!tx?.raw_data_hex) {
+    throw createProviderRpcError(-32603, 'TronGrid did not return raw_data_hex for TRC-20 build');
+  }
+  return tx;
+}
+
+/**
  * Sign the raw tx via the vault. Returns the 65-byte signature as a hex string.
  * The vault's handler emulates emuWrap for the device, so this call may block
  * until the user confirms on the KeepKey.
  */
-async function signTronViaRest(rawDataHex: string, toAddress: string, sunAmount: number): Promise<string> {
+async function signTronViaRest(rawDataHex: string, toAddress: string, amountRaw: string | number): Promise<string> {
   const apiKey = getApiKey();
   let resp: Response;
   try {
@@ -200,7 +331,10 @@ async function signTronViaRest(rawDataHex: string, toAddress: string, sunAmount:
         addressNList: TRON_ADDRESS_N,
         raw_tx: rawDataHex,
         to_address: toAddress,
-        amount: String(sunAmount),
+        // Keep as-is — TRC-20 amounts can exceed Number.MAX_SAFE_INTEGER
+        // for 18-decimal tokens. Caller passes a decimal string; passing
+        // a number would overflow silently at ~2^53 base units.
+        amount: String(amountRaw),
       }),
       signal: AbortSignal.timeout(60000),
     });
@@ -277,36 +411,105 @@ export const handleTronRequest = async (
 
     // Side-panel Send flow. Payload:
     //   params[0] = { caip, amount: { amount, denom }, recipient, memo, isMax }
+    //
+    // Branches on caip — a `tron:*/token:T...` or `tron:*/trc20:T...`
+    // caip means the user picked a TRC-20 token (USDT, USDC, etc.) from
+    // the asset list and we need to build a TriggerSmartContract with
+    // the contract's `transfer(address,uint256)` selector. A plain
+    // `tron:*/slip44:195` caip is a native TRX transfer. Without this
+    // split, clicking USDT and hitting send would invisibly send TRX
+    // instead (the caip was being discarded).
     case 'transfer': {
       const payload = params?.[0] || {};
       const recipient: string = payload.recipient;
-      const amountTrx: string = payload?.amount?.amount ?? payload?.amount ?? '';
+      const amountStr: string = payload?.amount?.amount ?? payload?.amount ?? '';
+      const caip: string = payload?.caip || TRON_CAIP;
 
       if (!recipient) throw createProviderRpcError(4000, 'Missing recipient');
-      if (!amountTrx) throw createProviderRpcError(4000, 'Missing amount');
+      if (!amountStr) throw createProviderRpcError(4000, 'Missing amount');
 
-      const amountFloat = parseFloat(amountTrx);
+      const amountFloat = parseFloat(amountStr);
       if (!Number.isFinite(amountFloat) || amountFloat <= 0) {
-        throw createProviderRpcError(4000, 'Invalid TRX amount');
+        throw createProviderRpcError(4000, 'Invalid amount');
       }
 
-      const sunAmount = trxToSun(amountTrx);
-      if (sunAmount <= 0) throw createProviderRpcError(4000, 'Amount too small');
-
       const sender = await getTronAddress();
-      const unsignedGrid = await buildTronTransfer(sender, recipient, sunAmount);
+      const trc20Contract = parseTrc20Caip(caip);
 
-      // Persist the full TronGrid response on the event — we need raw_data +
-      // raw_data_hex at sign-time, and txID for the final broadcast payload.
+      let unsignedGrid: any;
+      let signHintTo: string;
+      let signHintAmountRaw: string;
+      let decimals = 6; // TRX native and USDT/USDC-TRC20 are all 6
+
+      if (trc20Contract) {
+        // TRC-20 path. Decimals come from the asset context the
+        // side-panel just set via SET_ASSET_CONTEXT; Pioneer populates
+        // them on the token row. Default to 6 (USDT/USDC on Tron) as a
+        // best-effort fallback so a missing asset context doesn't block
+        // the send — the vault firmware will display the raw amount
+        // either way.
+        try {
+          const assetCtx = await assetContextStorage.get();
+          if ((assetCtx as any)?.caip === caip && typeof (assetCtx as any)?.decimals === 'number') {
+            decimals = (assetCtx as any).decimals;
+          }
+        } catch {
+          /* fall through with default */
+        }
+        const amountBase = toBaseUnits(amountStr, decimals);
+        if (amountBase <= 0n) throw createProviderRpcError(4000, 'Amount too small');
+
+        unsignedGrid = await buildTrc20Transfer(sender, trc20Contract, recipient, amountBase);
+        signHintTo = recipient;
+        signHintAmountRaw = amountBase.toString();
+      } else {
+        // Native TRX path.
+        const sunAmount = trxToSun(amountStr);
+        if (sunAmount <= 0) throw createProviderRpcError(4000, 'Amount too small');
+        unsignedGrid = await buildTronTransfer(sender, recipient, sunAmount);
+        signHintTo = recipient;
+        signHintAmountRaw = String(sunAmount);
+      }
+
+      // Persist the full TronGrid response on the event. Use
+      // type='transfer' for both native and TRC-20: the approval UI's
+      // RequestMethodCard renders "Unknown Method" for anything it
+      // doesn't recognise, and there's no semantic win from a separate
+      // sub-kind at the UI layer — the `contractAddress` and `caip`
+      // fields on unsignedTx let downstream code distinguish when it
+      // matters. `unsignedTx.payment.{destination,amount}` is the
+      // shape RequestDetailsCard reads to show the approval details;
+      // amount stays raw base-units so the UI's /decimals division
+      // works across 6- and 18-decimal tokens alike.
       if (!requestInfo.id) requestInfo.id = uuidv4();
       const event = buildEvent(requestInfo, 'transfer', params, {
-        caip: TRON_CAIP,
+        caip,
         from: sender,
         to: recipient,
-        amount: amountTrx,
-        sun: sunAmount,
+        amount: amountStr,
+        amountRaw: signHintAmountRaw,
+        decimals,
+        // `kind` flags the approval UI to render the correct label
+        // ("Token Transfer" for TRC-20 vs "transfer" for native TRX).
+        // Without this, side-panel TRC-20 sends looked identical to
+        // native TRX sends in the approval pane even though we were
+        // actually signing a `transfer(address,uint256)` contract call.
+        kind: trc20Contract ? 'trc20-transfer' : 'trx-transfer',
+        contractAddress: trc20Contract || undefined,
         tronGridTx: unsignedGrid,
         rawDataHex: unsignedGrid.raw_data_hex,
+        payment: {
+          destination: recipient,
+          amount: signHintAmountRaw,
+          decimals,
+          // For TRC-20 sends from the side panel the user just clicked
+          // the asset, so the global assetContext caip WILL match
+          // event.caip and the UI's caip-gated fallback will pick up
+          // the right symbol. Leaving it undefined here keeps the
+          // handler from baking in a symbol we can't verify without
+          // an on-chain lookup.
+          symbol: trc20Contract ? undefined : 'TRX',
+        },
       });
       // @ts-expect-error addEvent is untyped on the storage wrapper
       const saved = await requestStorage.addEvent(event);
@@ -318,11 +521,11 @@ export const handleTronRequest = async (
         throw createProviderRpcError(4001, 'User denied transaction');
       }
 
-      const signatureHex = await signTronViaRest(unsignedGrid.raw_data_hex, recipient, sunAmount);
+      const signatureHex = await signTronViaRest(unsignedGrid.raw_data_hex, signHintTo, signHintAmountRaw);
 
       // Tron broadcasttransaction wants the TronGrid response enriched with a
-      // `signature` array (hex strings, one per input). Simple TRX transfer
-      // has one input, so one signature.
+      // `signature` array (hex strings, one per input). Single-sig for both
+      // native and TRC-20 transfers.
       const signedTx = { ...unsignedGrid, signature: [signatureHex] };
 
       const txid = await broadcastTron(signedTx);
