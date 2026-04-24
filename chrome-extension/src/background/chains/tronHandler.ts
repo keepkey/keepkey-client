@@ -619,11 +619,22 @@ export const handleTronRequest = async (
         // Shape the "other" approval UI reads. `amount` stays as a raw
         // base-units decimal string — formatAmount in the UI does the
         // BigInt-safe division by `decimals`.
+        //
+        // symbol:
+        //   trx-transfer / contract-call → 'TRX' (call_value on a
+        //     contract call is always native TRX; stating it
+        //     explicitly in the handler lets the UI render the amount
+        //     row without falling through to asset-context guesswork)
+        //   trc20-transfer               → undefined (we don't know
+        //     the token's symbol without an on-chain `symbol()` call
+        //     or an assetData lookup — both are out of scope here;
+        //     the UI's caip-match gate on asset context will decline
+        //     to show a wrong symbol)
         payment: {
           destination: decoded.toAddress,
           amount: decoded.amountRaw,
           decimals,
-          symbol: decoded.kind === 'trx-transfer' ? 'TRX' : undefined,
+          symbol: decoded.kind === 'trc20-transfer' ? undefined : 'TRX',
         },
       });
       // @ts-expect-error addEvent is untyped on the storage wrapper
