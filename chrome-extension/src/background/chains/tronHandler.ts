@@ -588,23 +588,43 @@ export const handleTronRequest = async (
       }
 
       if (!requestInfo.id) requestInfo.id = uuidv4();
-      const eventType =
-        decoded.kind === 'trc20-transfer'
-          ? 'trc20-transfer'
-          : decoded.kind === 'contract-call'
-            ? 'contract-call'
-            : 'transfer';
-      const event = buildEvent(requestInfo, eventType, params, {
+      // Always emit type='transfer'. The shared "other" approval
+      // renderer (pages/side-panel/src/approval/other/*) only has a
+      // cased handler for 'transfer' + reads `unsignedTx.payment.*` —
+      // anything else shows "Unknown Method" / N/A. Downstream code
+      // that cares about kind can still branch on `contractAddress` /
+      // `functionSelector` on the event.
+      //
+      // decimals: native TRX is 6 (sun); TRC-20 transfer()s use the
+      // displayAmount's decimals which we don't know from raw_data
+      // alone — default to 0 so the UI shows raw base units, which is
+      // at least correct, not misleading. Contract-call rows attach
+      // call_value (TRX, 6 decimals). Callers that want prettier
+      // token display should teach decodeTronTx to look up decimals
+      // from assetData or an on-chain call — not a fix for this PR.
+      const decimals = decoded.kind === 'trc20-transfer' ? 0 : 6;
+      const event = buildEvent(requestInfo, 'transfer', params, {
         caip: TRON_CAIP,
         from: sender,
         to: decoded.toAddress,
         amount: decoded.displayAmount,
         // String, not number — preserves precision for 18-decimal TRC-20.
         amountRaw: decoded.amountRaw,
+        decimals,
+        kind: decoded.kind, // 'trx-transfer' | 'trc20-transfer' | 'contract-call' for downstream branches
         contractAddress: decoded.contractAddress,
         functionSelector: decoded.functionSelector,
         tronGridTx: tx,
         rawDataHex: tx.raw_data_hex,
+        // Shape the "other" approval UI reads. `amount` stays as a raw
+        // base-units decimal string — formatAmount in the UI does the
+        // BigInt-safe division by `decimals`.
+        payment: {
+          destination: decoded.toAddress,
+          amount: decoded.amountRaw,
+          decimals,
+          symbol: decoded.kind === 'trx-transfer' ? 'TRX' : undefined,
+        },
       });
       // @ts-expect-error addEvent is untyped on the storage wrapper
       const saved = await requestStorage.addEvent(event);
