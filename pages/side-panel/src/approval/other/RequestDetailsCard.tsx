@@ -60,20 +60,30 @@ export default function RequestDetailsCard({ transaction }: any) {
     fetchAssetContext();
   }, []);
 
-  // Decimals precedence: event-side payment hint (set by Tron handler),
-  // then asset context, then 6 (matches XRP drops + TRX sun — the two
-  // chains this renderer has historically served). Symbol follows the
-  // same cascade.
+  // Event-side hints (set by the chain handler) always win; we only
+  // fall back to the global asset context when its caip *matches* the
+  // event's caip. Why the match gate: dApp-originated sign events
+  // carry their own caip (e.g. tron:*/token:TR7NHq...), but the
+  // global asset context reflects whatever the user last clicked in
+  // the side-panel asset list — could be ETH, SOL, whatever.
+  // Without the guard, a dApp-initiated USDT-TRON approval could
+  // render with the ETH icon + "ETH" symbol just because the user
+  // had ETH selected. Side-panel send flows always match (the user
+  // just clicked the asset), so nothing regresses there.
   const unsignedTx = transaction?.unsignedTx;
   const payment = unsignedTx?.payment;
   const kind: string | undefined = unsignedTx?.kind;
-  const decimals: number =
-    typeof payment?.decimals === 'number'
-      ? payment.decimals
-      : typeof assetContext?.assets?.decimals === 'number'
-        ? assetContext.assets.decimals
-        : 6;
-  const symbol: string = payment?.symbol || assetContext?.assets?.symbol || '';
+  const eventCaip: string = unsignedTx?.caip || '';
+  const ctxAsset = assetContext?.assets;
+  const ctxCaip: string = ctxAsset?.caip || '';
+  const ctxMatches = !!eventCaip && eventCaip === ctxCaip;
+  const ctxSymbol: string = ctxMatches ? ctxAsset?.symbol || '' : '';
+  const ctxIcon: string = ctxMatches ? ctxAsset?.icon || '' : '';
+  const ctxDecimals: number | undefined =
+    ctxMatches && typeof ctxAsset?.decimals === 'number' ? ctxAsset.decimals : undefined;
+
+  const decimals: number = typeof payment?.decimals === 'number' ? payment.decimals : (ctxDecimals ?? 6);
+  const symbol: string = payment?.symbol || ctxSymbol || '';
 
   // Contract-call rendering diverges — "To" should show the contract
   // and the user should see the raw function selector rather than an
@@ -87,9 +97,9 @@ export default function RequestDetailsCard({ transaction }: any) {
     return (
       <div>
         <Flex direction="column" mb={4}>
-          {assetContext && (
+          {ctxIcon && (
             <Flex justify="center" mb={4}>
-              <Avatar size="md" src={assetContext?.assets?.icon} alt="Asset Icon" />
+              <Avatar size="md" src={ctxIcon} alt="Asset Icon" />
             </Flex>
           )}
           <Box mb={2}>
@@ -131,10 +141,11 @@ export default function RequestDetailsCard({ transaction }: any) {
   return (
     <div>
       <Flex direction="column" mb={4}>
-        {/* Display the Avatar for the asset */}
-        {assetContext && (
+        {/* Display the Avatar for the asset — only when ctxCaip matches,
+            otherwise we risk showing a wildly-off icon for dApp events. */}
+        {ctxIcon && (
           <Flex justify="center" mb={4}>
-            <Avatar size="md" src={assetContext?.assets?.icon} alt="Asset Icon" />
+            <Avatar size="md" src={ctxIcon} alt="Asset Icon" />
           </Flex>
         )}
         <Box mb={2}>

@@ -489,6 +489,12 @@ export const handleTronRequest = async (
         amount: amountStr,
         amountRaw: signHintAmountRaw,
         decimals,
+        // `kind` flags the approval UI to render the correct label
+        // ("Token Transfer" for TRC-20 vs "transfer" for native TRX).
+        // Without this, side-panel TRC-20 sends looked identical to
+        // native TRX sends in the approval pane even though we were
+        // actually signing a `transfer(address,uint256)` contract call.
+        kind: trc20Contract ? 'trc20-transfer' : 'trx-transfer',
         contractAddress: trc20Contract || undefined,
         tronGridTx: unsignedGrid,
         rawDataHex: unsignedGrid.raw_data_hex,
@@ -496,7 +502,13 @@ export const handleTronRequest = async (
           destination: recipient,
           amount: signHintAmountRaw,
           decimals,
-          symbol: trc20Contract ? undefined : 'TRX', // symbol pulled from assetContext in UI otherwise
+          // For TRC-20 sends from the side panel the user just clicked
+          // the asset, so the global assetContext caip WILL match
+          // event.caip and the UI's caip-gated fallback will pick up
+          // the right symbol. Leaving it undefined here keeps the
+          // handler from baking in a symbol we can't verify without
+          // an on-chain lookup.
+          symbol: trc20Contract ? undefined : 'TRX',
         },
       });
       // @ts-expect-error addEvent is untyped on the storage wrapper
