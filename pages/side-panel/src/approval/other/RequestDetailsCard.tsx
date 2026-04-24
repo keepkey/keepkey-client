@@ -13,6 +13,10 @@ function formatAmount(amountRaw: unknown, decimals: number): string {
   const str = String(amountRaw);
   // Integer-string path (preferred): BigInt-safe.
   if (/^\d+$/.test(str)) {
+    // Zero-decimal assets render as-is — `str.slice(0, -0)` returns ''
+    // and `str.slice(-0)` returns the full string (since -0 === 0), so
+    // without this guard "123" would render as ".123".
+    if (decimals <= 0) return str;
     const whole = str.length > decimals ? str.slice(0, -decimals) : '0';
     const frac = str.length > decimals ? str.slice(-decimals) : str.padStart(decimals, '0');
     const trimmed = frac.replace(/0+$/, '');
