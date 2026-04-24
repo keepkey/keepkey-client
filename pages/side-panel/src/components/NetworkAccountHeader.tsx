@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Flex, Text, Box, IconButton, Avatar, Tooltip, Icon, useToast, useDisclosure } from '@chakra-ui/react';
-import { SettingsIcon, CheckCircleIcon, WarningIcon, RepeatIcon } from '@chakra-ui/icons';
+import { Flex, Text, Box, IconButton, Tooltip, useToast, useDisclosure } from '@chakra-ui/react';
+import { SettingsIcon, RepeatIcon } from '@chakra-ui/icons';
 import { NetworkIdToChain } from '@extension/shared';
 
 import type { NetworkItem, AccountItem, CustomEvmNetwork, NetworkAccountHeaderProps } from './header/headerTypes';
@@ -15,6 +15,7 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
   isRefreshing,
   onSettingsOpen,
   onRefresh,
+  onHome,
   onSelectNetwork,
 }) => {
   const [pubkeys, setPubkeys] = useState<any[]>([]);
@@ -238,15 +239,48 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
     [fetchPubkeys, toast],
   );
 
+  // The shield badge encodes BOTH home-button and device status: its gradient
+  // tints to green when paired, red when errored, gold (brand default) while
+  // transient. One glyph, two jobs — no duplicate status indicator elsewhere.
+  const shieldStatus = isPaired
+    ? {
+        tooltip: stateNames[5],
+        gradient: 'linear-gradient(135deg, #57ce51 0%, #1f7e24 100%)',
+        edge: 'rgba(87,206,81,0.36)',
+        pulse: false,
+      }
+    : keepkeyState === 4
+      ? {
+          tooltip: stateNames[4],
+          gradient: 'linear-gradient(135deg, #e56a4d 0%, #8a2a18 100%)',
+          edge: 'rgba(229,106,77,0.36)',
+          pulse: false,
+        }
+      : {
+          tooltip: 'connecting…',
+          gradient: 'linear-gradient(135deg, #d29929 0%, #6d4a13 100%)',
+          edge: 'rgba(210,153,41,0.36)',
+          pulse: true,
+        };
+
   return (
     <Box mb={2}>
       <Flex alignItems="center" justifyContent="space-between" gap={2}>
-        {/* Left: Settings */}
-        <IconButton icon={<SettingsIcon />} aria-label="Settings" variant="ghost" size="sm" onClick={onSettingsOpen} />
+        {/* Left: shield-badge = home button AND device-status indicator */}
+        <Tooltip label={shieldStatus.tooltip} placement="bottom" hasArrow>
+          <span>
+            <ShieldBadge
+              onClick={onHome}
+              gradient={shieldStatus.gradient}
+              edge={shieldStatus.edge}
+              pulse={shieldStatus.pulse}
+            />
+          </span>
+        </Tooltip>
 
-        {/* Center: Branding or Network + Account dropdowns */}
+        {/* Center: Network + Account dropdowns when ready, wordmark otherwise */}
         {isPaired && hasAssetContext && networks.length > 0 ? (
-          <Flex flex={1} alignItems="center" justifyContent="center" gap={1} minW={0}>
+          <Flex flex={1} alignItems="center" justifyContent="center" gap={2} minW={0}>
             <NetworkDropdown
               networks={networks}
               selectedNetworkId={selectedNetworkId}
@@ -266,24 +300,14 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
           </Flex>
         ) : (
           <Flex flex={1} alignItems="center" justifyContent="center">
-            <Avatar size="xs" src="/kk-logo.png" name="KeepKey" mr={2} />
-            <Text fontSize="sm" fontWeight="semibold" color="white">
+            <Text fontSize="sm" fontWeight={700} color="kk.text" letterSpacing="-0.1px">
               KeepKey
             </Text>
           </Flex>
         )}
 
-        {/* Right: Status + Refresh */}
+        {/* Right: refresh + settings (status lives in the left shield now) */}
         <Flex alignItems="center" gap={1}>
-          <Tooltip label={keepkeyState !== null ? stateNames[keepkeyState] : 'unknown'} placement="bottom" hasArrow>
-            <span>
-              {isPaired ? (
-                <Icon as={CheckCircleIcon} color="green.400" boxSize={4} />
-              ) : (
-                <Icon as={WarningIcon} color="yellow.400" boxSize={4} />
-              )}
-            </span>
-          </Tooltip>
           <IconButton
             icon={<RepeatIcon />}
             aria-label="Refresh"
@@ -291,6 +315,13 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
             size="sm"
             isLoading={isRefreshing}
             onClick={onRefresh}
+          />
+          <IconButton
+            icon={<SettingsIcon />}
+            aria-label="Settings"
+            variant="ghost"
+            size="sm"
+            onClick={onSettingsOpen}
           />
         </Flex>
       </Flex>
@@ -300,5 +331,52 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
     </Box>
   );
 };
+
+// Gradient shield tile — acts as home button AND device-status indicator.
+// Tint comes from the active state (gold / green / red); a soft pulse plays
+// while we're still figuring out the state so the user sees "thinking…".
+const ShieldBadge = ({
+  onClick,
+  gradient,
+  edge,
+  pulse,
+}: {
+  onClick?: () => void;
+  gradient: string;
+  edge: string;
+  pulse?: boolean;
+}) => (
+  <Flex
+    as={onClick ? 'button' : 'div'}
+    onClick={onClick}
+    aria-label={onClick ? 'Home' : undefined}
+    w="32px"
+    h="32px"
+    flexShrink={0}
+    borderRadius="8px"
+    alignItems="center"
+    justifyContent="center"
+    bgImage={gradient}
+    boxShadow={`0 0 0 1px ${edge}, inset 0 1px 0 rgba(255,255,255,0.25), 0 0 14px -4px ${edge}`}
+    cursor={onClick ? 'pointer' : 'default'}
+    transition="filter 0.15s, transform 0.15s, box-shadow 0.3s"
+    sx={pulse ? { animation: 'kk-badge-pulse 1.4s ease-in-out infinite' } : undefined}
+    _hover={onClick ? { filter: 'brightness(1.1)' } : {}}
+    _active={onClick ? { transform: 'scale(0.95)' } : {}}>
+    <style>{`@keyframes kk-badge-pulse { 0%,100% { opacity: 0.7 } 50% { opacity: 1 } }`}</style>
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="#0b0d10"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round">
+      <path d="M12 3l7 3v6c0 4.5-3 7.5-7 8-4-.5-7-3.5-7-8V6l7-3z" />
+      <path d="M9 12l2 2 4-4" />
+    </svg>
+  </Flex>
+);
 
 export default NetworkAccountHeader;

@@ -1,18 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Flex,
-  Spinner,
-  Avatar,
-  Box,
-  Text,
-  Badge,
-  Card,
-  Stack,
-  HStack,
-  Skeleton,
-  SkeletonCircle,
-} from '@chakra-ui/react';
-import { ChevronRightIcon } from '@chakra-ui/icons';
+import { Flex, Avatar, Box, Text, Card, Stack, HStack, Skeleton, SkeletonCircle } from '@chakra-ui/react';
 import AssetSelect from './AssetSelect';
 import { COIN_MAP_LONG, NetworkIdToChain } from '@extension/shared';
 
@@ -34,13 +21,15 @@ const getChainDisplayName = (networkId: string): string => {
 
 interface BalancesProps {
   onSelectAsset: (asset: any) => void;
+  /** Controlled by SidePanel so the home button + dashboard-gating can see it. */
+  showAddBlockchain: boolean;
+  setShowAddBlockchain: (show: boolean) => void;
 }
 
-const Balances = ({ onSelectAsset }: BalancesProps) => {
+const Balances = ({ onSelectAsset, showAddBlockchain, setShowAddBlockchain }: BalancesProps) => {
   const [balances, setBalances] = useState<any[]>([]);
   const [assets, setAssets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showAssetSelect, setShowAssetSelect] = useState(false);
 
   const formatBalance = (balance: string) => {
     const numericBalance = parseFloat(balance);
@@ -90,20 +79,20 @@ const Balances = ({ onSelectAsset }: BalancesProps) => {
     return valueB - valueA;
   });
 
-  if (showAssetSelect) {
-    return <AssetSelect setShowBack={() => {}} setShowAssetSelect={setShowAssetSelect} />;
+  if (showAddBlockchain) {
+    return <AssetSelect setShowAssetSelect={setShowAddBlockchain} />;
   }
 
   if (loading) {
     const SkeletonRow = ({ delay = 0 }: { delay?: number }) => (
       <Card
-        borderRadius="lg"
+        borderRadius="12px"
         p={3}
-        mb={2}
+        mb={1.5}
         width="100%"
-        bg="rgba(255, 255, 255, 0.03)"
+        bg="kk.surface"
         border="1px solid"
-        borderColor="whiteAlpha.100"
+        borderColor="kk.line"
         position="relative"
         overflow="hidden"
         sx={{
@@ -123,13 +112,38 @@ const Balances = ({ onSelectAsset }: BalancesProps) => {
           <SkeletonCircle size="10" startColor="whiteAlpha.100" endColor="whiteAlpha.300" />
           <Box ml={3} flex="1" minWidth="0">
             <HStack spacing={2}>
-              <Skeleton height="14px" width="60px" borderRadius="sm" startColor="whiteAlpha.100" endColor="whiteAlpha.300" />
-              <Skeleton height="14px" width="44px" borderRadius="full" startColor="whiteAlpha.100" endColor="whiteAlpha.200" />
+              <Skeleton
+                height="14px"
+                width="60px"
+                borderRadius="sm"
+                startColor="whiteAlpha.100"
+                endColor="whiteAlpha.300"
+              />
+              <Skeleton
+                height="14px"
+                width="44px"
+                borderRadius="full"
+                startColor="whiteAlpha.100"
+                endColor="whiteAlpha.200"
+              />
             </HStack>
-            <Skeleton mt={2} height="12px" width="96px" borderRadius="sm" startColor="whiteAlpha.100" endColor="whiteAlpha.300" />
+            <Skeleton
+              mt={2}
+              height="12px"
+              width="96px"
+              borderRadius="sm"
+              startColor="whiteAlpha.100"
+              endColor="whiteAlpha.300"
+            />
           </Box>
           <Flex direction="column" align="flex-end" minW="80px">
-            <Skeleton height="14px" width="56px" borderRadius="sm" startColor="whiteAlpha.100" endColor="whiteAlpha.300" />
+            <Skeleton
+              height="14px"
+              width="56px"
+              borderRadius="sm"
+              startColor="whiteAlpha.100"
+              endColor="whiteAlpha.300"
+            />
           </Flex>
         </Flex>
       </Card>
@@ -194,14 +208,7 @@ const Balances = ({ onSelectAsset }: BalancesProps) => {
         </Box>
 
         {/* Hero spinner above the skeletons */}
-        <Flex
-          direction="column"
-          align="center"
-          gap={3}
-          pt={2}
-          pb={5}
-          position="relative"
-          zIndex={2}>
+        <Flex direction="column" align="center" gap={3} pt={2} pb={5} position="relative" zIndex={2}>
           <Box position="relative" width="88px" height="88px">
             {/* Soft pulsing glow */}
             <Box
@@ -291,7 +298,9 @@ const Balances = ({ onSelectAsset }: BalancesProps) => {
       <Stack width="100%">
         {sortedAssets.length === 0 ? (
           <Flex justifyContent="center" alignItems="center" width="100%" minH="40vh">
-            <Text color="whiteAlpha.600">No assets found</Text>
+            <Text color="kk.faint" fontSize="sm">
+              No assets found
+            </Text>
           </Flex>
         ) : (
           <>
@@ -314,47 +323,52 @@ const Balances = ({ onSelectAsset }: BalancesProps) => {
               return (
                 <Card
                   key={index}
-                  borderRadius="lg"
+                  borderRadius="12px"
                   p={3}
-                  mb={2}
+                  mb={1.5}
                   width="100%"
-                  bg="rgba(255, 255, 255, 0.03)"
+                  bg="kk.surface"
                   border="1px solid"
-                  borderColor="whiteAlpha.100"
-                  _hover={{ bg: 'rgba(255, 255, 255, 0.06)', cursor: 'pointer' }}
+                  borderColor="kk.line"
+                  _hover={{ bg: 'kk.surfaceHi', cursor: 'pointer' }}
                   onClick={() => onSelectAsset(asset)}
-                  transition="all 0.2s">
-                  <Flex align="center" width="100%">
-                    <Avatar src={asset.icon} size="md" />
-                    <Box ml={3} flex="1" minWidth="0">
+                  transition="background 0.15s">
+                  <Flex align="center" width="100%" gap={3}>
+                    <Avatar src={asset.icon} size="sm" />
+                    <Box flex="1" minWidth="0">
                       <Flex align="center" gap={2}>
-                        <Text fontWeight="semibold" fontSize="md" isTruncated color="white">
+                        <Text fontWeight={600} fontSize="sm" isTruncated color="kk.text">
                           {asset.name}
                         </Text>
-                        <Badge size="sm" colorScheme="gray" variant="subtle" fontSize="10px" px={2} borderRadius="full">
+                        <Text
+                          as="span"
+                          fontSize="10px"
+                          px="6px"
+                          py="1px"
+                          borderRadius="full"
+                          bg="whiteAlpha.100"
+                          color="kk.faint"
+                          letterSpacing="0.04em">
                           {chainName}
-                        </Badge>
+                        </Text>
                       </Flex>
-                      <HStack spacing={2} mt={0.5}>
-                        <Text fontSize="md" color="white" fontWeight="medium">
+                      <HStack spacing={1} mt="2px">
+                        <Text fontSize="xs" color="kk.dim" className="mono">
                           {integer}.{largePart}
                           {largePart === '0000' && (
-                            <Text as="span" fontSize="xs" color="whiteAlpha.600">
+                            <Text as="span" color="kk.faint">
                               {smallPart}
                             </Text>
                           )}
-                          <Text as="span" color="whiteAlpha.700" ml={1} fontSize="sm">
-                            {asset.symbol}
-                          </Text>
+                        </Text>
+                        <Text as="span" color="kk.faint" fontSize="xs">
+                          {asset.symbol}
                         </Text>
                       </HStack>
                     </Box>
-                    <Flex direction="column" align="flex-end" minW="80px">
-                      <Text fontWeight="semibold" color="white" fontSize="md">
-                        ${formatUsd(totalUsdValue.toString())}
-                      </Text>
-                    </Flex>
-                    <ChevronRightIcon color="whiteAlpha.400" ml={2} />
+                    <Text fontWeight={600} color="kk.text" fontSize="sm" whiteSpace="nowrap">
+                      ${formatUsd(totalUsdValue.toString())}
+                    </Text>
                   </Flex>
                 </Card>
               );
@@ -363,16 +377,17 @@ const Balances = ({ onSelectAsset }: BalancesProps) => {
             <Flex
               align="center"
               justify="center"
-              p={4}
-              mt={2}
-              borderRadius="lg"
+              gap={1.5}
+              p={3}
+              mt={1}
+              borderRadius="12px"
               border="1px dashed"
-              borderColor="whiteAlpha.200"
-              _hover={{ borderColor: 'whiteAlpha.400', cursor: 'pointer' }}
-              onClick={() => setShowAssetSelect(true)}
-              transition="all 0.2s">
-              <Text color="whiteAlpha.600" fontSize="sm">
-                + Add Blockchain
+              borderColor="kk.line"
+              _hover={{ borderColor: 'kk.lineHi', cursor: 'pointer' }}
+              onClick={() => setShowAddBlockchain(true)}
+              transition="border-color 0.15s">
+              <Text color="kk.faint" fontSize="xs">
+                + Add blockchain
               </Text>
             </Flex>
           </>

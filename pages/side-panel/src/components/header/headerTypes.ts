@@ -34,5 +34,6 @@ export interface NetworkAccountHeaderProps {
   isRefreshing: boolean;
   onSettingsOpen: () => void;
   onRefresh: () => void;
+  onHome?: () => void;
   onSelectNetwork?: (asset: any) => void;
 }

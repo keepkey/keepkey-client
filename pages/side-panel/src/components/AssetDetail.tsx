@@ -170,6 +170,7 @@ const AssetDetail = ({ asset, balances, onSend, onReceive }: AssetDetailProps) =
           <Text fontSize="sm" fontWeight="medium" color="whiteAlpha.600">
             {asset.name || asset.symbol}
           </Text>
+          {asset.networkId === 'tron:27Lqcw' && <TronLinkBadge />}
         </HStack>
         <Text fontSize="xl" fontWeight="bold" color="white" lineHeight="1.2">
           {formatUsd(totalUsdValue)}
@@ -389,5 +390,37 @@ const AssetDetail = ({ asset, balances, onSend, onReceive }: AssetDetailProps) =
     </Flex>
   );
 };
+
+// Passive indicator shown next to the asset name on the Tron asset page —
+// tells the user Tron dApps use the TronLink protocol (which KeepKey
+// implements). Not a link; TronLink is an unaffiliated wallet.
+const TronLinkBadge = () => (
+  <Flex
+    alignItems="center"
+    gap={1}
+    px={1.5}
+    py={0.5}
+    borderRadius="full"
+    bg="rgba(47,94,252,0.14)"
+    border="1px solid"
+    borderColor="rgba(47,94,252,0.36)">
+    <Flex w="10px" h="10px" borderRadius="full" bg="#2f5efc" alignItems="center" justifyContent="center" flexShrink={0}>
+      <TronLinkGlyph size={6} />
+    </Flex>
+    <Text fontSize="9px" color="#8fa9ff" letterSpacing="0.06em" fontWeight={600} textTransform="uppercase">
+      TronLink
+    </Text>
+  </Flex>
+);
+
+// Minimal TronLink mark — triangle/paper-plane silhouette in white.
+const TronLinkGlyph = ({ size = 16 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <path
+      d="M4.5 5.5L19.5 11.2c.6.24.6 1.1 0 1.34l-6.6 2.64-2.64 6.6c-.24.6-1.1.6-1.34 0L3.18 6.84c-.24-.6.36-1.2.96-.96l.36.12z"
+      fill="white"
+    />
+  </svg>
+);
 
 export default AssetDetail;
