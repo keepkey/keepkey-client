@@ -10,6 +10,7 @@ import type {
 } from './types';
 import { KeepKeySolanaWallet } from './solana-wallet-standard';
 import { registerSolanaWallet } from './solana-wallet-register';
+import { KeepKeyTronProvider } from './tron-provider';
 
 (function () {
   const VERSION = '2.1.0';
@@ -40,6 +41,51 @@ import { registerSolanaWallet } from './solana-wallet-register';
 
   // Set injection state
   kWindow.keepkeyInjectionState = injectionState;
+
+  // Read masking settings from the <script data-masking="{...}"> tag the
+  // content script stamped on before injection. Default to all-off (the
+  // honest mode — we identify as KeepKey and rely on EIP-6963 for EVM
+  // discovery). Any parse failure falls through to defaults so a bad
+  // storage write can never disable signing entirely.
+  interface Masking {
+    enableMetaMaskMasking: boolean;
+    enableXfiMasking: boolean;
+    enableKeplrMasking: boolean;
+  }
+  const masking: Masking = (() => {
+    const fallback: Masking = {
+      enableMetaMaskMasking: false,
+      enableXfiMasking: false,
+      enableKeplrMasking: false,
+    };
+    try {
+      // currentScript works during script execution; the getElementById
+      // path is a fallback in case we're running from a re-injection or
+      // the script tag was swapped before we got to it.
+      const cs = (document as any).currentScript as HTMLScriptElement | null;
+      const byId = document.getElementById('keepkey-injected-script') as HTMLScriptElement | null;
+      const el = cs?.dataset?.masking ? cs : byId;
+      const raw = el?.dataset.masking;
+      if (!raw) return fallback;
+      const parsed = JSON.parse(raw);
+      return {
+        enableMetaMaskMasking: parsed.enableMetaMaskMasking === true,
+        enableXfiMasking: parsed.enableXfiMasking === true,
+        enableKeplrMasking: parsed.enableKeplrMasking === true,
+      };
+    } catch {
+      return fallback;
+    }
+  })();
+
+  // Single diagnostic so the page console always shows the masking
+  // state KeepKey was injected with — makes "why isn't Stripe seeing
+  // us?" debuggable without toggling verbose logs elsewhere.
+  console.log(
+    `[KeepKey] masking: metamask=${masking.enableMetaMaskMasking ? 'on' : 'off'} ` +
+      `xfi=${masking.enableXfiMasking ? 'on' : 'off'} ` +
+      `keplr=${masking.enableKeplrMasking ? 'on' : 'off'}`,
+  );
 
   // Enhanced source information
   const SOURCE_INFO = {
@@ -281,7 +327,11 @@ import { registerSolanaWallet } from './solana-wallet-register';
     const wallet: WalletProvider = {
       network: 'mainnet',
       isKeepKey: true,
-      isMetaMask: true,
+      // Only claim to be MetaMask when the user explicitly opts in via
+      // Settings → Masking. Stripe and other legacy dApps gate on this
+      // flag; claiming it by default would misrepresent the wallet and
+      // shadow EIP-6963 discovery on dApps that prefer MetaMask.
+      isMetaMask: masking.enableMetaMaskMasking,
       isConnected: () => isContentScriptReady,
 
       request: ({ method, params = [] }) => {
@@ -407,20 +457,50 @@ import { registerSolanaWallet } from './solana-wallet-register';
     return wallet;
   }
 
-  // EIP-6963 Provider Announcement
+  const KEEPKEY_ICON =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAIKADAAQAAAABAAAAIAAAAACshmLzAAADUklEQVRYCb1XTUgUYRie3bXEWhVLQaUsgwVLoUtEQjUJiZX0A0GX7BIZXurkOTSvdo2kvETHAsOshFgqOqhlRD9C7SGS1JTCsj1krU7PM+w7zMzOzuzMqi88+73v9z7vz3zzzTeziuIgmqbFgG5gBPguFOgq4CXLIMwCo0AXEJN4zxHkEuA6kAIMkUBMqMZk7so/UG8AUcnjOIKwFXgHZIgEwKFmOHOfYO4aySVjmAoc7O4R0EB7lYS5h9K1jBJ6A7CuAfXG7OopbKLXkh4dccNZ7jlsi0gAJlWLI5jBPWFsTK5AGxCRImswFqDGWanDBo6IsYbjUanFbmrFWIHxD3IsmfJsgB4y2aJuF4UrUC5GnuNtxJeEQqEoAb3LJV+F4ctlHwkZXDULv8fEKQCHB4+rCJ9ngKcIGUTVRubT027y8yR9bOM4mhKTTwNJZD4miaDXAG8dqzlMShw3YRCZRVAr7vU4g5F/D4ZBoJK2H+Em9CsfEdBoKn4K9jPAd3G9sMPqZEzpRPzAwRfWJpN9EfZSRkAOE5LD7wrw8dkpwRh55VMm27fqt4FiVBjGBTaxEm4Db8d+4BPtIOK3AdbYCPC1qh/haGIS9gHgDeBbgjTAIkXAfTRxkgaamMNwCHgB+BMk4Decq0hGkFQbka/WMyZ/EeyHNo6TuSwx3Nn8gHQVIYOkOhB5Gp4zcdbBHiDvZ2pRuzozru2euKuDOucg/KliTAjKKMa9ksBpxBLrbzRwVfifOnB4RR2g3QSH3Cfx5FRdc2KoGstroUeQKh47vnAwWvUKjsPcA/wWdBUkjRAgZdsznO8D5xLGC/Opxc3NiQeV9uIsgkNDaUoMFpNDLleAn0cTQNBjGaFW6fn2Wrky/dI6abPOl9eN9deoWhjLloCv3+bPy7w3/9kzfvjX120g1cuSdsJ47xm1CgS9AaxCErlbV6qJ22W1nq22lG75AtIHWQEeJpOYaAT6gBQQWC5XNCjc7dkkHFKWe6v3FcLfbzRAMlcC6IC6C+gGxgCectZnCRMuopVG1v+Nx04sYINlxLH4wI6W52UFhT+Q41b2Nl0qeLnwZPGQucNHrXN6ZDG94RQuO688XbwNFzvjlSuwH03wEW8H+Bf/dxrUOWdc+H8mKXtEpGpY3AAAAABJRU5ErkJggg==';
+
+  // Simple MetaMask-fox-flavored icon (orange square). The real fox
+  // PNG would be ~15KB base64 and not worth the bundle bloat — dApps
+  // doing EIP-6963 detection match on rdns, not pixel-compare icons.
+  const METAMASK_ICON =
+    'data:image/svg+xml;utf8,' +
+    encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="4" fill="#F6851B"/><text x="16" y="21" font-family="Arial,sans-serif" font-weight="bold" font-size="14" fill="#fff" text-anchor="middle">MM</text></svg>',
+    );
+
+  // EIP-6963 Provider Announcement. When MetaMask masking is ON we
+  // *also* announce with MetaMask's canonical rdns so SDKs that key off
+  // `rdns: 'io.metamask'` (MetaMask SDK itself, Dynamic.xyz's
+  // MetaMaskConnector, RainbowKit's MetaMask connector, etc.) see us as
+  // MetaMask — the `isMetaMask: true` flag alone isn't enough for these,
+  // they use EIP-6963 discovery. This is the same trick Rabby uses.
   function announceProvider(ethereumProvider: WalletProvider) {
-    const info: ProviderInfo = {
+    const keepkeyInfo: ProviderInfo = {
       uuid: '350670db-19fa-4704-a166-e52e178b59d4',
       name: 'KeepKey',
-      icon: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAIKADAAQAAAABAAAAIAAAAACshmLzAAADUklEQVRYCb1XTUgUYRie3bXEWhVLQaUsgwVLoUtEQjUJiZX0A0GX7BIZXurkOTSvdo2kvETHAsOshFgqOqhlRD9C7SGS1JTCsj1krU7PM+w7zMzOzuzMqi88+73v9z7vz3zzzTeziuIgmqbFgG5gBPguFOgq4CXLIMwCo0AXEJN4zxHkEuA6kAIMkUBMqMZk7so/UG8AUcnjOIKwFXgHZIgEwKFmOHOfYO4aySVjmAoc7O4R0EB7lYS5h9K1jBJ6A7CuAfXG7OopbKLXkh4dccNZ7jlsi0gAJlWLI5jBPWFsTK5AGxCRImswFqDGWanDBo6IsYbjUanFbmrFWIHxD3IsmfJsgB4y2aJuF4UrUC5GnuNtxJeEQqEoAb3LJV+F4ctlHwkZXDULv8fEKQCHB4+rCJ9ngKcIGUTVRubT027y8yR9bOM4mhKTTwNJZD4miaDXAG8dqzlMShw3YRCZRVAr7vU4g5F/D4ZBoJK2H+Em9CsfEdBoKn4K9jPAd3G9sMPqZEzpRPzAwRfWJpN9EfZSRkAOE5LD7wrw8dkpwRh55VMm27fqt4FiVBjGBTaxEm4Db8d+4BPtIOK3AdbYCPC1qh/haGIS9gHgDeBbgjTAIkXAfTRxkgaamMNwCHgB+BMk4Decq0hGkFQbka/WMyZ/EeyHNo6TuSwx3Nn8gHQVIYOkOhB5Gp4zcdbBHiDvZ2pRuzozru2euKuDOucg/KliTAjKKMa9ksBpxBLrbzRwVfifOnB4RR2g3QSH3Cfx5FRdc2KoGstroUeQKh47vnAwWvUKjsPcA/wWdBUkjRAgZdsznO8D5xLGC/Opxc3NiQeV9uIsgkNDaUoMFpNDLleAn0cTQNBjGaFW6fn2Wrky/dI6abPOl9eN9deoWhjLloCv3+bPy7w3/9kzfvjX120g1cuSdsJ47xm1CgS9AaxCErlbV6qJ02W1nq22lG75AtIHWQEeJpOYaAT6gBQQWC5XNCjc7dkkHFKWe6v3FcLfbzRAMlcC6IC6C+gGxgCectZnCRMuopVG1v+Nx04sYINlxLH4wI6W52UFhT+Q41b2Nl0qeLnwZPGQucNHrXN6ZDG94RQuO688XbwNFzvjlSuwH03wEW8H+Bf/dxrUOWdc+H8mKXtEpGpY3AAAAABJRU5ErkJggg==',
+      icon: KEEPKEY_ICON,
       rdns: 'com.keepkey.client',
     };
+    window.dispatchEvent(
+      new CustomEvent('eip6963:announceProvider', {
+        detail: Object.freeze({ info: keepkeyInfo, provider: ethereumProvider }),
+      }),
+    );
 
-    const announceEvent = new CustomEvent('eip6963:announceProvider', {
-      detail: Object.freeze({ info, provider: ethereumProvider }),
-    });
-
-    window.dispatchEvent(announceEvent);
+    if (masking.enableMetaMaskMasking) {
+      const metaMaskInfo: ProviderInfo = {
+        uuid: '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d',
+        name: 'MetaMask',
+        icon: METAMASK_ICON,
+        rdns: 'io.metamask',
+      };
+      window.dispatchEvent(
+        new CustomEvent('eip6963:announceProvider', {
+          detail: Object.freeze({ info: metaMaskInfo, provider: ethereumProvider }),
+        }),
+      );
+    }
   }
 
   // Mount wallet with proper state management
@@ -464,9 +544,10 @@ import { registerSolanaWallet } from './solana-wallet-register';
     //
     // Policy:
     //   - `window.keepkey`  → always mount (our own namespace, no collision risk)
-    //   - `window.ethereum` → only mount if nothing is there; otherwise rely
-    //                          on EIP-6963 announceProvider for discovery
-    //   - `window.xfi`      → only mount if nothing is there (XDEFI's namespace)
+    //   - `window.ethereum` → only when MetaMask masking is ON, and only if
+    //                          nothing is there; EIP-6963 covers the default case
+    //   - `window.xfi`      → only when XFI masking is ON, and only if nothing
+    //                          else already owns the namespace (XDEFI / Ctrl)
     const mountProvider = (name: string, provider: any, { force = false } = {}) => {
       const existing = (kWindow as any)[name];
       if (existing && !force) {
@@ -486,9 +567,15 @@ import { registerSolanaWallet } from './solana-wallet-register';
 
     // Mount providers — `keepkey` is forced because it's our own namespace
     // and previous page-load state (e.g. from a stale injection) should not
-    // block us from rebinding to the current request pipeline.
-    mountProvider('ethereum', ethereum);
-    mountProvider('xfi', xfi);
+    // block us from rebinding to the current request pipeline. `ethereum`
+    // and `xfi` are gated on explicit user opt-in via the Masking toggles;
+    // without those flags we stay out of those globals entirely.
+    if (masking.enableMetaMaskMasking) {
+      mountProvider('ethereum', ethereum);
+    }
+    if (masking.enableXfiMasking) {
+      mountProvider('xfi', xfi);
+    }
     mountProvider('keepkey', keepkey, { force: true });
 
     // CRITICAL: Set up EIP-6963 listener BEFORE announcing
@@ -512,6 +599,31 @@ import { registerSolanaWallet } from './solana-wallet-register';
       registerSolanaWallet(solanaWallet);
     } catch (_e) {
       // swallow; Solana registration is best-effort
+    }
+
+    // TronLink / TronWeb shim — mount only if nothing claims those
+    // globals yet. Tron dApps expect `window.tronWeb.defaultAddress.base58`
+    // to be populated after `tronLink.request({method:'tron_requestAccounts'})`
+    // resolves, so the provider is responsible for its own internal
+    // connect state.
+    try {
+      const tronProvider = new KeepKeyTronProvider(walletRequest);
+      if (!(kWindow as any).tronLink) {
+        Object.defineProperty(kWindow, 'tronLink', {
+          value: tronProvider.tronLink,
+          writable: false,
+          configurable: true,
+        });
+      }
+      if (!(kWindow as any).tronWeb) {
+        Object.defineProperty(kWindow, 'tronWeb', {
+          value: tronProvider.tronWeb,
+          writable: false,
+          configurable: true,
+        });
+      }
+    } catch (_e) {
+      // swallow; Tron registration is best-effort
     }
 
     // Handle chain changes and other events

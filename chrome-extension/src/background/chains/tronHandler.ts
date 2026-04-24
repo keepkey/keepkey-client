@@ -317,7 +317,11 @@ async function buildTrc20Transfer(
  * The vault's handler emulates emuWrap for the device, so this call may block
  * until the user confirms on the KeepKey.
  */
-async function signTronViaRest(rawDataHex: string, toAddress: string, amountRaw: string | number): Promise<string> {
+async function signTronViaRest(
+  rawDataHex: string,
+  toAddress: string,
+  amountRaw: string | number | bigint,
+): Promise<string> {
   const apiKey = getApiKey();
   let resp: Response;
   try {
@@ -331,10 +335,12 @@ async function signTronViaRest(rawDataHex: string, toAddress: string, amountRaw:
         addressNList: TRON_ADDRESS_N,
         raw_tx: rawDataHex,
         to_address: toAddress,
-        // Keep as-is — TRC-20 amounts can exceed Number.MAX_SAFE_INTEGER
-        // for 18-decimal tokens. Caller passes a decimal string; passing
-        // a number would overflow silently at ~2^53 base units.
-        amount: String(amountRaw),
+        // Stringify without going through Number — 18-decimal TRC-20
+        // amounts exceed Number.MAX_SAFE_INTEGER in base units and
+        // would silently round before hitting the vault. Handle bigint
+        // explicitly since String(bigint) works but the intent is
+        // clearer and future-proofed.
+        amount: typeof amountRaw === 'bigint' ? amountRaw.toString() : String(amountRaw),
       }),
       signal: AbortSignal.timeout(60000),
     });
@@ -356,6 +362,152 @@ async function signTronViaRest(rawDataHex: string, toAddress: string, amountRaw:
     throw createProviderRpcError(-32603, 'Vault returned no Tron signature');
   }
   return signature;
+}
+
+/**
+ * Convert a Tron hex address (e.g. `41xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`)
+ * to its base58 form (T...). Uses SHA-256 double-hash for the checksum,
+ * via WebCrypto (available in service workers).
+ *
+ * Only used from the tron_sign path when the tx was built without
+ * `visible: true` and comes through with hex addresses — we normalise to
+ * base58 for the approval UI and vault signing hint.
+ */
+async function hexAddressToBase58(hexAddr: string): Promise<string> {
+  const hex = hexAddr.toLowerCase().replace(/^0x/, '');
+  if (hex.length !== 42 || !hex.startsWith('41')) {
+    throw new Error(`Invalid Tron hex address: ${hexAddr}`);
+  }
+  const payload = Uint8Array.from(hex.match(/.{2}/g)!.map(b => parseInt(b, 16)));
+  const h1 = new Uint8Array(await crypto.subtle.digest('SHA-256', payload));
+  const h2 = new Uint8Array(await crypto.subtle.digest('SHA-256', h1));
+  const checksum = h2.slice(0, 4);
+  const full = new Uint8Array(payload.length + 4);
+  full.set(payload, 0);
+  full.set(checksum, payload.length);
+
+  const ALPHA = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+  const digits: number[] = [0];
+  for (const byte of full) {
+    let carry = byte;
+    for (let j = 0; j < digits.length; j++) {
+      carry += digits[j] << 8;
+      digits[j] = carry % 58;
+      carry = (carry / 58) | 0;
+    }
+    while (carry > 0) {
+      digits.push(carry % 58);
+      carry = (carry / 58) | 0;
+    }
+  }
+  // Leading zero bytes → leading '1's.
+  let out = '';
+  for (const b of full) {
+    if (b !== 0) break;
+    out += '1';
+  }
+  for (let i = digits.length - 1; i >= 0; i--) out += ALPHA[digits[i]];
+  return out;
+}
+
+interface DecodedTronTx {
+  kind: 'trx-transfer' | 'trc20-transfer' | 'contract-call';
+  ownerAddress: string; // base58
+  toAddress: string; // base58 — recipient for transfers, contract address for generic calls
+  // Raw base-units as a DECIMAL STRING so 18-decimal TRC-20 amounts
+  // survive the trip to the vault. Going through Number would truncate
+  // at ~2^53 base units (9e15 — fine for 6-decimal TRX/USDT, broken
+  // for 18-decimal tokens).
+  amountRaw: string;
+  displayAmount: string; // human-readable
+  contractAddress?: string; // base58, non-native
+  functionSelector?: string; // hex, contract-call only
+}
+
+/**
+ * Decode the first contract from a tronweb-built transaction into the
+ * fields we need for approval UX and the vault signing hint.
+ *
+ * Supports:
+ *   - TransferContract (native TRX)
+ *   - TriggerSmartContract with `transfer(address,uint256)` (TRC20)
+ *
+ * Throws on any other contract type so dApps fail fast with a clear
+ * message instead of the device rejecting an un-parseable tx.
+ */
+async function decodeTronTx(tx: any): Promise<DecodedTronTx> {
+  const contract = tx?.raw_data?.contract?.[0];
+  if (!contract) throw createProviderRpcError(4000, 'Transaction has no contract');
+
+  const value = contract.parameter?.value;
+  if (!value) throw createProviderRpcError(4000, 'Contract has no parameter value');
+
+  const visible = tx.visible === true;
+  const normalizeAddr = async (addr: string): Promise<string> => {
+    if (!addr) throw createProviderRpcError(4000, 'Missing address');
+    if (addr.startsWith('T') && addr.length === 34) return addr;
+    if (visible) return addr;
+    return hexAddressToBase58(addr);
+  };
+
+  if (contract.type === 'TransferContract') {
+    const v = value as { amount: number; owner_address: string; to_address: string };
+    return {
+      kind: 'trx-transfer',
+      ownerAddress: await normalizeAddr(v.owner_address),
+      toAddress: await normalizeAddr(v.to_address),
+      amountRaw: String(v.amount),
+      displayAmount: String(v.amount / 1_000_000),
+    };
+  }
+
+  if (contract.type === 'TriggerSmartContract') {
+    const v = value as { contract_address: string; owner_address: string; data: string; call_value?: number };
+    const data = String(v.data || '')
+      .toLowerCase()
+      .replace(/^0x/, '');
+    const selector = data.slice(0, 8);
+    const contractAddress = await normalizeAddr(v.contract_address);
+    const ownerAddress = await normalizeAddr(v.owner_address);
+
+    // transfer(address,uint256) — the canonical TRC20 transfer path.
+    // Decode to show the real recipient + token amount in the approval
+    // UI; this is by far the most common smart-contract call on Tron.
+    if (selector === 'a9059cbb' && data.length >= 8 + 64 * 2) {
+      const recipientHex = data.slice(8 + 24, 8 + 64);
+      const amountHex = data.slice(8 + 64, 8 + 64 * 2);
+      const amount = BigInt('0x' + amountHex);
+      // Tron hex addresses are prefixed with 0x41. ABI `address` pads to
+      // 20 bytes (no prefix), so re-prepend before base58-encoding.
+      const recipientBase58 = await hexAddressToBase58('41' + recipientHex);
+      return {
+        kind: 'trc20-transfer',
+        ownerAddress,
+        toAddress: recipientBase58,
+        amountRaw: amount.toString(),
+        displayAmount: amount.toString(),
+        contractAddress,
+      };
+    }
+
+    // Generic contract call (swaps, stake, approve, etc.). The firmware
+    // parses the raw_data itself and signs based on what it finds; our
+    // hints here are purely for the side-panel approval UI. Route
+    // `call_value` (TRX attached to the call) to amountRaw so swaps
+    // that spend native TRX display the right outgoing amount.
+    const callValue = typeof v.call_value === 'number' ? v.call_value : 0;
+    return {
+      kind: 'contract-call',
+      ownerAddress,
+      toAddress: contractAddress,
+      amountRaw: String(callValue),
+      displayAmount: String(callValue / 1_000_000),
+      contractAddress,
+      functionSelector: selector,
+    };
+  }
+
+  throw createProviderRpcError(4200, `Tron contract type "${contract.type}" is not supported by KeepKey yet.`);
 }
 
 /** Broadcast a signed Tron tx via TronGrid. Returns the txid. */
@@ -400,6 +552,7 @@ export const handleTronRequest = async (
 
   switch (method) {
     case 'request_accounts':
+    case 'tron_requestAccounts':
     case 'tron_connect':
     case 'tron_getAccount': {
       return await getTronAddress();
@@ -407,6 +560,147 @@ export const handleTronRequest = async (
 
     case 'request_pubkeys': {
       return wallet.getPubkeys(TRON_NETWORK_ID);
+    }
+
+    // dApp flow (window.tronWeb.trx.sign). Payload: params[0] is a full
+    // transaction built by tronweb — { txID, raw_data, raw_data_hex, ... }.
+    // We parse the first contract to extract display hints (to_address,
+    // amount) the vault / firmware need, run the approval loop, then
+    // return the signed tx for the dApp to broadcast itself.
+    case 'tron_sign':
+    case 'signTransaction': {
+      const tx = params?.[0];
+      if (!tx || typeof tx !== 'object' || !tx.raw_data_hex) {
+        throw createProviderRpcError(4000, 'tron_sign expects a built transaction with raw_data_hex');
+      }
+
+      const decoded = await decodeTronTx(tx);
+      const sender = await getTronAddress();
+
+      if (decoded.ownerAddress && decoded.ownerAddress !== sender) {
+        // dApps occasionally hard-code an owner address from a cached
+        // session; surface the mismatch so the dApp can recover rather
+        // than letting the device reject it silently.
+        throw createProviderRpcError(
+          4001,
+          `Transaction owner (${decoded.ownerAddress}) does not match connected KeepKey address (${sender}).`,
+        );
+      }
+
+      if (!requestInfo.id) requestInfo.id = uuidv4();
+      // Always emit type='transfer'. The shared "other" approval
+      // renderer (pages/side-panel/src/approval/other/*) only has a
+      // cased handler for 'transfer' + reads `unsignedTx.payment.*` —
+      // anything else shows "Unknown Method" / N/A. Downstream code
+      // that cares about kind can still branch on `contractAddress` /
+      // `functionSelector` on the event.
+      //
+      // decimals: native TRX is 6 (sun); TRC-20 transfer()s use the
+      // displayAmount's decimals which we don't know from raw_data
+      // alone — default to 0 so the UI shows raw base units, which is
+      // at least correct, not misleading. Contract-call rows attach
+      // call_value (TRX, 6 decimals). Callers that want prettier
+      // token display should teach decodeTronTx to look up decimals
+      // from assetData or an on-chain call — not a fix for this PR.
+      const decimals = decoded.kind === 'trc20-transfer' ? 0 : 6;
+      // For TRC-20 events, scope the caip to the specific token
+      // contract so the UI's ctx.caip-match gate only fires when the
+      // side-panel had THIS token selected. Otherwise a dApp USDT
+      // transfer with the user on the TRX asset page would match
+      // (both sides = tron:27Lqcw/slip44:195) and render with the TRX
+      // symbol/icon — the exact leak #48's gate was meant to block.
+      //
+      // Native TRX and generic contract-call stay on TRON_CAIP:
+      // trx-transfer is native TRX so matching the TRX context is
+      // correct; contract-call renders its own Contract/Function UI
+      // with a hardcoded 'TRX' fallback on the call_value row, so a
+      // partial caip-match can't leak the wrong symbol into anything
+      // user-facing.
+      const eventCaip =
+        decoded.kind === 'trc20-transfer' && decoded.contractAddress
+          ? `${TRON_NETWORK_ID}/token:${decoded.contractAddress}`
+          : TRON_CAIP;
+      const event = buildEvent(requestInfo, 'transfer', params, {
+        caip: eventCaip,
+        from: sender,
+        to: decoded.toAddress,
+        amount: decoded.displayAmount,
+        // String, not number — preserves precision for 18-decimal TRC-20.
+        amountRaw: decoded.amountRaw,
+        decimals,
+        kind: decoded.kind, // 'trx-transfer' | 'trc20-transfer' | 'contract-call' for downstream branches
+        contractAddress: decoded.contractAddress,
+        functionSelector: decoded.functionSelector,
+        tronGridTx: tx,
+        rawDataHex: tx.raw_data_hex,
+        // Shape the "other" approval UI reads. `amount` stays as a raw
+        // base-units decimal string — formatAmount in the UI does the
+        // BigInt-safe division by `decimals`.
+        //
+        // symbol:
+        //   trx-transfer / contract-call → 'TRX' (call_value on a
+        //     contract call is always native TRX; stating it
+        //     explicitly in the handler lets the UI render the amount
+        //     row without falling through to asset-context guesswork)
+        //   trc20-transfer               → undefined (we don't know
+        //     the token's symbol without an on-chain `symbol()` call
+        //     or an assetData lookup — both are out of scope here;
+        //     the UI's caip-match gate on asset context will decline
+        //     to show a wrong symbol)
+        payment: {
+          destination: decoded.toAddress,
+          amount: decoded.amountRaw,
+          decimals,
+          symbol: decoded.kind === 'trc20-transfer' ? undefined : 'TRX',
+        },
+      });
+      // @ts-expect-error addEvent is untyped on the storage wrapper
+      const saved = await requestStorage.addEvent(event);
+      if (!saved) throw createProviderRpcError(-32603, 'Failed to create approval event');
+      chrome.runtime.sendMessage({ action: 'TRANSACTION_CONTEXT_UPDATED', id: event.id }).catch(() => {});
+
+      const approval = await requireApproval(TRON_NETWORK_ID, requestInfo, 'tron', method, params);
+      if (!approval?.success) {
+        throw createProviderRpcError(4001, 'User denied transaction');
+      }
+
+      const signatureHex = await signTronViaRest(tx.raw_data_hex, decoded.toAddress, decoded.amountRaw);
+
+      // Preserve any existing `signature` array from the dApp (multi-sig
+      // case) and append ours; most dApps pass in an unsigned tx so this
+      // ends up [ours].
+      const existing: string[] = Array.isArray(tx.signature) ? tx.signature : [];
+      const signedTx = { ...tx, signature: [...existing, signatureHex] };
+
+      // Persist signedTx on the event for debugging/history. Broadcast is
+      // the dApp's job — they'll call tronWeb.trx.sendRawTransaction next.
+      try {
+        const stored = await requestStorage.getEventById(requestInfo.id);
+        if (stored) {
+          stored.signedTx = signedTx;
+          stored.status = 'completed';
+          await requestStorage.updateEventById(requestInfo.id, stored);
+        }
+      } catch (e) {
+        console.warn(tag, 'Failed to persist signedTx:', e);
+      }
+
+      // Dismiss the side-panel approval overlay. We don't emit
+      // `transaction_complete` (that's for flows where we also broadcast
+      // and have a txHash) — for dApp signing the broadcast happens
+      // client-side and the dApp's own UI confirms success.
+      chrome.runtime.sendMessage({ action: 'signature_complete', eventId: requestInfo.id }).catch(() => {});
+
+      return signedTx;
+    }
+
+    case 'tron_signMessage':
+    case 'signMessage':
+    case 'signMessageV2': {
+      throw createProviderRpcError(
+        4200,
+        'Tron message signing is not yet supported by KeepKey. Use transaction signing instead.',
+      );
     }
 
     // Side-panel Send flow. Payload:

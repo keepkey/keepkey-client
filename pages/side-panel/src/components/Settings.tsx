@@ -198,6 +198,12 @@ const Settings = () => {
           </HStack>
           <Switch size="md" isChecked={maskingSettings.enableMetaMaskMasking} onChange={toggleMetaMaskMasking} />
         </HStack>
+        <Text fontSize="xs" color="gray.500" mt={-2} mb={2}>
+          When on, KeepKey claims to be MetaMask on legacy dApps (Stripe, older sites) by mounting
+          <code> window.ethereum </code>
+          with <code>isMetaMask: true</code>. Modern dApps still see KeepKey via EIP-6963. Refresh any open dApp after
+          toggling.
+        </Text>
 
         {/* Xfi Masking - Coming Soon */}
         <Box position="relative" w="100%">
