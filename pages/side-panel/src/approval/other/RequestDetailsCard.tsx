@@ -64,7 +64,9 @@ export default function RequestDetailsCard({ transaction }: any) {
   // then asset context, then 6 (matches XRP drops + TRX sun — the two
   // chains this renderer has historically served). Symbol follows the
   // same cascade.
-  const payment = transaction?.unsignedTx?.payment;
+  const unsignedTx = transaction?.unsignedTx;
+  const payment = unsignedTx?.payment;
+  const kind: string | undefined = unsignedTx?.kind;
   const decimals: number =
     typeof payment?.decimals === 'number'
       ? payment.decimals
@@ -72,6 +74,59 @@ export default function RequestDetailsCard({ transaction }: any) {
         ? assetContext.assets.decimals
         : 6;
   const symbol: string = payment?.symbol || assetContext?.assets?.symbol || '';
+
+  // Contract-call rendering diverges — "To" should show the contract
+  // and the user should see the raw function selector rather than an
+  // amount field that can't be meaningfully formatted without knowing
+  // the target contract's ABI. We only reach this branch for Tron dApp
+  // sign events today (kind='contract-call'); native TRX + TRC-20
+  // transfer() flows still go through the normal path below.
+  if (kind === 'contract-call') {
+    const callValue = payment?.amount;
+    const hasCallValue = callValue != null && String(callValue) !== '0';
+    return (
+      <div>
+        <Flex direction="column" mb={4}>
+          {assetContext && (
+            <Flex justify="center" mb={4}>
+              <Avatar size="md" src={assetContext?.assets?.icon} alt="Asset Icon" />
+            </Flex>
+          )}
+          <Box mb={2}>
+            <Table variant="simple" size="sm">
+              <Tbody>
+                <Tr>
+                  <Td>
+                    <Badge>Contract:</Badge>
+                  </Td>
+                  <Td wordBreak="break-all">{unsignedTx?.contractAddress || 'N/A'}</Td>
+                </Tr>
+                <Tr>
+                  <Td>
+                    <Badge>Function:</Badge>
+                  </Td>
+                  <Td>{unsignedTx?.functionSelector ? `0x${unsignedTx.functionSelector}` : 'N/A'}</Td>
+                </Tr>
+                {/* call_value — TRX attached to the invocation. Usually
+                    0 for TRC-20, non-zero for swaps spending native. */}
+                {hasCallValue && (
+                  <Tr>
+                    <Td>
+                      <Badge>TRX sent:</Badge>
+                    </Td>
+                    <Td>
+                      {formatAmount(callValue, decimals)} {symbol || 'TRX'}
+                    </Td>
+                  </Tr>
+                )}
+              </Tbody>
+            </Table>
+          </Box>
+          <Divider my={2} />
+        </Flex>
+      </div>
+    );
+  }
 
   return (
     <div>
