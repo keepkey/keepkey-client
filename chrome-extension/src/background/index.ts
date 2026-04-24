@@ -237,86 +237,52 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
       console.log(`[fetchBalances] Sending ${pioneerPubkeys.length} pubkeys to Pioneer API`);
       console.log(`[fetchBalances] Sample pubkeys:`, pioneerPubkeys.slice(0, 3));
 
-      // Two Pioneer endpoints, chosen per chain:
-      //   /charts/portfolio — EVM + UTXO + Cosmos + TON + TRON (when authenticated
-      //                       via ?key=key:public-*). Returns natives + tokens +
-      //                       priceUsd + valueUsd in one call. Without the
-      //                       queryKey, Pioneer silently drops TON / TRON
-      //                       entries — which is what made dashboard balances
-      //                       appear with $0.00 USD. Returns EMPTY for Solana,
-      //                       so Solana pubkeys must go through /portfolio.
-      //   /portfolio        — Solana (same key-based auth). Returns natives +
-      //                       SPL tokens in one flat array.
+      // One call, one endpoint: /api/v1/portfolio (GetPortfolioBalances).
+      // Matches the vault's flow exactly — it's the only endpoint that
+      // runs Pioneer's token auto-discovery (ERC-20 via Unchained, SPL
+      // for Solana, TRC-20 for Tron). The older /charts/portfolio served
+      // natives from a pre-computed cache with Zapper-provided EVM tokens
+      // but dropped SPL/TRC-20 discovery; splitting traffic across both
+      // was the reason USDT-Tron showed $0 in the BEX while the vault
+      // dashboard had it. Slower per call (no pre-warm cache), but
+      // correctness > speed for balance display.
+
+      // Normalize Pioneer's response networkIds to the canonical form
+      // used throughout the codebase. Two distinct problems, same shape:
       //
-      // The queryKey just has to be a unique "key:public-*" string — Pioneer
-      // rate-limits by it but doesn't gate reads. Bumping on every fetch is
-      // fine; cached responses still serve fast.
-      const queryKey = `key:public-${Date.now()}`;
-      const chartsPortfolioUrl = `${PIONEER_API}/api/v1/charts/portfolio?key=${encodeURIComponent(queryKey)}`;
-
-      const solanaPubkeys = pioneerPubkeys.filter(p => p.caip.toLowerCase().startsWith('solana:'));
-      const generic = pioneerPubkeys.filter(p => !p.caip.toLowerCase().startsWith('solana:'));
-      const addressPubkeys = generic.filter(
-        p => !p.pubkey.startsWith('xpub') && !p.pubkey.startsWith('zpub') && !p.pubkey.startsWith('ypub'),
-      );
-      const xpubPubkeys = generic.filter(
-        p => p.pubkey.startsWith('xpub') || p.pubkey.startsWith('zpub') || p.pubkey.startsWith('ypub'),
-      );
-
-      const fetchBatch = async (batch: typeof pioneerPubkeys, label: string) => {
-        if (batch.length === 0) return { balances: [] as any[], tokens: [] as any[] };
-        try {
-          const response = await fetch(chartsPortfolioUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pubkeys: batch, forceRefresh }),
-          });
-          if (!response.ok) {
-            console.warn(`[fetchBalances] ${label} batch returned ${response.status}`);
-            return { balances: [] as any[], tokens: [] as any[] };
-          }
-          const json = await response.json();
-          const data = json?.data || {};
-          console.log(
-            `[fetchBalances] ${label} batch: ${data.balances?.length || 0} balances, ${data.tokens?.length || 0} tokens`,
-          );
-          // Surface TON / Tron entries so we can verify priceUsd + valueUsd
-          // are arriving from Pioneer (this was the reason they showed $0
-          // on the dashboard before the ?key query param was added).
-          const bals = Array.isArray(data.balances) ? data.balances : [];
-          for (const b of bals) {
-            const nid = (b?.networkId || '').toLowerCase();
-            if (nid === 'ton:-239' || nid.startsWith('tron:')) {
-              console.log(
-                `[fetchBalances][${label}] ${b.symbol} balance=${b.balance} price=${b.priceUsd} value=${b.valueUsd} caip=${b.caip}`,
-              );
-            }
-          }
-          return { balances: bals, tokens: data.tokens || [] };
-        } catch (e: any) {
-          console.warn(`[fetchBalances] ${label} batch error:`, e.message);
-          return { balances: [] as any[], tokens: [] as any[] };
-        }
+      //   1. CASING — Pioneer echoes mixed-case IDs (Solana, Tron) back
+      //      lowercased. Side-panel uses strict equality against
+      //      ChainToNetworkId, so lowercased entries get excluded.
+      //
+      //   2. TRON'S TWO IDS — Pioneer emits native TRX under the CAIP-2
+      //      genesis hash id `tron:27Lqcw`, but TRC-20 tokens under the
+      //      hex chain-id `tron:0x2b6653dc`. Both refer to Tron mainnet.
+      //      Without aliasing, USDT-TRON is a ghost — the row is present
+      //      in the balance cache but no Tron-filtered view ever finds it.
+      //
+      // Source rewrites (any of these lowercased or exact) → canonical:
+      const NETWORK_ID_ALIASES: Record<string, string> = {
+        'solana:5eykt4usfv8p8njdtrepy1vzqkqzkvdp': 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
+        'tron:27lqcw': 'tron:27Lqcw',
+        'tron:0x2b6653dc': 'tron:27Lqcw',
       };
-
-      // Pioneer echoes CAIP/networkId back in lowercase even when sent mixed-case.
-      // The side-panel asset list uses canonical mixed-case network IDs from
-      // ChainToNetworkId, so strict b.networkId === asset.networkId matches fail.
-      // Rewrite Solana entries back to canonical casing before returning.
-      const SOL_NETWORK_CANONICAL = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp';
-      const normalizeSolanaCasing = (entry: any) => {
+      const normalizeCasing = (entry: any) => {
         const caip = entry.caip || '';
         const netId = entry.networkId || '';
-        if (netId.toLowerCase() === SOL_NETWORK_CANONICAL.toLowerCase()) {
-          entry.networkId = SOL_NETWORK_CANONICAL;
-        }
-        if (caip.toLowerCase().startsWith(SOL_NETWORK_CANONICAL.toLowerCase() + '/')) {
-          entry.caip = SOL_NETWORK_CANONICAL + caip.slice(SOL_NETWORK_CANONICAL.length);
+        const canonical = NETWORK_ID_ALIASES[netId.toLowerCase()];
+        if (canonical) {
+          entry.networkId = canonical;
+          // Rewrite caip's network-id prefix too, keeping the path
+          // segment ("slip44:195", "token:TR7NHq...") intact.
+          const slashIdx = caip.indexOf('/');
+          if (slashIdx > 0) {
+            entry.caip = canonical + caip.slice(slashIdx);
+          }
         }
         return entry;
       };
 
-      const fetchSolanaBatch = async (batch: typeof pioneerPubkeys) => {
+      const fetchPortfolio = async (batch: typeof pioneerPubkeys) => {
         if (batch.length === 0) return { balances: [] as any[], tokens: [] as any[] };
         try {
           const url = `${PIONEER_API}/api/v1/portfolio${forceRefresh ? '?forceRefresh=true' : ''}`;
@@ -324,112 +290,48 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              // Pioneer requires a queryKey — any public key works for read-only lookups.
+              // Pioneer's api_key security reads the Authorization header
+              // verbatim (no Bearer prefix). Any unique `key:public-*`
+              // string works for anonymous reads; the timestamp is just
+              // a cache-busting nonce.
               Authorization: `key:public-${Date.now()}`,
             },
             body: JSON.stringify({ pubkeys: batch }),
           });
           if (!response.ok) {
-            console.warn(`[fetchBalances] solana batch returned ${response.status}`);
+            console.warn(`[fetchBalances] portfolio returned ${response.status}`);
             return { balances: [] as any[], tokens: [] as any[] };
           }
           const json = await response.json();
-          const allEntries: any[] = json?.balances || [];
+          // Unwrap: /portfolio returns { balances: [...] } at the top
+          // level; some deployments wrap in { data: { balances } } via
+          // middleware, so handle both.
+          const allEntries: any[] = json?.balances || json?.data?.balances || [];
           const natives: any[] = [];
           const tokens: any[] = [];
           for (const raw of allEntries) {
-            const entry = normalizeSolanaCasing({ ...raw });
+            const entry = normalizeCasing({ ...raw });
+            // Match vault's classification exactly: token if caip path
+            // is not slip44:/native:, or type === 'token', or explicit
+            // isNative===false + contract. Covers ERC-20 (erc20:),
+            // SPL (spl:/token:), TRC-20 (trc20:/token:) uniformly.
             const caipPath = (entry.caip || '').split('/')[1] || '';
-            const isToken = entry.type === 'token' || caipPath.startsWith('token:') || caipPath.startsWith('spl:');
-            if (isToken) tokens.push(entry);
+            const isTokenByCaip = caipPath && !caipPath.startsWith('slip44:') && !caipPath.startsWith('native:');
+            const isTokenByType = entry.type === 'token' || (entry.isNative === false && entry.contract);
+            if (isTokenByCaip || isTokenByType) tokens.push(entry);
             else natives.push(entry);
           }
-          console.log(`[fetchBalances] solana batch: ${natives.length} natives, ${tokens.length} tokens`);
+          console.log(`[fetchBalances] portfolio: ${natives.length} natives, ${tokens.length} tokens`);
           return { balances: natives, tokens };
         } catch (e: any) {
-          console.warn('[fetchBalances] solana batch error:', e.message);
+          console.warn('[fetchBalances] portfolio error:', e.message);
           return { balances: [] as any[], tokens: [] as any[] };
         }
       };
 
-      // TON + Tron happy path: authenticated /charts/portfolio returns
-      // them alongside everything else with full priceUsd + valueUsd.
-      // Partial-response safety net: Pioneer has been observed to
-      // silently omit TON / TRON rows (rate-limit edge cases,
-      // 0-balance pubkeys, upstream provider hiccups) even when the
-      // rest of the portfolio comes back fine. Without a fallback, a
-      // partial response would overwrite cachedBalances without those
-      // rows and the dashboard would flicker a chain off entirely. We
-      // call /api/v1/{ton,tron}/accountInfo targeted only at any
-      // TON/TRON pubkey absent from the portfolio response; price stays
-      // 0 on that fallback row — acceptable degradation vs losing the
-      // row completely.
-      const fetchAccountInfoFallback = async (
-        pk: { caip: string; pubkey: string },
-        chain: 'ton' | 'tron',
-      ): Promise<any | null> => {
-        try {
-          const url = `${PIONEER_API}/api/v1/${chain}/accountInfo/${encodeURIComponent(pk.pubkey)}`;
-          const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
-          if (!resp.ok) return null;
-          const json = await resp.json();
-          const bal = json?.data?.balance;
-          if (bal === undefined || bal === null) return null;
-          return {
-            networkId: chain === 'ton' ? 'ton:-239' : 'tron:27Lqcw',
-            caip: pk.caip,
-            symbol: chain === 'ton' ? 'TON' : 'TRX',
-            name: chain === 'ton' ? 'Ton' : 'Tron',
-            balance: String(bal),
-            valueUsd: '0',
-            priceUsd: '0',
-            icon: 'https://api.keepkey.info/coins/' + btoa(pk.caip).replace(/=+$/, '') + '.png',
-            isNative: true,
-            address: pk.pubkey,
-            _fallback: true,
-          };
-        } catch (e: any) {
-          console.warn(`[fetchBalances] ${chain} accountInfo fallback failed for ${pk.pubkey}:`, e.message);
-          return null;
-        }
-      };
-
-      const [addressResult, xpubResult, solanaResult] = await Promise.all([
-        fetchBatch(addressPubkeys, 'address'),
-        fetchBatch(xpubPubkeys, 'xpub'),
-        fetchSolanaBatch(solanaPubkeys),
-      ]);
-
-      const rawBalances: any[] = [...addressResult.balances, ...xpubResult.balances, ...solanaResult.balances];
-      const rawTokens: any[] = [...addressResult.tokens, ...xpubResult.tokens, ...solanaResult.tokens];
-
-      // Gap-patch any TON/TRON pubkey that the portfolio call silently
-      // dropped. Match by (networkId, pubkey/address) — lowercased both
-      // sides since Pioneer echoes lowercased networkIds.
-      const tonPubkeysForPatch = pioneerPubkeys.filter(p => p.caip.toLowerCase().startsWith('ton:'));
-      const tronPubkeysForPatch = pioneerPubkeys.filter(p => p.caip.toLowerCase().startsWith('tron:'));
-      if (tonPubkeysForPatch.length > 0 || tronPubkeysForPatch.length > 0) {
-        const covered = new Set<string>();
-        for (const b of rawBalances) {
-          const nid = (b?.networkId || '').toLowerCase();
-          if (nid === 'ton:-239' || nid.startsWith('tron:')) {
-            const addr = String(b.pubkey || b.address || '').toLowerCase();
-            if (addr) covered.add(`${nid}:${addr}`);
-          }
-        }
-        const missingTon = tonPubkeysForPatch.filter(p => !covered.has(`ton:-239:${p.pubkey.toLowerCase()}`));
-        const missingTron = tronPubkeysForPatch.filter(p => !covered.has(`tron:27lqcw:${p.pubkey.toLowerCase()}`));
-        if (missingTon.length > 0 || missingTron.length > 0) {
-          console.warn(
-            `[fetchBalances] /charts/portfolio partial: ${missingTon.length} TON + ${missingTron.length} TRON missing; patching from /accountInfo`,
-          );
-          const patches = await Promise.all([
-            ...missingTon.map(p => fetchAccountInfoFallback(p, 'ton')),
-            ...missingTron.map(p => fetchAccountInfoFallback(p, 'tron')),
-          ]);
-          for (const row of patches) if (row) rawBalances.push(row);
-        }
-      }
+      const portfolioResult = await fetchPortfolio(pioneerPubkeys);
+      const rawBalances: any[] = [...portfolioResult.balances];
+      const rawTokens: any[] = [...portfolioResult.tokens];
 
       if (rawBalances.length === 0 && rawTokens.length === 0) {
         console.warn('[fetchBalances] Pioneer returned 0 balances for', pioneerPubkeys.length, 'pubkeys');
@@ -455,33 +357,31 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
         };
       });
 
-      // Add token balances (ERC-20s etc.)
-      // /charts/portfolio returns tokens in nested format:
-      //   { assetCaip, networkId, pubkey, token: { symbol, name, balance, price, balanceUSD, icon, decimal } }
-      // OR flat format from /charts: { caip, symbol, balance, ... }
+      // Add token balances. /portfolio returns tokens in flat format
+      // alongside natives (ERC-20, SPL, TRC-20 all classified already).
       for (const t of rawTokens) {
-        const isNested = t.token && typeof t.token === 'object';
-        const tok = isNested ? t.token : t;
-        const caip = t.assetCaip || t.caip || '';
+        const caip = t.caip || '';
         const networkId = t.networkId || caip.split('/')[0] || '';
-        const contractMatch = caip.match(/\/erc20:(0x[a-fA-F0-9]+)/);
+        // Pioneer's token caips vary by chain: erc20 (EVM), spl+token
+        // (Solana), token+trc20 (Tron). Match all so `contractAddress`
+        // is populated uniformly; fall back to `t.contract` which
+        // Pioneer also emits for TRC-20 / SPL discovery rows.
+        const contractMatch = caip.match(/\/(?:erc20|spl|trc20|token):([^\s]+)/);
         balances.push({
           networkId,
           caip,
-          symbol: tok.symbol || tok.ticker || '',
-          name: tok.name || tok.symbol || '',
-          balance: String(tok.balance ?? '0'),
-          valueUsd: String(isNested ? (tok.balanceUSD ?? '0') : (tok.valueUsd ?? '0')),
-          priceUsd: String(isNested ? (tok.price ?? '0') : (tok.priceUsd ?? '0')),
+          symbol: t.symbol || t.ticker || '',
+          name: t.name || t.symbol || '',
+          balance: String(t.balance ?? '0'),
+          valueUsd: String(t.valueUsd ?? '0'),
+          priceUsd: String(t.priceUsd ?? '0'),
           icon:
-            tok.icon ||
-            tok.image ||
-            (caip ? `https://api.keepkey.info/coins/${btoa(caip).replace(/=+$/, '')}.png` : ''),
-          decimals: tok.decimal || tok.decimals,
+            t.icon || t.image || (caip ? `https://api.keepkey.info/coins/${btoa(caip).replace(/=+$/, '')}.png` : ''),
+          decimals: t.decimals ?? t.decimal,
           isNative: false,
           token: true,
           address: t.pubkey || t.address || '',
-          contractAddress: contractMatch ? contractMatch[1] : tok.contractAddress || tok.contract || '',
+          contractAddress: contractMatch ? contractMatch[1] : t.contract || t.contractAddress || '',
         });
       }
 
