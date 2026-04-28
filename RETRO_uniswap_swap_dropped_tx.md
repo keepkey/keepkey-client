@@ -1,6 +1,10 @@
 # Retro — Uniswap swap signs OK, broadcasts, then drops from mempool
 
-**Status:** 🔴 Swap UX still broken end-to-end. BEX-side fee/nonce work landed (`1ad6eb1` on develop) but is not sufficient — the post-broadcast failure mode is upstream of anything we control in the BEX.
+> **⚠ SUPERSEDED — root cause was misdiagnosed in this doc.** The actual bug is in EIP-1559 type-2 signing inside `keepkey-vault-sdk` / firmware: the signed envelope's signature does not recover to the device's address. The mempool drops the tx because the recovered "from" account has no balance. That's why etherscan showed wrong "from" addresses — not because of a Blink Protect relayer story I hallucinated.
+>
+> Read `RETRO_evm_tx_1559_signing_chain.md` and `HANDOFF_evm_tx_1559_signing_chain.md` instead. The fee-warning / drop-check / passthrough fixes captured below are still real cleanups, but they do not fix the swap UX — that requires fixing the upstream signing-chain bug.
+
+**Status:** 🟡 Cleanups landed; root cause was wrong; see superseding retro.
 **Captured:** 2026-04-28
 **Branch in flight:** `docs/vault-eth-tx-tracker` (1 commit ahead of develop, docs only)
 **Bundle under test:** `dist/` rebuilt 2026-04-28 15:42 — contains all of develop's ETH fixes plus the `09142ec` handoff doc
