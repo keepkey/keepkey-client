@@ -291,8 +291,13 @@ const handleEthGetTransactionCount = async params => {
 };
 
 const handleEthSendRawTransaction = async params => {
+  // Decode-friendly handoff log — captures the dApp-supplied raw tx
+  // (already signed externally) BEFORE we relay it to the RPC. Paste
+  // params[0] into an EVM tx decoder to inspect its contents.
+  console.log(`[HANDOFF] dApp → BEX (eth_sendRawTransaction) rawTx=${params[0]}`);
   const provider = await getProvider();
   const txResponse = await provider.broadcastTransaction(params[0]);
+  console.log(`[HANDOFF] RPC → BEX (eth_sendRawTransaction result) hash=${txResponse?.hash}`);
   return txResponse.hash;
 };
 
@@ -670,8 +675,9 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
     data: '0x',
   };
 
-  // Get nonce and gas
-  const nonce = await provider.getTransactionCount(ADDRESS, 'latest');
+  // Get nonce and gas — 'pending' so an in-flight tx from this account
+  // doesn't get reused (see signTransaction comment for the failure mode).
+  const nonce = await provider.getTransactionCount(ADDRESS, 'pending');
   unsignedTx.nonce = '0x' + nonce.toString(16);
   try {
     let estimatedGas = await provider.estimateGas({ from: ADDRESS, to: unsignedTx.to, value: unsignedTx.value });
@@ -982,9 +988,22 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
 
     let nonce;
     if (!transaction.nonce) {
-      // Get the nonce from the provider for the account
-      nonce = await provider.getTransactionCount(transaction.from, 'latest');
+      // Use 'pending' so we count any in-mempool tx from this account.
+      // 'latest' would only see confirmed txs — re-attempting a swap while
+      // a prior attempt is still pending would reuse the same nonce, hit
+      // EIP-1559's replacement-underpriced rule (need +10% on both fees),
+      // and silently sit in mempool until evicted. That's exactly the
+      // "pending forever, eth_getTransactionByHash returns null" symptom.
+      nonce = await provider.getTransactionCount(transaction.from, 'pending');
       transaction.nonce = '0x' + nonce.toString(16);
+    }
+
+    // JSON-RPC eth_sendTransaction params use `gas` (per spec); ethers and
+    // some legacy callers also send `gasLimit`. Honor either before falling
+    // through to estimation — re-estimating when the dApp already sized the
+    // call risks underprovisioning complex routes (e.g. Universal Router).
+    if (!transaction.gasLimit && transaction.gas) {
+      transaction.gasLimit = transaction.gas;
     }
 
     if (!transaction.gasLimit) {
@@ -1062,6 +1081,14 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
     const sdk = wallet.getSdk();
     const output = await sdk.eth.ethSignTransaction(input);
     console.log(`${tag} Transaction output: `, output);
+
+    // Decode-friendly handoff log. Paste `serialized` into any EVM tx
+    // decoder (e.g. https://flightwallet.github.io/decode-eth-tx/) to
+    // diff against the dApp's expectations. Also logs the structured
+    // input so the unsigned tx is recoverable without RLP-parsing.
+    console.log(
+      `[HANDOFF] vault → BEX (eth_signTransaction)\n  input=${JSON.stringify(input)}\n  serialized=${output.serialized}\n  r=${output.r} s=${output.s} v=${output.v}`,
+    );
 
     return output.serialized;
   } catch (e) {
@@ -1151,10 +1178,12 @@ const broadcastTransaction = async (signedTx: string) => {
     const provider = await getProvider();
 
     console.log(tag, 'provider: ', provider);
-    console.log(tag, 'Broadcasting transaction: ', signedTx);
+    console.log(`[HANDOFF] BEX → RPC (broadcast) signedTx=${signedTx}`);
 
     const txResponse = await provider.broadcastTransaction(signedTx);
-    console.log('Transaction response:', txResponse);
+    console.log(
+      `[HANDOFF] RPC → BEX (broadcast result) hash=${txResponse?.hash} from=${txResponse?.from} nonce=${txResponse?.nonce} to=${txResponse?.to}`,
+    );
     return txResponse.hash;
   } catch (e) {
     console.error(tag, e);
