@@ -104,29 +104,6 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
     return () => chrome.runtime.onMessage.removeListener(listener);
   }, [fetchPubkeys]);
 
-  // Auto-select an account when network changes. Priority:
-  //   1. Restore target (from persisted asset context on reload)
-  //   2. Current selection if still valid
-  //   3. isDefault → first account
-  useEffect(() => {
-    if (accounts.length === 0) return;
-    if (selectedAccountKey && accounts.find(a => a.key === selectedAccountKey)) return;
-
-    if (desiredAccountIndex !== null) {
-      const target = accounts.find(a => a.accountIndex === desiredAccountIndex);
-      if (target) {
-        setSelectedAccountKey(target.key);
-        setDesiredAccountIndex(null); // one-shot — don't keep overriding manual picks
-        return;
-      }
-      // Restore target doesn't exist (e.g. account was removed) — fall through.
-      setDesiredAccountIndex(null);
-    }
-
-    const defaultAcc = accounts.find(a => a.isDefault) || accounts[0];
-    setSelectedAccountKey(defaultAcc.key);
-  }, [accounts, selectedAccountKey, desiredAccountIndex]);
-
   // Helpers to fire SET_ASSET_CONTEXT and notify parent
   const setAssetContext = useCallback(
     (networkId: string, account: AccountItem) => {
@@ -188,6 +165,35 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
     },
     [selectedNetworkId, setAssetContext],
   );
+
+  // Auto-select an account when network changes. Priority:
+  //   1. Restore target (from persisted asset context on reload)
+  //   2. Current selection if still valid
+  //   3. isDefault → first account
+  // Also pushes SET_ASSET_CONTEXT to the background so the stored asset
+  // matches what the dropdown is showing — without this, the local UI
+  // could read "Native SegWit" while a stale or incomplete stored
+  // context made downstream Receive/Send default to legacy BTC.
+  useEffect(() => {
+    if (accounts.length === 0) return;
+    if (selectedAccountKey && accounts.find(a => a.key === selectedAccountKey)) return;
+
+    if (desiredAccountIndex !== null) {
+      const target = accounts.find(a => a.accountIndex === desiredAccountIndex);
+      if (target) {
+        setSelectedAccountKey(target.key);
+        setDesiredAccountIndex(null); // one-shot — don't keep overriding manual picks
+        if (selectedNetworkId) setAssetContext(selectedNetworkId, target);
+        return;
+      }
+      // Restore target doesn't exist (e.g. account was removed) — fall through.
+      setDesiredAccountIndex(null);
+    }
+
+    const defaultAcc = accounts.find(a => a.isDefault) || accounts[0];
+    setSelectedAccountKey(defaultAcc.key);
+    if (selectedNetworkId) setAssetContext(selectedNetworkId, defaultAcc);
+  }, [accounts, selectedAccountKey, desiredAccountIndex, selectedNetworkId, setAssetContext]);
 
   // ETH account add/remove
   const handleAddEthAccount = useCallback(() => {

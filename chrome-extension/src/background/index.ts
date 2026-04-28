@@ -916,6 +916,23 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                 if (!asset.address && asset.pubkeys?.[0]?.address) {
                   asset.address = asset.pubkeys[0].address;
                 }
+
+                // UTXO assets coming from non-header paths (global
+                // Receive, dashboard balance click, asset list) don't
+                // carry a specific note/script_type. Without one,
+                // GET_PUBKEY_CONTEXT falls back to scoped[0] — usually
+                // legacy BTC — and Receive shows a "1..." address while
+                // the header still reads "Native SegWit". Default to
+                // first p2wpkh (Native Segwit) on the network, then any
+                // scoped[0], so all entry points agree.
+                if (asset.networkId.startsWith('bip122:') && !asset.note && !asset.script_type) {
+                  const scoped = wallet.getPubkeys(asset.networkId);
+                  const preferred = scoped.find((pk: any) => pk.script_type === 'p2wpkh') || scoped[0];
+                  if (preferred) {
+                    asset.note = preferred.note;
+                    asset.script_type = preferred.script_type;
+                  }
+                }
               }
 
               // Enrich asset with cached native balance so Send/Transfer can
