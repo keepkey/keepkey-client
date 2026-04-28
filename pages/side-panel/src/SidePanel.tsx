@@ -232,8 +232,15 @@ const SidePanel = () => {
           icon: ctx.icon || '',
           address: ctx.address || '',
         };
+        // Update the selected-asset state so an already-open drawer
+        // reflects the new context, but DON'T auto-open. This listener
+        // fires on every SET_ASSET_CONTEXT — including our own header
+        // auto-default sync on cold start and dApp-triggered chain
+        // switches — and users shouldn't have a drawer surface
+        // unprompted. Explicit opens go through handleAssetSelect
+        // (asset list / header click), which both setSelectedAsset
+        // AND onAssetDetailOpen.
         setSelectedAsset(asset);
-        onAssetDetailOpen();
       }
       if (message.type === 'ASSET_CONTEXT_CLEARED') {
         setSelectedAsset(null);
@@ -251,7 +258,7 @@ const SidePanel = () => {
     return () => {
       chrome.runtime.onMessage.removeListener(messageListener);
     };
-  }, [onAssetDetailOpen, fetchTotalBalance]);
+  }, [fetchTotalBalance]);
 
   // Format currency for display
   const formatCurrency = (value: number) => {
