@@ -1001,6 +1001,12 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                       name: chainInfo.name,
                       providerUrl: chainInfo.rpc,
                       fallbacks: [],
+                      // Carry the static chain's explorer URL forward so
+                      // transaction_complete events fired from sendTransaction
+                      // have somewhere to deep-link the txid. Without this
+                      // the TxidPage shows just the hex hash with no link.
+                      explorerTxLink: chainInfo.explorerTxLink,
+                      networkId: asset.networkId,
                     };
                   } else {
                     console.error(tag, 'Network not found in custom or static chains:', asset.networkId);

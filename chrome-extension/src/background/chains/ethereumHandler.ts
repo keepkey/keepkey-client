@@ -1321,12 +1321,22 @@ const sendTransaction = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string
     response.txid = txHash;
     await requestStorage.updateEventById(id, response);
 
+    // Defensive explorer-link resolution: if the stored provider was built
+    // through a code path that didn't carry explorerTxLink (e.g., older
+    // saved state), look it up from the static EIP155_CHAINS table by
+    // networkId. Otherwise the TxidPage gets no link and the user sees a
+    // bare hex hash with no way to navigate to etherscan.
+    let explorerTxLink = currentProvider.explorerTxLink;
+    if (!explorerTxLink && currentProvider.networkId) {
+      explorerTxLink = EIP155_CHAINS[currentProvider.networkId]?.explorerTxLink;
+    }
+
     //push event
     chrome.runtime.sendMessage({
       action: 'transaction_complete',
       eventId: id,
       txHash: txHash,
-      explorerTxLink: currentProvider.explorerTxLink,
+      explorerTxLink,
       networkId: currentProvider.networkId,
     });
 
