@@ -2,7 +2,7 @@
     Ethereum Provider Refactored
 */
 
-import { JsonRpcProvider, parseEther } from 'ethers';
+import { JsonRpcProvider, parseEther, Transaction } from 'ethers';
 import { createProviderRpcError, ProviderRpcError } from '../utils';
 import {
   requestStorage,
@@ -822,7 +822,7 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
     await requestStorage.updateEventById(requestInfo.id, requestInfo);
 
     // Broadcast the transaction
-    const txid = await broadcastTransaction(signedTx);
+    const txid = await broadcastTransaction(signedTx, response.unsignedTx?.from);
     console.log(tag, 'txid:', txid);
 
     // Update storage with transaction hash
@@ -1276,13 +1276,44 @@ const scheduleDropCheck = (hash: string, delayMs: number) => {
   }, delayMs);
 };
 
-const broadcastTransaction = async (signedTx: string) => {
+const broadcastTransaction = async (signedTx: string, expectedFrom?: string) => {
   const tag = TAG + ' | broadcastTransaction | ';
   try {
     const provider = await getProvider();
 
     console.log(tag, 'provider: ', provider);
     console.log(`[HANDOFF] BEX → RPC (broadcast) signedTx=${signedTx}`);
+
+    // Decode-and-recover BEFORE broadcast. ethers' `Transaction.from(...)` parses
+    // the serialized RLP and exposes `.from` as the ECDSA-recovered signer. If
+    // any of {chainId encoding, type-2 envelope, v/r/s} is malformed by the
+    // signing pipeline, the recovered address will be a deterministic-but-wrong
+    // address — *not* the user's. This log lets us catch that class of bug in
+    // production without needing an external decoder. See
+    // RETRO_uniswap_swap_dropped_tx.md and feedback_eip712_diagnosis.md.
+    try {
+      const parsed = Transaction.from(signedTx);
+      const recoveredFrom = parsed.from ?? '(no signature)';
+      const expectedNorm = expectedFrom ? expectedFrom.toLowerCase() : null;
+      const recoveredNorm = recoveredFrom ? recoveredFrom.toLowerCase() : null;
+      const match = expectedNorm && recoveredNorm ? expectedNorm === recoveredNorm : null;
+      console.log(
+        `[DECODE] signed tx parsed:\n` +
+          `  type=${parsed.type} chainId=${parsed.chainId} nonce=${parsed.nonce}\n` +
+          `  to=${parsed.to} value=${parsed.value?.toString()} gasLimit=${parsed.gasLimit?.toString()}\n` +
+          `  maxFeePerGas=${parsed.maxFeePerGas?.toString()} maxPriorityFeePerGas=${parsed.maxPriorityFeePerGas?.toString()} gasPrice=${parsed.gasPrice?.toString()}\n` +
+          `  data=${parsed.data?.slice(0, 80)}${(parsed.data?.length ?? 0) > 80 ? '…' : ''}\n` +
+          `  recoveredFrom=${recoveredFrom} expectedFrom=${expectedFrom ?? '(unknown)'} match=${match}\n` +
+          `  hash=${parsed.hash} signature=${JSON.stringify(parsed.signature?.toJSON())}`,
+      );
+      if (match === false) {
+        console.error(
+          `[DECODE] ❌ MALFORMED-HEX: recovered signer ${recoveredFrom} ≠ expected ${expectedFrom}. The signed bytes do not represent a tx from the user's account. RPC will reject (or accept against the wrong account, which is worse).`,
+        );
+      }
+    } catch (decodeErr) {
+      console.warn(`[DECODE] failed to parse signed tx — bytes are likely malformed:`, decodeErr);
+    }
 
     const txResponse = await provider.broadcastTransaction(signedTx);
     console.log(
@@ -1363,7 +1394,7 @@ const sendTransaction = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string
     const signedTx = await signTransaction(transaction, KEEPKEY_WALLET);
     console.log(tag, 'signedTx:', signedTx);
 
-    const txHash = await broadcastTransaction(signedTx);
+    const txHash = await broadcastTransaction(signedTx, transaction.from);
     console.log(tag, 'txHash:', txHash);
 
     const response = await requestStorage.getEventById(id);
