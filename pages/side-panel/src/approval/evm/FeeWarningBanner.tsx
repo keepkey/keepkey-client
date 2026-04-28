@@ -9,6 +9,12 @@ type FeeWarning = {
   suggestedMaxFeePerGas: string;
   suggestedMaxPriorityFeePerGas: string;
   floorWei: string;
+  /** Optional — present on builds with tip-aware warning. */
+  priorityFloorWei?: string;
+  /** Optional — present on builds with tip-aware warning. */
+  effectiveTipWei?: string;
+  /** Optional — present on builds with tip-aware warning. */
+  trigger?: 'maxFee' | 'tip' | 'both';
   baseFeeWei: string | null;
   reason: string;
   chainId: string;
@@ -91,7 +97,11 @@ export default function FeeWarningBanner({ eventId, warning, choice, onChoiceCha
       <Stack spacing={2}>
         <HStack>
           <Text fontWeight="bold" color="orange.300">
-            ⚠ Low fee — tx may sit pending
+            {warning.trigger === 'tip'
+              ? '⚠ Low miner tip — tx may be dropped'
+              : warning.trigger === 'both'
+                ? '⚠ Both maxFee and tip too low'
+                : '⚠ Low fee — tx may sit pending'}
           </Text>
         </HStack>
         <Text fontSize="sm" color="rgba(255,255,255,0.85)">
@@ -148,7 +158,19 @@ export default function FeeWarningBanner({ eventId, warning, choice, onChoiceCha
         )}
 
         <Text fontSize="xs" color="rgba(255,255,255,0.55)">
-          Network base fee: {hexToGwei(warning.baseFeeWei)} gwei · Floor: {hexToGwei(warning.floorWei)} gwei
+          Base fee: {hexToGwei(warning.baseFeeWei)} gwei · maxFee floor: {hexToGwei(warning.floorWei)} gwei
+          {warning.priorityFloorWei !== undefined && (
+            <>
+              {' · tip floor: '}
+              {hexToGwei(warning.priorityFloorWei)} gwei
+            </>
+          )}
+          {warning.effectiveTipWei !== undefined && (
+            <>
+              {' · effective tip: '}
+              {hexToGwei(warning.effectiveTipWei)} gwei
+            </>
+          )}
         </Text>
       </Stack>
     </Box>
