@@ -75,19 +75,29 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
         // addresses and the switch handler has something to look up.
         if (isUtxoNetwork(ctxAsset?.networkId) && ctxAsset?.networkId) {
           const allPks = (ctxAsset.pubkeys || []) as any[];
-          allPks.forEach((pk, idx) => {
+          allPks.forEach(pk => {
             if (!pk?.note) return;
             chrome.runtime.sendMessage(
               {
                 type: 'GET_UTXO_ADDRESS',
                 networkId: ctxAsset.networkId,
-                scriptType: pk.scriptType,
+                // Raw pubkeys use snake_case `script_type` (matches the
+                // path config in chainConfig.ts and the SDK request shape
+                // in wallet.ts). Reading `scriptType` here was always
+                // undefined → derivation defaulted to p2pkh, so segwit
+                // and native-segwit accounts were rendered as legacy
+                // addresses.
+                scriptType: pk.script_type,
                 note: pk.note,
               },
               utxoResp => {
                 if (!utxoResp?.address) return;
                 setAddressByNote(prev => ({ ...prev, [pk.note]: utxoResp.address }));
-                if (idx === 0) setSelectedAddress(utxoResp.address);
+                // Don't set selectedAddress here — a separate effect
+                // picks the address that matches the current pubkey
+                // context (header selection), so we avoid pinning to
+                // ctxAsset.pubkeys[0] which is the first configured
+                // path, not the user's chosen account.
               },
             );
           });
@@ -127,13 +137,36 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
     }
   }, [selectedAddress, assetContext?.icon]);
 
+  // Pick the UTXO receive address that matches the current pubkey context
+  // (header account selection). Without this, the page would default to
+  // the first configured path on the network — e.g. legacy BTC even when
+  // the header has Native Segwit selected — because SET_ASSET_CONTEXT
+  // replaces ctxAsset.pubkeys with all network pubkeys and the first one
+  // is whichever happens to be earliest in chainConfig.
+  useEffect(() => {
+    if (!isUtxoNetwork(assetContext?.networkId)) return;
+    const preferredNote = pubkeyContext?.note ?? pubkeys[0]?.note;
+    if (!preferredNote) return;
+    const addr = addressByNote[preferredNote];
+    if (addr && addr !== selectedAddress) setSelectedAddress(addr);
+    // Intentionally omit `selectedAddress` from deps — including it would
+    // re-fire on every set and cause redundant work; we only want to
+    // react to changes in the inputs that determine the address.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pubkeyContext, addressByNote, assetContext?.networkId, pubkeys]);
+
   // Listen for pubkey context updates from other components (like header)
   useEffect(() => {
     const messageListener = (message: any) => {
       if (message.type === 'PUBKEY_CONTEXT_UPDATED' && message.pubkeyContext) {
         setPubkeyContext(message.pubkeyContext);
-        const address = message.pubkeyContext.address || message.pubkeyContext.master;
-        setSelectedAddress(address);
+        // For UTXO chains, the address resolver effect picks the right
+        // entry from addressByNote. Setting it directly here would
+        // briefly stomp the QR with an empty string (UTXO pubkeys have
+        // no .address) before the effect runs.
+        const pc = message.pubkeyContext;
+        const isUtxo = pc.type === 'xpub' || pc.type === 'zpub' || !pc.address;
+        if (!isUtxo) setSelectedAddress(pc.address || pc.master);
       }
     };
 
@@ -156,7 +189,7 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
             {
               type: 'GET_UTXO_ADDRESS',
               networkId: assetContext.networkId,
-              scriptType: pubkey.scriptType,
+              scriptType: pubkey.script_type,
               note: pubkey.note,
             },
             utxoResp => {
@@ -325,7 +358,8 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
     }
     if (accountNum === null) accountNum = index;
 
-    const stLabel = pubkey.scriptType ? SCRIPT_TYPE_LABELS[pubkey.scriptType.toLowerCase()] : null;
+    const rawScriptType = pubkey.script_type || pubkey.scriptType;
+    const stLabel = rawScriptType ? SCRIPT_TYPE_LABELS[rawScriptType.toLowerCase()] : null;
     return stLabel ? `Account ${accountNum} · ${stLabel}` : `Account ${accountNum}`;
   };
 

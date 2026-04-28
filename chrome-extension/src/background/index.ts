@@ -1111,7 +1111,9 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         // xpub as an address was the endless-spinner / wrong-address bug on
         // the Receive page. Pubkey-to-address is pure BIP32 + script-type
         // encoding, so no device round-trip is required; this works in
-        // view-only mode too. Cached per (networkId, scriptType, note).
+        // view-only mode too. Not cached: derivation is microseconds, and
+        // a session-storage cache keyed without the xpub would surface the
+        // previous device's address after a hot-swap.
         case 'GET_UTXO_ADDRESS': {
           const { networkId, scriptType, note } = message as {
             networkId: string;
@@ -1124,20 +1126,17 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               sendResponse({ error: 'No pubkey for network' });
               break;
             }
-            // `note` is unique per path config, so match it first — multiple
-            // accounts can share a scriptType (e.g. several BTC p2wpkh
-            // accounts), and matching scriptType first would always pick the
-            // first one regardless of which account the caller asked for.
+            // `note` is unique per path config, so match it first —
+            // multiple accounts can share a script_type (e.g. several BTC
+            // p2wpkh accounts), and matching by script_type first would
+            // always pick the first one regardless of which account the
+            // caller asked for. Raw pubkey objects use snake_case
+            // `script_type`, matching chainConfig.ts and the SDK request
+            // shape; do not rename them here.
             const match =
               (note && scoped.find((pk: any) => pk.note === note)) ||
-              (scriptType && scoped.find((pk: any) => pk.scriptType === scriptType)) ||
+              (scriptType && scoped.find((pk: any) => pk.script_type === scriptType)) ||
               scoped[0];
-            const cacheKey = `utxoaddr:${networkId}:${match.scriptType || ''}:${match.note || ''}`;
-            const cached = await chrome.storage.session.get(cacheKey).catch(() => ({}) as any);
-            if (cached[cacheKey]) {
-              sendResponse({ address: cached[cacheKey], scriptType: match.scriptType });
-              break;
-            }
             const xpub: string | undefined = match.pubkey || match.master;
             if (!xpub) {
               sendResponse({ error: 'No xpub on pubkey entry' });
@@ -1145,13 +1144,10 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             }
             const address = deriveUtxoAddress({
               xpub,
-              scriptType: match.scriptType,
+              scriptType: match.script_type,
               networkId,
             });
-            if (address) {
-              void chrome.storage.session.set({ [cacheKey]: address }).catch(() => {});
-            }
-            sendResponse({ address, scriptType: match.scriptType });
+            sendResponse({ address, scriptType: match.script_type });
           } catch (e: any) {
             console.error('GET_UTXO_ADDRESS failed:', e);
             sendResponse({ error: e?.message || 'deriveUtxoAddress failed' });
