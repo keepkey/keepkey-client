@@ -192,9 +192,15 @@ const handleNetVersion = async () => {
 };
 
 const handleEthGetBlockByNumber = async params => {
+  // Passthrough raw RPC. ethers v6 `provider.getBlock(...)` returns a
+  // `Block` class instance whose field set is a SUBSET of the JSON-RPC
+  // spec response (drops sha3Uncles, logsBloom, transactionsRoot,
+  // stateRoot, receiptsRoot, difficulty, totalDifficulty, size, uncles)
+  // and whose prototype/methods are stripped when we send the value
+  // through `chrome.runtime.sendMessage`. dApps parse the JSON-RPC shape,
+  // not the wrapper. See docs/RPC_PASSTHROUGH_AUDIT.md.
   const provider = await getProvider();
-  const blockByNumber = await provider.getBlock(params[0]);
-  return blockByNumber;
+  return provider.send('eth_getBlockByNumber', params);
 };
 
 const handleEthBlockNumber = async () => {
@@ -221,15 +227,26 @@ const handleEthGetBalance = async params => {
 };
 
 const handleEthGetTransactionReceipt = async params => {
+  // Passthrough raw RPC — see docs/RPC_PASSTHROUGH_AUDIT.md. ethers v6
+  // `provider.getTransactionReceipt(...)` returns a `TransactionReceipt`
+  // class with `index` (vs spec `transactionIndex`), reshaped `logs[]`,
+  // and stripped methods after structured-clone — dApps parse the
+  // JSON-RPC spec shape and reject the wrapper.
   const provider = await getProvider();
-  const transactionReceipt = await provider.getTransactionReceipt(params[0]);
-  return transactionReceipt;
+  return provider.send('eth_getTransactionReceipt', params);
 };
 
 const handleEthGetTransactionByHash = async params => {
+  // Passthrough raw RPC — see docs/RPC_PASSTHROUGH_AUDIT.md. ethers v6
+  // `provider.getTransaction(...)` returns a `TransactionResponse` class
+  // whose field names diverge from the JSON-RPC spec: `gasLimit` vs
+  // `gas`, `data` vs `input`, `index` vs `transactionIndex`, nested
+  // `signature.{v,r,s}` vs flat. After structured-clone the methods are
+  // gone too. This is the polling endpoint Uniswap (and most dApps) use
+  // to track a tx after `eth_sendTransaction`; the wrapper shape was
+  // breaking that handoff.
   const provider = await getProvider();
-  const transactionByHash = await provider.getTransaction(params[0]);
-  return transactionByHash;
+  return provider.send('eth_getTransactionByHash', params);
 };
 
 const handleWeb3ClientVersion = async () => {
@@ -1232,6 +1249,33 @@ const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string, 
   }
 };
 
+/**
+ * Schedule a one-shot check that the broadcast tx is actually visible
+ * to our RPC. We've seen low-tip txs accepted by the entry node, never
+ * propagated to miners, and silently evicted within ~30s. The dApp polls
+ * eth_getTransactionByHash through us and gets null forever. This logs
+ * a clear warning and emits a runtime message so the side-panel (or any
+ * listener) can surface it. See RETRO_uniswap_swap_dropped_tx.md.
+ */
+const scheduleDropCheck = (hash: string, delayMs: number) => {
+  setTimeout(async () => {
+    try {
+      const provider = await getProvider();
+      const tx = await provider.getTransaction(hash);
+      if (tx == null) {
+        console.warn(
+          `[DROP-CHECK] tx ${hash} not visible on RPC ${delayMs}ms after broadcast — likely underpriced and evicted from mempool. dApp polling will hang.`,
+        );
+        chrome.runtime.sendMessage({ action: 'tx_drop_warning', txHash: hash, delayMs }).catch(() => {});
+      } else {
+        console.log(`[DROP-CHECK] tx ${hash} visible on RPC at ${delayMs}ms (block=${tx.blockNumber ?? 'pending'})`);
+      }
+    } catch (e) {
+      console.warn('[DROP-CHECK] failed to query tx', hash, e);
+    }
+  }, delayMs);
+};
+
 const broadcastTransaction = async (signedTx: string) => {
   const tag = TAG + ' | broadcastTransaction | ';
   try {
@@ -1244,6 +1288,13 @@ const broadcastTransaction = async (signedTx: string) => {
     console.log(
       `[HANDOFF] RPC → BEX (broadcast result) hash=${txResponse?.hash} from=${txResponse?.from} nonce=${txResponse?.nonce} to=${txResponse?.to}`,
     );
+    // Two-stage drop check: 8s catches "never landed in mempool" cases;
+    // 45s catches "landed briefly then evicted" — the user's real failure
+    // mode. Fire-and-forget; do not block the dApp response.
+    if (txResponse?.hash) {
+      scheduleDropCheck(txResponse.hash, 8_000);
+      scheduleDropCheck(txResponse.hash, 45_000);
+    }
     return txResponse.hash;
   } catch (e) {
     console.error(tag, e);
