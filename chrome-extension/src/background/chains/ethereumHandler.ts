@@ -15,6 +15,7 @@ import { EIP155_CHAINS } from '../chains';
 import { v4 as uuidv4 } from 'uuid';
 import { ChainToNetworkId, caipToNetworkId, networkIdToIcon } from '../chainConfig';
 import * as wallet from '../wallet';
+import { buildFeeWarning, type FeeChoice, type FeeWarning } from './feeFloors';
 
 const TAG = ' | ethereumHandler | ';
 const DOMAIN_WHITE_LIST = [];
@@ -270,6 +271,15 @@ const handleEthGasPrice = async () => {
   const provider = await getProvider();
   const feeData = await provider.getFeeData();
   return feeData.gasPrice ? '0x' + feeData.gasPrice.toString(16) : '0x0';
+};
+
+const handleEthFeeHistory = async params => {
+  // Raw passthrough — modern dApps (incl. Uniswap's UI via ethers v6 fee
+  // estimator) call eth_feeHistory for percentile-based fee math. Without
+  // this case the request hits the default branch and throws "method not
+  // supported", forcing the dApp onto a stale eth_gasPrice fallback.
+  const provider = await getProvider();
+  return provider.send('eth_feeHistory', params);
 };
 
 const handleEthGetCode = async params => {
@@ -604,6 +614,51 @@ const handleSigningMethods = async (method, params, requestInfo, ADDRESS, KEEPKE
   // Require user approval
   const unsignedTx = params[0];
   requestInfo.id = uuidv4();
+
+  // Compute the fee-floor warning ONCE up front so the side-panel can render
+  // the banner without doing its own RPC. Only meaningful for tx-signing
+  // methods (eth_sendTransaction / eth_signTransaction); message-signing
+  // flows have no fees to warn about. Also probes nonce state in the same
+  // round-trip — pending vs latest tells us whether this tx will replace
+  // an in-flight one (the EIP-1559 replacement-underpriced footgun).
+  let feeWarning: FeeWarning | null = null;
+  let nonceInfo: { latest: number; pending: number; willReplace: boolean } | null = null;
+  if ((method === 'eth_sendTransaction' || method === 'eth_signTransaction') && unsignedTx) {
+    try {
+      const provider = await getProvider();
+      const fromAddr = unsignedTx.from || ADDRESS;
+      const [feeData, latestBlock, latestNonce, pendingNonce] = await Promise.all([
+        provider.getFeeData(),
+        provider.getBlock('latest'),
+        fromAddr ? provider.getTransactionCount(fromAddr, 'latest') : Promise.resolve(0),
+        fromAddr ? provider.getTransactionCount(fromAddr, 'pending') : Promise.resolve(0),
+      ]);
+      feeWarning = buildFeeWarning({
+        chainId: unsignedTx.chainId ?? currentProvider?.chainId ?? 1,
+        dappMaxFeePerGas: unsignedTx.maxFeePerGas,
+        dappMaxPriorityFeePerGas: unsignedTx.maxPriorityFeePerGas,
+        baseFeeWei: latestBlock?.baseFeePerGas ?? null,
+        oracleMaxFeePerGas: feeData.maxFeePerGas ?? null,
+        oracleMaxPriorityFeePerGas: feeData.maxPriorityFeePerGas ?? null,
+      });
+      if (feeWarning) console.log(tag, 'fee warning attached:', feeWarning);
+      // Pending > latest means there's already a tx queued at nonce=latest,
+      // and the new tx (whose nonce we'll derive at sign time, also from
+      // 'pending') will be the *next* slot. willReplace flags the case
+      // where the dApp explicitly set a nonce equal to a pending one.
+      const dappNonce =
+        unsignedTx.nonce && typeof unsignedTx.nonce === 'string'
+          ? parseInt(unsignedTx.nonce.replace(/^0x/, ''), 16)
+          : null;
+      const willReplace = dappNonce !== null && dappNonce < pendingNonce;
+      nonceInfo = { latest: latestNonce, pending: pendingNonce, willReplace };
+      console.log(tag, 'nonce info:', nonceInfo);
+    } catch (e) {
+      // Don't block signing on a failed fee oracle — degrade silently.
+      console.warn(tag, 'fee/nonce probe failed:', e);
+    }
+  }
+
   const event = {
     id: requestInfo.id,
     networkId,
@@ -619,6 +674,8 @@ const handleSigningMethods = async (method, params, requestInfo, ADDRESS, KEEPKE
     chain: 'ethereum', //TODO I dont like this
     requestInfo,
     unsignedTx,
+    feeWarning, // null when fees are fine; otherwise side-panel renders the banner
+    nonceInfo, // null on non-tx flows; { latest, pending, willReplace } otherwise
     type: method,
     request: params,
     status: 'request',
@@ -821,6 +878,9 @@ export const handleEthereumRequest = async (
 
     case 'eth_gasPrice':
       return await handleEthGasPrice();
+
+    case 'eth_feeHistory':
+      return await handleEthFeeHistory(params);
 
     case 'eth_getCode':
       return await handleEthGetCode(params);
@@ -1220,6 +1280,34 @@ const sendTransaction = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string
 
     transaction.chainId = chainId;
     transaction.from = ADDRESS;
+
+    // Apply the user's fee-warning choice if the side-panel banner attached
+    // one to the approval event. 'dapp' = no override; 'suggested' = use
+    // the wallet's bumped values; 'custom' = use the user-typed values.
+    // Reading from storage (not param plumbing) so the side-panel UI can
+    // mutate the choice asynchronously without changing handler signatures.
+    try {
+      // @ts-expect-error — storage event shape is typed loosely
+      const storedEvent = await requestStorage.getEventById(id);
+      const feeChoice: FeeChoice | undefined = storedEvent?.feeChoice;
+      if (feeChoice && feeChoice.source !== 'dapp' && storedEvent?.feeWarning) {
+        const w = storedEvent.feeWarning as FeeWarning;
+        if (feeChoice.source === 'suggested') {
+          transaction.maxFeePerGas = w.suggestedMaxFeePerGas;
+          transaction.maxPriorityFeePerGas = w.suggestedMaxPriorityFeePerGas;
+        } else if (feeChoice.source === 'custom') {
+          if (feeChoice.customMaxFeePerGas) transaction.maxFeePerGas = feeChoice.customMaxFeePerGas;
+          if (feeChoice.customMaxPriorityFeePerGas)
+            transaction.maxPriorityFeePerGas = feeChoice.customMaxPriorityFeePerGas;
+        }
+        console.log(
+          tag,
+          `fee override applied (${feeChoice.source}): maxFee=${transaction.maxFeePerGas} priority=${transaction.maxPriorityFeePerGas}`,
+        );
+      }
+    } catch (e) {
+      console.warn(tag, 'failed to read feeChoice from storage:', e);
+    }
 
     const signedTx = await signTransaction(transaction, KEEPKEY_WALLET);
     console.log(tag, 'signedTx:', signedTx);

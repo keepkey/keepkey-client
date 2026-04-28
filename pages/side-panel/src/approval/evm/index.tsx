@@ -20,13 +20,38 @@ import RequestDetailsCard from './RequestDetailsCard';
 import ContractDetailsCard from './ContractDetailsCard';
 import RequestMethodCard from './RequestMethodCard';
 import ProjectInfoCard from './ProjectInfoCard';
+import FeeWarningBanner from './FeeWarningBanner';
+import NonceInfoRow from './NonceInfoRow';
 
 export function EvmTransaction({ transaction, reloadEvents, handleResponse }: any) {
+  // Block Approve until the user picks a fee strategy when a warning is
+  // attached. Detection lives background-side in handleSigningMethods —
+  // we just enforce that the user has made a choice before we sign.
+  const feeWarning = transaction?.feeWarning ?? null;
+  const initialChoice = transaction?.feeChoice ?? null;
+  const [feeChoice, setFeeChoice] = useState<any>(initialChoice);
+  const approveBlocked = !!feeWarning && !feeChoice;
+
   return (
     <Stack>
       <ProjectInfoCard transaction={transaction} />
 
       <Divider />
+      {feeWarning && (
+        <FeeWarningBanner
+          eventId={transaction.id}
+          warning={feeWarning}
+          choice={feeChoice}
+          onChoiceChange={setFeeChoice}
+        />
+      )}
+      {transaction?.nonceInfo && (
+        <NonceInfoRow
+          nonceInfo={transaction.nonceInfo}
+          address={transaction?.unsignedTx?.from}
+          chainId={transaction?.unsignedTx?.chainId}
+        />
+      )}
       <RequestMethodCard transaction={transaction} />
       <Divider />
       <Tabs defaultIndex={0}>
@@ -76,7 +101,12 @@ export function EvmTransaction({ transaction, reloadEvents, handleResponse }: an
       <Divider />
 
       <Flex justifyContent="center" alignItems="center">
-        <Button colorScheme="green" onClick={() => handleResponse('accept')} mr={2}>
+        <Button
+          colorScheme="green"
+          onClick={() => handleResponse('accept')}
+          mr={2}
+          isDisabled={approveBlocked}
+          title={approveBlocked ? 'Pick a fee strategy in the warning banner above' : undefined}>
           Approve
         </Button>
         <Button colorScheme="red" onClick={() => handleResponse('reject')}>
