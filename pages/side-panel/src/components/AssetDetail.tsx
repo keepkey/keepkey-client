@@ -163,6 +163,12 @@ const AssetDetail = ({ asset, balances, onSend, onReceive }: AssetDetailProps) =
 
   return (
     <Flex direction="column" h="100%" minH={0}>
+      {/* Top spacer — pushes hero/address/buttons up off the top edge.
+          Smaller than the tabs flex grow below (1 : 2) so the hero sits at
+          roughly the upper third rather than dead-center; visually the
+          balance + Send/Receive block reads as the focal point. */}
+      <Box flex={1} minH={0} flexShrink={1} />
+
       {/* Balance Hero */}
       <VStack spacing={1} align="center" pt={3} pb={2} px={2} flexShrink={0}>
         <HStack spacing={2} align="center">
@@ -259,20 +265,23 @@ const AssetDetail = ({ asset, balances, onSend, onReceive }: AssetDetailProps) =
         </Button>
       </HStack>
 
-      {/* Tab Bar — Tokens / Activity */}
-      <Box flex={1} minH={0} px={2}>
+      {/* Tab Bar — Tokens / Activity. flex={2} vs the top spacer's flex={1}
+          biases the hero block higher (≈ upper third) instead of dead-center. */}
+      <Box flex={2} minH={0} px={2}>
         <Tabs variant="soft-rounded" colorScheme="blue" size="sm" display="flex" flexDirection="column" h="100%">
           <TabList mb={1} gap={1} flexShrink={0}>
-            <Tab
-              color="whiteAlpha.500"
-              _selected={{ color: 'white', bg: 'whiteAlpha.150' }}
-              fontSize="xs"
-              fontWeight="medium"
-              py={1}
-              px={3}
-              borderRadius="md">
-              Tokens
-            </Tab>
+            {!isUtxoNetwork && (
+              <Tab
+                color="whiteAlpha.500"
+                _selected={{ color: 'white', bg: 'whiteAlpha.150' }}
+                fontSize="xs"
+                fontWeight="medium"
+                py={1}
+                px={3}
+                borderRadius="md">
+                Tokens
+              </Tab>
+            )}
             <Tab
               color="whiteAlpha.500"
               _selected={{ color: 'white', bg: 'whiteAlpha.150' }}
@@ -290,18 +299,14 @@ const AssetDetail = ({ asset, balances, onSend, onReceive }: AssetDetailProps) =
             </Tab>
           </TabList>
           <TabPanels flex={1} minH={0} overflowY="auto">
-            {/* Tokens Tab */}
-            <TabPanel p={0}>
-              {isUtxoNetwork ? (
-                <VStack align="center" py={6}>
-                  <Text fontSize="sm" color="whiteAlpha.500">
-                    No tokens for UTXO chains
-                  </Text>
-                </VStack>
-              ) : (
+            {/* Tokens Tab — hidden on chains that don't support tokens
+                (currently UTXO). Both the Tab and its TabPanel are dropped
+                together so Chakra's positional indexing stays in sync. */}
+            {!isUtxoNetwork && (
+              <TabPanel p={0}>
                 <Tokens asset={{ ...asset, address }} networkId={asset.networkId} />
-              )}
-            </TabPanel>
+              </TabPanel>
+            )}
 
             {/* Activity Tab */}
             <TabPanel p={0}>

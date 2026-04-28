@@ -428,7 +428,7 @@ const SidePanel = () => {
               left={2}
               zIndex={2}
             />
-            <Box pt={10} px={4} pb={4}>
+            <Box pt={10} px={4} pb={4} h="full">
               {selectedAsset && (
                 <AssetDetail
                   asset={selectedAsset}
@@ -487,23 +487,21 @@ const SidePanel = () => {
       <Drawer isOpen={isReceiveOpen} placement="bottom" onClose={onReceiveClose} size="full">
         <DrawerOverlay bg="blackAlpha.800" />
         <DrawerContent bg="kk.bg" h={`calc(100vh - ${HEADER_HEIGHT})`} mt={HEADER_HEIGHT}>
-          <DrawerHeader borderBottomWidth="1px" borderColor="whiteAlpha.200" py={3}>
-            <Flex align="center" w="full">
-              <IconButton
-                aria-label="Go back"
-                icon={<ChevronLeftIcon boxSize={6} />}
-                variant="ghost"
-                size="sm"
-                onClick={onReceiveClose}
-                mr={2}
-              />
-              <Text fontWeight="semibold" fontSize="lg">
-                Receive
-              </Text>
-            </Flex>
-          </DrawerHeader>
-          <DrawerBody p={0}>
-            <Receive onClose={onReceiveClose} balances={balances} />
+          <DrawerBody p={0} position="relative">
+            <IconButton
+              aria-label="Close receive"
+              icon={<ChevronLeftIcon boxSize={5} />}
+              variant="ghost"
+              size="sm"
+              onClick={onReceiveClose}
+              position="absolute"
+              top={2}
+              left={2}
+              zIndex={2}
+            />
+            <Box pt={10} h="full">
+              <Receive onClose={onReceiveClose} balances={balances} />
+            </Box>
           </DrawerBody>
         </DrawerContent>
       </Drawer>

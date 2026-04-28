@@ -17,7 +17,7 @@ import {
   MenuItem,
 } from '@chakra-ui/react';
 import { CopyIcon, CheckIcon, ChevronDownIcon } from '@chakra-ui/icons';
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 
 interface ReceiveProps {
@@ -34,8 +34,21 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
   const [loading, setLoading] = useState(true);
   const [hasCopied, setHasCopied] = useState(false);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  // UTXO pubkeys carry an xpub in `.pubkey` and an empty `.address`. We
+  // derive a real receive address per account and key them by `note`
+  // (which is unique per path config) so the dropdown can render real
+  // addresses and the switch handler can look up by pubkey identity
+  // instead of address string.
+  const [addressByNote, setAddressByNote] = useState<Record<string, string>>({});
   const toast = useToast();
+
+  const isUtxoNetwork = (networkId?: string) => !!networkId?.startsWith('bip122:');
+
+  const addressForPubkey = (pk: any): string => {
+    if (!pk) return '';
+    if (pk.note && addressByNote[pk.note]) return addressByNote[pk.note];
+    return pk.address || pk.master || '';
+  };
 
   // Fetch asset context, pubkeys, and current pubkey context from the backend (extension)
   useEffect(() => {
@@ -49,23 +62,55 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
           setLoading(false);
           return;
         }
-        if (response && response.assets) {
-          setAssetContext(response.assets);
-          setPubkeys(response.assets.pubkeys || []);
+        const ctxAsset = response?.assets;
+        if (ctxAsset) {
+          setAssetContext(ctxAsset);
+          setPubkeys(ctxAsset.pubkeys || []);
         }
         setLoading(false);
+
+        // UTXO chains have no plain .address on the pubkey (the batch
+        // endpoint returns { pubkey: xpub, address: '' }). Derive a real
+        // receive address per account so the dropdown can show actual
+        // addresses and the switch handler has something to look up.
+        if (isUtxoNetwork(ctxAsset?.networkId) && ctxAsset?.networkId) {
+          const allPks = (ctxAsset.pubkeys || []) as any[];
+          allPks.forEach((pk, idx) => {
+            if (!pk?.note) return;
+            chrome.runtime.sendMessage(
+              {
+                type: 'GET_UTXO_ADDRESS',
+                networkId: ctxAsset.networkId,
+                scriptType: pk.scriptType,
+                note: pk.note,
+              },
+              utxoResp => {
+                if (!utxoResp?.address) return;
+                setAddressByNote(prev => ({ ...prev, [pk.note]: utxoResp.address }));
+                if (idx === 0) setSelectedAddress(utxoResp.address);
+              },
+            );
+          });
+        }
       });
 
-      // Fetch current pubkey context to default to the selected account
+      // Non-UTXO: pick the scoped pubkey's address directly
       chrome.runtime.sendMessage({ type: 'GET_PUBKEY_CONTEXT' }, response => {
         if (chrome.runtime.lastError) {
           console.error('Error fetching pubkey context:', chrome.runtime.lastError.message);
           return;
         }
-        if (response && response.pubkeyContext) {
-          setPubkeyContext(response.pubkeyContext);
-          const address = response.pubkeyContext.address || response.pubkeyContext.master;
-          setSelectedAddress(address);
+        const pc = response?.pubkeyContext;
+        if (pc) {
+          setPubkeyContext(pc);
+          // .address is the populated field for account-based chains.
+          // .master was the legacy xpub field; .pubkey is the new field
+          // name (UTXO). We intentionally skip UTXO values here — the
+          // utxoGetAddress branch above handles those.
+          const isUtxo = pc.type === 'xpub' || pc.type === 'zpub' || !pc.address;
+          if (!isUtxo && pc.address) {
+            setSelectedAddress(pc.address);
+          }
         }
       });
     };
@@ -96,34 +141,50 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
     return () => chrome.runtime.onMessage.removeListener(messageListener);
   }, []);
 
-  const handleAddressSelect = (address: string) => {
-    // Find the pubkey object that matches this address
-    const selectedPubkey = pubkeys.find(pk => (pk.address || pk.master) === address);
-    if (selectedPubkey) {
-      // Update global pubkey context
-      chrome.runtime.sendMessage({ type: 'SET_PUBKEY_CONTEXT', pubkey: selectedPubkey }, response => {
-        if (response?.success) {
-          setPubkeyContext(response.pubkeyContext);
-          setSelectedAddress(address);
-          toast({
-            title: 'Account switched',
-            description: `Now using ${getAddressType(selectedPubkey, pubkeys.indexOf(selectedPubkey))}`,
-            status: 'success',
-            duration: 2000,
-            isClosable: true,
-          });
-        } else if (response?.error) {
-          console.error('Error setting pubkey context:', response.error);
-          toast({
-            title: 'Error switching account',
-            description: response.error,
-            status: 'error',
-            duration: 3000,
-            isClosable: true,
-          });
+  const handleAccountSelect = (pubkey: any, index: number) => {
+    if (!pubkey) return;
+    chrome.runtime.sendMessage({ type: 'SET_PUBKEY_CONTEXT', pubkey }, response => {
+      if (response?.success) {
+        setPubkeyContext(response.pubkeyContext);
+        const resolved = addressForPubkey(pubkey);
+        if (resolved) {
+          setSelectedAddress(resolved);
+        } else if (isUtxoNetwork(assetContext?.networkId) && assetContext?.networkId && pubkey.note) {
+          // Address wasn't pre-derived (e.g. batch derive still in flight) —
+          // fetch it on demand. Cache so a later render picks it up too.
+          chrome.runtime.sendMessage(
+            {
+              type: 'GET_UTXO_ADDRESS',
+              networkId: assetContext.networkId,
+              scriptType: pubkey.scriptType,
+              note: pubkey.note,
+            },
+            utxoResp => {
+              if (utxoResp?.address) {
+                setAddressByNote(prev => ({ ...prev, [pubkey.note]: utxoResp.address }));
+                setSelectedAddress(utxoResp.address);
+              }
+            },
+          );
         }
-      });
-    }
+        toast({
+          title: 'Account switched',
+          description: `Now using ${getAddressType(pubkey, index)}`,
+          status: 'success',
+          duration: 2000,
+          isClosable: true,
+        });
+      } else if (response?.error) {
+        console.error('Error setting pubkey context:', response.error);
+        toast({
+          title: 'Error switching account',
+          description: response.error,
+          status: 'error',
+          duration: 3000,
+          isClosable: true,
+        });
+      }
+    });
   };
 
   // Copy to clipboard function
@@ -239,29 +300,39 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
     return `${address.slice(0, 8)}...${address.slice(-8)}`;
   };
 
-  // Get address type label - show Account 0, 1, 2 etc.
+  const SCRIPT_TYPE_LABELS: Record<string, string> = {
+    p2pkh: 'Legacy',
+    'p2sh-p2wpkh': 'Segwit',
+    p2wpkh: 'Native Segwit',
+    p2tr: 'Taproot',
+  };
+
+  // Build a label like "Account 0 · Native Segwit" so multiple pubkeys for
+  // the same account (BTC has up to 3 — legacy / segwit / native segwit)
+  // don't all read as bare "Account 0".
   const getAddressType = (pubkey: any, index: number) => {
     if (!pubkey) return `Account ${index}`;
-    // Try to extract account number from note if available
+
+    let accountNum: number | string | null = null;
     if (pubkey.note) {
       const match = pubkey.note.match(/account\s*(\d+)/i);
-      if (match) {
-        return `Account ${match[1]}`;
-      }
+      if (match) accountNum = match[1];
     }
-    // Try to get from addressNList (last element is usually the account index)
-    if (pubkey.addressNList && pubkey.addressNList.length > 0) {
-      const lastIndex = pubkey.addressNList[pubkey.addressNList.length - 1];
-      return `Account ${lastIndex}`;
+    if (accountNum === null && Array.isArray(pubkey.addressNList) && pubkey.addressNList.length >= 3) {
+      // 3rd segment is the account index, hardened (≥ 0x80000000) for UTXO.
+      const seg = pubkey.addressNList[2];
+      accountNum = typeof seg === 'number' ? (seg >= 0x80000000 ? seg - 0x80000000 : seg) : null;
     }
-    // Fallback to index in list
-    return `Account ${index}`;
+    if (accountNum === null) accountNum = index;
+
+    const stLabel = pubkey.scriptType ? SCRIPT_TYPE_LABELS[pubkey.scriptType.toLowerCase()] : null;
+    return stLabel ? `Account ${accountNum} · ${stLabel}` : `Account ${accountNum}`;
   };
 
   if (loading) {
     return (
       <Flex align="center" justify="center" minHeight="200px">
-        <Spinner size="lg" />
+        <Spinner size="lg" color="kk.accent" />
       </Flex>
     );
   }
@@ -269,7 +340,7 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
   if (!assetContext) {
     return (
       <Flex align="center" justify="center" minHeight="200px">
-        <Text>No asset context available</Text>
+        <Text color="kk.faint">No asset context available</Text>
       </Flex>
     );
   }
@@ -316,7 +387,7 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
   };
 
   return (
-    <VStack spacing={4} align="center" p={4} h="full">
+    <VStack spacing={4} align="center" justify="center" p={4} h="full">
       {/* Token Selector — dedup by CAIP so tokens that share a ticker but
           live on different chains (or different contracts within the same
           chain) don't collapse. Deduping by `symbol` alone let e.g. bridged
@@ -345,31 +416,44 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
                   as={Button}
                   rightIcon={<ChevronDownIcon />}
                   w="full"
-                  bg="whiteAlpha.100"
-                  _hover={{ bg: 'whiteAlpha.200' }}
-                  _active={{ bg: 'whiteAlpha.200' }}
-                  borderRadius="xl"
-                  py={6}>
+                  bg="kk.surface"
+                  color="kk.text"
+                  border="1px solid"
+                  borderColor="kk.line"
+                  _hover={{ bg: 'kk.surfaceHi' }}
+                  _active={{ bg: 'kk.surfaceHi' }}
+                  borderRadius="12px"
+                  py={5}
+                  fontWeight={500}>
                   <HStack spacing={3} justify="center">
                     <Avatar size="sm" src={assetContext?.icon} />
-                    <Text fontWeight="semibold">{assetContext?.name}</Text>
-                    <Badge colorScheme="gray" fontSize="xs">
+                    <Text fontWeight={600}>{assetContext?.name}</Text>
+                    <Badge
+                      bg="whiteAlpha.100"
+                      color="kk.faint"
+                      fontSize="10px"
+                      borderRadius="full"
+                      px={2}
+                      textTransform="uppercase"
+                      letterSpacing="0.04em">
                       {assetContext?.symbol}
                     </Badge>
                   </HStack>
                 </MenuButton>
-                <MenuList bg="gray.800" borderColor="whiteAlpha.200" maxH="300px" overflowY="auto">
+                <MenuList bg="kk.surfaceHi" borderColor="kk.lineHi" maxH="300px" overflowY="auto">
                   {uniqueTokens.map((token, index) => (
                     <MenuItem
                       key={index}
                       onClick={() => handleTokenSelect(token)}
-                      bg={assetContext?.symbol === token.symbol ? 'whiteAlpha.200' : 'transparent'}
+                      bg={assetContext?.symbol === token.symbol ? 'whiteAlpha.100' : 'transparent'}
                       _hover={{ bg: 'whiteAlpha.100' }}>
                       <HStack spacing={3}>
                         <Avatar size="sm" src={token.icon} />
                         <VStack align="start" spacing={0}>
-                          <Text fontWeight="medium">{token.name}</Text>
-                          <Text fontSize="xs" color="whiteAlpha.600">
+                          <Text fontWeight={500} color="kk.text">
+                            {token.name}
+                          </Text>
+                          <Text fontSize="xs" color="kk.faint">
                             {token.symbol}
                           </Text>
                         </VStack>
@@ -394,13 +478,7 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
       </Box>
 
       {/* Combined Address Display with Selector and Copy */}
-      <Box
-        w="full"
-        bg="rgba(255, 255, 255, 0.05)"
-        border="1px solid"
-        borderColor="whiteAlpha.200"
-        borderRadius="xl"
-        p={4}>
+      <Box w="full" bg="kk.surface" border="1px solid" borderColor="kk.line" borderRadius="12px" p={4}>
         <Flex align="center" justify="space-between">
           {/* Address with optional dropdown */}
           <Menu>
@@ -411,35 +489,35 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
               _hover={pubkeys.length > 1 ? { opacity: 0.8 } : {}}>
               <Flex align="center">
                 <Box flex={1} overflow="hidden">
-                  <Text fontSize="xs" color="whiteAlpha.500" mb={1}>
+                  <Text className="kk-eyebrow" mb={1}>
                     {getAddressType(
-                      pubkeys.find(p => (p.address || p.master) === selectedAddress) || pubkeys[0],
-                      pubkeys.findIndex(p => (p.address || p.master) === selectedAddress),
+                      pubkeys.find(p => addressForPubkey(p) === selectedAddress) || pubkeys[0],
+                      pubkeys.findIndex(p => addressForPubkey(p) === selectedAddress),
                     )}
                   </Text>
-                  <Text fontFamily="mono" fontSize="sm" color="white" wordBreak="break-all">
+                  <Text className="mono" fontSize="sm" color="kk.text" wordBreak="break-all">
                     {selectedAddress}
                   </Text>
                 </Box>
-                {pubkeys.length > 1 && <ChevronDownIcon color="whiteAlpha.600" boxSize={5} ml={2} />}
+                {pubkeys.length > 1 && <ChevronDownIcon color="kk.dim" boxSize={5} ml={2} />}
               </Flex>
             </MenuButton>
             {pubkeys.length > 1 && (
-              <MenuList bg="gray.800" borderColor="whiteAlpha.200">
+              <MenuList bg="kk.surfaceHi" borderColor="kk.lineHi">
                 {pubkeys.map((pubkey, index) => {
-                  const addr = pubkey.address || pubkey.master;
+                  const addr = addressForPubkey(pubkey);
                   return (
                     <MenuItem
-                      key={index}
-                      onClick={() => handleAddressSelect(addr)}
-                      bg={selectedAddress === addr ? 'whiteAlpha.200' : 'transparent'}
+                      key={pubkey.note || index}
+                      onClick={() => handleAccountSelect(pubkey, index)}
+                      bg={selectedAddress && selectedAddress === addr ? 'whiteAlpha.100' : 'transparent'}
                       _hover={{ bg: 'whiteAlpha.100' }}>
                       <VStack align="start" spacing={0}>
-                        <Text fontSize="xs" color="whiteAlpha.600">
+                        <Text fontSize="xs" color="kk.faint">
                           {getAddressType(pubkey, index)}
                         </Text>
-                        <Text fontFamily="mono" fontSize="sm">
-                          {formatAddress(addr)}
+                        <Text className="mono" fontSize="sm" color="kk.text">
+                          {addr ? formatAddress(addr) : '…'}
                         </Text>
                       </VStack>
                     </MenuItem>
@@ -454,7 +532,7 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
             aria-label="Copy address"
             icon={hasCopied ? <CheckIcon /> : <CopyIcon />}
             variant="ghost"
-            colorScheme={hasCopied ? 'green' : 'gray'}
+            color={hasCopied ? 'kk.good' : 'kk.dim'}
             size="lg"
             onClick={copyToClipboard}
             ml={2}
@@ -463,7 +541,7 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
       </Box>
 
       {/* Warning */}
-      <Text fontSize="xs" color="whiteAlpha.500" textAlign="center">
+      <Text fontSize="xs" color="kk.faint" textAlign="center">
         Only send {assetContext?.symbol} to this address. Sending other assets may result in permanent loss.
       </Text>
     </VStack>
