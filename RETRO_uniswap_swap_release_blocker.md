@@ -23,9 +23,12 @@ A subsequent attempt produced a successful `eth_signTransaction` for a Universal
 
 ## Disposition
 
-- PR #51 (release: 0.0.28): **HOLD**, do not merge.
-- Local-only fix in working tree (unstaged): removed `SET_ASSET_CONTEXT`-driven EIP-1193 emission in `chrome-extension/src/background/index.ts:959–1037`. Build is green. **User reports bug persists with this change present** — but the user may not have reloaded the unpacked extension at `chrome://extensions` after `make build`, so this is unverified.
-- Memory note saved: see `~/.claude/projects/.../memory/feedback_eip712_diagnosis.md` to avoid the gaslighting trap on the next pass.
+- PR #51 (release: 0.0.28): **HOLD**, do not merge. URL: https://github.com/keepkey/keepkey-client/pull/51
+- Tracking issue: https://github.com/keepkey/keepkey-client/issues/52
+- Local-only fix in working tree (unstaged): removed `SET_ASSET_CONTEXT`-driven EIP-1193 emission in `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/chrome-extension/src/background/index.ts:959-1037` (line numbers from before the unstaged delete). Build is green. **User reports bug persists with this change present** — but the user may not have reloaded the unpacked extension at `chrome://extensions` after `make build`, so this is unverified.
+- Memory notes saved (read these before continuing):
+  - `/Users/highlander/.claude/projects/-Users-highlander-WebstormProjects-keepkey-stack-projects-keepkey-client/memory/feedback_eip712_diagnosis.md` — avoids the verify-mismatch gaslighting trap
+  - `/Users/highlander/.claude/projects/-Users-highlander-WebstormProjects-keepkey-stack-projects-keepkey-client/memory/feedback_handoff_paths.md` — absolute-paths-only rule for handoff docs
 
 ---
 
@@ -44,16 +47,16 @@ A subsequent attempt produced a successful `eth_signTransaction` for a Universal
 
 ## Test scaffolding built (use this)
 
-Three new files under `keepkey-vault-v11/projects/keepkey-sdk/`:
+Four new files in the SDK test tree (full absolute paths — handoff is cross-repo):
 
-1. **`tests/fixtures/eip712-blobs.json`** — vendored production-captured payloads. Two Permit2 LINK entries already in there; one carries `knownGoodSignature` for offline recovery.
-2. **`tests/evm-eip712/permit2.js`** (rewritten) — basic Permit2 sign + recover round-trip.
-3. **`tests/evm-eip712/permit2-bex-shape.js`** — same payload but invoked in the exact shape the BEX uses (extra `addressNList` field, JSON.parse round-trip on typed data).
-4. **`tests/evm-eip712/uniswap-permit-prod.js`** — fixture-driven runner. **This is the one to extend.** Walks every blob, runs offline recovery (where `knownGoodSignature` is set), then signs fresh via the local vault and verifies the recovery.
+1. `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/fixtures/eip712-blobs.json` — vendored production-captured payloads. Two Permit2 LINK entries already in there; one carries `knownGoodSignature` for offline recovery.
+2. `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/evm-eip712/permit2.js` (rewritten) — basic Permit2 sign + recover round-trip.
+3. `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/evm-eip712/permit2-bex-shape.js` — same payload but invoked in the exact shape the BEX uses (extra `addressNList` field, JSON.parse round-trip on typed data).
+4. `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/evm-eip712/uniswap-permit-prod.js` — fixture-driven runner. **This is the one to extend.** Walks every blob, runs offline recovery (where `knownGoodSignature` is set), then signs fresh via the local vault and verifies the recovery.
 
 ### How to add new failures
 
-When the user hits another failing swap, paste the BEX background-console blob into `tests/fixtures/eip712-blobs.json` as a new entry:
+When the user hits another failing swap, paste the BEX background-console blob into `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/fixtures/eip712-blobs.json` as a new entry:
 
 ```json
 {
@@ -68,7 +71,14 @@ When the user hits another failing swap, paste the BEX background-console blob i
 }
 ```
 
-Re-run `node tests/evm-eip712/uniswap-permit-prod.js` (paired bearer token in `KEEPKEY_API_KEY`).
+Re-run from the SDK directory:
+
+```
+cd /Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk
+KEEPKEY_API_KEY=<paired-bearer-token> node tests/evm-eip712/uniswap-permit-prod.js
+```
+
+Get a fresh bearer token with `curl -s -X POST http://localhost:1646/auth/pair -H "Content-Type: application/json" -d '{"name":"sdk-test","url":"http://sdk-test.local"}'`.
 
 ### Current SDK test results (sanity baseline)
 
@@ -118,9 +128,9 @@ In order:
    If a fresh sig fails to recover to the device address — proven vault/firmware regression. The test prints `domainSeparator`/`structHash`/`digest` to diff against the firmware's hashes.
 
 4. **If (3) passes**, the regression is in the BEX layer. Next-most-likely candidates in order:
-   - Side-panel `signature_complete` handler causing a context resync that mutates state mid-swap
-   - MetaMask masking shim from `79eecf4` returning a value/event the dApp doesn't expect
-   - Popup→side-panel merge from `80be566` changing event timing
+   - Side-panel `signature_complete` handler causing a context resync that mutates state mid-swap. Background sender: `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/chrome-extension/src/background/chains/ethereumHandler.ts:1109-1114`.
+   - MetaMask masking shim from commit `79eecf4` returning a value/event the dApp doesn't expect. Files: `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/chrome-extension/src/injected/injected.ts` and `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/pages/content/src/index.ts`.
+   - Popup→side-panel merge from commit `80be566` changing event timing.
 
 5. **Determine whether the open Universal Router sig (Open Data above) actually broadcasts and lands.** That tells us whether the failure window is *only* the permit→swap handoff (Uniswap-server-side gate) or affects the full flow (our wallet returning bad data).
 
@@ -134,7 +144,30 @@ The 0.0.28 release also contains commit `ec5c7c8` (this session): version bump +
 
 ## Important context for whoever picks this up
 
-- The user gave a forceful correction earlier in the session that EIP-712 verify mismatch is a *symptom of bad input data to the verifier*, not a derivation/seed bug. I made that mistake twice — saved as a feedback memory at `~/.claude/projects/-Users-highlander-WebstormProjects-keepkey-stack-projects-keepkey-client/memory/feedback_eip712_diagnosis.md`. Read it before chasing path/account theories.
-- `keepkey-vault-v11/projects/keepkey-sdk` is the user's preferred controlled environment for diagnosing this class of bug. Add tests there, not in the BEX.
-- The vault's `auth.accounts` cache (`projects/keepkey-vault/src/bun/auth.ts:241-249`) is shared across all paired bearer tokens. State from earlier failed attempts can poison subsequent runs — clear-and-repair when in doubt.
-- The firmware's `fsm_msgSolanaSignMessage` AdvancedMode gate (`modules/keepkey-firmware/lib/firmware/fsm_msg_solana.h:467-475`) is unrelated to this bug but is itself a separate vault-side regression we documented earlier in the session — keep separate.
+- The user gave a forceful correction earlier in the session that EIP-712 verify mismatch is a *symptom of bad input data to the verifier*, not a derivation/seed bug. I made that mistake twice — saved as a feedback memory at `/Users/highlander/.claude/projects/-Users-highlander-WebstormProjects-keepkey-stack-projects-keepkey-client/memory/feedback_eip712_diagnosis.md`. Read it before chasing path/account theories.
+- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk` is the user's preferred controlled environment for diagnosing this class of bug. Add tests there, not in the BEX.
+- The vault's `auth.accounts` cache lives at `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault/src/bun/auth.ts:241-249` and is shared across all paired bearer tokens. State from earlier failed attempts can poison subsequent runs — clear-and-repair when in doubt.
+- The firmware's `fsm_msgSolanaSignMessage` AdvancedMode gate at `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/modules/keepkey-firmware/lib/firmware/fsm_msg_solana.h:467-475` is unrelated to this bug but is itself a separate vault-side regression we documented earlier in the session — keep separate.
+
+## File index (every path referenced in this doc, absolute)
+
+**keepkey-client (this repo, where the doc lives):**
+- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/chrome-extension/src/background/index.ts` — global background, contains `SET_ASSET_CONTEXT` handler
+- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/chrome-extension/src/background/chains/ethereumHandler.ts` — `signTypedData`, `signTransaction`, `switchToProvider`, `signature_complete` emitter
+- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/chrome-extension/src/injected/injected.ts` — page-side EIP-1193 provider, MetaMask mask
+- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/pages/content/src/index.ts` — content script relay between background and injected provider
+
+**keepkey-vault-v11 (cross-repo):**
+- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/fixtures/eip712-blobs.json` — captured failing payloads
+- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/evm-eip712/permit2.js`
+- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/evm-eip712/permit2-bex-shape.js`
+- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/evm-eip712/uniswap-permit-prod.js`
+- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault/src/bun/rest-api.ts` — `/eth/sign-typed-data` REST handler
+- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault/src/bun/auth.ts` — shared `auth.accounts` cache
+
+**keepkey-firmware (submodule of vault):**
+- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/modules/keepkey-firmware/lib/firmware/fsm_msg_solana.h` — Solana sign-message AdvancedMode gate (separate issue, see disposition note above)
+
+**Private memory (not in any repo):**
+- `/Users/highlander/.claude/projects/-Users-highlander-WebstormProjects-keepkey-stack-projects-keepkey-client/memory/feedback_eip712_diagnosis.md`
+- `/Users/highlander/.claude/projects/-Users-highlander-WebstormProjects-keepkey-stack-projects-keepkey-client/memory/feedback_handoff_paths.md`
