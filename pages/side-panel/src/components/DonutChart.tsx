@@ -43,19 +43,12 @@ const DonutChart: React.FC<DonutChartProps> = ({ balances, totalUsd }) => {
   if (slices.length === 0) return null;
 
   const size = 120;
-  const strokeWidth = 16;
+  const strokeWidth = 10;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
 
   let cumulativeOffset = 0;
-
-  const formatCurrency = (value: number) =>
-    new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
+  const chainCount = slices.length;
 
   return (
     <motion.div
@@ -65,6 +58,15 @@ const DonutChart: React.FC<DonutChartProps> = ({ balances, totalUsd }) => {
       <Flex align="center" justify="center" gap={3}>
         <Box position="relative" w={`${size}px`} h={`${size}px`}>
           <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+            {/* Track */}
+            <circle
+              cx={size / 2}
+              cy={size / 2}
+              r={radius}
+              fill="none"
+              stroke="rgba(255,255,255,0.06)"
+              strokeWidth={strokeWidth}
+            />
             {slices.map((slice, i) => {
               const pct = slice.value / totalUsd;
               const dashLength = pct * circumference;
@@ -98,8 +100,11 @@ const DonutChart: React.FC<DonutChartProps> = ({ balances, totalUsd }) => {
             align="center"
             justify="center"
             direction="column">
-            <Text fontSize="xs" fontWeight="bold" color="white" lineHeight={1}>
-              {formatCurrency(totalUsd)}
+            <Text className="kk-eyebrow" lineHeight={1}>
+              Portfolio
+            </Text>
+            <Text className="mono" fontSize="10px" color="kk.accent" mt="2px" lineHeight={1}>
+              {chainCount} {chainCount === 1 ? 'chain' : 'chains'}
             </Text>
           </Flex>
         </Box>
@@ -107,10 +112,10 @@ const DonutChart: React.FC<DonutChartProps> = ({ balances, totalUsd }) => {
           {slices.map((slice, i) => (
             <Flex key={i} align="center" gap={1.5}>
               <Box w="8px" h="8px" borderRadius="full" bg={slice.color} flexShrink={0} />
-              <Text fontSize="2xs" color="whiteAlpha.700" lineHeight={1.2}>
+              <Text fontSize="2xs" color="kk.dim" lineHeight={1.2}>
                 {slice.symbol}
               </Text>
-              <Text fontSize="2xs" color="whiteAlpha.500" lineHeight={1.2}>
+              <Text fontSize="2xs" color="kk.faint" lineHeight={1.2} className="mono">
                 {((slice.value / totalUsd) * 100).toFixed(0)}%
               </Text>
             </Flex>

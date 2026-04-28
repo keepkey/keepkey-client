@@ -53,6 +53,11 @@ const SidePanel = () => {
   const [selectedAsset, setSelectedAsset] = useState<any>(null);
   const [balancesInitialLoading, setBalancesInitialLoading] = useState(true);
   const [pendingEvent, setPendingEvent] = useState<any | null>(null);
+  // "Add blockchain" picker takeover — lifted out of <Balances> so the home
+  // button and dashboard-hiding logic can see it. Keeping it inside Balances
+  // meant SidePanel kept rendering the donut/balance/Send-Receive block on
+  // top of the picker, and the home button couldn't reset it.
+  const [showAddBlockchain, setShowAddBlockchain] = useState(false);
 
   // Disclosures for drawers/modals
   const { isOpen: isSettingsOpen, onOpen: onSettingsOpen, onClose: onSettingsClose } = useDisclosure();
@@ -91,6 +96,17 @@ const SidePanel = () => {
     onAssetDetailClose();
     setSelectedAsset(null);
     chrome.runtime.sendMessage({ type: 'CLEAR_ASSET_CONTEXT' });
+  };
+
+  // Shield-badge "home" action — collapse any open drawers and clear context
+  // so the user lands back on the Balances view.
+  const handleGoHome = () => {
+    if (isAssetDetailOpen) handleAssetDetailClose();
+    if (isSendOpen) onSendClose();
+    if (isReceiveOpen) onReceiveClose();
+    if (transactionContext) setTransactionContext(null);
+    if (showAddBlockchain) setShowAddBlockchain(false);
+    setSelectedAsset(null);
   };
 
   // Prefer native chain rows over ERC-20 / SPL tokens when picking a
@@ -216,8 +232,15 @@ const SidePanel = () => {
           icon: ctx.icon || '',
           address: ctx.address || '',
         };
+        // Update the selected-asset state so an already-open drawer
+        // reflects the new context, but DON'T auto-open. This listener
+        // fires on every SET_ASSET_CONTEXT — including our own header
+        // auto-default sync on cold start and dApp-triggered chain
+        // switches — and users shouldn't have a drawer surface
+        // unprompted. Explicit opens go through handleAssetSelect
+        // (asset list / header click), which both setSelectedAsset
+        // AND onAssetDetailOpen.
         setSelectedAsset(asset);
-        onAssetDetailOpen();
       }
       if (message.type === 'ASSET_CONTEXT_CLEARED') {
         setSelectedAsset(null);
@@ -235,7 +258,7 @@ const SidePanel = () => {
     return () => {
       chrome.runtime.onMessage.removeListener(messageListener);
     };
-  }, [onAssetDetailOpen, fetchTotalBalance]);
+  }, [fetchTotalBalance]);
 
   // Format currency for display
   const formatCurrency = (value: number) => {
@@ -277,7 +300,13 @@ const SidePanel = () => {
       case 4:
         return <Connect setIsConnecting={setIsConnecting} />;
       case 5:
-        return <Balances onSelectAsset={handleAssetSelect} />;
+        return (
+          <Balances
+            onSelectAsset={handleAssetSelect}
+            showAddBlockchain={showAddBlockchain}
+            setShowAddBlockchain={setShowAddBlockchain}
+          />
+        );
       default:
         return (
           <Flex direction="column" justifyContent="center" alignItems="center" height="100%" minH="300px">
@@ -315,7 +344,7 @@ const SidePanel = () => {
   // while an approval is live — matches the old popup's singular-focus UX.
   if (pendingEvent) {
     return (
-      <Flex direction="column" width="100%" height="100vh" bg="gray.900" overflowY="auto" p={4}>
+      <Flex direction="column" width="100%" height="100vh" bg="kk.bg" overflowY="auto" p={4}>
         <Transaction event={pendingEvent} reloadEvents={fetchPendingEvent} onDismiss={fetchPendingEvent} />
       </Flex>
     );
@@ -324,11 +353,23 @@ const SidePanel = () => {
   return (
     <Flex direction="column" width="100%" height="100vh">
       {/* Sticky header — floats above drawers */}
-      <Box position="sticky" top={0} zIndex={1500} bg="gray.900" px={4} pt={4} pb={1} flexShrink={0} overflow="visible">
+      <Box
+        position="sticky"
+        top={0}
+        zIndex={1500}
+        bg="kk.bg"
+        borderBottom="1px solid"
+        borderColor="kk.line"
+        px={4}
+        pt={4}
+        pb={2}
+        flexShrink={0}
+        overflow="visible">
         <NetworkAccountHeader
           keepkeyState={keepkeyState}
           isRefreshing={isRefreshing}
           onSettingsOpen={onSettingsOpen}
+          onHome={handleGoHome}
           onRefresh={refreshBalances}
           onSelectNetwork={handleAssetSelect}
         />
@@ -337,20 +378,22 @@ const SidePanel = () => {
       {/* Scrollable body below header */}
       <Flex direction="column" flex={1} overflowY="auto" px={4} pb={4}>
         {/* Total Balance & Quick Actions - Only when paired and on home screen, after initial load */}
-        {keepkeyState === 5 && !transactionContext && !balancesInitialLoading && (
+        {keepkeyState === 5 && !transactionContext && !balancesInitialLoading && !showAddBlockchain && (
           <Box mb={3} textAlign="center">
             {balances.length > 0 && totalUsdBalance > 0 && (
               <Box mb={2}>
                 <DonutChart balances={balances} totalUsd={totalUsdBalance} />
               </Box>
             )}
-            <Heading size="lg" color="white" mb={2}>
+            <Text className="kk-eyebrow" mb={1}>
+              Total balance
+            </Text>
+            <Heading size="lg" color="kk.text" mb={3} fontWeight={700} letterSpacing="-0.6px" className="mono">
               {formatCurrency(totalUsdBalance)}
             </Heading>
-            <HStack spacing={3} justify="center">
+            <HStack spacing={2} justify="center">
               <Button
                 leftIcon={<ArrowUpIcon />}
-                colorScheme="blue"
                 variant="solid"
                 size="sm"
                 onClick={handleGlobalSend}
@@ -359,8 +402,7 @@ const SidePanel = () => {
               </Button>
               <Button
                 leftIcon={<ArrowDownIcon />}
-                colorScheme="green"
-                variant="solid"
+                variant="ghost"
                 size="sm"
                 onClick={handleGlobalReceive}
                 isDisabled={balances.length === 0}>
@@ -374,34 +416,35 @@ const SidePanel = () => {
         <Box flex={1}>{renderContent()}</Box>
       </Flex>
 
-      {/* Asset Detail Drawer */}
+      {/* Asset Detail Drawer — no title bar: the sticky NetworkAccountHeader
+          above already shows which network/account is active, so a second
+          "Ethereum" header would duplicate context. A small back button floats
+          over the body to preserve the close affordance. */}
       <Drawer isOpen={isAssetDetailOpen} placement="bottom" onClose={handleAssetDetailClose} size="full">
         <DrawerOverlay bg="blackAlpha.800" />
-        <DrawerContent bg="gray.900" h={`calc(100vh - ${HEADER_HEIGHT})`} mt={HEADER_HEIGHT}>
-          <DrawerHeader borderBottomWidth="1px" borderColor="whiteAlpha.200" py={3}>
-            <Flex align="center" w="full">
-              <IconButton
-                aria-label="Go back"
-                icon={<ChevronLeftIcon boxSize={6} />}
-                variant="ghost"
-                size="sm"
-                onClick={handleAssetDetailClose}
-                mr={2}
-              />
-              <Text fontWeight="semibold" fontSize="lg">
-                {selectedAsset?.name || 'Asset'}
-              </Text>
-            </Flex>
-          </DrawerHeader>
-          <DrawerBody>
-            {selectedAsset && (
-              <AssetDetail
-                asset={selectedAsset}
-                balances={balances}
-                onSend={handleAssetSend}
-                onReceive={handleAssetReceive}
-              />
-            )}
+        <DrawerContent bg="kk.bg" h={`calc(100vh - ${HEADER_HEIGHT})`} mt={HEADER_HEIGHT}>
+          <DrawerBody p={0} position="relative">
+            <IconButton
+              aria-label="Close asset"
+              icon={<ChevronLeftIcon boxSize={5} />}
+              variant="ghost"
+              size="sm"
+              onClick={handleAssetDetailClose}
+              position="absolute"
+              top={2}
+              left={2}
+              zIndex={2}
+            />
+            <Box pt={10} px={4} pb={4} h="full">
+              {selectedAsset && (
+                <AssetDetail
+                  asset={selectedAsset}
+                  balances={balances}
+                  onSend={handleAssetSend}
+                  onReceive={handleAssetReceive}
+                />
+              )}
+            </Box>
           </DrawerBody>
         </DrawerContent>
       </Drawer>
@@ -425,7 +468,7 @@ const SidePanel = () => {
       {/* Send Drawer */}
       <Drawer isOpen={isSendOpen} placement="bottom" onClose={onSendClose} size="full">
         <DrawerOverlay bg="blackAlpha.800" />
-        <DrawerContent bg="gray.900" h={`calc(100vh - ${HEADER_HEIGHT})`} mt={HEADER_HEIGHT}>
+        <DrawerContent bg="kk.bg" h={`calc(100vh - ${HEADER_HEIGHT})`} mt={HEADER_HEIGHT}>
           <DrawerHeader borderBottomWidth="1px" borderColor="whiteAlpha.200" py={3}>
             <Flex align="center" w="full">
               <IconButton
@@ -450,24 +493,22 @@ const SidePanel = () => {
       {/* Receive Drawer */}
       <Drawer isOpen={isReceiveOpen} placement="bottom" onClose={onReceiveClose} size="full">
         <DrawerOverlay bg="blackAlpha.800" />
-        <DrawerContent bg="gray.900" h={`calc(100vh - ${HEADER_HEIGHT})`} mt={HEADER_HEIGHT}>
-          <DrawerHeader borderBottomWidth="1px" borderColor="whiteAlpha.200" py={3}>
-            <Flex align="center" w="full">
-              <IconButton
-                aria-label="Go back"
-                icon={<ChevronLeftIcon boxSize={6} />}
-                variant="ghost"
-                size="sm"
-                onClick={onReceiveClose}
-                mr={2}
-              />
-              <Text fontWeight="semibold" fontSize="lg">
-                Receive
-              </Text>
-            </Flex>
-          </DrawerHeader>
-          <DrawerBody p={0}>
-            <Receive onClose={onReceiveClose} balances={balances} />
+        <DrawerContent bg="kk.bg" h={`calc(100vh - ${HEADER_HEIGHT})`} mt={HEADER_HEIGHT}>
+          <DrawerBody p={0} position="relative">
+            <IconButton
+              aria-label="Close receive"
+              icon={<ChevronLeftIcon boxSize={5} />}
+              variant="ghost"
+              size="sm"
+              onClick={onReceiveClose}
+              position="absolute"
+              top={2}
+              left={2}
+              zIndex={2}
+            />
+            <Box pt={10} h="full">
+              <Receive onClose={onReceiveClose} balances={balances} />
+            </Box>
           </DrawerBody>
         </DrawerContent>
       </Drawer>

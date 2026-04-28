@@ -104,7 +104,7 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
         cursor="pointer"
         onClick={() => setIsExpanded(prev => !prev)}
         px={2}
-        py={1}
+        h="32px"
         borderRadius="md"
         bg="whiteAlpha.100"
         _hover={{ bg: 'whiteAlpha.200' }}

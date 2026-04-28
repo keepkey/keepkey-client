@@ -171,7 +171,7 @@ const Settings = () => {
   return (
     <VStack spacing={4}>
       {/* More Docs Link - Prominent and on top */}
-      <Link href="https://docs.keepkey.info" isExternal>
+      <Link href="https://docs.keepkey.com" isExternal>
         <Button variant="solid" colorScheme="teal" size="lg" w="100%" mt={4} mb={6}>
           📖 Visit KeepKey Docs
         </Button>

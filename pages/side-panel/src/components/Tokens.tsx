@@ -151,10 +151,24 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
     }
   };
 
+  // Force a Pioneer /portfolio round-trip rather than just re-reading the
+  // cache. Used by both the header Refresh button and the empty-state
+  // Discover Tokens button — the empty case is the one that actually
+  // matters: if the cold-start auto-flow missed SPL/TRC-20 discovery, a
+  // plain GET_APP_BALANCES would just return the same empty cache. The
+  // background pushes BALANCES_UPDATED on commit, which our useEffect
+  // listener picks up to repaint, so we don't need to setTokens directly
+  // from this response.
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await fetchTokens();
-    setTimeout(() => setIsRefreshing(false), 1000);
+    try {
+      await new Promise<void>(resolve => {
+        chrome.runtime.sendMessage({ type: 'REFRESH_ALL_BALANCES' }, () => resolve());
+      });
+      await fetchTokens();
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 500);
+    }
   };
 
   const handleTokenClick = (token: any) => {

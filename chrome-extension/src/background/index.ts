@@ -7,6 +7,7 @@ globalThis.Buffer = Buffer;
 
 import packageJson from '../../package.json';
 import * as wallet from './wallet';
+import { deriveUtxoAddress } from './utxoDerive';
 import { resetSolanaState, prefetchSolanaPubkey } from './chains/solanaHandler';
 import { resetTonState, prefetchTonAddress } from './chains/tonHandler';
 import { resetTronState, prefetchTronPubkey } from './chains/tronHandler';
@@ -672,32 +673,31 @@ const onStart = async function () {
       }
 
       // Fetch balances in background (non-blocking). First pass covers EVM/UTXO
-      // quickly — on first run the Solana pubkey hasn't been derived yet, so it
-      // won't be in this request.
+      // quickly — on first run the Solana / Tron / TON pubkeys haven't been
+      // derived yet, so they won't be in this request.
       fetchBalancesFromPioneer().catch(e => console.warn(tag, 'Initial balance fetch failed:', e));
 
-      // Prefetch Solana pubkey so it shows up in the network dropdown. Once the
-      // pubkey is registered, force a second balance fetch so Solana natives +
-      // SPL tokens land in cachedBalances (fixes first-run race).
-      prefetchSolanaPubkey()
+      // Solana / Tron / TON addresses are derived outside the batch xpub
+      // flow (firmware message type is separate). Each prefetch internally
+      // calls wallet.addPubkey, so once they all settle the wallet has the
+      // complete pubkey set. We then fire ONE force-refresh against Pioneer
+      // /portfolio with everyone present — that's the request whose
+      // snapshot won't be invalidated mid-flight, so its commit actually
+      // lands.
+      //
+      // Why not chain a force-fetch after each individual prefetch (the
+      // old shape)? Because they ran in parallel: each fetch's snapshot
+      // misses the pubkeys still being added by the other two prefetches,
+      // and the staleness guard at fetchBalancesFromPioneer's commit step
+      // discards them. With three parallel prefetches, only the last one
+      // to commit could survive — and if that one was Tron/TON without
+      // Solana having fully landed yet, SPL tokens never made it into
+      // cachedBalances. Users saw "No tokens" until they hit the manual
+      // Discover button (which by coincidence runs after the slowest
+      // prefetch finally lands).
+      Promise.allSettled([prefetchSolanaPubkey(), prefetchTronPubkey(), prefetchTonAddress()])
         .then(() => fetchBalancesFromPioneer(true))
-        .catch(() => {});
-
-      // Same race for Tron — firmware message type is separate from the batch
-      // xpub flow, so we derive lazily and force a refetch once the pubkey is
-      // cached. Balance lookup goes through the dedicated /tron/accountInfo
-      // endpoint inside fetchBalancesFromPioneer (TronGrid coverage).
-      prefetchTronPubkey()
-        .then(() => fetchBalancesFromPioneer(true))
-        .catch(() => {});
-
-      // Same story for TON — address is derived via /addresses/ton, not
-      // the xpub batch. Prefetch so the network shows up in the dropdown
-      // and trigger a rebalance once the TON pubkey is cached so the
-      // nanoTON → TON native balance lands.
-      prefetchTonAddress()
-        .then(() => fetchBalancesFromPioneer(true))
-        .catch(() => {});
+        .catch(e => console.warn(tag, 'Post-prefetch balance fetch failed:', e));
     } else {
       console.error(tag, 'FAILED TO INIT, No Ethereum address found');
     }
@@ -916,6 +916,35 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                 if (!asset.address && asset.pubkeys?.[0]?.address) {
                   asset.address = asset.pubkeys[0].address;
                 }
+
+                // UTXO assets coming from non-header paths (global
+                // Receive, dashboard balance click, asset list) don't
+                // carry a specific note/script_type. Without one,
+                // GET_PUBKEY_CONTEXT falls back to scoped[0] and
+                // Receive shows a different address from what the
+                // header dropdown displays.
+                //
+                // Default selection mirrors what the header builders do
+                // so all entry points stay in sync:
+                //   - BTC: first p2wpkh (buildBtcAccounts marks Native
+                //     Segwit as isDefault).
+                //   - Other UTXO (LTC, DOGE, DASH, BCH): first scoped
+                //     pubkey in chainConfig order — buildUtxoAccounts
+                //     uses items.length === 0, so e.g. LTC defaults to
+                //     legacy p2pkh (configured before p2wpkh) and we
+                //     must NOT silently shift it to native segwit.
+                const BTC_GENESIS_PREFIX = 'bip122:000000000019d6689c085ae165831e93';
+                if (asset.networkId.startsWith('bip122:') && !asset.note && !asset.script_type) {
+                  const scoped = wallet.getPubkeys(asset.networkId);
+                  const isBtc = asset.networkId.startsWith(BTC_GENESIS_PREFIX);
+                  const preferred = isBtc
+                    ? scoped.find((pk: any) => pk.script_type === 'p2wpkh') || scoped[0]
+                    : scoped[0];
+                  if (preferred) {
+                    asset.note = preferred.note;
+                    asset.script_type = preferred.script_type;
+                  }
+                }
               }
 
               // Enrich asset with cached native balance so Send/Transfer can
@@ -1059,13 +1088,23 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             if (ctx?.networkId) {
               const scoped = wallet.getPubkeys(ctx.networkId);
               if (scoped.length > 0) {
-                // Prefer a pubkey whose accountIndex matches the ctx (asset
-                // carries accountIndex when the UI drilled into a non-default
-                // account); otherwise the first match on this network.
-                chosen =
-                  (ctx as any).accountIndex !== undefined
-                    ? scoped.find((pk: any) => pk.accountIndex === (ctx as any).accountIndex)
-                    : null;
+                // Match priority: note → script_type → accountIndex →
+                // scoped[0]. Note is the only identifier that's unique
+                // across every chainConfig path; script_type collapses
+                // BTC account 0 / account 1 (both p2wpkh) and would
+                // always pick the first one. accountIndex is fine for
+                // multi-account EVM but is unset on UTXO header rows.
+                const ctxNote = (ctx as any).note;
+                const ctxScriptType = (ctx as any).script_type;
+                if (ctxNote) {
+                  chosen = scoped.find((pk: any) => pk.note === ctxNote);
+                }
+                if (!chosen && ctxScriptType) {
+                  chosen = scoped.find((pk: any) => pk.script_type === ctxScriptType);
+                }
+                if (!chosen && (ctx as any).accountIndex !== undefined) {
+                  chosen = scoped.find((pk: any) => pk.accountIndex === (ctx as any).accountIndex);
+                }
                 if (!chosen) chosen = scoped[0];
               }
             }
@@ -1102,6 +1141,56 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           const { networkId } = message;
           const pubkeys = wallet.getPubkeys(networkId);
           sendResponse({ pubkeys });
+          break;
+        }
+
+        // Derive a UTXO receive address locally from the xpub held in the
+        // matching pubkey entry. Needed because /api/pubkeys/batch returns
+        // UTXO rows with { pubkey: "<xpub>", address: "" } — showing the
+        // xpub as an address was the endless-spinner / wrong-address bug on
+        // the Receive page. Pubkey-to-address is pure BIP32 + script-type
+        // encoding, so no device round-trip is required; this works in
+        // view-only mode too. Not cached: derivation is microseconds, and
+        // a session-storage cache keyed without the xpub would surface the
+        // previous device's address after a hot-swap.
+        case 'GET_UTXO_ADDRESS': {
+          const { networkId, scriptType, note } = message as {
+            networkId: string;
+            scriptType?: string;
+            note?: string;
+          };
+          try {
+            const scoped = wallet.getPubkeys(networkId);
+            if (scoped.length === 0) {
+              sendResponse({ error: 'No pubkey for network' });
+              break;
+            }
+            // `note` is unique per path config, so match it first —
+            // multiple accounts can share a script_type (e.g. several BTC
+            // p2wpkh accounts), and matching by script_type first would
+            // always pick the first one regardless of which account the
+            // caller asked for. Raw pubkey objects use snake_case
+            // `script_type`, matching chainConfig.ts and the SDK request
+            // shape; do not rename them here.
+            const match =
+              (note && scoped.find((pk: any) => pk.note === note)) ||
+              (scriptType && scoped.find((pk: any) => pk.script_type === scriptType)) ||
+              scoped[0];
+            const xpub: string | undefined = match.pubkey || match.master;
+            if (!xpub) {
+              sendResponse({ error: 'No xpub on pubkey entry' });
+              break;
+            }
+            const address = deriveUtxoAddress({
+              xpub,
+              scriptType: match.script_type,
+              networkId,
+            });
+            sendResponse({ address, scriptType: match.script_type });
+          } catch (e: any) {
+            console.error('GET_UTXO_ADDRESS failed:', e);
+            sendResponse({ error: e?.message || 'deriveUtxoAddress failed' });
+          }
           break;
         }
 

@@ -42,6 +42,7 @@ const AssetDetail = ({ asset, balances, onSend, onReceive }: AssetDetailProps) =
   const toast = useToast();
 
   const isEvm = asset.networkId?.startsWith('eip155:');
+  const isUtxo = asset.networkId?.startsWith('bip122:');
 
   // Fallback: cached Pioneer balance for non-EVM or while loading
   const chainBalances = balances.filter(b => b.networkId === asset.networkId);
@@ -75,6 +76,32 @@ const AssetDetail = ({ asset, balances, onSend, onReceive }: AssetDetailProps) =
     setLiveUsdValue(null);
     setLivePriceUsd(null);
 
+    // UTXO chains: pubkey-list rows have empty .address and Pioneer's
+    // /portfolio response stuffs the xpub into b.address (line ~439 in
+    // background/index.ts), so falling back to asset.pubkeys[0].address
+    // or asset.address would surface either nothing or an unusable
+    // xpub string in the address bar / explorer link. Derive the real
+    // receive address via GET_UTXO_ADDRESS using the asset's note +
+    // script_type (which the header / SET_ASSET_CONTEXT enrichment
+    // both populate).
+    if (isUtxo && asset.networkId) {
+      setLoadingAddress(true);
+      chrome.runtime.sendMessage(
+        {
+          type: 'GET_UTXO_ADDRESS',
+          networkId: asset.networkId,
+          scriptType: asset.script_type,
+          note: asset.note,
+        },
+        response => {
+          if (response?.address) setAddress(response.address);
+          else setAddress('');
+          setLoadingAddress(false);
+        },
+      );
+      return;
+    }
+
     const accountAddress = asset.pubkeys?.[0]?.address || asset.address || '';
     if (accountAddress) {
       setAddress(accountAddress);
@@ -102,7 +129,7 @@ const AssetDetail = ({ asset, balances, onSend, onReceive }: AssetDetailProps) =
         },
       );
     }
-  }, [asset.networkId, asset.address, asset.pubkeys?.[0]?.address, isEvm]);
+  }, [asset.networkId, asset.address, asset.pubkeys?.[0]?.address, asset.note, asset.script_type, isEvm, isUtxo]);
 
   // Load activity events filtered by networkId
   useEffect(() => {
@@ -163,6 +190,12 @@ const AssetDetail = ({ asset, balances, onSend, onReceive }: AssetDetailProps) =
 
   return (
     <Flex direction="column" h="100%" minH={0}>
+      {/* Top spacer — pushes hero/address/buttons up off the top edge.
+          Smaller than the tabs flex grow below (1 : 2) so the hero sits at
+          roughly the upper third rather than dead-center; visually the
+          balance + Send/Receive block reads as the focal point. */}
+      <Box flex={1} minH={0} flexShrink={1} />
+
       {/* Balance Hero */}
       <VStack spacing={1} align="center" pt={3} pb={2} px={2} flexShrink={0}>
         <HStack spacing={2} align="center">
@@ -170,6 +203,7 @@ const AssetDetail = ({ asset, balances, onSend, onReceive }: AssetDetailProps) =
           <Text fontSize="sm" fontWeight="medium" color="whiteAlpha.600">
             {asset.name || asset.symbol}
           </Text>
+          {asset.networkId === 'tron:27Lqcw' && <TronLinkBadge />}
         </HStack>
         <Text fontSize="xl" fontWeight="bold" color="white" lineHeight="1.2">
           {formatUsd(totalUsdValue)}
@@ -258,20 +292,23 @@ const AssetDetail = ({ asset, balances, onSend, onReceive }: AssetDetailProps) =
         </Button>
       </HStack>
 
-      {/* Tab Bar — Tokens / Activity */}
-      <Box flex={1} minH={0} px={2}>
+      {/* Tab Bar — Tokens / Activity. flex={2} vs the top spacer's flex={1}
+          biases the hero block higher (≈ upper third) instead of dead-center. */}
+      <Box flex={2} minH={0} px={2}>
         <Tabs variant="soft-rounded" colorScheme="blue" size="sm" display="flex" flexDirection="column" h="100%">
           <TabList mb={1} gap={1} flexShrink={0}>
-            <Tab
-              color="whiteAlpha.500"
-              _selected={{ color: 'white', bg: 'whiteAlpha.150' }}
-              fontSize="xs"
-              fontWeight="medium"
-              py={1}
-              px={3}
-              borderRadius="md">
-              Tokens
-            </Tab>
+            {!isUtxoNetwork && (
+              <Tab
+                color="whiteAlpha.500"
+                _selected={{ color: 'white', bg: 'whiteAlpha.150' }}
+                fontSize="xs"
+                fontWeight="medium"
+                py={1}
+                px={3}
+                borderRadius="md">
+                Tokens
+              </Tab>
+            )}
             <Tab
               color="whiteAlpha.500"
               _selected={{ color: 'white', bg: 'whiteAlpha.150' }}
@@ -289,18 +326,14 @@ const AssetDetail = ({ asset, balances, onSend, onReceive }: AssetDetailProps) =
             </Tab>
           </TabList>
           <TabPanels flex={1} minH={0} overflowY="auto">
-            {/* Tokens Tab */}
-            <TabPanel p={0}>
-              {isUtxoNetwork ? (
-                <VStack align="center" py={6}>
-                  <Text fontSize="sm" color="whiteAlpha.500">
-                    No tokens for UTXO chains
-                  </Text>
-                </VStack>
-              ) : (
+            {/* Tokens Tab — hidden on chains that don't support tokens
+                (currently UTXO). Both the Tab and its TabPanel are dropped
+                together so Chakra's positional indexing stays in sync. */}
+            {!isUtxoNetwork && (
+              <TabPanel p={0}>
                 <Tokens asset={{ ...asset, address }} networkId={asset.networkId} />
-              )}
-            </TabPanel>
+              </TabPanel>
+            )}
 
             {/* Activity Tab */}
             <TabPanel p={0}>
@@ -389,5 +422,37 @@ const AssetDetail = ({ asset, balances, onSend, onReceive }: AssetDetailProps) =
     </Flex>
   );
 };
+
+// Passive indicator shown next to the asset name on the Tron asset page —
+// tells the user Tron dApps use the TronLink protocol (which KeepKey
+// implements). Not a link; TronLink is an unaffiliated wallet.
+const TronLinkBadge = () => (
+  <Flex
+    alignItems="center"
+    gap={1}
+    px={1.5}
+    py={0.5}
+    borderRadius="full"
+    bg="rgba(47,94,252,0.14)"
+    border="1px solid"
+    borderColor="rgba(47,94,252,0.36)">
+    <Flex w="10px" h="10px" borderRadius="full" bg="#2f5efc" alignItems="center" justifyContent="center" flexShrink={0}>
+      <TronLinkGlyph size={6} />
+    </Flex>
+    <Text fontSize="9px" color="#8fa9ff" letterSpacing="0.06em" fontWeight={600} textTransform="uppercase">
+      TronLink
+    </Text>
+  </Flex>
+);
+
+// Minimal TronLink mark — triangle/paper-plane silhouette in white.
+const TronLinkGlyph = ({ size = 16 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <path
+      d="M4.5 5.5L19.5 11.2c.6.24.6 1.1 0 1.34l-6.6 2.64-2.64 6.6c-.24.6-1.1.6-1.34 0L3.18 6.84c-.24-.6.36-1.2.96-.96l.36.12z"
+      fill="white"
+    />
+  </svg>
+);
 
 export default AssetDetail;
