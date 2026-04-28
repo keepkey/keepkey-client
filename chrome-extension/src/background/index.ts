@@ -830,9 +830,6 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         case 'GET_ASSET_CONTEXT': {
           // Asset context lives in assetContextStorage (set by SET_ASSET_CONTEXT)
           const assetCtx = await assetContextStorage.get();
-          if ((assetCtx as any)?.networkId === 'ton:-239') {
-            console.log(tag, '[TON-DEBUG] GET_ASSET_CONTEXT returning:', JSON.stringify(assetCtx));
-          }
           sendResponse({ assets: assetCtx && Object.keys(assetCtx).length > 0 ? assetCtx : null });
           break;
         }
@@ -893,16 +890,10 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           if (asset && asset.caip) {
             try {
               console.log(tag, 'Setting asset context:', asset);
-              if (asset.networkId === 'ton:-239') {
-                console.log(tag, '[TON-DEBUG] incoming asset:', JSON.stringify(asset));
-              }
 
               // Enrich asset with pubkeys from wallet so Asset.tsx has addresses
               if (asset.networkId) {
                 const networkPubkeys = wallet.getPubkeys(asset.networkId);
-                if (asset.networkId === 'ton:-239') {
-                  console.log(tag, '[TON-DEBUG] wallet.getPubkeys("ton:-239") =', JSON.stringify(networkPubkeys));
-                }
                 // For EVM wildcard, also try the base eip155 network
                 if (networkPubkeys.length === 0 && asset.networkId.startsWith('eip155')) {
                   const evmPubkeys = wallet
@@ -957,20 +948,6 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                 const exact = asset.caip && cachedBalances.find((b: any) => b.caip === asset.caip);
                 const nativeFallback = cachedBalances.find((b: any) => b.networkId === asset.networkId && b.isNative);
                 const match = exact || nativeFallback;
-                if (asset.networkId === 'ton:-239') {
-                  const tonRows = cachedBalances.filter((b: any) => b.networkId === 'ton:-239');
-                  console.log(
-                    tag,
-                    '[TON-DEBUG] enrichment: cachedBalances.length=' +
-                      cachedBalances.length +
-                      ', ton rows=' +
-                      JSON.stringify(tonRows) +
-                      ', exactCaipMatch=' +
-                      !!exact +
-                      ', nativeFallbackMatch=' +
-                      !!nativeFallback,
-                  );
-                }
                 if (match) {
                   asset.balance = match.balance;
                   if (!asset.priceUsd) asset.priceUsd = match.priceUsd;
@@ -991,9 +968,6 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               }
 
               // Store in assetContextStorage for GET_ASSET_CONTEXT
-              if (asset.networkId === 'ton:-239') {
-                console.log(tag, '[TON-DEBUG] final asset being stored:', JSON.stringify(asset));
-              }
               await assetContextStorage.updateContext(asset);
 
               // If eip155 then set web3 provider

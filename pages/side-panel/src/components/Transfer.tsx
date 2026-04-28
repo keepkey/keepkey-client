@@ -91,9 +91,6 @@ export function Transfer(): JSX.Element {
 
   useEffect(() => {
     chrome.runtime.sendMessage({ type: 'GET_ASSET_CONTEXT' }, response => {
-      if (response?.assets?.networkId === 'ton:-239') {
-        console.log('[TON-DEBUG Transfer] GET_ASSET_CONTEXT response:', response);
-      }
       setAssetContext(response.assets);
       if (response?.assets.icon) setAvatarUrl(response.assets.icon);
       if (response?.assets.priceUsd) setPriceUsd(response.assets.priceUsd);
