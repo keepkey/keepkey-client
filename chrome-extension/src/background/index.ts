@@ -1059,17 +1059,20 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             if (ctx?.networkId) {
               const scoped = wallet.getPubkeys(ctx.networkId);
               if (scoped.length > 0) {
-                // UTXO accounts share an accountIndex (BTC has Legacy /
-                // Segwit / Native Segwit all at account 0); script_type is
-                // what distinguishes them, so check it first. The header
-                // sets ctx.script_type when the user picks an account in
-                // the UTXO dropdown.
+                // Match priority: note → script_type → accountIndex →
+                // scoped[0]. Note is the only identifier that's unique
+                // across every chainConfig path; script_type collapses
+                // BTC account 0 / account 1 (both p2wpkh) and would
+                // always pick the first one. accountIndex is fine for
+                // multi-account EVM but is unset on UTXO header rows.
+                const ctxNote = (ctx as any).note;
                 const ctxScriptType = (ctx as any).script_type;
-                if (ctxScriptType) {
+                if (ctxNote) {
+                  chosen = scoped.find((pk: any) => pk.note === ctxNote);
+                }
+                if (!chosen && ctxScriptType) {
                   chosen = scoped.find((pk: any) => pk.script_type === ctxScriptType);
                 }
-                // Fall through to accountIndex matching (multi-account EVM)
-                // and finally scoped[0].
                 if (!chosen && (ctx as any).accountIndex !== undefined) {
                   chosen = scoped.find((pk: any) => pk.accountIndex === (ctx as any).accountIndex);
                 }

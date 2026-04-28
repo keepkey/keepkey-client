@@ -147,12 +147,14 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
         // even when the user picked account 2.
         accountIndex: account.accountIndex,
         // UTXO accounts share an accountIndex (BTC has Legacy / Segwit /
-        // Native Segwit all under account 0). The script_type is what
-        // distinguishes them, so the background's pubkey scoping needs
-        // it; without it Receive defaults to the first chainConfig path
-        // and ignores the user's header selection. Snake_case to match
-        // the field name on raw pubkey objects.
+        // Native Segwit all under account 0), and multiple paths can
+        // share a script_type (BTC account 0 and account 1 are both
+        // p2wpkh). Note is unique per chainConfig path, so it's what the
+        // background uses to scope GET_PUBKEY_CONTEXT exactly. Send
+        // both: GET_PUBKEY_CONTEXT prefers note, falls back to
+        // script_type / accountIndex.
         script_type: account.scriptType,
+        note: account.note,
       };
       chrome.runtime.sendMessage({ type: 'SET_ASSET_CONTEXT', asset });
       setHasAssetContext(true);
