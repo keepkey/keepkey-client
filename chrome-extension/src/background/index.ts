@@ -920,14 +920,26 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                 // UTXO assets coming from non-header paths (global
                 // Receive, dashboard balance click, asset list) don't
                 // carry a specific note/script_type. Without one,
-                // GET_PUBKEY_CONTEXT falls back to scoped[0] — usually
-                // legacy BTC — and Receive shows a "1..." address while
-                // the header still reads "Native SegWit". Default to
-                // first p2wpkh (Native Segwit) on the network, then any
-                // scoped[0], so all entry points agree.
+                // GET_PUBKEY_CONTEXT falls back to scoped[0] and
+                // Receive shows a different address from what the
+                // header dropdown displays.
+                //
+                // Default selection mirrors what the header builders do
+                // so all entry points stay in sync:
+                //   - BTC: first p2wpkh (buildBtcAccounts marks Native
+                //     Segwit as isDefault).
+                //   - Other UTXO (LTC, DOGE, DASH, BCH): first scoped
+                //     pubkey in chainConfig order — buildUtxoAccounts
+                //     uses items.length === 0, so e.g. LTC defaults to
+                //     legacy p2pkh (configured before p2wpkh) and we
+                //     must NOT silently shift it to native segwit.
+                const BTC_GENESIS_PREFIX = 'bip122:000000000019d6689c085ae165831e93';
                 if (asset.networkId.startsWith('bip122:') && !asset.note && !asset.script_type) {
                   const scoped = wallet.getPubkeys(asset.networkId);
-                  const preferred = scoped.find((pk: any) => pk.script_type === 'p2wpkh') || scoped[0];
+                  const isBtc = asset.networkId.startsWith(BTC_GENESIS_PREFIX);
+                  const preferred = isBtc
+                    ? scoped.find((pk: any) => pk.script_type === 'p2wpkh') || scoped[0]
+                    : scoped[0];
                   if (preferred) {
                     asset.note = preferred.note;
                     asset.script_type = preferred.script_type;

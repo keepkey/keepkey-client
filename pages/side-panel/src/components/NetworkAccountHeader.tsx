@@ -26,8 +26,15 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
   const [isAddingAccount, setIsAddingAccount] = useState(false);
   const [hasAssetContext, setHasAssetContext] = useState(false);
   // Held across pubkey load so the auto-select effect can land on the
-  // restored account instead of snapping back to the default.
+  // restored account instead of snapping back to the default. Note is
+  // checked first because UTXO chains (BTC) have multiple accounts at
+  // accountIndex 0 distinguished only by script_type — accountIndex
+  // alone restores to the wrong row (legacy when user wanted Native
+  // Segwit). script_type is a fallback for callers that didn't emit a
+  // note.
   const [desiredAccountIndex, setDesiredAccountIndex] = useState<number | null>(null);
+  const [desiredNote, setDesiredNote] = useState<string | null>(null);
+  const [desiredScriptType, setDesiredScriptType] = useState<string | null>(null);
   const toast = useToast();
 
   const { isOpen: isNetworkModalOpen, onOpen: onNetworkModalOpen, onClose: onNetworkModalClose } = useDisclosure();
@@ -61,14 +68,17 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
             setPubkeys(response.balances);
 
             // Restore selection from stored asset context. Carries
-            // accountIndex too so multi-account EVM picks survive a
-            // reload — without this the auto-select effect below
-            // snapped back to Account 0 every time.
+            // note + script_type + accountIndex so multi-account EVM
+            // picks AND multi-script BTC picks survive a reload —
+            // without all three the auto-select effect snaps back to
+            // the first chainConfig path on the network.
             chrome.runtime.sendMessage({ type: 'GET_ASSET_CONTEXT' }, ctxResponse => {
               const stored = ctxResponse?.assets;
               if (stored?.networkId) {
                 setSelectedNetworkId(stored.networkId);
                 setHasAssetContext(true);
+                if (stored.note) setDesiredNote(stored.note);
+                if (stored.script_type) setDesiredScriptType(stored.script_type);
                 if (stored.accountIndex !== undefined && stored.accountIndex !== null) {
                   setDesiredAccountIndex(stored.accountIndex);
                 }
@@ -91,20 +101,37 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
         fetchPubkeys();
       }
       if (message.type === 'ASSET_CONTEXT_UPDATED' && message.assetContext?.networkId) {
-        setSelectedNetworkId(message.assetContext.networkId);
+        const ctx = message.assetContext;
+        setSelectedNetworkId(ctx.networkId);
         setHasAssetContext(true);
+        // Feed desired* so the auto-select effect can re-target if the
+        // stored context now points to a different account on the same
+        // network. The effect compares against the current
+        // selectedAccountKey and is a no-op when the selection already
+        // matches, so this doesn't loop on the broadcast that fires
+        // back from our own SET_ASSET_CONTEXT.
+        setDesiredNote(ctx.note ?? null);
+        setDesiredScriptType(ctx.script_type ?? null);
+        setDesiredAccountIndex(ctx.accountIndex !== undefined && ctx.accountIndex !== null ? ctx.accountIndex : null);
       }
       if (message.type === 'ASSET_CONTEXT_CLEARED') {
         setSelectedNetworkId(null);
         setSelectedAccountKey(null);
         setHasAssetContext(false);
+        setDesiredNote(null);
+        setDesiredScriptType(null);
+        setDesiredAccountIndex(null);
       }
     };
     chrome.runtime.onMessage.addListener(listener);
     return () => chrome.runtime.onMessage.removeListener(listener);
   }, [fetchPubkeys]);
 
-  // Helpers to fire SET_ASSET_CONTEXT and notify parent
+  // Pure data setter — sends SET_ASSET_CONTEXT and updates local
+  // hasAssetContext. Returns the asset object so click handlers can
+  // pass it to onSelectNetwork. Side-effects (drawer-open) live in the
+  // click handlers, NOT here, so the auto-default effect can call this
+  // without triggering an unprompted AssetDetail drawer on cold start.
   const setAssetContext = useCallback(
     (networkId: string, account: AccountItem) => {
       const chainSymbol = NetworkIdToChain[networkId];
@@ -128,72 +155,100 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
         // share a script_type (BTC account 0 and account 1 are both
         // p2wpkh). Note is unique per chainConfig path, so it's what the
         // background uses to scope GET_PUBKEY_CONTEXT exactly. Send
-        // both: GET_PUBKEY_CONTEXT prefers note, falls back to
+        // all three: GET_PUBKEY_CONTEXT prefers note, falls back to
         // script_type / accountIndex.
         script_type: account.scriptType,
         note: account.note,
       };
       chrome.runtime.sendMessage({ type: 'SET_ASSET_CONTEXT', asset });
       setHasAssetContext(true);
-      if (onSelectNetwork) onSelectNetwork(asset);
+      return asset;
     },
-    [networks, onSelectNetwork],
+    [networks],
   );
 
-  // Network selected
+  // Network selected — user-initiated, opens AssetDetail.
   const handleNetworkSelect = useCallback(
     (net: NetworkItem) => {
       setSelectedNetworkId(net.networkId);
-      // Build accounts for this network and pick the default
       const accts = buildAccountList(pubkeys, net.networkId, ethAccounts);
       const defaultAcc = accts.find(a => a.isDefault) || accts[0];
       if (defaultAcc) {
         setSelectedAccountKey(defaultAcc.key);
-        setAssetContext(net.networkId, defaultAcc);
+        const asset = setAssetContext(net.networkId, defaultAcc);
+        if (onSelectNetwork) onSelectNetwork(asset);
       }
     },
-    [pubkeys, ethAccounts, setAssetContext],
+    [pubkeys, ethAccounts, setAssetContext, onSelectNetwork],
   );
 
-  // Account selected
+  // Account selected — user-initiated, opens AssetDetail.
   const handleAccountSelect = useCallback(
     (account: AccountItem) => {
       setSelectedAccountKey(account.key);
       if (selectedNetworkId) {
-        setAssetContext(selectedNetworkId, account);
+        const asset = setAssetContext(selectedNetworkId, account);
+        if (onSelectNetwork) onSelectNetwork(asset);
       }
     },
-    [selectedNetworkId, setAssetContext],
+    [selectedNetworkId, setAssetContext, onSelectNetwork],
   );
 
-  // Auto-select an account when network changes. Priority:
-  //   1. Restore target (from persisted asset context on reload)
-  //   2. Current selection if still valid
-  //   3. isDefault → first account
-  // Also pushes SET_ASSET_CONTEXT to the background so the stored asset
-  // matches what the dropdown is showing — without this, the local UI
-  // could read "Native SegWit" while a stale or incomplete stored
-  // context made downstream Receive/Send default to legacy BTC.
+  // Auto-select an account when accounts/desired identifiers change.
+  // Priority:
+  //   1. Restore target by note (unique per chainConfig path)
+  //   2. Restore target by script_type (UTXO fallback if note missing)
+  //   3. Restore target by accountIndex (multi-account EVM)
+  //   4. Current selection if still valid (no desired* set)
+  //   5. isDefault → first account
+  //
+  // Also pushes SET_ASSET_CONTEXT so the stored asset matches the
+  // dropdown — but only when the chosen key actually changes, otherwise
+  // the ASSET_CONTEXT_UPDATED broadcast that comes back would feed
+  // desired* and re-fire the effect indefinitely. The `silent` style
+  // for setAssetContext (it no longer calls onSelectNetwork) keeps
+  // this auto-default from opening AssetDetail unprompted.
   useEffect(() => {
     if (accounts.length === 0) return;
-    if (selectedAccountKey && accounts.find(a => a.key === selectedAccountKey)) return;
 
-    if (desiredAccountIndex !== null) {
-      const target = accounts.find(a => a.accountIndex === desiredAccountIndex);
-      if (target) {
+    const target =
+      (desiredNote && accounts.find(a => a.note === desiredNote)) ||
+      (desiredScriptType && accounts.find(a => a.scriptType === desiredScriptType)) ||
+      (desiredAccountIndex !== null && accounts.find(a => a.accountIndex === desiredAccountIndex)) ||
+      null;
+
+    if (target) {
+      // Always clear desired* (one-shot), only push to background when
+      // the account actually changes.
+      const changed = target.key !== selectedAccountKey;
+      if (changed) {
         setSelectedAccountKey(target.key);
-        setDesiredAccountIndex(null); // one-shot — don't keep overriding manual picks
         if (selectedNetworkId) setAssetContext(selectedNetworkId, target);
-        return;
       }
-      // Restore target doesn't exist (e.g. account was removed) — fall through.
-      setDesiredAccountIndex(null);
+      if (desiredNote !== null) setDesiredNote(null);
+      if (desiredScriptType !== null) setDesiredScriptType(null);
+      if (desiredAccountIndex !== null) setDesiredAccountIndex(null);
+      return;
     }
 
+    // No desired* targets — keep the current selection if it's still in
+    // the rebuilt accounts list, otherwise fall back to the default.
+    if (selectedAccountKey && accounts.find(a => a.key === selectedAccountKey)) return;
+
     const defaultAcc = accounts.find(a => a.isDefault) || accounts[0];
-    setSelectedAccountKey(defaultAcc.key);
-    if (selectedNetworkId) setAssetContext(selectedNetworkId, defaultAcc);
-  }, [accounts, selectedAccountKey, desiredAccountIndex, selectedNetworkId, setAssetContext]);
+    if (defaultAcc) {
+      setSelectedAccountKey(defaultAcc.key);
+      if (selectedNetworkId) setAssetContext(selectedNetworkId, defaultAcc);
+    }
+  }, [
+    accounts,
+    selectedAccountKey,
+    desiredNote,
+    desiredScriptType,
+    desiredAccountIndex,
+    selectedNetworkId,
+    setAssetContext,
+  ]);
 
   // ETH account add/remove
   const handleAddEthAccount = useCallback(() => {

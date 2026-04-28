@@ -42,6 +42,7 @@ const AssetDetail = ({ asset, balances, onSend, onReceive }: AssetDetailProps) =
   const toast = useToast();
 
   const isEvm = asset.networkId?.startsWith('eip155:');
+  const isUtxo = asset.networkId?.startsWith('bip122:');
 
   // Fallback: cached Pioneer balance for non-EVM or while loading
   const chainBalances = balances.filter(b => b.networkId === asset.networkId);
@@ -75,6 +76,32 @@ const AssetDetail = ({ asset, balances, onSend, onReceive }: AssetDetailProps) =
     setLiveUsdValue(null);
     setLivePriceUsd(null);
 
+    // UTXO chains: pubkey-list rows have empty .address and Pioneer's
+    // /portfolio response stuffs the xpub into b.address (line ~439 in
+    // background/index.ts), so falling back to asset.pubkeys[0].address
+    // or asset.address would surface either nothing or an unusable
+    // xpub string in the address bar / explorer link. Derive the real
+    // receive address via GET_UTXO_ADDRESS using the asset's note +
+    // script_type (which the header / SET_ASSET_CONTEXT enrichment
+    // both populate).
+    if (isUtxo && asset.networkId) {
+      setLoadingAddress(true);
+      chrome.runtime.sendMessage(
+        {
+          type: 'GET_UTXO_ADDRESS',
+          networkId: asset.networkId,
+          scriptType: asset.script_type,
+          note: asset.note,
+        },
+        response => {
+          if (response?.address) setAddress(response.address);
+          else setAddress('');
+          setLoadingAddress(false);
+        },
+      );
+      return;
+    }
+
     const accountAddress = asset.pubkeys?.[0]?.address || asset.address || '';
     if (accountAddress) {
       setAddress(accountAddress);
@@ -102,7 +129,7 @@ const AssetDetail = ({ asset, balances, onSend, onReceive }: AssetDetailProps) =
         },
       );
     }
-  }, [asset.networkId, asset.address, asset.pubkeys?.[0]?.address, isEvm]);
+  }, [asset.networkId, asset.address, asset.pubkeys?.[0]?.address, asset.note, asset.script_type, isEvm, isUtxo]);
 
   // Load activity events filtered by networkId
   useEffect(() => {
