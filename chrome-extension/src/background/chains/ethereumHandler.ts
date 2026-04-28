@@ -238,10 +238,13 @@ const handleWeb3ClientVersion = async () => {
 };
 
 const handleEthCall = async params => {
+  // ethers v6 provider.call(tx) ignores extra args, dropping blockTag AND
+  // stateOverride. Uniswap's pre-quote simulation uses stateOverride to
+  // model the not-yet-broadcasted Permit2 approval; if we drop it the
+  // simulation reverts and the quote is rejected (/v1/swap returns 404).
+  // Passthrough raw RPC so the dApp's params arrive byte-identical.
   const provider = await getProvider();
-  const [callParams, blockTag, stateOverride] = params;
-  const callResult = await provider.call(callParams, blockTag, stateOverride);
-  return callResult;
+  return provider.send('eth_call', params);
 };
 
 const handleEthMaxPriorityFeePerGas = async () => {
@@ -257,9 +260,10 @@ const handleEthMaxFeePerGas = async () => {
 };
 
 const handleEthEstimateGas = async params => {
+  // ethers v6 provider.estimateGas(tx) takes 1 arg and drops blockTag.
+  // Passthrough raw RPC for spec-compliant behavior.
   const provider = await getProvider();
-  const estimateGas = await provider.estimateGas(params[0]);
-  return '0x' + estimateGas.toString(16);
+  return provider.send('eth_estimateGas', params);
 };
 
 const handleEthGasPrice = async () => {
@@ -1100,11 +1104,16 @@ const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string, 
     console.log(tag, '**** HDWalletPayload: ', JSON.stringify(HDWalletPayload));
     const sdk = wallet.getSdk();
     const signedMessage = await sdk.eth.ethSignTypedData(HDWalletPayload);
-    console.log(tag, '**** signedMessage: ', signedMessage);
+    console.log('[HANDOFF] vault → BEX (eth_signTypedData_v4 raw):', JSON.stringify(signedMessage));
 
     // EIP-1193: eth_signTypedData_v4 must return hex signature string, not object.
     // Vault SDK returns { address, signature } — extract just the signature.
     const signatureHex = signedMessage?.signature || signedMessage;
+    const sigType = typeof signatureHex;
+    const sigLen = sigType === 'string' ? signatureHex.length : 'n/a';
+    console.log(
+      `[HANDOFF] BEX → dApp (eth_signTypedData_v4 final): type=${sigType} len=${sigLen} value=${signatureHex}`,
+    );
 
     // Notify popup that signature is complete
     chrome.runtime.sendMessage({

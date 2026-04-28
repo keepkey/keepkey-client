@@ -338,8 +338,20 @@ import { KeepKeyTronProvider } from './tron-provider';
         return new Promise((resolve, reject) => {
           walletRequest(method, params, chain, (error, result) => {
             if (error) {
+              console.log(
+                `[HANDOFF] dApp ← KeepKey (${chain}/${method}) REJECT\n  params=${JSON.stringify(params)}\n  error=`,
+                error,
+              );
               reject(error);
             } else {
+              const resultType = typeof result;
+              const resultPreview =
+                resultType === 'string'
+                  ? `len=${(result as string).length} value=${result}`
+                  : `value=${JSON.stringify(result)}`;
+              console.log(
+                `[HANDOFF] dApp ← KeepKey (${chain}/${method}) RESOLVE\n  params=${JSON.stringify(params)}\n  type=${resultType} ${resultPreview}`,
+              );
               resolve(result);
             }
           });

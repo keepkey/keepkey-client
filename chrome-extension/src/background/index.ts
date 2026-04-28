@@ -740,8 +740,28 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             try {
               // KEEPKEY_WALLET and ADDRESS are passed for backward compat with handler signatures
               const result = await handleWalletRequest(requestInfo, chain, method, params, null, ADDRESS);
+
+              // [HANDOFF] log: emit params + result on a single line per call so a
+              // dApp-flow audit can be reconstructed by `grep '[HANDOFF]'` in the
+              // background console. Especially valuable for read-side RPCs (eth_call,
+              // eth_getBalance, eth_estimateGas, eth_getCode, eth_getTransactionCount)
+              // that build the dApp's view of wallet state — if any of those return a
+              // value that contradicts mainnet, the dApp builds a doomed request body
+              // (e.g. wrong Permit2 nonce → /v1/swap 404).
+              const resultType = typeof result;
+              const resultPreview =
+                resultType === 'string'
+                  ? `len=${(result as string).length} value=${result}`
+                  : `value=${JSON.stringify(result)}`;
+              console.log(
+                `[HANDOFF] BEX → content script (${chain}/${method})\n  params=${JSON.stringify(params)}\n  type=${resultType} ${resultPreview}`,
+              );
               sendResponse({ result });
             } catch (error) {
+              console.log(
+                `[HANDOFF] BEX → content script (${chain}/${method}) ERROR\n  params=${JSON.stringify(params)}\n  error=`,
+                error,
+              );
               sendResponse({ error: formatUserError(error) });
             }
           } else {
@@ -956,11 +976,6 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                 }
               }
 
-              // Track previous address/chain to detect changes for dApp notification
-              const prevAddress = ADDRESS;
-              const prevProvider = await web3ProviderStorage.getWeb3Provider();
-              const prevChainId = prevProvider?.chainId;
-
               // Update global ADDRESS for EVM signing when account changes
               if (asset.networkId?.startsWith('eip155:') && asset.address) {
                 ADDRESS = asset.address;
@@ -971,7 +986,6 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               await assetContextStorage.updateContext(asset);
 
               // If eip155 then set web3 provider
-              let newChainId: string | undefined;
               if (asset.networkId && asset.networkId.includes('eip155')) {
                 // Try to get provider data from custom chains first (user-added networks)
                 let providerData = await blockchainDataStorage.getBlockchainData(asset.networkId);
@@ -995,7 +1009,6 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
 
                 if (providerData) {
                   await web3ProviderStorage.saveWeb3Provider(providerData);
-                  newChainId = providerData.chainId;
                 }
               }
 
@@ -1005,36 +1018,6 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                   assetContext: asset,
                 })
                 .catch(() => {});
-
-              // EIP-1193: Notify dApps of account/chain changes via content script relay
-              if (asset.networkId?.startsWith('eip155:')) {
-                const addressChanged = asset.address && asset.address !== prevAddress;
-                const chainChanged = newChainId && newChainId !== prevChainId;
-
-                if (addressChanged || chainChanged) {
-                  chrome.tabs.query({}, tabs => {
-                    for (const tab of tabs) {
-                      if (!tab.id) continue;
-                      if (addressChanged) {
-                        chrome.tabs
-                          .sendMessage(tab.id, {
-                            type: 'ACCOUNTS_CHANGED',
-                            accounts: [ADDRESS],
-                          })
-                          .catch(() => {});
-                      }
-                      if (chainChanged) {
-                        chrome.tabs
-                          .sendMessage(tab.id, {
-                            type: 'CHAIN_CHANGED',
-                            provider: { chainId: newChainId },
-                          })
-                          .catch(() => {});
-                      }
-                    }
-                  });
-                }
-              }
 
               sendResponse(asset);
             } catch (error) {
