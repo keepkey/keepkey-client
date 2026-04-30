@@ -9,8 +9,14 @@
  *   - TriggerSmartContract `transfer(address,uint256)` signing (TRC20, e.g. USDT)
  *   - Read-only RPC and transactionBuilder.sendTrx via TronGrid
  *
+ * Supported (firmware 7.14.1+):
+ *   - signMessage / signMessageV2 — TIP-191 personal_sign
+ *   - verifyMessage / verifyMessageV2 — recover signer + check
+ *
  * Out of scope (throws on attempt):
- *   - signMessage / signMessageV2 (vault endpoint not implemented yet)
+ *   - _signTypedData (TIP-712) — call window.tronLink.request({ method:
+ *     'tron_signTypedHash', params: [{ domainSeparatorHash, messageHash }] })
+ *     directly with pre-computed 32-byte hashes if you need this.
  *   - Non-`transfer` smart contract calls (requires firmware display support)
  */
 
@@ -250,12 +256,26 @@ export class KeepKeyTronProvider {
         return signed;
       },
 
-      signMessage: async (_message: string, _privateKey?: string) => {
-        throw new Error('tronWeb.trx.signMessage is not yet supported by KeepKey');
+      // TIP-191 V1 — message is hex (with or without 0x).
+      // privateKey arg is ignored (signing always happens on the device).
+      signMessage: async (message: string, privateKey?: string) => {
+        void privateKey;
+        return await promisifyRequest(self.walletRequest, 'tron_signMessage', [message]);
       },
 
-      signMessageV2: async (_message: string, _privateKey?: string) => {
-        throw new Error('tronWeb.trx.signMessageV2 is not yet supported by KeepKey');
+      // TIP-191 V2 — message is UTF-8 string.
+      signMessageV2: async (message: string, privateKey?: string) => {
+        void privateKey;
+        return await promisifyRequest(self.walletRequest, 'signMessageV2', [message]);
+      },
+
+      // TIP-191 verify. Returns boolean; doesn't touch the device.
+      verifyMessage: async (message: string, signature: string, address: string) => {
+        return await promisifyRequest(self.walletRequest, 'tron_verifyMessage', [message, signature, address]);
+      },
+
+      verifyMessageV2: async (message: string, signature: string, address: string) => {
+        return await promisifyRequest(self.walletRequest, 'verifyMessageV2', [message, signature, address]);
       },
 
       sendRawTransaction: async (signedTx: any) => {
