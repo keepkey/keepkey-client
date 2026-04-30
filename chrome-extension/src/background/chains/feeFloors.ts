@@ -161,10 +161,18 @@ export function buildFeeWarning(opts: {
   // Aim for ~3 blocks of base-fee headroom: baseFee*2 + tip is the
   // ethers-default formula. Cap below the suggested priority + 2*baseFee
   // so we never silently 10x the dApp's fees.
-  const suggestedMax =
+  const oracleSuggestion =
     opts.oracleMaxFeePerGas && opts.oracleMaxFeePerGas > floor
       ? opts.oracleMaxFeePerGas
       : baseFee * 2n + suggestedPriority;
+  // Invariant: suggestedMax must leave at least `suggestedPriority` on top
+  // of baseFee, otherwise EIP-1559 caps the effective tip at
+  // (suggestedMax - baseFee) which lands below priorityFloor and the
+  // "use suggested" choice still trips the same warning. Picking the oracle
+  // value alone (when baseFee is low and priorityFloor is high) regressed
+  // exactly into this hole — see PR #55 review.
+  const tipHeadroomFloor = baseFee + suggestedPriority;
+  const suggestedMax = oracleSuggestion > tipHeadroomFloor ? oracleSuggestion : tipHeadroomFloor;
 
   const trigger: 'maxFee' | 'tip' | 'both' = failsMaxFee && failsTip ? 'both' : failsMaxFee ? 'maxFee' : 'tip';
 

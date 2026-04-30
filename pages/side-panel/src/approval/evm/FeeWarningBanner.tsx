@@ -60,7 +60,6 @@ export default function FeeWarningBanner({ eventId, warning, choice, onChoiceCha
 
   const persist = async (next: FeeChoice) => {
     try {
-      // @ts-expect-error storage event shape is typed loosely
       await requestStorage.updateEventById(eventId, { feeChoice: next });
       onChoiceChange(next);
     } catch (e: any) {
