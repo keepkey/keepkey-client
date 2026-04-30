@@ -346,10 +346,11 @@ const handleEthSendRawTransaction = async params => {
   // (already signed externally) BEFORE we relay it to the RPC. Paste
   // params[0] into an EVM tx decoder to inspect its contents.
   console.log(`[HANDOFF] dApp → BEX (eth_sendRawTransaction) rawTx=${params[0]}`);
-  const provider = await getProvider();
-  const txResponse = await provider.broadcastTransaction(params[0]);
-  console.log(`[HANDOFF] RPC → BEX (eth_sendRawTransaction result) hash=${txResponse?.hash}`);
-  return txResponse.hash;
+  // Route through the failover-aware helper so raw signed tx submissions
+  // get the same RPC iteration / last-resort fallback / already-known
+  // handling as eth_sendTransaction. expectedFrom is unknown (the dApp
+  // already signed externally), so the signer-mismatch check is skipped.
+  return await broadcastTransaction(params[0]);
 };
 
 // Helper function to switch to a provider and update contexts
@@ -1559,7 +1560,11 @@ const broadcastTransaction = async (signedTx: string, expectedFrom?: string) => 
   for (const url of availableRpcs) {
     try {
       console.log(`[HANDOFF] BEX → RPC (broadcast attempt) url=${url} signedTx=${signedTx}`);
-      const provider = makeStaticProvider(url, networkId || currentProvider.chainId);
+      // 4s per HTTP attempt + no internal throttle retries: ensures a
+      // 429/dead URL doesn't stall the failover loop. ethers' default
+      // FetchRequest retries 429/5xx with exponential backoff for ~30s,
+      // which is exactly the lag this loop is meant to eliminate.
+      const provider = makeStaticProvider(url, networkId || currentProvider.chainId, { timeoutMs: 4000 });
       const txResponse = await provider.broadcastTransaction(signedTx);
       console.log(
         `[HANDOFF] RPC → BEX (broadcast success) hash=${txResponse?.hash} url=${url} from=${txResponse?.from} nonce=${txResponse?.nonce}`,
@@ -1688,6 +1693,11 @@ const sendTransaction = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string
     return txHash;
   } catch (e) {
     console.error(e);
+    // Pass ProviderRpcErrors through unchanged so the dApp sees the
+    // precise reason (insufficient funds, nonce conflict, all RPCs
+    // failed, etc.) instead of a generic "Error sending transaction"
+    // that swallows our broadcastTransaction classifier output.
+    if (e && typeof (e as { code?: unknown }).code === 'number') throw e;
     throw createProviderRpcError(4000, 'Error sending transaction', e);
   }
 };
