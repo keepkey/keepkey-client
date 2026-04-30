@@ -18,6 +18,7 @@ import { handleTronRequest } from './chains/tronHandler';
 import { handleTonRequest } from './chains/tonHandler';
 import type { ProviderRpcError } from './utils';
 import { createProviderRpcError, formatUserError } from './utils';
+import { openSidePanel, setApprovalBadge } from './popup';
 
 const TAG = ' | METHODS | ';
 
@@ -31,60 +32,6 @@ const TAG = ' | METHODS | ';
 // Hard timeout on the promise so nothing hangs forever if the user
 // ignores the request. Matches the sidebar's event-age eviction window.
 const APPROVAL_TIMEOUT_MS = 10 * 60_000;
-
-const findTargetWindowId = async (preferred?: number | null): Promise<number | null> => {
-  try {
-    // ALWAYS prefer the sender tab's own window when we know it — that's
-    // the browser window the dApp is running in, and the side panel
-    // MUST open there. Falling through to "most recently accessed web
-    // tab" meant a request originating in Window A could surface its
-    // approval UI in Window B.
-    if (preferred != null) {
-      try {
-        const w = await chrome.windows.get(preferred);
-        if (w?.id != null) return w.id;
-      } catch {
-        // Window closed between request and approval — fall through.
-      }
-    }
-    const current = await chrome.windows.getLastFocused({});
-    return current?.id ?? null;
-  } catch {
-    return null;
-  }
-};
-
-const openSidePanel = async (requestInfo: any): Promise<void> => {
-  const tag = TAG + ' | openSidePanel | ';
-  // Firefox has no sidePanel API; the user sees the badge and approval
-  // remains unreachable until task #5 wires a Firefox-specific surface.
-  if (!chrome.sidePanel?.open) return;
-  try {
-    const windowId = await findTargetWindowId(requestInfo?.__senderWindowId);
-    if (windowId == null) {
-      console.warn(tag, 'No target window found — user must click the extension icon to open the panel');
-      return;
-    }
-    try {
-      await chrome.sidePanel.open({ windowId });
-      console.log(tag, 'Side panel opened for windowId:', windowId);
-    } catch (e) {
-      // Expected when no recent user gesture — badge path takes over.
-      console.warn(tag, 'sidePanel.open failed (likely no user gesture), falling back to badge', e);
-    }
-  } catch (e) {
-    console.error(tag, e);
-  }
-};
-
-const setApprovalBadge = (pending: boolean) => {
-  try {
-    chrome.action.setBadgeText({ text: pending ? '!' : '' });
-    if (pending) chrome.action.setBadgeBackgroundColor({ color: '#e74c3c' });
-  } catch (e) {
-    console.warn(TAG, 'setApprovalBadge failed', e);
-  }
-};
 
 /*
   "requestInfo": {

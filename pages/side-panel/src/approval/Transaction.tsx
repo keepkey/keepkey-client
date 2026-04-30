@@ -3,6 +3,7 @@ import EvmTransaction from './evm';
 import UtxoTransaction from './utxo';
 import OtherTransaction from './other';
 import TendermintTransaction from './tendermint';
+import ChainNotEnabledCard from './ChainNotEnabledCard';
 import { approvalStorage, requestStorage } from '@extension/storage/dist/lib';
 import { Flex, Spinner, Alert, AlertIcon, Button, Icon } from '@chakra-ui/react';
 import { WarningIcon } from '@chakra-ui/icons';
@@ -273,11 +274,31 @@ const Transaction = ({
     }
   };
 
+  // Info-only "chain not enabled" surface — no approval flow, just lets
+  // the user see why nothing happened after a dApp wallet_switchEthereumChain
+  // and points them at Chainlist. The 4902 has already gone back to the
+  // dApp by the time this renders.
+  if (event?.type === 'chain_not_enabled') {
+    return <ChainNotEnabledCard event={event} onDismiss={onDismiss} />;
+  }
+
   if (errorMessage) {
+    // Treat "timed out" as a soft retryable state, not a fatal error.
+    // The device is fine, the dApp request is just one-shot — the user
+    // re-initiates from the dApp page. Loud red copy made this feel like
+    // something broke.
+    const isTimeout = /timed out|timeout/i.test(errorMessage);
+    const status = isTimeout ? 'warning' : 'error';
+    const heading = isTimeout ? 'Took too long' : 'Error Occurred';
+    const body = isTimeout
+      ? 'No response from your KeepKey in time. You can close this and try the request again from the dApp.'
+      : errorMessage;
+    const buttonScheme = isTimeout ? 'yellow' : 'red';
+    const buttonLabel = isTimeout ? 'Close' : 'Close';
     return (
       <Flex direction="column" height="100vh" alignItems="center" justifyContent="center" p={6}>
         <Alert
-          status="error"
+          status={status}
           variant="subtle"
           flexDirection="column"
           alignItems="center"
@@ -287,11 +308,11 @@ const Transaction = ({
           borderRadius="lg">
           <AlertIcon boxSize="40px" mr={0} />
           <Flex direction="column" mt={4} alignItems="center">
-            <h3 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '12px' }}>Error Occurred</h3>
-            <p style={{ marginBottom: '20px' }}>{errorMessage}</p>
+            <h3 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '12px' }}>{heading}</h3>
+            <p style={{ marginBottom: '20px' }}>{body}</p>
             <Flex gap={2}>
-              <Button colorScheme="red" onClick={handleCancel}>
-                Close
+              <Button colorScheme={buttonScheme} onClick={handleCancel}>
+                {buttonLabel}
               </Button>
             </Flex>
           </Flex>
