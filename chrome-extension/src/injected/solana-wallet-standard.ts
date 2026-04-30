@@ -171,6 +171,44 @@ export class KeepKeySolanaWallet {
       },
     },
 
+    // ── Vendor-namespaced extension: off-chain message signing ──
+    //
+    // The Solana Wallet Standard reserves the `solana:` namespace for
+    // the canonical signing surface (signMessage / signTransaction /
+    // signAndSendTransaction / signIn). Off-chain message signing
+    // (https://github.com/solana-labs/solana/blob/master/docs/src/proposals/off-chain-message-signing.md)
+    // is a different primitive — the signature is over a domain-
+    // separated envelope, not the bare message — and is not part of
+    // the standard. We expose it under our wallet's namespace so dApps
+    // can feature-detect:
+    //
+    //   const f = wallet.features['keepkey:signOffchainMessage']
+    //   if (f) await f.signOffchainMessage({ message, version?, messageFormat? })
+    //
+    // Returns hex `publicKey` + hex `signature` — verifiers MUST
+    // reconstruct the envelope to verify (see the handler comment in
+    // background/chains/solanaHandler.ts for the byte layout).
+    'keepkey:signOffchainMessage': {
+      version: '1.0.0' as const,
+      signOffchainMessage: async (input: {
+        message: Uint8Array | string;
+        version?: number;
+        messageFormat?: number;
+      }) => {
+        const messageBytes =
+          typeof input.message === 'string'
+            ? Array.from(new TextEncoder().encode(input.message))
+            : Array.from(input.message);
+        return (await this.#rpc('solana_signOffchainMessage', [
+          {
+            message: messageBytes,
+            version: input.version,
+            messageFormat: input.messageFormat,
+          },
+        ])) as { publicKey: string; signature: string };
+      },
+    },
+
     'solana:signIn': {
       version: '1.0.0' as const,
       signIn: async (...inputs: any[]) => {

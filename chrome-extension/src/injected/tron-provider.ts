@@ -11,12 +11,21 @@
  *
  * Supported (firmware 7.14.1+):
  *   - signMessage / signMessageV2 — TIP-191 personal_sign
- *   - verifyMessage / verifyMessageV2 — recover signer + check
  *
- * Out of scope (throws on attempt):
- *   - _signTypedData (TIP-712) — call window.tronLink.request({ method:
- *     'tron_signTypedHash', params: [{ domainSeparatorHash, messageHash }] })
- *     directly with pre-computed 32-byte hashes if you need this.
+ * Out of scope (not on tronWeb.trx; reachable only via tronLink.request):
+ *   - tron_verifyMessage — boolean check against a known address. We
+ *     don't expose verifyMessage / verifyMessageV2 on tronWeb.trx
+ *     because TronWeb V2's contract is verifyMessageV2(message, sig)
+ *     returning the recovered address, and our endpoint shape
+ *     (address required, boolean returned) doesn't match.
+ *     Verification is client-side anyway — use TronWeb's static
+ *     utilities.
+ *   - tron_signTypedHash (TIP-712 hash mode) — call
+ *     window.tronLink.request({ method: 'tron_signTypedHash', params:
+ *     [{ domainSeparatorHash, messageHash }] }) with pre-computed
+ *     32-byte hashes. We don't ship a struct → hash implementation,
+ *     so we don't expose _signTypedData / signTypedData on
+ *     tronWeb.trx where the contract takes (domain, types, value).
  *   - Non-`transfer` smart contract calls (requires firmware display support)
  */
 
@@ -269,14 +278,13 @@ export class KeepKeyTronProvider {
         return await promisifyRequest(self.walletRequest, 'signMessageV2', [message]);
       },
 
-      // TIP-191 verify. Returns boolean; doesn't touch the device.
-      verifyMessage: async (message: string, signature: string, address: string) => {
-        return await promisifyRequest(self.walletRequest, 'tron_verifyMessage', [message, signature, address]);
-      },
-
-      verifyMessageV2: async (message: string, signature: string, address: string) => {
-        return await promisifyRequest(self.walletRequest, 'verifyMessageV2', [message, signature, address]);
-      },
+      // verifyMessage / verifyMessageV2 deliberately NOT exposed here.
+      // TronWeb V2's verifyMessageV2(message, signature) returns the
+      // recovered base58 address; our endpoint shape (address required,
+      // boolean returned) doesn't match. Use TronWeb's static
+      // verification utilities, or call tronLink.request({ method:
+      // 'tron_verifyMessage', params: [{ address, signature, message,
+      // isText? }] }) explicitly.
 
       sendRawTransaction: async (signedTx: any) => {
         return tronGridPost('/wallet/broadcasttransaction', signedTx);

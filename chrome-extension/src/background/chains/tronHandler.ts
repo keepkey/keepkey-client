@@ -906,53 +906,67 @@ export const handleTronRequest = async (
       return result;
     }
 
-    // TIP-191 verify — utility for dApps that want to round-trip a
-    // signature. Doesn't touch the device (vault recovers the signer
-    // off-device), so no approval flow.
-    case 'tron_verifyMessage':
-    case 'verifyMessage':
-    case 'verifyMessageV2': {
+    // TIP-191 verify — non-standard utility, exposed only as
+    // `tron_verifyMessage` to make clear it doesn't match TronWeb's
+    // signatures:
+    //   - TronWeb V1 verifyMessage(message, signature, address) → boolean
+    //   - TronWeb V2 verifyMessageV2(message, signature)         → recovered address
+    // Our endpoint requires `address` and returns a boolean, which is
+    // V1-shaped but firmware-routed. Standard verification is
+    // client-side and doesn't need the wallet — TronWeb's static
+    // verifyMessage* utilities are the intended path. We keep this
+    // case so internal tooling can round-trip through the device, but
+    // we DON'T expose it on `tronWeb.trx` where the V2 contract is
+    // wrong.
+    case 'tron_verifyMessage': {
       await requireMessageSigningFirmware('Tron message verification');
-      // TronWeb signature: verifyMessage(message, signature, address)
-      // where V1 treats `message` as hex, V2 as UTF-8.
-      const [rawMsg, rawSig, address] = (params || []) as [unknown, unknown, unknown];
-      if (typeof address !== 'string' || !address) {
-        throw createProviderRpcError(4000, `${method}: address (param[2]) is required`);
-      }
-      if (typeof rawSig !== 'string' || !rawSig) {
-        throw createProviderRpcError(4000, `${method}: signature (param[1]) is required`);
-      }
-      const isV2 = method === 'verifyMessageV2';
-      let messageForVault: string;
-      let isText: boolean;
-      if (typeof rawMsg === 'string') {
-        if (isV2) {
-          messageForVault = rawMsg;
-          isText = true;
-        } else {
-          messageForVault = ensureHex(rawMsg, `${method}.message`);
+      const arg = (params || [])[0];
+      let address: string | undefined;
+      let signature: string | undefined;
+      let messageRaw: unknown;
+      let isText = true;
+      if (arg && typeof arg === 'object') {
+        address = (arg as any).address;
+        signature = (arg as any).signature;
+        messageRaw = (arg as any).message;
+        const explicit = (arg as any).isText ?? (arg as any).is_text;
+        if (typeof explicit === 'boolean') isText = explicit;
+      } else {
+        // Positional [message, signature, address] — historical V1 shape.
+        messageRaw = (params || [])[0];
+        signature = (params || [])[1] as string | undefined;
+        address = (params || [])[2] as string | undefined;
+        // Heuristic: bare string + 0x-prefixed even-length hex → hex bytes.
+        if (typeof messageRaw === 'string' && /^0x[0-9a-fA-F]*$/i.test(messageRaw)) {
           isText = false;
         }
-      } else if (Array.isArray(rawMsg)) {
-        messageForVault = (rawMsg as number[]).map(b => (b & 0xff).toString(16).padStart(2, '0')).join('');
+      }
+      if (typeof address !== 'string' || !address) {
+        throw createProviderRpcError(4000, 'tron_verifyMessage: address is required');
+      }
+      if (typeof signature !== 'string' || !signature) {
+        throw createProviderRpcError(4000, 'tron_verifyMessage: signature is required');
+      }
+      let messageForVault: string;
+      if (typeof messageRaw === 'string') {
+        messageForVault = isText ? messageRaw : ensureHex(messageRaw, 'tron_verifyMessage.message');
+      } else if (Array.isArray(messageRaw)) {
+        messageForVault = (messageRaw as number[]).map(b => (b & 0xff).toString(16).padStart(2, '0')).join('');
         isText = false;
       } else {
-        throw createProviderRpcError(4000, `${method}: unsupported message type ${typeof rawMsg}`);
+        throw createProviderRpcError(4000, `tron_verifyMessage: unsupported message type ${typeof messageRaw}`);
       }
-      return await tronVerifyMessageViaRest(address, rawSig, messageForVault, isText);
+      return await tronVerifyMessageViaRest(address, signature, messageForVault, isText);
     }
 
-    // TIP-712 typed-data signing (hash mode). The dApp pre-computes the
-    // domainSeparator and message hashes (keccak256, per the TIP-712
-    // spec) and passes them in. We pass through unchanged.
-    //
-    // We don't ship a full struct → hashes implementation here — the
-    // hashing rules require the full type tree and are non-trivial to
-    // do correctly. dApps using TronWeb's _signTypedData should do the
-    // hashing themselves and call this method with the two 32-byte
-    // hashes.
-    case 'tron_signTypedHash':
-    case '_signTypedData': {
+    // TIP-712 typed-data signing in HASH MODE. Caller pre-computes the
+    // 32-byte domainSeparator + message hashes per the TIP-712 spec
+    // and passes them in. This is NOT TronWeb's `_signTypedData` /
+    // `signTypedData(domain, types, value)` — those take the full
+    // struct and do the hashing internally. We don't ship a struct →
+    // hashes implementation, so we expose only the lower-level hash
+    // surface and don't claim TronWeb compatibility.
+    case 'tron_signTypedHash': {
       await requireMessageSigningFirmware('Tron typed-data signing');
       const arg = (params || [])[0];
       let dsHash: string | undefined;
