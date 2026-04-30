@@ -116,15 +116,32 @@ export default function RequestDetailsCard({ transaction }: any) {
   const symbol: string = payment?.symbol || ctxSymbol || '';
 
   // Sign-message rendering diverges entirely — there's no destination
-  // and no amount. Decode the request bytes (number[] payload) as UTF-8
-  // and show the actual text the dApp is asking the user to sign. Falls
-  // back to a hex preview if the bytes aren't printable text (rare —
-  // SIWS / login challenges are always UTF-8).
+  // and no amount. Different code paths stash the message in different
+  // places:
+  //   - solana_signMessage: params[0] is a raw number[]; decode here.
+  //   - solana_signOffchainMessage: params[0] is an object, but the
+  //     handler decorates `unsignedTx` with `messageUtf8` (UTF-8) and
+  //     `message` (hex) at solanaHandler.ts:784. Use those — pulling
+  //     `request[0]` would render "[object Object]" via decodeMessage.
   const isSignMessage =
     transaction?.type === 'solana_signMessage' || transaction?.type === 'solana_signOffchainMessage';
   if (isSignMessage) {
-    const messageBytes: number[] | undefined = transaction?.request?.[0];
-    const { text: messageText, isPrintable } = decodeMessage(messageBytes);
+    let messageText: string;
+    let isPrintable: boolean;
+    const stashedUtf8: string | undefined = transaction?.unsignedTx?.messageUtf8;
+    const stashedHex: string | undefined = transaction?.unsignedTx?.message;
+    if (typeof stashedUtf8 === 'string' && stashedUtf8.length > 0) {
+      messageText = stashedUtf8;
+      isPrintable = true;
+    } else if (typeof stashedHex === 'string' && stashedHex.length > 0) {
+      messageText = stashedHex;
+      isPrintable = false;
+    } else {
+      const messageBytes: number[] | undefined = transaction?.request?.[0];
+      const decoded = decodeMessage(messageBytes);
+      messageText = decoded.text;
+      isPrintable = decoded.isPrintable;
+    }
     return (
       <Flex direction="column" mb={4}>
         <Box mb={2}>

@@ -12,6 +12,7 @@ import { resetSolanaState, prefetchSolanaPubkey } from './chains/solanaHandler';
 import { resetTonState, prefetchTonAddress } from './chains/tonHandler';
 import { resetTronState, prefetchTronPubkey } from './chains/tronHandler';
 import { handleWalletRequest } from './methods';
+import { setApprovalBadge } from './popup';
 import { JsonRpcProvider, formatEther } from 'ethers';
 import { ChainToNetworkId, Chain, COIN_MAP_LONG, shortListSymbolToCaip, NetworkIdToChain } from './chainConfig';
 import {
@@ -1334,10 +1335,18 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             console.log(tag, 'GET_ASSET_BALANCE');
             const { networkId } = message;
 
-            // Get RPC provider for the network via Pioneer registry.
-            const chainInfo = await getChainInfo(networkId);
-            if (chainInfo && ADDRESS) {
-              const evmProvider = new JsonRpcProvider(chainInfo.rpc);
+            // User overrides (Add Network UI / custom RPC) win over Pioneer.
+            let rpcUrl: string | null = null;
+            const customChain = await blockchainDataStorage.getBlockchainData(networkId);
+            if (customChain?.providerUrl) {
+              rpcUrl = customChain.providerUrl;
+            } else {
+              const chainInfo = await getChainInfo(networkId);
+              if (chainInfo) rpcUrl = chainInfo.rpc;
+            }
+
+            if (rpcUrl && ADDRESS) {
+              const evmProvider = new JsonRpcProvider(rpcUrl);
               const balance = await evmProvider.getBalance(ADDRESS);
               sendResponse('0x' + balance.toString(16));
             } else {
@@ -1671,14 +1680,22 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               break;
             }
 
-            // Get RPC provider for the network via Pioneer registry.
-            const chainInfo = await getChainInfo(networkId);
-            if (!chainInfo) {
+            // User overrides win over Pioneer for token validation too —
+            // contract calls must go through the same RPC the user picked.
+            let rpcUrl: string | null = null;
+            const customChain = await blockchainDataStorage.getBlockchainData(networkId);
+            if (customChain?.providerUrl) {
+              rpcUrl = customChain.providerUrl;
+            } else {
+              const chainInfo = await getChainInfo(networkId);
+              if (chainInfo) rpcUrl = chainInfo.rpc;
+            }
+            if (!rpcUrl) {
               sendResponse({ valid: false, error: 'Unsupported network' });
               break;
             }
 
-            const rpcProvider = new JsonRpcProvider(chainInfo.rpc);
+            const rpcProvider = new JsonRpcProvider(rpcUrl);
 
             // ERC-20 ABI for name, symbol, and decimals
             const ERC20_ABI = [
@@ -1721,6 +1738,16 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
 
         case 'INJECTION_SUCCESS': {
           console.log(tag, 'Injection successful:', message.url);
+          sendResponse({ success: true });
+          break;
+        }
+
+        case 'CLEAR_APPROVAL_BADGE': {
+          // Sent from info-only side-panel surfaces (e.g. chain-not-enabled
+          // card) that bypass the requireApproval flow. The standard
+          // approval path manages its own badge in popup.ts; this lets
+          // out-of-band cards clean up after themselves.
+          setApprovalBadge(false);
           sendResponse({ success: true });
           break;
         }

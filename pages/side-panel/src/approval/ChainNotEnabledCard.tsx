@@ -25,6 +25,10 @@ export default function ChainNotEnabledCard({ event, onDismiss }: { event: any; 
     } catch (e) {
       console.warn('Failed to remove chain-not-enabled event:', e);
     }
+    // The handler set the badge when surfacing this card; it's our job
+    // to clear it on dismiss because we bypassed the requireApproval
+    // flow that normally manages badge lifecycle.
+    chrome.runtime.sendMessage({ type: 'CLEAR_APPROVAL_BADGE' }).catch(() => {});
     onDismiss();
   };
 

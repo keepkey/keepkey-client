@@ -179,17 +179,39 @@ const getProvider = async (): Promise<JsonRpcProvider> => {
 
 // Handler functions for each method
 
+/**
+ * Normalize a stored chainId to a number. The codebase has TWO conventions
+ * in the wild:
+ *   - decimal string (legacy switch path: "56")
+ *   - hex string (custom-add + Pioneer-discovered path: "0x38")
+ * Be robust to both. Returns null when unparseable.
+ */
+const parseChainId = (raw: unknown): number | null => {
+  if (raw == null) return null;
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
+  const s = String(raw).trim();
+  const n = /^0x/i.test(s) ? parseInt(s, 16) : parseInt(s, 10);
+  return Number.isFinite(n) ? n : null;
+};
+
 const handleEthChainId = async () => {
   const currentProvider = await web3ProviderStorage.getWeb3Provider();
-  const chainIdDecimal = parseInt(currentProvider.chainId, 10);
-  const chainIdHex = '0x' + chainIdDecimal.toString(16);
-  console.log(TAG, 'eth_chainId returning:', chainIdHex, '(decimal:', currentProvider.chainId, ')');
+  const n = parseChainId(currentProvider?.chainId);
+  if (n == null) {
+    console.warn(TAG, 'eth_chainId: unparseable stored chainId, defaulting to 0x1:', currentProvider?.chainId);
+    return '0x1';
+  }
+  const chainIdHex = '0x' + n.toString(16);
+  console.log(TAG, 'eth_chainId returning:', chainIdHex, '(stored:', currentProvider?.chainId, ')');
   return chainIdHex;
 };
 
 const handleNetVersion = async () => {
   const currentProvider = await web3ProviderStorage.getWeb3Provider();
-  return currentProvider.chainId.toString();
+  const n = parseChainId(currentProvider?.chainId);
+  // net_version is the decimal chainId as a string. Falling back to "1"
+  // matches the eth_chainId default above.
+  return (n ?? 1).toString();
 };
 
 const handleEthGetBlockByNumber = async params => {
