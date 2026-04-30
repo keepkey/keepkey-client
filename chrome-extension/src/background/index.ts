@@ -25,7 +25,7 @@ import {
   ethAccountsStorage,
   customEvmNetworksStorage,
 } from '@extension/storage';
-import { getChainInfo } from './chains/registry';
+import { getChainInfo, makeStaticProvider } from './chains/registry';
 import { formatUserError } from './utils';
 import { filterSpamTokens } from './spamFilter';
 
@@ -482,7 +482,7 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
             if (!chainData?.providerUrl) continue;
 
             try {
-              const rpcProvider = new JsonRpcProvider(chainData.providerUrl);
+              const rpcProvider = makeStaticProvider(chainData.providerUrl, networkId);
               const rawBal = await Promise.race([
                 rpcProvider.getBalance(evmAddress),
                 new Promise<bigint>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
@@ -888,7 +888,10 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           try {
             const providerInfo = await web3ProviderStorage.getWeb3Provider();
             if (!providerInfo) throw Error('Failed to get provider info');
-            const evmProvider = new JsonRpcProvider(providerInfo.providerUrl);
+            const evmProvider = makeStaticProvider(
+              providerInfo.providerUrl,
+              providerInfo.networkId || providerInfo.chainId,
+            );
             const feeData = await evmProvider.getFeeData();
             sendResponse(feeData);
           } catch (error: any) {
@@ -1346,7 +1349,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             }
 
             if (rpcUrl && ADDRESS) {
-              const evmProvider = new JsonRpcProvider(rpcUrl);
+              const evmProvider = makeStaticProvider(rpcUrl, networkId);
               const balance = await evmProvider.getBalance(ADDRESS);
               sendResponse('0x' + balance.toString(16));
             } else {
@@ -1488,7 +1491,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               break;
             }
 
-            const rpcProvider = new JsonRpcProvider(rpcUrl);
+            const rpcProvider = makeStaticProvider(rpcUrl, evmNetworkId);
             const rawBal = await Promise.race([
               rpcProvider.getBalance(evmAddress),
               new Promise<bigint>((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
@@ -1695,7 +1698,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               break;
             }
 
-            const rpcProvider = new JsonRpcProvider(rpcUrl);
+            const rpcProvider = makeStaticProvider(rpcUrl, networkId);
 
             // ERC-20 ABI for name, symbol, and decimals
             const ERC20_ABI = [

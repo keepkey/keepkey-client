@@ -26,12 +26,72 @@
  * chrome.storage would just create a new staleness vector.
  */
 
+import { FetchRequest, JsonRpcProvider } from 'ethers';
+
 const PIONEER_API = 'https://api.keepkey.info';
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const FAILURE_TTL_MS = 60 * 1000; // negative-cache misses for a minute
 const FETCH_TIMEOUT_MS = 8000;
 
 const TAG = ' | chains/registry | ';
+
+/**
+ * Construct a JsonRpcProvider with a *pinned* network. Without this,
+ * ethers v6 calls eth_chainId on the first RPC call to detect the
+ * network and retries every 1s indefinitely if the URL is slow / dead /
+ * rate-limited — generating background spam from any timed-out call
+ * site (`Promise.race(getBalance, timeout)` only rejects the awaiting
+ * promise; the abandoned provider keeps retrying).
+ *
+ * Pin the network up front so a bad URL fails fast on the actual call
+ * instead of looping on detection forever.
+ *
+ * `timeoutMs` (optional): when set, builds a `FetchRequest` with a
+ * per-HTTP-attempt timeout AND disables ethers' throttle-retry
+ * behavior. Without it, ethers will silently retry 429/5xx responses
+ * with exponential backoff for ~30s before surfacing the error — which
+ * stalls the broadcast failover loop. Pass a short value (e.g. 4000)
+ * for paths that need snappy fall-through.
+ */
+function parseChainIdFromArg(networkOrChainId: string | number): number | null {
+  if (typeof networkOrChainId === 'number') {
+    return Number.isFinite(networkOrChainId) ? networkOrChainId : null;
+  }
+  const s = networkOrChainId.trim();
+  const m = /^eip155:(\d+)$/.exec(s);
+  if (m) return parseInt(m[1], 10);
+  const n = /^0x/i.test(s) ? parseInt(s, 16) : parseInt(s, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+export function makeStaticProvider(
+  url: string,
+  networkOrChainId: string | number,
+  options?: { timeoutMs?: number },
+): JsonRpcProvider {
+  const chainId = parseChainIdFromArg(networkOrChainId);
+  const cleanUrl = url.trim();
+  const timeoutMs = options?.timeoutMs;
+
+  // Path A: bounded HTTP timeout + no throttle retries. Use FetchRequest
+  // so we hit ethers' transport layer, not just the awaiting promise.
+  if (timeoutMs && timeoutMs > 0) {
+    const fetchReq = new FetchRequest(cleanUrl);
+    fetchReq.timeout = timeoutMs;
+    // Disable the implicit throttle-retry loop ethers does on 429/5xx.
+    // We're handling failover ourselves at a higher level — internal
+    // retries here just delay surfacing the error.
+    fetchReq.setThrottleParams({ maxAttempts: 1 });
+    return chainId != null
+      ? new JsonRpcProvider(fetchReq, chainId, { staticNetwork: true })
+      : new JsonRpcProvider(fetchReq);
+  }
+
+  // Path B: default behavior preserved for non-broadcast call sites.
+  return chainId != null
+    ? new JsonRpcProvider(cleanUrl, chainId, { staticNetwork: true })
+    : new JsonRpcProvider(cleanUrl);
+}
 
 export interface ChainInfo {
   chainId: string; // hex, e.g. '0x38'
