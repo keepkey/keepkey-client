@@ -1,6 +1,7 @@
 import { Button, Card, Box, Flex, Stack, Text, Heading, Icon, Divider, Link } from '@chakra-ui/react';
 import { ExternalLinkIcon, WarningTwoIcon } from '@chakra-ui/icons';
 import { requestStorage } from '@extension/storage';
+import { KNOWN_EVM_CHAINS } from '../components/header/headerConstants';
 
 /**
  * Surface for a wallet_switchEthereumChain request that hit a chain we
@@ -17,7 +18,13 @@ import { requestStorage } from '@extension/storage';
 export default function ChainNotEnabledCard({ event, onDismiss }: { event: any; onDismiss: () => void }) {
   const chainIdHex: string = event?.unsignedTx?.chainIdHex || '?';
   const chainIdDecimal: number | string = event?.unsignedTx?.chainIdDecimal ?? '?';
+  const networkId: string = event?.networkId || event?.unsignedTx?.networkId || '';
   const siteUrl: string = event?.siteUrl || event?.href || '';
+
+  // If this is one of the chains the network dropdown advertises, show
+  // its name rather than just a hex/decimal pair — far less scary for
+  // a user trying to figure out what their dApp asked for.
+  const knownName = KNOWN_EVM_CHAINS[networkId]?.name;
 
   const close = async () => {
     try {
@@ -33,7 +40,14 @@ export default function ChainNotEnabledCard({ event, onDismiss }: { event: any; 
   };
 
   const openChainlist = () => {
-    window.open('https://chainlist.org/', '_blank');
+    // Deep-link by chainId so the user lands on the row for the requested
+    // chain instead of having to scroll the full Chainlist catalog.
+    const search = typeof chainIdDecimal === 'number' ? chainIdDecimal : String(chainIdDecimal);
+    const url =
+      search && search !== '?'
+        ? `https://chainlist.org/?search=${encodeURIComponent(search)}`
+        : 'https://chainlist.org/';
+    window.open(url, '_blank');
   };
 
   return (
@@ -61,9 +75,20 @@ export default function ChainNotEnabledCard({ event, onDismiss }: { event: any; 
             <Text fontSize="xs" color="whiteAlpha.600" mb={1}>
               Requested chain
             </Text>
-            <Text fontFamily="mono" fontSize="sm">
-              {chainIdHex} ({chainIdDecimal})
-            </Text>
+            {knownName ? (
+              <>
+                <Text fontSize="sm" fontWeight="medium">
+                  {knownName}
+                </Text>
+                <Text fontFamily="mono" fontSize="xs" color="whiteAlpha.600">
+                  {chainIdHex} ({chainIdDecimal})
+                </Text>
+              </>
+            ) : (
+              <Text fontFamily="mono" fontSize="sm">
+                {chainIdHex} ({chainIdDecimal})
+              </Text>
+            )}
           </Box>
 
           <Divider />

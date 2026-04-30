@@ -1,7 +1,7 @@
 import { requestStorage } from '@extension/storage';
 import { v4 as uuidv4 } from 'uuid';
 import * as wallet from '../wallet';
-import { createProviderRpcError } from '../utils';
+import { createProviderRpcError, createTimeoutError } from '../utils';
 import { requireMessageSigningFirmware } from '../firmware';
 
 const TAG = ' | solanaHandler | ';
@@ -351,7 +351,7 @@ async function signTransactionViaRest(txBase64: string): Promise<{ signature: st
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {
-      throw createProviderRpcError(-32603, 'Vault signing timed out');
+      throw createTimeoutError('Vault signing timed out');
     }
     throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
   }
@@ -405,7 +405,7 @@ async function signMessageViaRest(messageBase64: string): Promise<number[]> {
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {
-      throw createProviderRpcError(-32603, 'Vault sign-message timed out');
+      throw createTimeoutError('Vault sign-message timed out');
     }
     throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
   }
@@ -466,7 +466,7 @@ async function signOffchainMessageViaRest(
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {
-      throw createProviderRpcError(-32603, 'Vault Solana sign-offchain timed out');
+      throw createTimeoutError('Vault Solana sign-offchain timed out');
     }
     throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
   }
@@ -508,7 +508,7 @@ async function broadcastTransaction(signedTxBase64: string): Promise<string> {
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {
-      throw createProviderRpcError(-32603, 'Solana RPC broadcast timed out');
+      throw createTimeoutError('Solana RPC broadcast timed out');
     }
     throw createProviderRpcError(-32603, `Solana RPC connection failed: ${e.message}`);
   }

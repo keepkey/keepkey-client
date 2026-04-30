@@ -1,7 +1,7 @@
 import { requestStorage, assetContextStorage } from '@extension/storage';
 import { v4 as uuidv4 } from 'uuid';
 import * as wallet from '../wallet';
-import { createProviderRpcError } from '../utils';
+import { createProviderRpcError, createTimeoutError } from '../utils';
 import { requireMessageSigningFirmware } from '../firmware';
 
 const TAG = ' | tronHandler | ';
@@ -347,7 +347,7 @@ async function signTronViaRest(
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {
-      throw createProviderRpcError(-32603, 'Vault Tron signing timed out');
+      throw createTimeoutError('Vault Tron signing timed out');
     }
     throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
   }
@@ -410,7 +410,7 @@ async function tronSignMessageViaRest(
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {
-      throw createProviderRpcError(-32603, 'Vault Tron sign-message timed out');
+      throw createTimeoutError('Vault Tron sign-message timed out');
     }
     throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
   }
@@ -485,7 +485,7 @@ async function tronSignTypedHashViaRest(
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {
-      throw createProviderRpcError(-32603, 'Vault Tron sign-typed-hash timed out');
+      throw createTimeoutError('Vault Tron sign-typed-hash timed out');
     }
     throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
   }
