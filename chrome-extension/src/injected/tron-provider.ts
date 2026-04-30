@@ -133,18 +133,50 @@ function promisifyRequest(walletRequest: WalletRequestFn, method: string, params
  * TronGrid directly rather than routing through the extension — there's
  * nothing sensitive about reading chain state, and keeping the round-trip
  * short matters for dApp UX.
+ *
+ * Per-request timeout + one retry on 5xx/transient errors so a stalled
+ * TronGrid edge can't hang dApp flows (most painful on broadcasts via
+ * /wallet/broadcasttransaction). Lives inline because this file is
+ * bundled into the injected script — it can't import from the
+ * background's fetchUtils.
  */
+const TRONGRID_TIMEOUT_MS = 8000;
+const TRONGRID_BROADCAST_TIMEOUT_MS = 12000;
+const isTransientTronStatus = (status: number) => status >= 500 && status < 600;
+
 async function tronGridPost(path: string, body: any): Promise<any> {
-  const resp = await fetch(`${TRONGRID_URL}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => '');
-    throw new Error(`TronGrid ${path} failed (${resp.status}): ${text}`);
+  const isBroadcast = path.includes('broadcasttransaction');
+  const timeoutMs = isBroadcast ? TRONGRID_BROADCAST_TIMEOUT_MS : TRONGRID_TIMEOUT_MS;
+  const maxAttempts = 2;
+  let lastErr: any;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const resp = await fetch(`${TRONGRID_URL}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!resp.ok) {
+        if (isTransientTronStatus(resp.status) && attempt < maxAttempts) {
+          await new Promise(r => setTimeout(r, 200 * attempt));
+          continue;
+        }
+        const text = await resp.text().catch(() => '');
+        throw new Error(`TronGrid ${path} failed (${resp.status}): ${text}`);
+      }
+      return await resp.json();
+    } catch (e: any) {
+      lastErr = e;
+      // Timeout / network — worth one retry. Bail on the second attempt
+      // so a fully-down TronGrid doesn't lock the dApp for ~24s.
+      if (attempt < maxAttempts) {
+        await new Promise(r => setTimeout(r, 200 * attempt));
+        continue;
+      }
+    }
   }
-  return resp.json();
+  throw lastErr;
 }
 
 export class KeepKeyTronProvider {
