@@ -1,5 +1,7 @@
 # Retro — EIP-1559 type-2 tx signing chain produces malformed-hex (release blocker)
 
+> **⚠️ SUPERSEDED 2026-04-28 (later same day):** Root cause identified — firmware `ethereum.c:891` hashes the empty access-list `0xC0` byte in the wrong stream position when EIP-1559 tx-data exceeds 1024 bytes (single-USB-chunk threshold). See [`RESOLUTION_evm_tx_1559_signing_chain.md`](RESOLUTION_evm_tx_1559_signing_chain.md) for the diagnosis, the unlock move (`EthereumTxRequest.hash` field), and the fix. This file is kept as a record of the diagnostic dead-ends; do not act from it.
+
 **Status:** 🔴 **RELEASE BLOCKER** for any keepkey-client build that exposes EVM `eth_sendTransaction` flows. Do not ship 0.0.28 / merge develop → master while this is open.
 
 **Captured:** 2026-04-28
