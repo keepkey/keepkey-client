@@ -147,11 +147,16 @@ const getProvider = async (): Promise<JsonRpcProvider> => {
       const cleanUrl = rpcUrl.trim();
       console.log(tag, `Trying RPC [${availableRpcs.indexOf(rpcUrl) + 1}/${availableRpcs.length}]:`, cleanUrl);
 
-      const provider = makeStaticProvider(cleanUrl, currentProvider.networkId || currentProvider.chainId);
-
-      // Test the connection with a quick call (with timeout)
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('RPC timeout')), 5000));
-      const blockNumber = await Promise.race([provider.getBlockNumber(), timeoutPromise]);
+      // 5s transport-level timeout (FetchRequest) is the real fix —
+      // without it the awaited promise can race-out at the application
+      // layer while ethers' internal retry loop keeps the abandoned
+      // request alive (and re-tries on backoff). With timeoutMs the
+      // transport itself aborts at 5s, so the outer Promise.race is
+      // redundant.
+      const provider = makeStaticProvider(cleanUrl, currentProvider.networkId || currentProvider.chainId, {
+        timeoutMs: 5000,
+      });
+      const blockNumber = await provider.getBlockNumber();
 
       console.log(tag, '✅ RPC working! Block:', blockNumber, 'URL:', cleanUrl);
 
@@ -1158,7 +1163,10 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
     if (!transaction.to) throw createProviderRpcError(4000, 'Invalid transaction: missing to');
     if (!transaction.chainId) throw createProviderRpcError(4000, 'Invalid transaction: missing chainId');
 
-    const provider = await getProvider();
+    // Each preflight RPC call is wrapped in withRpcFailover so a
+    // rate-limited URL doesn't break signing before broadcast can help.
+    // Calls are independent; nonce / gas / fee don't have to come from
+    // the same RPC — any working candidate is fine.
 
     let nonce;
     if (!transaction.nonce) {
@@ -1168,7 +1176,9 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
       // EIP-1559's replacement-underpriced rule (need +10% on both fees),
       // and silently sit in mempool until evicted. That's exactly the
       // "pending forever, eth_getTransactionByHash returns null" symptom.
-      nonce = await provider.getTransactionCount(transaction.from, 'pending');
+      nonce = await withRpcFailover(p => p.getTransactionCount(transaction.from, 'pending'), {
+        tag: tag + ' nonce',
+      });
       transaction.nonce = '0x' + nonce.toString(16);
     }
 
@@ -1189,11 +1199,15 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
           data: transaction.data,
         });
 
-        let estimatedGas: any = await provider.estimateGas({
-          from: transaction.from,
-          to: transaction.to,
-          data: transaction.data,
-        });
+        let estimatedGas: any = await withRpcFailover(
+          p =>
+            p.estimateGas({
+              from: transaction.from,
+              to: transaction.to,
+              data: transaction.data,
+            }),
+          { tag: tag + ' estimateGas' },
+        );
 
         console.log(tag, 'Estimated gas:', estimatedGas.toString());
 
@@ -1247,7 +1261,7 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
       input.gasPrice = transaction.gasPrice;
     } else {
       // Fetch fee data if not provided
-      const feeData = await provider.getFeeData();
+      const feeData = await withRpcFailover(p => p.getFeeData(), { tag: tag + ' feeData' });
       input.gasPrice = feeData.gasPrice ? '0x' + feeData.gasPrice.toString(16) : undefined;
     }
 
@@ -1464,6 +1478,135 @@ const mapDefinitiveError = (msg: string): ProviderRpcError => {
   return createProviderRpcError(4000, `Error broadcasting transaction: ${msg}`);
 };
 
+/**
+ * Build the prioritized RPC candidate list for the active EVM provider.
+ * Pioneer-discovered URLs always come first; hardcoded last-resort URLs
+ * are appended (so a stale entry can never preempt a live Pioneer
+ * node); duplicates are removed; URLs in the failedRpcs cooldown are
+ * skipped (or all-cleared if every candidate is cooling).
+ *
+ * Shared by broadcastTransaction and withRpcFailover so both paths
+ * obey the same priority + cooldown semantics.
+ */
+async function getCandidateRpcs(): Promise<{
+  availableRpcs: string[];
+  networkId: string;
+  chainIdRaw: string | number;
+}> {
+  const currentProvider = await web3ProviderStorage.getWeb3Provider();
+  if (!currentProvider) {
+    throw createProviderRpcError(4900, 'Provider not configured');
+  }
+
+  const networkId: string =
+    currentProvider.networkId ||
+    (parseChainId(currentProvider.chainId) != null ? `eip155:${parseChainId(currentProvider.chainId)}` : '');
+
+  const pioneerUrls: string[] =
+    currentProvider.providers && currentProvider.providers.length > 0
+      ? currentProvider.providers
+      : currentProvider.providerUrl
+        ? [currentProvider.providerUrl]
+        : [];
+  const lastResort = networkId ? getLastResortRpcs(networkId) : [];
+
+  const seen = new Set<string>();
+  const candidates: string[] = [];
+  for (const u of [...pioneerUrls, ...lastResort]) {
+    const t = (u || '').trim();
+    if (t && !seen.has(t)) {
+      seen.add(t);
+      candidates.push(t);
+    }
+  }
+  if (candidates.length === 0) {
+    throw createProviderRpcError(4900, 'No RPC URLs available');
+  }
+
+  const now = Date.now();
+  for (const [url, failedAt] of failedRpcs) {
+    if (now - failedAt >= RPC_RETRY_DELAY) failedRpcs.delete(url);
+  }
+  let availableRpcs = candidates.filter(url => {
+    const failedAt = failedRpcs.get(url);
+    return !(failedAt && now - failedAt < RPC_RETRY_DELAY);
+  });
+  if (availableRpcs.length === 0) {
+    failedRpcs.clear();
+    availableRpcs = candidates.slice();
+  }
+
+  return { availableRpcs, networkId, chainIdRaw: currentProvider.chainId };
+}
+
+/**
+ * Heuristic: is this RPC error worth retrying against a different URL?
+ * Used by withRpcFailover (read calls). Broadcast has its own
+ * classifier because it has additional tx-level definitive cases
+ * (insufficient funds, nonce too low, etc.).
+ */
+const isTransientRpcError = (errMsg: string): boolean => {
+  const m = errMsg.toLowerCase();
+  return (
+    m.includes('rate limit') ||
+    m.includes('throttle') ||
+    m.includes('429') ||
+    m.includes('timeout') ||
+    m.includes('econnreset') ||
+    m.includes('etimedout') ||
+    m.includes('network') ||
+    m.includes('server_error') ||
+    m.includes('exceeded maximum retry') ||
+    /\b5\d{2}\b/.test(m) // 5xx HTTP code
+  );
+};
+
+/**
+ * Run a read-style RPC call across the failover candidate list. Used
+ * for preflight calls (nonce, gas estimate, fee data) where any working
+ * RPC will do. Definitive errors (revert, invalid params, ABI errors)
+ * surface immediately — they'll fail the same way on every RPC.
+ * Transient errors (rate-limit, 5xx, network) fall through to the next.
+ *
+ * Each attempt gets a fresh pinned-network provider with a per-HTTP
+ * timeout via FetchRequest, so a hung URL doesn't stall the loop.
+ */
+async function withRpcFailover<T>(
+  op: (provider: JsonRpcProvider, url: string) => Promise<T>,
+  options?: { timeoutMs?: number; tag?: string },
+): Promise<T> {
+  const tag = (options?.tag ?? TAG) + ' | withRpcFailover | ';
+  const { availableRpcs, networkId, chainIdRaw } = await getCandidateRpcs();
+  const errors: { url: string; error: string }[] = [];
+  let lastTransientError: any = null;
+  const now = Date.now();
+  for (const url of availableRpcs) {
+    try {
+      const provider = makeStaticProvider(url, networkId || chainIdRaw, {
+        timeoutMs: options?.timeoutMs ?? 5000,
+      });
+      return await op(provider, url);
+    } catch (e: any) {
+      const errMsg = String(e?.message || e);
+      if (!isTransientRpcError(errMsg)) {
+        // Definitive (revert, invalid params, etc.) — won't help to
+        // try another RPC. Surface to caller.
+        throw e;
+      }
+      console.warn(tag, `RPC ${url} transient failure, trying next:`, errMsg);
+      errors.push({ url, error: errMsg });
+      failedRpcs.set(url, now);
+      lastTransientError = e;
+    }
+  }
+  console.error(tag, 'All RPC endpoints failed:', errors);
+  if (lastTransientError) throw lastTransientError;
+  throw createProviderRpcError(
+    4900,
+    `All ${availableRpcs.length} RPC endpoints failed: ${errors[errors.length - 1]?.error || 'unknown'}`,
+  );
+}
+
 const broadcastTransaction = async (signedTx: string, expectedFrom?: string) => {
   const tag = TAG + ' | broadcastTransaction | ';
 
@@ -1505,55 +1648,9 @@ const broadcastTransaction = async (signedTx: string, expectedFrom?: string) => 
     throw createProviderRpcError(4000, msg);
   }
 
-  // ---- Build candidate URL list ----
-  // Pioneer-discovered URLs always win priority. The hardcoded
-  // last-resort list is appended at the END (see lastResortRpcs.ts) so
-  // it can never preempt a working live node.
-  const currentProvider = await web3ProviderStorage.getWeb3Provider();
-  if (!currentProvider) {
-    throw createProviderRpcError(4900, 'Provider not configured for broadcast');
-  }
-  const networkId: string =
-    currentProvider.networkId ||
-    (parseChainId(currentProvider.chainId) != null ? `eip155:${parseChainId(currentProvider.chainId)}` : '');
-
-  const pioneerUrls: string[] =
-    currentProvider.providers && currentProvider.providers.length > 0
-      ? currentProvider.providers
-      : currentProvider.providerUrl
-        ? [currentProvider.providerUrl]
-        : [];
-  const lastResort = networkId ? getLastResortRpcs(networkId) : [];
-
-  const seen = new Set<string>();
-  const candidates: string[] = [];
-  for (const u of [...pioneerUrls, ...lastResort]) {
-    const t = (u || '').trim();
-    if (t && !seen.has(t)) {
-      seen.add(t);
-      candidates.push(t);
-    }
-  }
-  if (candidates.length === 0) {
-    throw createProviderRpcError(4900, 'No RPC URLs available for broadcast');
-  }
-
-  // Skip URLs in the recent-failure cooldown unless every candidate is
-  // cooling — in that case clear and try the whole set. Same convention
-  // as getProvider.
+  // ---- Build candidate URL list (Pioneer + last-resort, dedup, cooldown) ----
+  const { availableRpcs, networkId, chainIdRaw } = await getCandidateRpcs();
   const now = Date.now();
-  for (const [url, failedAt] of failedRpcs) {
-    if (now - failedAt >= RPC_RETRY_DELAY) failedRpcs.delete(url);
-  }
-  let availableRpcs = candidates.filter(url => {
-    const failedAt = failedRpcs.get(url);
-    return !(failedAt && now - failedAt < RPC_RETRY_DELAY);
-  });
-  if (availableRpcs.length === 0) {
-    console.warn(tag, 'All candidate RPCs in cooldown — clearing and retrying');
-    failedRpcs.clear();
-    availableRpcs = candidates.slice();
-  }
 
   // ---- Failover loop ----
   const errors: { url: string; error: string }[] = [];
@@ -1564,7 +1661,7 @@ const broadcastTransaction = async (signedTx: string, expectedFrom?: string) => 
       // 429/dead URL doesn't stall the failover loop. ethers' default
       // FetchRequest retries 429/5xx with exponential backoff for ~30s,
       // which is exactly the lag this loop is meant to eliminate.
-      const provider = makeStaticProvider(url, networkId || currentProvider.chainId, { timeoutMs: 4000 });
+      const provider = makeStaticProvider(url, networkId || chainIdRaw, { timeoutMs: 4000 });
       const txResponse = await provider.broadcastTransaction(signedTx);
       console.log(
         `[HANDOFF] RPC → BEX (broadcast success) hash=${txResponse?.hash} url=${url} from=${txResponse?.from} nonce=${txResponse?.nonce}`,
