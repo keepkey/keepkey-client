@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { Chain, ChainToNetworkId, shortListSymbolToCaip, caipToNetworkId } from '../chainConfig';
 import * as wallet from '../wallet';
 import { createProviderRpcError } from '../utils';
+import { fetchJsonWithTimeout } from '../fetchUtils';
 
 const TAG = ' | thorchainHandler | ';
 
@@ -41,19 +42,24 @@ export const handleThorchainRequest = async (
         isMax: params[0].isMax,
       };
 
-      // Build tx via Pioneer API
+      // Build tx via Pioneer API. fetchJsonWithTimeout enforces an
+      // AbortSignal + response.ok check + retry on 5xx — without that,
+      // a transient Pioneer hiccup hangs the dApp.
       let unsignedTx: any;
       try {
-        const buildResponse = await fetch('https://api.keepkey.info/api/v1/buildTx', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...sendPayload, pubkeys }),
-        });
-        unsignedTx = await buildResponse.json();
+        unsignedTx = await fetchJsonWithTimeout<any>(
+          'https://api.keepkey.info/api/v1/buildTx',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...sendPayload, pubkeys }),
+          },
+          { timeoutMs: 15000, retries: 1 },
+        );
         console.log(tag, 'unsignedTx: ', unsignedTx);
       } catch (e) {
         console.error(tag, 'buildTx failed:', e);
-        throw createProviderRpcError(4000, 'Failed to build transaction');
+        throw createProviderRpcError(4000, `Failed to build transaction: ${(e as Error)?.message || e}`);
       }
 
       const event = {
@@ -91,13 +97,16 @@ export const handleThorchainRequest = async (
         response.signedTx = signedTx;
         await requestStorage.updateEventById(requestInfo.id, response);
 
-        // Broadcast via Pioneer API
-        const broadcastResponse = await fetch('https://api.keepkey.info/api/v1/broadcastTx', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ caip, signedTx: signedTx.serializedTx || signedTx }),
-        });
-        let txHash = await broadcastResponse.json();
+        // Broadcast via Pioneer API.
+        let txHash: any = await fetchJsonWithTimeout<any>(
+          'https://api.keepkey.info/api/v1/broadcastTx',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ caip, signedTx: signedTx.serializedTx || signedTx }),
+          },
+          { timeoutMs: 15000, retries: 1 },
+        );
         if (txHash.txHash) txHash = txHash.txHash;
         if (txHash.txid) txHash = txHash.txid;
 

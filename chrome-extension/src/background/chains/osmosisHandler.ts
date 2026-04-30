@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { Chain, ChainToNetworkId, shortListSymbolToCaip, caipToNetworkId } from '../chainConfig';
 import * as wallet from '../wallet';
 import { createProviderRpcError } from '../utils';
+import { fetchJsonWithTimeout } from '../fetchUtils';
 
 const TAG = ' | osmosisHandler | ';
 
@@ -43,16 +44,19 @@ export const handleOsmosisRequest = async (
 
       let unsignedTx: any;
       try {
-        const buildResponse = await fetch('https://api.keepkey.info/api/v1/buildTx', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...sendPayload, pubkeys }),
-        });
-        unsignedTx = await buildResponse.json();
+        unsignedTx = await fetchJsonWithTimeout<any>(
+          'https://api.keepkey.info/api/v1/buildTx',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...sendPayload, pubkeys }),
+          },
+          { timeoutMs: 15000, retries: 1 },
+        );
         console.log(tag, 'unsignedTx: ', unsignedTx);
       } catch (e) {
         console.error(tag, 'buildTx failed:', e);
-        throw createProviderRpcError(4000, 'Failed to build transaction');
+        throw createProviderRpcError(4000, `Failed to build transaction: ${(e as Error)?.message || e}`);
       }
 
       const event = {
@@ -90,12 +94,15 @@ export const handleOsmosisRequest = async (
         response.signedTx = signedTx;
         await requestStorage.updateEventById(requestInfo.id, response);
 
-        const broadcastResponse = await fetch('https://api.keepkey.info/api/v1/broadcastTx', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ caip, signedTx: signedTx.serializedTx || signedTx }),
-        });
-        let txHash = await broadcastResponse.json();
+        let txHash: any = await fetchJsonWithTimeout<any>(
+          'https://api.keepkey.info/api/v1/broadcastTx',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ caip, signedTx: signedTx.serializedTx || signedTx }),
+          },
+          { timeoutMs: 15000, retries: 1 },
+        );
         if (txHash.txHash) txHash = txHash.txHash;
         if (txHash.txid) txHash = txHash.txid;
 

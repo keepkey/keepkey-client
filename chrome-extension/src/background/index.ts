@@ -13,6 +13,7 @@ import { resetTonState, prefetchTonAddress } from './chains/tonHandler';
 import { resetTronState, prefetchTronPubkey } from './chains/tronHandler';
 import { handleWalletRequest } from './methods';
 import { setApprovalBadge } from './popup';
+import { fetchJsonWithTimeout } from './fetchUtils';
 import { JsonRpcProvider, formatEther } from 'ethers';
 import { ChainToNetworkId, Chain, COIN_MAP_LONG, shortListSymbolToCaip, NetworkIdToChain } from './chainConfig';
 import {
@@ -26,6 +27,7 @@ import {
   customEvmNetworksStorage,
 } from '@extension/storage';
 import { getChainInfo, makeStaticProvider } from './chains/registry';
+import { withRpcFailoverByNetworkId } from './chains/rpcFailover';
 import { formatUserError } from './utils';
 import { filterSpamTokens } from './spamFilter';
 
@@ -172,10 +174,19 @@ async function handleDeviceSwitch(newDeviceInfo: any) {
   }
 }
 
+// Singleflight guard: a stalled localhost:1646 request would otherwise
+// stack probes every 5s, generating overlapping async work and stale
+// state transitions. If the previous tick is still running, skip this
+// one. Combined with AbortSignal.timeout(3000) below, the worst case is
+// one stalled request hung for 3s before the next tick can run.
+let healthPollInflight = false;
+
 async function checkKeepKey() {
+  if (healthPollInflight) return;
+  healthPollInflight = true;
   const prevState = KEEPKEY_STATE;
   try {
-    const response = await fetch('http://localhost:1646/docs');
+    const response = await fetch('http://localhost:1646/docs', { signal: AbortSignal.timeout(3000) });
     if (response.ok) {
       if (KEEPKEY_STATE < 2) {
         KEEPKEY_STATE = 2; // Set state to connected
@@ -239,6 +250,8 @@ async function checkKeepKey() {
     KEEPKEY_STATE = 4; // Set state to errored
     updateIcon();
     if (KEEPKEY_STATE !== prevState) pushStateChangeEvent();
+  } finally {
+    healthPollInflight = false;
   }
 }
 
@@ -368,23 +381,25 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
         if (batch.length === 0) return { balances: [] as any[], tokens: [] as any[] };
         try {
           const url = `${PIONEER_API}/api/v1/portfolio${forceRefresh ? '?forceRefresh=true' : ''}`;
-          const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              // Pioneer's api_key security reads the Authorization header
-              // verbatim (no Bearer prefix). Any unique `key:public-*`
-              // string works for anonymous reads; the timestamp is just
-              // a cache-busting nonce.
-              Authorization: `key:public-${Date.now()}`,
+          // 12s budget: portfolio is the heaviest Pioneer endpoint
+          // (cold token discovery), so default 8s is too tight on first
+          // load. One retry on 5xx absorbs single transient failures.
+          const json = await fetchJsonWithTimeout<any>(
+            url,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                // Pioneer's api_key security reads the Authorization
+                // header verbatim (no Bearer prefix). Any unique
+                // `key:public-*` string works for anonymous reads; the
+                // timestamp is just a cache-busting nonce.
+                Authorization: `key:public-${Date.now()}`,
+              },
+              body: JSON.stringify({ pubkeys: batch }),
             },
-            body: JSON.stringify({ pubkeys: batch }),
-          });
-          if (!response.ok) {
-            console.warn(`[fetchBalances] portfolio returned ${response.status}`);
-            return { balances: [] as any[], tokens: [] as any[] };
-          }
-          const json = await response.json();
+            { timeoutMs: 12000, retries: 1 },
+          );
           // Unwrap: /portfolio returns { balances: [...] } at the top
           // level; some deployments wrap in { data: { balances } } via
           // middleware, so handle both.
@@ -869,12 +884,15 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             if (!tx) throw new Error('Invalid request: missing tx');
             if (!source) throw new Error('Invalid request: missing source');
 
-            const response = await fetch(`${PIONEER_API}/api/v1/insight`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ tx, source }),
-            });
-            const result = await response.json();
+            const result = await fetchJsonWithTimeout<any>(
+              `${PIONEER_API}/api/v1/insight`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tx, source }),
+              },
+              { timeoutMs: 8000, retries: 1 },
+            );
             console.log(tag, 'GET_TX_INSIGHT result:', result);
             sendResponse(result);
           } catch (error: any) {
@@ -1338,23 +1356,14 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             console.log(tag, 'GET_ASSET_BALANCE');
             const { networkId } = message;
 
-            // User overrides (Add Network UI / custom RPC) win over Pioneer.
-            let rpcUrl: string | null = null;
-            const customChain = await blockchainDataStorage.getBlockchainData(networkId);
-            if (customChain?.providerUrl) {
-              rpcUrl = customChain.providerUrl;
-            } else {
-              const chainInfo = await getChainInfo(networkId);
-              if (chainInfo) rpcUrl = chainInfo.rpc;
-            }
-
-            if (rpcUrl && ADDRESS) {
-              const evmProvider = makeStaticProvider(rpcUrl, networkId);
-              const balance = await evmProvider.getBalance(ADDRESS);
-              sendResponse('0x' + balance.toString(16));
-            } else {
+            if (!ADDRESS) {
               sendResponse('0');
+              break;
             }
+            // Fail over across user-override → Pioneer → last-resort if
+            // any candidate rate-limits or 5xx's.
+            const balance = await withRpcFailoverByNetworkId(networkId, p => p.getBalance(ADDRESS));
+            sendResponse('0x' + balance.toString(16));
           } catch (error) {
             console.error('Error fetching balance:', error);
             sendResponse({ error: 'Failed to fetch balance' });
@@ -1366,8 +1375,11 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           try {
             const { networkId } = message;
             const chainId = networkId.replace('eip155:', '');
-            const response = await fetch(`${PIONEER_API}/api/v1/nodes?chainId=${encodeURIComponent(chainId)}`);
-            const data = await response.json();
+            const data = await fetchJsonWithTimeout<any>(
+              `${PIONEER_API}/api/v1/nodes?chainId=${encodeURIComponent(chainId)}`,
+              {},
+              { timeoutMs: 5000, retries: 1 },
+            );
             sendResponse(data);
           } catch (error) {
             console.error('Error fetching asset info:', error);
@@ -1467,35 +1479,28 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               break;
             }
 
-            // Find RPC URL — try custom chains first, then static list
-            let rpcUrl: string | undefined;
+            // Resolve display metadata. The actual RPC call goes through
+            // withRpcFailoverByNetworkId below, which iterates the same
+            // priority list (custom → Pioneer → last-resort) on transient
+            // failure. If neither custom nor Pioneer knows the chain, the
+            // failover helper itself throws — caught and surfaced.
             let chainName = evmNetworkId;
             let chainSymbol = 'ETH';
-
             const customChain = await blockchainDataStorage.getBlockchainData(evmNetworkId);
-            if (customChain?.providerUrl) {
-              rpcUrl = customChain.providerUrl;
+            if (customChain) {
               chainName = customChain.name || evmNetworkId;
               chainSymbol = customChain.nativeCurrency?.symbol || customChain.symbol || 'ETH';
             } else {
               const pioneerChain = await getChainInfo(evmNetworkId);
-              if (pioneerChain?.rpc) {
-                rpcUrl = pioneerChain.rpc;
+              if (pioneerChain) {
                 chainName = pioneerChain.name;
                 chainSymbol = pioneerChain.symbol || 'ETH';
               }
             }
 
-            if (!rpcUrl) {
-              sendResponse({ balance: '0', valueUsd: '0', error: 'No RPC for network' });
-              break;
-            }
-
-            const rpcProvider = makeStaticProvider(rpcUrl, evmNetworkId);
-            const rawBal = await Promise.race([
-              rpcProvider.getBalance(evmAddress),
-              new Promise<bigint>((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
-            ]);
+            const rawBal = await withRpcFailoverByNetworkId(evmNetworkId, p => p.getBalance(evmAddress), {
+              timeoutMs: 8000,
+            });
             const balStr = formatEther(rawBal);
 
             // Try to get USD price from cached balances for this network
@@ -1560,12 +1565,15 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             const payload: any = { networkId, contractAddress };
             if (userAddress) payload.userAddress = userAddress;
 
-            const response = await fetch(`${PIONEER_API}/api/v1/tokens/metadata`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
-            });
-            const data = await response.json();
+            const data = await fetchJsonWithTimeout<any>(
+              `${PIONEER_API}/api/v1/tokens/metadata`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+              },
+              { timeoutMs: 8000, retries: 1 },
+            );
             sendResponse({ success: true, data });
           } catch (error: any) {
             console.error('Error looking up token metadata:', error);
@@ -1581,24 +1589,27 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               throw new Error('userAddress and token are required');
             }
 
-            const response = await fetch(`${PIONEER_API}/api/v1/tokens/custom`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                userAddress,
-                token: {
-                  networkId: token.networkId,
-                  address: token.address,
-                  caip: token.caip,
-                  name: token.name,
-                  symbol: token.symbol,
-                  decimals: token.decimals,
-                  icon: token.icon,
-                  coingeckoId: token.coingeckoId,
-                },
-              }),
-            });
-            const data = await response.json();
+            const data = await fetchJsonWithTimeout<any>(
+              `${PIONEER_API}/api/v1/tokens/custom`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  userAddress,
+                  token: {
+                    networkId: token.networkId,
+                    address: token.address,
+                    caip: token.caip,
+                    name: token.name,
+                    symbol: token.symbol,
+                    decimals: token.decimals,
+                    icon: token.icon,
+                    coingeckoId: token.coingeckoId,
+                  },
+                }),
+              },
+              { timeoutMs: 8000, retries: 1 },
+            );
             sendResponse({ success: data?.success || false, data });
           } catch (error: any) {
             console.error('Error adding custom token:', error);
@@ -1617,8 +1628,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             let url = `${PIONEER_API}/api/v1/tokens/custom?userAddress=${encodeURIComponent(userAddress)}`;
             if (networkId) url += `&networkId=${encodeURIComponent(networkId)}`;
 
-            const response = await fetch(url);
-            const data = await response.json();
+            const data = await fetchJsonWithTimeout<any>(url, {}, { timeoutMs: 8000, retries: 1 });
             const tokens = data?.data?.tokens || data?.tokens || [];
             sendResponse({ success: true, tokens });
           } catch (error: any) {
@@ -1635,10 +1645,11 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               throw new Error('networkId and address are required');
             }
 
-            const response = await fetch(
+            const data = await fetchJsonWithTimeout<any>(
               `${PIONEER_API}/api/v1/tokens/balances?networkId=${encodeURIComponent(networkId)}&address=${encodeURIComponent(address)}`,
+              {},
+              { timeoutMs: 8000, retries: 1 },
             );
-            const data = await response.json();
             const tokens = data?.data?.tokens || data?.tokens || [];
             sendResponse({ success: true, tokens });
           } catch (error: any) {
@@ -1655,12 +1666,15 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               throw new Error('userAddress, networkId, and tokenAddress are required');
             }
 
-            const response = await fetch(`${PIONEER_API}/api/v1/tokens/custom`, {
-              method: 'DELETE',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ userAddress, networkId, tokenAddress }),
-            });
-            const data = await response.json();
+            const data = await fetchJsonWithTimeout<any>(
+              `${PIONEER_API}/api/v1/tokens/custom`,
+              {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userAddress, networkId, tokenAddress }),
+              },
+              { timeoutMs: 8000, retries: 1 },
+            );
             sendResponse({ success: data?.success || false, data });
           } catch (error: any) {
             console.error('Error removing custom token:', error);
@@ -1683,23 +1697,6 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               break;
             }
 
-            // User overrides win over Pioneer for token validation too —
-            // contract calls must go through the same RPC the user picked.
-            let rpcUrl: string | null = null;
-            const customChain = await blockchainDataStorage.getBlockchainData(networkId);
-            if (customChain?.providerUrl) {
-              rpcUrl = customChain.providerUrl;
-            } else {
-              const chainInfo = await getChainInfo(networkId);
-              if (chainInfo) rpcUrl = chainInfo.rpc;
-            }
-            if (!rpcUrl) {
-              sendResponse({ valid: false, error: 'Unsupported network' });
-              break;
-            }
-
-            const rpcProvider = makeStaticProvider(rpcUrl, networkId);
-
             // ERC-20 ABI for name, symbol, and decimals
             const ERC20_ABI = [
               'function name() view returns (string)',
@@ -1708,13 +1705,25 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             ];
 
             const { Contract } = await import('ethers');
-            const tokenContract = new Contract(contractAddress, ERC20_ABI, rpcProvider);
 
-            const [name, symbol, decimals] = await Promise.all([
-              tokenContract.name(),
-              tokenContract.symbol(),
-              tokenContract.decimals(),
-            ]);
+            // Run all three reads against the same provider per failover
+            // attempt — splitting them across providers would risk a
+            // partial result if one URL rate-limits mid-validation.
+            // ERC20 reads are read-only views; if they fail, the next
+            // candidate URL gets the whole bundle.
+            const { name, symbol, decimals } = await withRpcFailoverByNetworkId(
+              networkId,
+              async rpcProvider => {
+                const tokenContract = new Contract(contractAddress, ERC20_ABI, rpcProvider);
+                const [n, s, d] = await Promise.all([
+                  tokenContract.name(),
+                  tokenContract.symbol(),
+                  tokenContract.decimals(),
+                ]);
+                return { name: n, symbol: s, decimals: d };
+              },
+              { timeoutMs: 8000 },
+            );
 
             const caip = `${networkId}/erc20:${contractAddress.toLowerCase()}`;
 

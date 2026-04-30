@@ -488,41 +488,102 @@ function bytesToHex(bytes: Uint8Array | number[]): string {
 }
 
 /**
+ * Heuristic: is this Solana broadcast error worth retrying against
+ * another RPC? Definitive errors (insufficient funds, blockhash
+ * expired, signature verify failure) will reject identically on every
+ * RPC; transient errors (rate limit, network, 5xx) may succeed
+ * elsewhere.
+ */
+function isTransientSolanaBroadcastError(msg: string): boolean {
+  const m = msg.toLowerCase();
+  // Definitive — won't help to try another RPC.
+  if (
+    m.includes('insufficient funds') ||
+    m.includes('insufficient lamports') ||
+    m.includes('blockhash not found') ||
+    m.includes('block height exceeded') ||
+    m.includes('invalid signature') ||
+    m.includes('signature verification') ||
+    m.includes('already processed') ||
+    m.includes('account in use')
+  ) {
+    return false;
+  }
+  // Everything else (rate limit, network, timeout, 5xx) is worth retrying.
+  return true;
+}
+
+/**
  * Broadcast a signed Solana transaction via Solana JSON-RPC.
  * Vault has NO broadcast endpoint — we send directly to Solana RPC.
+ *
+ * Iterates SOLANA_RPC_URLS on transient failures. Health-checked URLs
+ * sometimes pass `getHealth` but reject `sendTransaction` (rate-limit,
+ * regional throttling), so the failover loop reaches further than the
+ * pre-flight selection in `getSolanaRpcUrl`.
  */
 async function broadcastTransaction(signedTxBase64: string): Promise<string> {
-  const rpcUrl = await getSolanaRpcUrl();
-  let response: Response;
-  try {
-    response = await fetch(rpcUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'sendTransaction',
-        params: [signedTxBase64, { encoding: 'base64' }],
-      }),
-      signal: AbortSignal.timeout(30000),
-    });
-  } catch (e: any) {
-    if (e.name === 'TimeoutError' || e.name === 'AbortError') {
-      throw createTimeoutError('Solana RPC broadcast timed out');
+  const errors: { url: string; error: string }[] = [];
+  // Try the cached/healthy URL first, then any others not yet attempted.
+  const primary = await getSolanaRpcUrl();
+  const ordered = [primary, ...SOLANA_RPC_URLS.filter(u => u !== primary)];
+
+  for (const rpcUrl of ordered) {
+    let response: Response;
+    try {
+      response = await fetch(rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'sendTransaction',
+          params: [signedTxBase64, { encoding: 'base64' }],
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+    } catch (e: any) {
+      const errMsg = e.name === 'TimeoutError' || e.name === 'AbortError' ? 'broadcast timed out' : e.message;
+      errors.push({ url: rpcUrl, error: errMsg });
+      // Network/timeout — invalidate the cached health pick so the
+      // next caller will retest and try another candidate first.
+      cachedRpcUrl = null;
+      continue;
     }
-    throw createProviderRpcError(-32603, `Solana RPC connection failed: ${e.message}`);
+
+    if (!response.ok) {
+      // 4xx is definitive (bad request / signature). 5xx + 429 are transient.
+      const errMsg = `HTTP ${response.status}`;
+      if (response.status >= 500 || response.status === 429) {
+        errors.push({ url: rpcUrl, error: errMsg });
+        cachedRpcUrl = null;
+        continue;
+      }
+      throw createProviderRpcError(-32603, `Solana RPC broadcast failed: ${errMsg}`);
+    }
+
+    const result = await response.json();
+    if (result.error) {
+      const errMsg = result.error.message || JSON.stringify(result.error);
+      if (isTransientSolanaBroadcastError(errMsg)) {
+        errors.push({ url: rpcUrl, error: errMsg });
+        cachedRpcUrl = null;
+        continue;
+      }
+      // Definitive — won't recover on another RPC.
+      throw createProviderRpcError(-32603, `Solana RPC error: ${errMsg}`);
+    }
+
+    return result.result; // transaction signature (base58)
   }
 
-  if (!response.ok) {
-    throw createProviderRpcError(-32603, `Solana RPC broadcast failed: ${response.status}`);
+  // All candidates failed transient.
+  console.error('[solana broadcast] all RPCs failed:', errors);
+  const last = errors[errors.length - 1]?.error || 'unknown';
+  if (/timed out|timeout/i.test(last)) {
+    throw createTimeoutError('Solana RPC broadcast timed out');
   }
-
-  const result = await response.json();
-  if (result.error) {
-    throw createProviderRpcError(-32603, `Solana RPC error: ${result.error.message}`);
-  }
-
-  return result.result; // transaction signature (base58)
+  throw createProviderRpcError(-32603, `All ${ordered.length} Solana RPCs failed broadcast: ${last}`);
 }
 
 export const handleSolanaRequest = async (

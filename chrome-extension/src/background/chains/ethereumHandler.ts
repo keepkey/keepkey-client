@@ -1378,9 +1378,28 @@ const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string, 
  */
 const DROP_CHECK_ALARM_PREFIX = 'eth-drop-check-';
 
+// Map hash → URL that successfully accepted the broadcast. Drop-check
+// then queries that exact RPC instead of running getProvider() again,
+// which could pick a *different* RPC that never saw the tx — leading to
+// false-positive drop warnings (especially after a last-resort
+// fallback succeeded). Cleared after the longest scheduled check
+// (45s) by performDropCheck. Service-worker restart wipes this; in
+// that case we fall back to getProvider() — best effort.
+const dropCheckUrlByHash = new Map<string, string>();
+
 const performDropCheck = async (hash: string, scheduledDelayMs: number) => {
   try {
-    const provider = await getProvider();
+    const successUrl = dropCheckUrlByHash.get(hash);
+    let provider;
+    if (successUrl) {
+      // 4s transport timeout: drop-check is best-effort; we'd rather
+      // miss a check than block the service worker on a slow RPC.
+      provider = makeStaticProvider(successUrl, 0, { timeoutMs: 4000 });
+    } else {
+      // No bound URL (post-restart, or scheduled before this PR
+      // landed). Fall back to whichever provider is current.
+      provider = await getProvider();
+    }
     const tx = await provider.getTransaction(hash);
     if (tx == null) {
       console.warn(
@@ -1396,10 +1415,14 @@ const performDropCheck = async (hash: string, scheduledDelayMs: number) => {
     }
   } catch (e) {
     console.warn('[DROP-CHECK] failed to query tx', hash, e);
+  } finally {
+    // Clean up after the *latest* scheduled check (45s ≥ 8s window).
+    if (scheduledDelayMs >= 45_000) dropCheckUrlByHash.delete(hash);
   }
 };
 
-const scheduleDropCheck = (hash: string, delayMs: number) => {
+const scheduleDropCheck = (hash: string, delayMs: number, successUrl?: string) => {
+  if (successUrl) dropCheckUrlByHash.set(hash, successUrl);
   if (delayMs < 30_000) {
     setTimeout(() => performDropCheck(hash, delayMs), delayMs);
     return;
@@ -1417,7 +1440,9 @@ const scheduleDropCheck = (hash: string, delayMs: number) => {
 };
 
 // Registered at module load — re-runs on every service-worker startup,
-// which is exactly when the alarm fires and wakes the SW.
+// which is exactly when the alarm fires and wakes the SW. (URL hint
+// is not recovered across SW restart; drop-check falls back to
+// getProvider in that case.)
 if (typeof chrome !== 'undefined' && chrome.alarms?.onAlarm) {
   chrome.alarms.onAlarm.addListener(alarm => {
     if (!alarm.name.startsWith(DROP_CHECK_ALARM_PREFIX)) return;
@@ -1668,10 +1693,12 @@ const broadcastTransaction = async (signedTx: string, expectedFrom?: string) => 
       );
       // Two-stage drop check: 8s catches "never landed in mempool" cases;
       // 45s catches "landed briefly then evicted". Fire-and-forget; do
-      // not block the dApp response.
+      // not block the dApp response. Bind to the URL that ACCEPTED the
+      // broadcast — querying a different RPC (e.g. the active provider)
+      // can produce false-positive drop warnings if it never saw the tx.
       if (txResponse?.hash) {
-        scheduleDropCheck(txResponse.hash, 8_000);
-        scheduleDropCheck(txResponse.hash, 45_000);
+        scheduleDropCheck(txResponse.hash, 8_000, url);
+        scheduleDropCheck(txResponse.hash, 45_000, url);
       }
       return txResponse.hash;
     } catch (e: any) {
@@ -1687,11 +1714,12 @@ const broadcastTransaction = async (signedTx: string, expectedFrom?: string) => 
 
       if (kind === 'already-known') {
         // Tx is in mempool somewhere. Use the locally-recovered hash and
-        // treat as success.
+        // treat as success. Drop-check binds to *this* URL since it's
+        // the one that knows about the tx.
         if (parsedHash) {
           console.log(tag, `Broadcast on ${url} returned already-known; using parsed hash:`, parsedHash);
-          scheduleDropCheck(parsedHash, 8_000);
-          scheduleDropCheck(parsedHash, 45_000);
+          scheduleDropCheck(parsedHash, 8_000, url);
+          scheduleDropCheck(parsedHash, 45_000, url);
           return parsedHash;
         }
         // No parsed hash — fall through to next URL.
