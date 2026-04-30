@@ -488,29 +488,95 @@ function bytesToHex(bytes: Uint8Array | number[]): string {
 }
 
 /**
- * Heuristic: is this Solana broadcast error worth retrying against
- * another RPC? Definitive errors (insufficient funds, blockhash
- * expired, signature verify failure) will reject identically on every
- * RPC; transient errors (rate limit, network, 5xx) may succeed
- * elsewhere.
+ * Encode bytes to base58 (Bitcoin alphabet — same as Solana). Pairs
+ * with the existing `base58Decode` defined for the tx-builder path
+ * above; both share `BASE58_ALPHABET`. Used in the rare "already
+ * processed" broadcast-recovery path to derive the tx signature
+ * locally from the signed bytes.
  */
-function isTransientSolanaBroadcastError(msg: string): boolean {
+function bytesToBase58(bytes: Uint8Array): string {
+  if (bytes.length === 0) return '';
+  let zeros = 0;
+  while (zeros < bytes.length && bytes[zeros] === 0) zeros++;
+  const digits: number[] = [0];
+  for (let i = zeros; i < bytes.length; i++) {
+    let carry = bytes[i];
+    for (let j = 0; j < digits.length; j++) {
+      carry += digits[j] << 8;
+      digits[j] = carry % 58;
+      carry = (carry / 58) | 0;
+    }
+    while (carry > 0) {
+      digits.push(carry % 58);
+      carry = (carry / 58) | 0;
+    }
+  }
+  let out = '';
+  for (let i = 0; i < zeros; i++) out += '1';
+  for (let i = digits.length - 1; i >= 0; i--) out += BASE58_ALPHABET[digits[i]];
+  return out;
+}
+
+/**
+ * A signed Solana transaction's first 64 bytes after the signature
+ * count are the first signature, which IS the transaction's canonical
+ * signature (and what `sendTransaction` returns). We can derive it
+ * locally without an RPC round-trip — useful when an RPC reports
+ * "already processed" (the tx is in mempool somewhere; the dApp still
+ * needs the signature).
+ *
+ * Layout: [compact-u16 sig_count] [64-byte sig × N] [message]
+ * For the >253 sig case the count is multi-byte, but real txs almost
+ * always have 1–3 sigs (one byte). We read defensively just in case.
+ */
+function extractFirstSignatureBase58(signedTxBase64: string): string | null {
+  try {
+    const bin = atob(signedTxBase64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    if (bytes.length < 65) return null;
+    // compact-u16: each byte uses low 7 bits + continuation bit. Start
+    // by skipping continuation bytes to find the sig array offset.
+    let cursor = 0;
+    while (cursor < bytes.length && (bytes[cursor] & 0x80) !== 0 && cursor < 3) cursor++;
+    cursor++; // include the final length byte
+    if (bytes.length < cursor + 64) return null;
+    return bytesToBase58(bytes.slice(cursor, cursor + 64));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Classify a Solana sendTransaction error.
+ *
+ *  - 'transient'      → rate limit / network / 5xx, AND a few RPC-state
+ *                       quirks ("blockhash not found" can be RPC
+ *                       freshness for dApp-supplied txs; "account in
+ *                       use" can be a transient race) — try next URL.
+ *  - 'already-processed' → tx is already in mempool / processed.
+ *                       Treat as success; pull sig from signed bytes.
+ *  - 'definitive'     → tx-level reject (insufficient funds, signature
+ *                       verification, block height exceeded — the
+ *                       blockhash window has truly closed).
+ */
+type SolanaBroadcastErrorKind = 'transient' | 'already-processed' | 'definitive';
+function classifySolanaBroadcastError(msg: string): SolanaBroadcastErrorKind {
   const m = msg.toLowerCase();
-  // Definitive — won't help to try another RPC.
+  if (m.includes('already processed')) return 'already-processed';
   if (
     m.includes('insufficient funds') ||
     m.includes('insufficient lamports') ||
-    m.includes('blockhash not found') ||
     m.includes('block height exceeded') ||
     m.includes('invalid signature') ||
-    m.includes('signature verification') ||
-    m.includes('already processed') ||
-    m.includes('account in use')
+    m.includes('signature verification')
   ) {
-    return false;
+    return 'definitive';
   }
-  // Everything else (rate limit, network, timeout, 5xx) is worth retrying.
-  return true;
+  // Everything else — rate limit / network / 5xx, plus 'blockhash not
+  // found' (RPC freshness) and 'account in use' (transient race) — is
+  // worth trying the next URL.
+  return 'transient';
 }
 
 /**
@@ -565,7 +631,28 @@ async function broadcastTransaction(signedTxBase64: string): Promise<string> {
     const result = await response.json();
     if (result.error) {
       const errMsg = result.error.message || JSON.stringify(result.error);
-      if (isTransientSolanaBroadcastError(errMsg)) {
+      const kind = classifySolanaBroadcastError(errMsg);
+
+      if (kind === 'already-processed') {
+        // Tx is already in mempool / processed somewhere. Recover the
+        // signature from the signed bytes (it's deterministic; first
+        // sig of the signed tx == tx signature). Returning preserves
+        // dApp UX: the user sees a successful send and polls the
+        // signature normally.
+        const sig = extractFirstSignatureBase58(signedTxBase64);
+        if (sig) {
+          console.log(`[solana broadcast] ${rpcUrl} reports already-processed; using extracted sig ${sig}`);
+          return sig;
+        }
+        // Fallback: extraction failed (malformed signedTx). Treat as
+        // transient — maybe another RPC has the signature stored.
+        console.warn(`[solana broadcast] ${rpcUrl} already-processed but sig extraction failed; trying next URL`);
+        errors.push({ url: rpcUrl, error: errMsg });
+        cachedRpcUrl = null;
+        continue;
+      }
+
+      if (kind === 'transient') {
         errors.push({ url: rpcUrl, error: errMsg });
         cachedRpcUrl = null;
         continue;

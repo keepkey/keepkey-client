@@ -159,6 +159,11 @@ export const handleBitcoinRequest = async (
             eventId: requestInfo.id,
             error: JSON.stringify(e),
           });
+          // Re-throw so the dApp sees the actual broadcast error. Without
+          // this the case falls through to `default:` below and the dApp
+          // gets "Method transfer not supported" instead of the real
+          // failure (timeout, HTTP 5xx, etc.).
+          throw e instanceof Error ? e : createProviderRpcError(4000, `Broadcast failed: ${String(e)}`);
         }
       } else {
         throw createProviderRpcError(4200, 'User denied transaction');
