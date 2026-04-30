@@ -11,11 +11,12 @@ import {
   blockchainDataStorage,
   blockchainStorage,
 } from '@extension/storage';
-import { EIP155_CHAINS } from '../chains';
 import { v4 as uuidv4 } from 'uuid';
 import { ChainToNetworkId, caipToNetworkId, networkIdToIcon } from '../chainConfig';
 import * as wallet from '../wallet';
 import { buildFeeWarning, type FeeChoice, type FeeWarning } from './feeFloors';
+import { openSidePanel, setApprovalBadge } from '../popup';
+import { getChainInfo } from './registry';
 
 const TAG = ' | ethereumHandler | ';
 const DOMAIN_WHITE_LIST = [];
@@ -403,7 +404,7 @@ const switchToProvider = async (currentProvider: any, KEEPKEY_WALLET: any, tag: 
 };
 
 // Handle wallet_switchEthereumChain - switch to existing chain only
-const handleWalletSwitchEthereumChain = async (params, KEEPKEY_WALLET) => {
+const handleWalletSwitchEthereumChain = async (params, KEEPKEY_WALLET, requestInfo: any) => {
   const tag = TAG + ' | handleWalletSwitchEthereumChain | ';
   console.log(tag, 'Switch Chain params: ', params);
 
@@ -413,34 +414,95 @@ const handleWalletSwitchEthereumChain = async (params, KEEPKEY_WALLET) => {
 
   const chainIdHex = params[0].chainId;
   const chainIdDecimal = parseInt(chainIdHex, 16);
-  const chainId = chainIdDecimal.toString();
   const networkId = 'eip155:' + chainIdDecimal;
   console.log(tag, 'networkId: ', networkId);
 
-  // Check if chain exists in our defaults
-  if (EIP155_CHAINS[networkId]) {
-    console.log(tag, 'Chain found in defaults, switching...');
-    const currentProvider = {
-      chainId: chainId,
-      caip: EIP155_CHAINS[networkId].caip,
-      networkId,
-      name: EIP155_CHAINS[networkId].name,
-      providerUrl: EIP155_CHAINS[networkId].rpc,
-    };
-    await switchToProvider(currentProvider, KEEPKEY_WALLET, tag);
-    return null;
-  }
-
-  // Check if chain exists in storage (previously added custom chain)
+  // 1) User-managed custom chain (rpcUrls overridden in Add Network UI)
+  //    — always wins, even if Pioneer also knows the chain. The user
+  //    explicitly told us which RPC to use; respect that.
   const storedChainData = await blockchainDataStorage.getBlockchainData(networkId);
   if (storedChainData) {
-    console.log(tag, 'Chain found in storage, switching...');
+    console.log(tag, 'Chain found in custom storage, switching...');
     await switchToProvider(storedChainData, KEEPKEY_WALLET, tag);
     return null;
   }
 
-  // Chain not found - return 4902 per EIP-3326
-  console.log(tag, 'Chain not found, returning 4902 error');
+  // 2) Pioneer registry — one-step add+switch. Pioneer knows ~196 EVM
+  //    chains today; for any of those we provision the provider, persist
+  //    to local storage so subsequent switches are zero-RTT, and switch.
+  //    No user prompt — the chain is already trusted (Pioneer is our
+  //    canonical catalog) and the dApp explicitly asked to switch.
+  const pioneerChain = await getChainInfo(networkId);
+  if (pioneerChain?.rpc) {
+    console.log(tag, 'Chain found in Pioneer registry, provisioning + switching...');
+    try {
+      // @ts-expect-error storage typing is loose
+      await blockchainDataStorage.addBlockchainData(networkId, {
+        chainId: pioneerChain.chainId,
+        caip: pioneerChain.caip,
+        name: pioneerChain.name,
+        symbol: pioneerChain.symbol,
+        explorer: pioneerChain.explorer,
+        explorerAddressLink: pioneerChain.explorerAddressLink,
+        explorerTxLink: pioneerChain.explorerTxLink,
+        blockExplorerUrls: pioneerChain.explorer ? [pioneerChain.explorer] : [],
+        providerUrl: pioneerChain.rpc,
+        providers: pioneerChain.rpcs,
+        nativeCurrency: {
+          name: pioneerChain.symbol || pioneerChain.name,
+          symbol: pioneerChain.symbol || 'ETH',
+          decimals: pioneerChain.decimals,
+        },
+        type: 'evm',
+      });
+      await blockchainStorage.addBlockchain(networkId);
+    } catch (e) {
+      console.warn(tag, 'Failed to persist Pioneer-discovered chain (continuing with switch anyway):', e);
+    }
+    await switchToProvider(
+      {
+        chainId: pioneerChain.chainId,
+        caip: pioneerChain.caip,
+        networkId,
+        name: pioneerChain.name,
+        providerUrl: pioneerChain.rpc,
+        providers: pioneerChain.rpcs,
+      },
+      KEEPKEY_WALLET,
+      tag,
+    );
+    return null;
+  }
+
+  // 3) Chain unknown to both local storage AND Pioneer — fall back to
+  //    the chain-not-enabled info card and throw 4902. This should only
+  //    happen for very obscure / new chains; everything in active use is
+  //    in Pioneer's catalog.
+  try {
+    const eventId = (requestInfo?.id as string) || uuidv4();
+    if (requestInfo) requestInfo.id = eventId;
+    // @ts-expect-error storage typing is loose
+    await requestStorage.addEvent({
+      id: eventId,
+      networkId,
+      chain: 'ethereum',
+      href: requestInfo?.href,
+      siteUrl: requestInfo?.siteUrl,
+      requestInfo,
+      type: 'chain_not_enabled',
+      request: params,
+      unsignedTx: { chainIdHex, chainIdDecimal, networkId },
+      status: 'request',
+      timestamp: new Date().toISOString(),
+    });
+    setApprovalBadge(true);
+    await openSidePanel(requestInfo);
+    chrome.runtime.sendMessage({ type: 'TRANSACTION_CONTEXT_UPDATED', id: eventId }).catch(() => {});
+  } catch (e) {
+    console.warn(tag, 'Failed to surface chain-not-enabled popup:', e);
+  }
+
+  console.log(tag, 'Chain not enabled, returning 4902 error');
   throw createProviderRpcError(
     4902,
     `Unrecognized chain ID "${chainIdHex}". Try adding the chain using wallet_addEthereumChain first.`,
@@ -912,7 +974,7 @@ export const handleEthereumRequest = async (
       return await handleEthSendRawTransaction(params);
 
     case 'wallet_switchEthereumChain':
-      return await handleWalletSwitchEthereumChain(params, KEEPKEY_WALLET);
+      return await handleWalletSwitchEthereumChain(params, KEEPKEY_WALLET, requestInfo);
 
     case 'wallet_addEthereumChain':
       return await handleWalletAddEthereumChain(params, KEEPKEY_WALLET, requestInfo, requireApproval);

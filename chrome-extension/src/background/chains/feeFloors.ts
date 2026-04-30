@@ -21,8 +21,9 @@ const GWEI = 1_000_000_000n;
 
 /**
  * Static per-chain floor, keyed by hex chainId (matches the chainId
- * format used in EIP155_CHAINS and in dApp eth_sendTransaction params).
- * Decimal chainIds are normalised via normalizeChainId() before lookup.
+ * format used by the Pioneer chain registry and dApp eth_sendTransaction
+ * params). Decimal chainIds are normalised via normalizeChainId() before
+ * lookup.
  */
 const STATIC_FLOOR_WEI: Record<string, bigint> = {
   '0x1': 1n * GWEI, // Ethereum — 1 gwei

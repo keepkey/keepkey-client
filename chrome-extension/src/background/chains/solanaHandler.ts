@@ -345,7 +345,9 @@ async function signTransactionViaRest(txBase64: string): Promise<{ signature: st
         raw_tx: txBase64,
         address_n: SOLANA_ADDRESS_N,
       }),
-      signal: AbortSignal.timeout(30000),
+      // Wait on the user holding the device button — see the matching
+      // comment in signMessageViaRest for the rationale.
+      signal: AbortSignal.timeout(300_000),
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {
@@ -394,7 +396,12 @@ async function signMessageViaRest(messageBase64: string): Promise<number[]> {
         message: messageBase64,
         address_n: SOLANA_ADDRESS_N,
       }),
-      signal: AbortSignal.timeout(30000),
+      // Hardware signing waits on the user reading the message and
+      // confirming on-device. Match the injected-script callback ceiling
+      // (5 min) so we never time out *before* the user has a chance to
+      // act. Aborting earlier produced a red "Vault sign-message timed
+      // out" panel even though the device was still happily waiting.
+      signal: AbortSignal.timeout(300_000),
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {
@@ -455,7 +462,7 @@ async function signOffchainMessageViaRest(
         message_format: messageFormat,
         show_display: true,
       }),
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.timeout(300_000),
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {

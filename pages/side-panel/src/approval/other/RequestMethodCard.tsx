@@ -1,5 +1,5 @@
 import { Box, Flex, Text, Heading } from '@chakra-ui/react';
-import { WarningIcon, InfoIcon, QuestionIcon } from '@chakra-ui/icons';
+import { WarningIcon, InfoIcon, QuestionIcon, EditIcon, CheckCircleIcon } from '@chakra-ui/icons';
 
 /**
  * Method-label resolver. `txType` is the top-level event type (coarse —
@@ -35,6 +35,35 @@ const getMethodInfo = (txType: string, kind?: string) => {
         description: 'This transaction is a basic transfer',
         icon: <InfoIcon boxSize={8} />,
         color: 'yellow.500',
+      };
+    case 'solana_signMessage':
+      return {
+        title: 'Sign Solana Message',
+        description: 'The dApp is asking your KeepKey to sign a message. No funds will move.',
+        icon: <EditIcon boxSize={8} />,
+        color: 'teal.300',
+      };
+    case 'solana_signOffchainMessage':
+      return {
+        title: 'Sign Solana Off-chain Message',
+        description:
+          'Domain-separated off-chain envelope. The signature is over a Solana-defined wrapper, not the bare bytes.',
+        icon: <EditIcon boxSize={8} />,
+        color: 'teal.300',
+      };
+    case 'solana_signTransaction':
+      return {
+        title: 'Sign Solana Transaction',
+        description: 'Review the transaction details on your KeepKey before approving.',
+        icon: <CheckCircleIcon boxSize={8} />,
+        color: 'teal.300',
+      };
+    case 'solana_signAndSendTransaction':
+      return {
+        title: 'Sign & Send Solana Transaction',
+        description: 'Your KeepKey will sign, then this transaction will be broadcast to Solana.',
+        icon: <CheckCircleIcon boxSize={8} />,
+        color: 'teal.300',
       };
     default:
       return {

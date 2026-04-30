@@ -31,6 +31,36 @@ function formatAmount(amountRaw: unknown, decimals: number): string {
   return String(n / Math.pow(10, decimals));
 }
 
+/**
+ * Decode raw message bytes for display. Most dApp messages (SIWS login
+ * challenges, terms-of-service confirmations) are UTF-8 text — show
+ * that. If decoding produces a control-character soup, fall back to
+ * a hex dump so the user at least sees what's being signed.
+ */
+function decodeMessage(bytes: number[] | undefined): { text: string; isPrintable: boolean } {
+  if (!bytes || !Array.isArray(bytes) || bytes.length === 0) {
+    return { text: '(empty message)', isPrintable: true };
+  }
+  try {
+    const text = new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(bytes));
+    // Reject if more than ~10% of decoded chars are control chars (excluding \n, \r, \t).
+    let bad = 0;
+    for (const ch of text) {
+      const c = ch.charCodeAt(0);
+      if (c < 0x20 && c !== 0x09 && c !== 0x0a && c !== 0x0d) bad++;
+      else if (c === 0xfffd) bad++;
+    }
+    if (bad / Math.max(text.length, 1) > 0.1) {
+      const hex = bytes.map(b => (b & 0xff).toString(16).padStart(2, '0')).join('');
+      return { text: hex, isPrintable: false };
+    }
+    return { text, isPrintable: true };
+  } catch {
+    const hex = bytes.map(b => (b & 0xff).toString(16).padStart(2, '0')).join('');
+    return { text: hex, isPrintable: false };
+  }
+}
+
 export default function RequestDetailsCard({ transaction }: any) {
   const [assetContext, setAssetContext] = useState<any>(null);
 
@@ -84,6 +114,44 @@ export default function RequestDetailsCard({ transaction }: any) {
 
   const decimals: number = typeof payment?.decimals === 'number' ? payment.decimals : (ctxDecimals ?? 6);
   const symbol: string = payment?.symbol || ctxSymbol || '';
+
+  // Sign-message rendering diverges entirely — there's no destination
+  // and no amount. Decode the request bytes (number[] payload) as UTF-8
+  // and show the actual text the dApp is asking the user to sign. Falls
+  // back to a hex preview if the bytes aren't printable text (rare —
+  // SIWS / login challenges are always UTF-8).
+  const isSignMessage =
+    transaction?.type === 'solana_signMessage' || transaction?.type === 'solana_signOffchainMessage';
+  if (isSignMessage) {
+    const messageBytes: number[] | undefined = transaction?.request?.[0];
+    const { text: messageText, isPrintable } = decodeMessage(messageBytes);
+    return (
+      <Flex direction="column" mb={4}>
+        <Box mb={2}>
+          <Badge mb={2}>Message:</Badge>
+          <Box
+            p={3}
+            borderWidth={1}
+            borderRadius="md"
+            borderColor="whiteAlpha.300"
+            bg="whiteAlpha.50"
+            maxHeight="240px"
+            overflowY="auto"
+            whiteSpace="pre-wrap"
+            wordBreak="break-word"
+            fontFamily={isPrintable ? 'inherit' : 'mono'}
+            fontSize="sm">
+            {messageText}
+          </Box>
+          {!isPrintable && (
+            <Box mt={2} fontSize="xs" color="orange.300">
+              Bytes are not printable UTF-8 — shown in hex.
+            </Box>
+          )}
+        </Box>
+      </Flex>
+    );
+  }
 
   // Contract-call rendering diverges — "To" should show the contract
   // and the user should see the raw function selector rather than an

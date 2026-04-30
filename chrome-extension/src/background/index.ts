@@ -24,7 +24,7 @@ import {
   ethAccountsStorage,
   customEvmNetworksStorage,
 } from '@extension/storage';
-import { EIP155_CHAINS } from './chains';
+import { getChainInfo } from './chains/registry';
 import { formatUserError } from './utils';
 import { filterSpamTokens } from './spamFilter';
 
@@ -246,8 +246,6 @@ setInterval(checkKeepKey, 5000);
 
 updateIcon();
 console.log('Background loaded');
-
-const provider = new JsonRpcProvider(EIP155_CHAINS['eip155:1'].rpc);
 
 let ADDRESS = '';
 
@@ -657,19 +655,25 @@ const onStart = async function () {
         pushStateChangeEvent();
       }
 
-      const defaultProvider: any = {
-        chainId: '0x1',
-        caip: 'eip155:1/slip44:60',
-        blockExplorerUrls: ['https://etherscan.io'],
-        name: 'Ethereum',
-        providerUrl: 'https://eth.llamarpc.com',
-        fallbacks: [],
-      };
-      // Get current provider
+      // Get current provider — only build a default if none is stored.
+      // Source the default from Pioneer rather than a hardcoded URL so
+      // we never ship a stale RPC behind a release.
       const currentProvider = await web3ProviderStorage.getWeb3Provider();
       if (!currentProvider) {
-        console.log(tag, 'No provider set, setting default provider');
-        await web3ProviderStorage.saveWeb3Provider(defaultProvider);
+        console.log(tag, 'No provider set, fetching default ETH config from Pioneer');
+        const ethInfo = await getChainInfo('eip155:1');
+        if (ethInfo?.rpc) {
+          await web3ProviderStorage.saveWeb3Provider({
+            chainId: ethInfo.chainId,
+            caip: ethInfo.caip,
+            blockExplorerUrls: ethInfo.explorer ? [ethInfo.explorer] : [],
+            name: ethInfo.name,
+            providerUrl: ethInfo.rpc,
+            fallbacks: ethInfo.rpcs.slice(1),
+          } as any);
+        } else {
+          console.warn(tag, 'Pioneer did not return ETH chain info — leaving provider unset until user picks one');
+        }
       }
 
       // Fetch balances in background (non-blocking). First pass covers EVM/UTXO
@@ -990,20 +994,23 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                 // Try to get provider data from custom chains first (user-added networks)
                 let providerData = await blockchainDataStorage.getBlockchainData(asset.networkId);
 
-                // Fallback to static chain list if not found in custom storage
+                // Fall through to Pioneer registry if user hasn't added
+                // this chain manually. Pioneer is the source of truth for
+                // RPC + chain metadata; misses here mean Pioneer doesn't
+                // know the chain (rare — its catalog has 196+ EVMs).
                 if (!providerData) {
-                  const chainInfo = EIP155_CHAINS[asset.networkId];
+                  const chainInfo = await getChainInfo(asset.networkId);
                   if (chainInfo) {
                     providerData = {
                       chainId: chainInfo.chainId,
                       caip: chainInfo.caip,
-                      blockExplorerUrls: [],
+                      blockExplorerUrls: chainInfo.explorer ? [chainInfo.explorer] : [],
                       name: chainInfo.name,
                       providerUrl: chainInfo.rpc,
-                      fallbacks: [],
+                      fallbacks: chainInfo.rpcs.slice(1),
                     };
                   } else {
-                    console.error(tag, 'Network not found in custom or static chains:', asset.networkId);
+                    console.error(tag, 'Network not found in custom storage or Pioneer:', asset.networkId);
                   }
                 }
 
@@ -1240,8 +1247,9 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             // Mirror into the storages the SET_ASSET_CONTEXT handler reads
             // for provider config. Without this, the header dropdown renders
             // the new network (from customEvmNetworksStorage) but selecting
-            // it falls through to EIP155_CHAINS, which doesn't know about
-            // it, and the provider is never configured.
+            // it falls through to the Pioneer registry, which won't have
+            // the user's custom RPC URL — only the chain's public ones.
+            // Persisting here keeps the user's overrides authoritative.
             const cleanRpc = (network.rpc || '').trim();
             const cleanExplorer = (network.explorerUrl || '').trim();
             const chainIdHex = '0x' + Number(network.chainId).toString(16);
@@ -1326,8 +1334,8 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             console.log(tag, 'GET_ASSET_BALANCE');
             const { networkId } = message;
 
-            // Get RPC provider for the network
-            const chainInfo = EIP155_CHAINS[networkId];
+            // Get RPC provider for the network via Pioneer registry.
+            const chainInfo = await getChainInfo(networkId);
             if (chainInfo && ADDRESS) {
               const evmProvider = new JsonRpcProvider(chainInfo.rpc);
               const balance = await evmProvider.getBalance(ADDRESS);
@@ -1457,9 +1465,13 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               rpcUrl = customChain.providerUrl;
               chainName = customChain.name || evmNetworkId;
               chainSymbol = customChain.nativeCurrency?.symbol || customChain.symbol || 'ETH';
-            } else if (EIP155_CHAINS[evmNetworkId]) {
-              rpcUrl = EIP155_CHAINS[evmNetworkId].rpc;
-              chainName = EIP155_CHAINS[evmNetworkId].name;
+            } else {
+              const pioneerChain = await getChainInfo(evmNetworkId);
+              if (pioneerChain?.rpc) {
+                rpcUrl = pioneerChain.rpc;
+                chainName = pioneerChain.name;
+                chainSymbol = pioneerChain.symbol || 'ETH';
+              }
             }
 
             if (!rpcUrl) {
@@ -1659,8 +1671,8 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               break;
             }
 
-            // Get RPC provider for the network
-            const chainInfo = EIP155_CHAINS[networkId];
+            // Get RPC provider for the network via Pioneer registry.
+            const chainInfo = await getChainInfo(networkId);
             if (!chainInfo) {
               sendResponse({ valid: false, error: 'Unsupported network' });
               break;
