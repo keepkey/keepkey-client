@@ -2,7 +2,7 @@
     Ethereum Provider Refactored
 */
 
-import { JsonRpcProvider, parseEther } from 'ethers';
+import { JsonRpcProvider, parseEther, Transaction } from 'ethers';
 import { createProviderRpcError, ProviderRpcError } from '../utils';
 import {
   requestStorage,
@@ -192,9 +192,15 @@ const handleNetVersion = async () => {
 };
 
 const handleEthGetBlockByNumber = async params => {
+  // Passthrough raw RPC. ethers v6 `provider.getBlock(...)` returns a
+  // `Block` class instance whose field set is a SUBSET of the JSON-RPC
+  // spec response (drops sha3Uncles, logsBloom, transactionsRoot,
+  // stateRoot, receiptsRoot, difficulty, totalDifficulty, size, uncles)
+  // and whose prototype/methods are stripped when we send the value
+  // through `chrome.runtime.sendMessage`. dApps parse the JSON-RPC shape,
+  // not the wrapper. See docs/RPC_PASSTHROUGH_AUDIT.md.
   const provider = await getProvider();
-  const blockByNumber = await provider.getBlock(params[0]);
-  return blockByNumber;
+  return provider.send('eth_getBlockByNumber', params);
 };
 
 const handleEthBlockNumber = async () => {
@@ -221,15 +227,26 @@ const handleEthGetBalance = async params => {
 };
 
 const handleEthGetTransactionReceipt = async params => {
+  // Passthrough raw RPC — see docs/RPC_PASSTHROUGH_AUDIT.md. ethers v6
+  // `provider.getTransactionReceipt(...)` returns a `TransactionReceipt`
+  // class with `index` (vs spec `transactionIndex`), reshaped `logs[]`,
+  // and stripped methods after structured-clone — dApps parse the
+  // JSON-RPC spec shape and reject the wrapper.
   const provider = await getProvider();
-  const transactionReceipt = await provider.getTransactionReceipt(params[0]);
-  return transactionReceipt;
+  return provider.send('eth_getTransactionReceipt', params);
 };
 
 const handleEthGetTransactionByHash = async params => {
+  // Passthrough raw RPC — see docs/RPC_PASSTHROUGH_AUDIT.md. ethers v6
+  // `provider.getTransaction(...)` returns a `TransactionResponse` class
+  // whose field names diverge from the JSON-RPC spec: `gasLimit` vs
+  // `gas`, `data` vs `input`, `index` vs `transactionIndex`, nested
+  // `signature.{v,r,s}` vs flat. After structured-clone the methods are
+  // gone too. This is the polling endpoint Uniswap (and most dApps) use
+  // to track a tx after `eth_sendTransaction`; the wrapper shape was
+  // breaking that handoff.
   const provider = await getProvider();
-  const transactionByHash = await provider.getTransaction(params[0]);
-  return transactionByHash;
+  return provider.send('eth_getTransactionByHash', params);
 };
 
 const handleWeb3ClientVersion = async () => {
@@ -805,7 +822,7 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
     await requestStorage.updateEventById(requestInfo.id, requestInfo);
 
     // Broadcast the transaction
-    const txid = await broadcastTransaction(signedTx);
+    const txid = await broadcastTransaction(signedTx, response.unsignedTx?.from);
     console.log(tag, 'txid:', txid);
 
     // Update storage with transaction hash
@@ -965,9 +982,20 @@ const processApprovedEvent = async (method: string, params: any, KEEPKEY_WALLET:
       case 'eth_signTypedData_v4':
         result = await signTypedData(params, KEEPKEY_WALLET, ADDRESS, id);
         break;
-      case 'eth_signTransaction':
-        result = await signTransaction(params[0], KEEPKEY_WALLET);
+      case 'eth_signTransaction': {
+        // Mirror sendTransaction's pre-flight: pin chainId/from from the
+        // active provider/account, then apply any feeChoice the user picked
+        // in the side-panel fee-warning banner. Without this, `Use suggested`
+        // and `Custom…` are no-ops for eth_signTransaction (regression
+        // surfaced in PR #55 review).
+        const tx = params[0];
+        const currentProvider = await web3ProviderStorage.getWeb3Provider();
+        if (currentProvider?.chainId) tx.chainId = currentProvider.chainId;
+        tx.from = ADDRESS;
+        await applyFeeChoiceFromStorage(tx, id, ' | eth_signTransaction | ');
+        result = await signTransaction(tx, KEEPKEY_WALLET);
         break;
+      }
       default:
         console.error(TAG, `Unsupported event type: ${method}`);
         throw createProviderRpcError(4200, `Method ${method} not supported`);
@@ -1232,7 +1260,77 @@ const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string, 
   }
 };
 
-const broadcastTransaction = async (signedTx: string) => {
+/**
+ * Schedule a one-shot check that the broadcast tx is actually visible
+ * to our RPC. We've seen low-tip txs accepted by the entry node, never
+ * propagated to miners, and silently evicted within ~30s. The dApp polls
+ * eth_getTransactionByHash through us and gets null forever. This logs
+ * a clear warning and emits a runtime message so the side-panel (or any
+ * listener) can surface it. See RETRO_uniswap_swap_dropped_tx.md.
+ *
+ * Two delivery mechanisms:
+ *   - Short delays (< 30s): setTimeout. Best-effort; only fires if the
+ *     MV3 service worker is still alive. The 8s check usually hits while
+ *     the SW is still warm from the broadcast.
+ *   - Long delays (>= 30s): chrome.alarms. Survives SW suspension —
+ *     the alarm wakes the SW, registering the listener at module load.
+ *     Production minimum delay is 30s; we use 45s for the eviction probe.
+ */
+const DROP_CHECK_ALARM_PREFIX = 'eth-drop-check-';
+
+const performDropCheck = async (hash: string, scheduledDelayMs: number) => {
+  try {
+    const provider = await getProvider();
+    const tx = await provider.getTransaction(hash);
+    if (tx == null) {
+      console.warn(
+        `[DROP-CHECK] tx ${hash} not visible on RPC ~${scheduledDelayMs}ms after broadcast — likely underpriced and evicted from mempool. dApp polling will hang.`,
+      );
+      chrome.runtime
+        .sendMessage({ action: 'tx_drop_warning', txHash: hash, delayMs: scheduledDelayMs })
+        .catch(() => {});
+    } else {
+      console.log(
+        `[DROP-CHECK] tx ${hash} visible on RPC at ~${scheduledDelayMs}ms (block=${tx.blockNumber ?? 'pending'})`,
+      );
+    }
+  } catch (e) {
+    console.warn('[DROP-CHECK] failed to query tx', hash, e);
+  }
+};
+
+const scheduleDropCheck = (hash: string, delayMs: number) => {
+  if (delayMs < 30_000) {
+    setTimeout(() => performDropCheck(hash, delayMs), delayMs);
+    return;
+  }
+  // Encode delay in alarm name so the listener can recover it without
+  // a separate storage round-trip. Alarms are unique by name; suffixing
+  // with delayMs lets us schedule multiple checks for the same hash.
+  const alarmName = `${DROP_CHECK_ALARM_PREFIX}${hash}-${delayMs}`;
+  try {
+    chrome.alarms.create(alarmName, { when: Date.now() + delayMs });
+  } catch (e) {
+    console.warn('[DROP-CHECK] alarm scheduling failed, falling back to setTimeout:', e);
+    setTimeout(() => performDropCheck(hash, delayMs), delayMs);
+  }
+};
+
+// Registered at module load — re-runs on every service-worker startup,
+// which is exactly when the alarm fires and wakes the SW.
+if (typeof chrome !== 'undefined' && chrome.alarms?.onAlarm) {
+  chrome.alarms.onAlarm.addListener(alarm => {
+    if (!alarm.name.startsWith(DROP_CHECK_ALARM_PREFIX)) return;
+    const rest = alarm.name.slice(DROP_CHECK_ALARM_PREFIX.length);
+    const lastDash = rest.lastIndexOf('-');
+    if (lastDash <= 0) return;
+    const hash = rest.slice(0, lastDash);
+    const delayMs = Number(rest.slice(lastDash + 1));
+    void performDropCheck(hash, Number.isFinite(delayMs) ? delayMs : 0);
+  });
+}
+
+const broadcastTransaction = async (signedTx: string, expectedFrom?: string) => {
   const tag = TAG + ' | broadcastTransaction | ';
   try {
     const provider = await getProvider();
@@ -1240,18 +1338,64 @@ const broadcastTransaction = async (signedTx: string) => {
     console.log(tag, 'provider: ', provider);
     console.log(`[HANDOFF] BEX → RPC (broadcast) signedTx=${signedTx}`);
 
+    // Decode-and-recover BEFORE broadcast. ethers' `Transaction.from(...)` parses
+    // the serialized RLP and exposes `.from` as the ECDSA-recovered signer. If
+    // any of {chainId encoding, type-2 envelope, v/r/s} is malformed by the
+    // signing pipeline, the recovered address will be a deterministic-but-wrong
+    // address — *not* the user's. Fail closed before broadcast: an RPC that
+    // accepts the bytes against the wrong account is the worst outcome (funds
+    // move from a wallet the user doesn't control). See
+    // RETRO_uniswap_swap_dropped_tx.md and feedback_eip712_diagnosis.md.
+    let recoveredFrom: string | null = null;
+    let signerMismatch = false;
+    try {
+      const parsed = Transaction.from(signedTx);
+      recoveredFrom = parsed.from ?? null;
+      const expectedNorm = expectedFrom ? expectedFrom.toLowerCase() : null;
+      const recoveredNorm = recoveredFrom ? recoveredFrom.toLowerCase() : null;
+      const match = expectedNorm && recoveredNorm ? expectedNorm === recoveredNorm : null;
+      console.log(
+        `[DECODE] signed tx parsed:\n` +
+          `  type=${parsed.type} chainId=${parsed.chainId} nonce=${parsed.nonce}\n` +
+          `  to=${parsed.to} value=${parsed.value?.toString()} gasLimit=${parsed.gasLimit?.toString()}\n` +
+          `  maxFeePerGas=${parsed.maxFeePerGas?.toString()} maxPriorityFeePerGas=${parsed.maxPriorityFeePerGas?.toString()} gasPrice=${parsed.gasPrice?.toString()}\n` +
+          `  data=${parsed.data?.slice(0, 80)}${(parsed.data?.length ?? 0) > 80 ? '…' : ''}\n` +
+          `  recoveredFrom=${recoveredFrom ?? '(no signature)'} expectedFrom=${expectedFrom ?? '(unknown)'} match=${match}\n` +
+          `  hash=${parsed.hash} signature=${JSON.stringify(parsed.signature?.toJSON())}`,
+      );
+      signerMismatch = match === false;
+    } catch (decodeErr) {
+      console.warn(`[DECODE] failed to parse signed tx — bytes are likely malformed:`, decodeErr);
+    }
+
+    if (signerMismatch) {
+      const msg = `Refusing to broadcast: recovered signer ${recoveredFrom} ≠ expected ${expectedFrom}. The signed bytes do not represent a tx from your account.`;
+      console.error(`[DECODE] ❌ MALFORMED-HEX ${msg}`);
+      throw createProviderRpcError(4000, msg);
+    }
+
     const txResponse = await provider.broadcastTransaction(signedTx);
     console.log(
       `[HANDOFF] RPC → BEX (broadcast result) hash=${txResponse?.hash} from=${txResponse?.from} nonce=${txResponse?.nonce} to=${txResponse?.to}`,
     );
+    // Two-stage drop check: 8s catches "never landed in mempool" cases;
+    // 45s catches "landed briefly then evicted" — the user's real failure
+    // mode. Fire-and-forget; do not block the dApp response.
+    if (txResponse?.hash) {
+      scheduleDropCheck(txResponse.hash, 8_000);
+      scheduleDropCheck(txResponse.hash, 45_000);
+    }
     return txResponse.hash;
   } catch (e) {
     console.error(tag, e);
 
-    // Extract meaningful error message
+    // Already a ProviderRpcError (e.g. our signer-mismatch fail-closed) —
+    // pass through so the dApp sees the precise reason instead of a wrapped
+    // "Error broadcasting transaction: ...".
+    if (e && typeof (e as { code?: unknown }).code === 'number') throw e;
+
     const errorMessage = e?.message || JSON.stringify(e);
 
-    // Transform network-specific errors
     if (errorMessage.includes('insufficient funds')) {
       throw createProviderRpcError(4000, 'Insufficient balance to complete this transaction.');
     } else if (errorMessage.includes('nonce too low')) {
@@ -1264,8 +1408,44 @@ const broadcastTransaction = async (signedTx: string) => {
       throw createProviderRpcError(4000, 'Network timeout. Please try again.');
     }
 
-    // Generic fallback
     throw createProviderRpcError(4000, `Error broadcasting transaction: ${errorMessage}`);
+  }
+};
+
+/**
+ * Apply the user's fee-warning choice if the side-panel banner attached one
+ * to the approval event. 'dapp' = no override; 'suggested' = use the wallet's
+ * bumped values; 'custom' = use the user-typed values. Reading from storage
+ * (not param plumbing) so the side-panel UI can mutate the choice
+ * asynchronously without changing handler signatures.
+ */
+type EvmTxRequest = {
+  maxFeePerGas?: string;
+  maxPriorityFeePerGas?: string;
+  [key: string]: unknown;
+};
+
+const applyFeeChoiceFromStorage = async (transaction: EvmTxRequest, id: string, tag: string) => {
+  try {
+    const storedEvent = await requestStorage.getEventById(id);
+    const feeChoice: FeeChoice | undefined = storedEvent?.feeChoice;
+    if (feeChoice && feeChoice.source !== 'dapp' && storedEvent?.feeWarning) {
+      const w = storedEvent.feeWarning as FeeWarning;
+      if (feeChoice.source === 'suggested') {
+        transaction.maxFeePerGas = w.suggestedMaxFeePerGas;
+        transaction.maxPriorityFeePerGas = w.suggestedMaxPriorityFeePerGas;
+      } else if (feeChoice.source === 'custom') {
+        if (feeChoice.customMaxFeePerGas) transaction.maxFeePerGas = feeChoice.customMaxFeePerGas;
+        if (feeChoice.customMaxPriorityFeePerGas)
+          transaction.maxPriorityFeePerGas = feeChoice.customMaxPriorityFeePerGas;
+      }
+      console.log(
+        tag,
+        `fee override applied (${feeChoice.source}): maxFee=${transaction.maxFeePerGas} priority=${transaction.maxPriorityFeePerGas}`,
+      );
+    }
+  } catch (e) {
+    console.warn(tag, 'failed to read feeChoice from storage:', e);
   }
 };
 
@@ -1281,38 +1461,12 @@ const sendTransaction = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string
     transaction.chainId = chainId;
     transaction.from = ADDRESS;
 
-    // Apply the user's fee-warning choice if the side-panel banner attached
-    // one to the approval event. 'dapp' = no override; 'suggested' = use
-    // the wallet's bumped values; 'custom' = use the user-typed values.
-    // Reading from storage (not param plumbing) so the side-panel UI can
-    // mutate the choice asynchronously without changing handler signatures.
-    try {
-      // @ts-expect-error — storage event shape is typed loosely
-      const storedEvent = await requestStorage.getEventById(id);
-      const feeChoice: FeeChoice | undefined = storedEvent?.feeChoice;
-      if (feeChoice && feeChoice.source !== 'dapp' && storedEvent?.feeWarning) {
-        const w = storedEvent.feeWarning as FeeWarning;
-        if (feeChoice.source === 'suggested') {
-          transaction.maxFeePerGas = w.suggestedMaxFeePerGas;
-          transaction.maxPriorityFeePerGas = w.suggestedMaxPriorityFeePerGas;
-        } else if (feeChoice.source === 'custom') {
-          if (feeChoice.customMaxFeePerGas) transaction.maxFeePerGas = feeChoice.customMaxFeePerGas;
-          if (feeChoice.customMaxPriorityFeePerGas)
-            transaction.maxPriorityFeePerGas = feeChoice.customMaxPriorityFeePerGas;
-        }
-        console.log(
-          tag,
-          `fee override applied (${feeChoice.source}): maxFee=${transaction.maxFeePerGas} priority=${transaction.maxPriorityFeePerGas}`,
-        );
-      }
-    } catch (e) {
-      console.warn(tag, 'failed to read feeChoice from storage:', e);
-    }
+    await applyFeeChoiceFromStorage(transaction, id, tag);
 
     const signedTx = await signTransaction(transaction, KEEPKEY_WALLET);
     console.log(tag, 'signedTx:', signedTx);
 
-    const txHash = await broadcastTransaction(signedTx);
+    const txHash = await broadcastTransaction(signedTx, transaction.from);
     console.log(tag, 'txHash:', txHash);
 
     const response = await requestStorage.getEventById(id);

@@ -73,8 +73,12 @@ const getMethodInfo = (txType: string, hasSmartContractExecution: boolean) => {
  * Component
  */
 export default function RequestMethodCard({ transaction }: any) {
-  const hasSmartContractExecution =
-    transaction.request?.data && transaction.request.data.length > 0 && transaction.request.data !== '0x';
+  // `transaction.request` is the JSON-RPC params array (`[{ to, data, ... }]`),
+  // not an object — so `request.data` is always undefined. The unsignedTx the
+  // background builds from `params[0]` is the right source, and matches what
+  // the Details tab renders.
+  const data = transaction?.unsignedTx?.data ?? transaction?.request?.[0]?.data;
+  const hasSmartContractExecution = typeof data === 'string' && data.length > 2 && data !== '0x';
 
   const { title, description, icon, color } = getMethodInfo(transaction.type, hasSmartContractExecution);
 
