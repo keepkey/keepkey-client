@@ -1,7 +1,7 @@
 import { requestStorage } from '@extension/storage';
 import { v4 as uuidv4 } from 'uuid';
 import * as wallet from '../wallet';
-import { createProviderRpcError } from '../utils';
+import { createProviderRpcError, createTimeoutError } from '../utils';
 import { requireMessageSigningFirmware } from '../firmware';
 
 const TAG = ' | solanaHandler | ';
