@@ -36,34 +36,40 @@ const getMethodInfo = (txType: string, kind?: string) => {
         icon: <InfoIcon boxSize={8} />,
         color: 'yellow.500',
       };
+    // Color tiering encodes risk:
+    //   blue     — read-only signature, no funds at risk
+    //   orange   — signs a transaction; the dApp still has to broadcast
+    //   red      — signs AND broadcasts (irreversible the moment the user approves)
     case 'solana_signMessage':
       return {
         title: 'Sign Solana Message',
-        description: 'The dApp is asking your KeepKey to sign a message. No funds will move.',
+        description: 'The dApp wants your KeepKey to sign a message. No funds will move.',
         icon: <EditIcon boxSize={8} />,
-        color: 'teal.300',
+        color: 'blue.300',
       };
     case 'solana_signOffchainMessage':
       return {
         title: 'Sign Solana Off-chain Message',
         description:
-          'Domain-separated off-chain envelope. The signature is over a Solana-defined wrapper, not the bare bytes.',
+          'Some apps require this format for off-chain logins. Verify the message text matches what you expect.',
         icon: <EditIcon boxSize={8} />,
-        color: 'teal.300',
+        color: 'blue.300',
       };
     case 'solana_signTransaction':
       return {
         title: 'Sign Solana Transaction',
-        description: 'Review the transaction details on your KeepKey before approving.',
+        description:
+          'Review the transaction details on your KeepKey before approving. The dApp will broadcast after you sign.',
         icon: <CheckCircleIcon boxSize={8} />,
-        color: 'teal.300',
+        color: 'orange.400',
       };
     case 'solana_signAndSendTransaction':
       return {
         title: 'Sign & Send Solana Transaction',
-        description: 'Your KeepKey will sign, then this transaction will be broadcast to Solana.',
-        icon: <CheckCircleIcon boxSize={8} />,
-        color: 'teal.300',
+        description:
+          'Your KeepKey will sign and this transaction will be broadcast immediately. This action is irreversible.',
+        icon: <WarningIcon boxSize={8} />,
+        color: 'red.400',
       };
     default:
       return {

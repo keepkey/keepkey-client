@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Box, Divider, Flex, Table, Tbody, Tr, Td, Badge, Avatar } from '@chakra-ui/react';
+import { Box, Divider, Flex, Table, Tbody, Tr, Td, Badge, Avatar, IconButton, Tooltip } from '@chakra-ui/react';
+import { CopyIcon, CheckIcon } from '@chakra-ui/icons';
 
 /**
  * Format a raw integer-string amount into a human-readable decimal using
@@ -37,6 +38,23 @@ function formatAmount(amountRaw: unknown, decimals: number): string {
  * that. If decoding produces a control-character soup, fall back to
  * a hex dump so the user at least sees what's being signed.
  */
+/**
+ * Group bytes for human-readable hex display: 8 bytes per chunk (space
+ * between), 4 chunks per line (newline). One unbroken hex string is
+ * unreadable past ~80 chars; this is how every hex dump tool (xxd,
+ * hexdump -C) formats output for the same reason.
+ */
+function formatHexDump(bytes: number[]): string {
+  const out: string[] = [];
+  for (let i = 0; i < bytes.length; i++) {
+    out.push((bytes[i] & 0xff).toString(16).padStart(2, '0'));
+    if (i % 32 === 31) out.push('\n');
+    else if (i % 8 === 7) out.push('  ');
+    else out.push(' ');
+  }
+  return out.join('').trimEnd();
+}
+
 function decodeMessage(bytes: number[] | undefined): { text: string; isPrintable: boolean } {
   if (!bytes || !Array.isArray(bytes) || bytes.length === 0) {
     return { text: '(empty message)', isPrintable: true };
@@ -51,18 +69,33 @@ function decodeMessage(bytes: number[] | undefined): { text: string; isPrintable
       else if (c === 0xfffd) bad++;
     }
     if (bad / Math.max(text.length, 1) > 0.1) {
-      const hex = bytes.map(b => (b & 0xff).toString(16).padStart(2, '0')).join('');
-      return { text: hex, isPrintable: false };
+      return { text: formatHexDump(bytes), isPrintable: false };
     }
     return { text, isPrintable: true };
   } catch {
-    const hex = bytes.map(b => (b & 0xff).toString(16).padStart(2, '0')).join('');
-    return { text: hex, isPrintable: false };
+    return { text: formatHexDump(bytes), isPrintable: false };
   }
+}
+
+/**
+ * Pretty-print a stashed hex string (no spacing) into the same grouped
+ * dump format `decodeMessage` produces for byte arrays. Used when the
+ * handler has already pre-encoded the message as hex (off-chain path).
+ */
+function regroupHexString(hex: string): string {
+  const clean = hex.replace(/\s+/g, '');
+  const bytes: number[] = [];
+  for (let i = 0; i + 1 < clean.length; i += 2) {
+    const v = parseInt(clean.slice(i, i + 2), 16);
+    if (!Number.isFinite(v)) return hex; // unparseable — return original
+    bytes.push(v);
+  }
+  return bytes.length > 0 ? formatHexDump(bytes) : hex;
 }
 
 export default function RequestDetailsCard({ transaction }: any) {
   const [assetContext, setAssetContext] = useState<any>(null);
+  const [messageCopied, setMessageCopied] = useState(false);
 
   // Function to get asset context
   const requestAssetContext = () => {
@@ -134,7 +167,9 @@ export default function RequestDetailsCard({ transaction }: any) {
       messageText = stashedUtf8;
       isPrintable = true;
     } else if (typeof stashedHex === 'string' && stashedHex.length > 0) {
-      messageText = stashedHex;
+      // Re-format the handler's compact hex into a hex dump so it's
+      // readable rather than one ~2000-char block.
+      messageText = regroupHexString(stashedHex);
       isPrintable = false;
     } else {
       const messageBytes: number[] | undefined = transaction?.request?.[0];
@@ -142,17 +177,37 @@ export default function RequestDetailsCard({ transaction }: any) {
       messageText = decoded.text;
       isPrintable = decoded.isPrintable;
     }
+    const copyMessage = () => {
+      navigator.clipboard
+        .writeText(messageText)
+        .then(() => {
+          setMessageCopied(true);
+          setTimeout(() => setMessageCopied(false), 1500);
+        })
+        .catch(err => console.warn('Failed to copy message:', err));
+    };
     return (
       <Flex direction="column" mb={4}>
         <Box mb={2}>
-          <Badge mb={2}>Message:</Badge>
+          <Flex align="center" justify="space-between" mb={2}>
+            <Badge>Message:</Badge>
+            <Tooltip label={messageCopied ? 'Copied' : 'Copy message'} fontSize="xs">
+              <IconButton
+                aria-label="Copy message"
+                size="xs"
+                variant="ghost"
+                icon={messageCopied ? <CheckIcon color="green.300" /> : <CopyIcon />}
+                onClick={copyMessage}
+              />
+            </Tooltip>
+          </Flex>
           <Box
             p={3}
             borderWidth={1}
             borderRadius="md"
             borderColor="whiteAlpha.300"
             bg="whiteAlpha.50"
-            maxHeight="240px"
+            maxHeight="360px"
             overflowY="auto"
             whiteSpace="pre-wrap"
             wordBreak="break-word"
@@ -162,7 +217,7 @@ export default function RequestDetailsCard({ transaction }: any) {
           </Box>
           {!isPrintable && (
             <Box mt={2} fontSize="xs" color="orange.300">
-              Bytes are not printable UTF-8 — shown in hex.
+              Bytes are not printable UTF-8 — shown as hex dump.
             </Box>
           )}
         </Box>

@@ -257,10 +257,15 @@ export const handleWalletRequest = async (
     errorMessage = formatUserError({ message: errorMessage });
 
     //push error to the popup
+    // Forward `kind` so the side panel can render category-specific UI
+    // (e.g. friendly retry card for timeouts) without regex-matching
+    // the message.
+    const kind = (error as ProviderRpcError).kind;
     chrome.runtime.sendMessage({
       action: 'transaction_error',
       eventId: requestInfo?.id,
       error: errorMessage,
+      kind,
     });
 
     if ((error as ProviderRpcError).code && (error as ProviderRpcError).message) {

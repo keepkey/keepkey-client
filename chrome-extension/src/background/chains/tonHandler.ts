@@ -16,7 +16,7 @@
 import { requestStorage } from '@extension/storage';
 import { v4 as uuidv4 } from 'uuid';
 import * as wallet from '../wallet';
-import { createProviderRpcError } from '../utils';
+import { createProviderRpcError, createTimeoutError } from '../utils';
 import { requireMessageSigningFirmware } from '../firmware';
 
 const TAG = ' | tonHandler | ';
@@ -204,7 +204,7 @@ async function buildTransferViaRest(params: {
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {
-      throw createProviderRpcError(-32603, 'Vault TON build timed out');
+      throw createTimeoutError('Vault TON build timed out');
     }
     throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
   }
@@ -235,7 +235,7 @@ async function signTransactionViaRest(bodyHashHex: string, toAddress: string, am
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {
-      throw createProviderRpcError(-32603, 'Vault TON signing timed out');
+      throw createTimeoutError('Vault TON signing timed out');
     }
     throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
   }
@@ -324,7 +324,7 @@ async function tonSignMessageViaRest(
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {
-      throw createProviderRpcError(-32603, 'Vault TON sign-message timed out');
+      throw createTimeoutError('Vault TON sign-message timed out');
     }
     throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
   }
@@ -363,7 +363,7 @@ async function finalizeTransferViaRest(build: any, signature: string): Promise<{
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {
-      throw createProviderRpcError(-32603, 'Vault TON finalize timed out');
+      throw createTimeoutError('Vault TON finalize timed out');
     }
     throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
   }

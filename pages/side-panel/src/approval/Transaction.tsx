@@ -37,6 +37,9 @@ const Transaction = ({
   const [awaitingDeviceApproval, setAwaitingDeviceApproval] = useState<boolean>(false);
   const [transactionInProgress, setTransactionInProgress] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Categorical hint forwarded from the background so we can render
+  // category-specific UI (e.g. timeout) without regex-matching `message`.
+  const [errorKind, setErrorKind] = useState<string | null>(null);
   const [showTxidPage, setShowTxidPage] = useState<boolean>(false);
   const [assetContext, setAssetContext] = useState<any>(null); // Local state for asset context
   const [explorerUrl, setExplorerUrl] = useState<string | null>(null);
@@ -186,6 +189,7 @@ const Transaction = ({
         } else {
           // Show error for other types of failures
           setErrorMessage(errorText);
+          setErrorKind(typeof message.kind === 'string' ? message.kind : null);
           setTransactionInProgress(false);
         }
       }
@@ -283,18 +287,23 @@ const Transaction = ({
   }
 
   if (errorMessage) {
-    // Treat "timed out" as a soft retryable state, not a fatal error.
-    // The device is fine, the dApp request is just one-shot — the user
-    // re-initiates from the dApp page. Loud red copy made this feel like
-    // something broke.
-    const isTimeout = /timed out|timeout/i.test(errorMessage);
+    // Treat timeouts as a soft retryable state, not a fatal error. The
+    // device is fine, the dApp request is just one-shot — the user has
+    // to reject and re-initiate from the dApp page. Loud red copy made
+    // this feel like something broke.
+    //
+    // Categorization comes from the typed `kind` forwarded by the
+    // background. A regex on `errorMessage` is the legacy fallback and
+    // exists only so older builds in the wild (or paths that haven't
+    // adopted createTimeoutError yet) still show the friendlier card.
+    const isTimeout = errorKind === 'timeout' || /timed out|timeout/i.test(errorMessage);
     const status = isTimeout ? 'warning' : 'error';
     const heading = isTimeout ? 'Took too long' : 'Error Occurred';
     const body = isTimeout
-      ? 'No response from your KeepKey in time. You can close this and try the request again from the dApp.'
+      ? 'No response from your KeepKey in time. Reject the request in the dApp, then try again.'
       : errorMessage;
     const buttonScheme = isTimeout ? 'yellow' : 'red';
-    const buttonLabel = isTimeout ? 'Close' : 'Close';
+    const buttonLabel = 'Close';
     return (
       <Flex direction="column" height="100vh" alignItems="center" justifyContent="center" p={6}>
         <Alert
