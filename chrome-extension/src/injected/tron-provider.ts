@@ -9,8 +9,23 @@
  *   - TriggerSmartContract `transfer(address,uint256)` signing (TRC20, e.g. USDT)
  *   - Read-only RPC and transactionBuilder.sendTrx via TronGrid
  *
- * Out of scope (throws on attempt):
- *   - signMessage / signMessageV2 (vault endpoint not implemented yet)
+ * Supported (firmware 7.14.1+):
+ *   - signMessage / signMessageV2 — TIP-191 personal_sign
+ *
+ * Out of scope (not on tronWeb.trx; reachable only via tronLink.request):
+ *   - tron_verifyMessage — boolean check against a known address. We
+ *     don't expose verifyMessage / verifyMessageV2 on tronWeb.trx
+ *     because TronWeb V2's contract is verifyMessageV2(message, sig)
+ *     returning the recovered address, and our endpoint shape
+ *     (address required, boolean returned) doesn't match.
+ *     Verification is client-side anyway — use TronWeb's static
+ *     utilities.
+ *   - tron_signTypedHash (TIP-712 hash mode) — call
+ *     window.tronLink.request({ method: 'tron_signTypedHash', params:
+ *     [{ domainSeparatorHash, messageHash }] }) with pre-computed
+ *     32-byte hashes. We don't ship a struct → hash implementation,
+ *     so we don't expose _signTypedData / signTypedData on
+ *     tronWeb.trx where the contract takes (domain, types, value).
  *   - Non-`transfer` smart contract calls (requires firmware display support)
  */
 
@@ -250,13 +265,26 @@ export class KeepKeyTronProvider {
         return signed;
       },
 
-      signMessage: async (_message: string, _privateKey?: string) => {
-        throw new Error('tronWeb.trx.signMessage is not yet supported by KeepKey');
+      // TIP-191 V1 — message is hex (with or without 0x).
+      // privateKey arg is ignored (signing always happens on the device).
+      signMessage: async (message: string, privateKey?: string) => {
+        void privateKey;
+        return await promisifyRequest(self.walletRequest, 'tron_signMessage', [message]);
       },
 
-      signMessageV2: async (_message: string, _privateKey?: string) => {
-        throw new Error('tronWeb.trx.signMessageV2 is not yet supported by KeepKey');
+      // TIP-191 V2 — message is UTF-8 string.
+      signMessageV2: async (message: string, privateKey?: string) => {
+        void privateKey;
+        return await promisifyRequest(self.walletRequest, 'signMessageV2', [message]);
       },
+
+      // verifyMessage / verifyMessageV2 deliberately NOT exposed here.
+      // TronWeb V2's verifyMessageV2(message, signature) returns the
+      // recovered base58 address; our endpoint shape (address required,
+      // boolean returned) doesn't match. Use TronWeb's static
+      // verification utilities, or call tronLink.request({ method:
+      // 'tron_verifyMessage', params: [{ address, signature, message,
+      // isText? }] }) explicitly.
 
       sendRawTransaction: async (signedTx: any) => {
         return tronGridPost('/wallet/broadcasttransaction', signedTx);

@@ -17,6 +17,7 @@ import { requestStorage } from '@extension/storage';
 import { v4 as uuidv4 } from 'uuid';
 import * as wallet from '../wallet';
 import { createProviderRpcError } from '../utils';
+import { requireMessageSigningFirmware } from '../firmware';
 
 const TAG = ' | tonHandler | ';
 const VAULT_URL = 'http://localhost:1646';
@@ -294,6 +295,59 @@ function bytesToHex(bytes: number[]): string {
   return bytes.map(b => (b & 0xff).toString(16).padStart(2, '0')).join('');
 }
 
+/**
+ * POST /ton/sign-message — bare Ed25519 signature over arbitrary bytes.
+ *
+ * Firmware fences this behind the AdvancedMode policy: with AdvancedMode
+ * disabled (the default), the device returns a Failure that surfaces here
+ * as a vault HTTP error containing some variant of "AdvancedMode" in the
+ * body. Detect that and rewrite the message into something a dApp /
+ * end-user can act on, instead of "vault returned 400".
+ */
+async function tonSignMessageViaRest(
+  message: string,
+  isText: boolean,
+): Promise<{ publicKey: string; signature: string }> {
+  const apiKey = getApiKey();
+  let resp: Response;
+  try {
+    resp = await fetch(`${VAULT_URL}/ton/sign-message`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        address_n: TON_ADDRESS_N,
+        message,
+        is_text: isText,
+        show_display: true,
+      }),
+      signal: AbortSignal.timeout(120_000),
+    });
+  } catch (e: any) {
+    if (e.name === 'TimeoutError' || e.name === 'AbortError') {
+      throw createProviderRpcError(-32603, 'Vault TON sign-message timed out');
+    }
+    throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
+  }
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    if (/advanced\s*mode/i.test(text)) {
+      // Translate the firmware-policy failure into a clear, actionable
+      // message — there's no automatic recovery, the user must enable
+      // AdvancedMode on the device first.
+      throw createProviderRpcError(
+        4200,
+        'TON message signing requires Advanced Mode on your KeepKey. Open the KeepKey Vault desktop app → Settings → Security and enable "Advanced Mode", then retry.',
+      );
+    }
+    throw createProviderRpcError(-32603, `Vault TON sign-message failed (${resp.status}): ${text}`);
+  }
+  const result = await resp.json();
+  if (!result?.signature || !result?.publicKey) {
+    throw createProviderRpcError(-32603, 'Vault returned no TON message signature');
+  }
+  return { publicKey: result.publicKey, signature: result.signature };
+}
+
 async function finalizeTransferViaRest(build: any, signature: string): Promise<{ txid: string; boc: string }> {
   const apiKey = getApiKey();
   let resp: Response;
@@ -454,6 +508,97 @@ export const handleTonRequest = async (
         .catch(() => {});
 
       return txid;
+    }
+
+    // Bare Ed25519 SignMessage. AdvancedMode-gated firmware-side; we
+    // map that policy failure to a user-actionable error inside
+    // tonSignMessageViaRest. dApps pass either a UTF-8 string (default)
+    // or hex bytes via { message, isText: false }.
+    case 'ton_signMessage':
+    case 'signMessage': {
+      await requireMessageSigningFirmware('TON message signing');
+      const arg = (params || [])[0];
+      let messageForVault: string;
+      let isText: boolean;
+      let displayMessage: unknown;
+      if (typeof arg === 'string') {
+        messageForVault = arg;
+        isText = true;
+        displayMessage = arg;
+      } else if (Array.isArray(arg)) {
+        messageForVault = (arg as number[]).map(b => (b & 0xff).toString(16).padStart(2, '0')).join('');
+        isText = false;
+        displayMessage = messageForVault;
+      } else if (arg && typeof arg === 'object') {
+        const msg = (arg as any).message;
+        const explicitIsText = (arg as any).isText ?? (arg as any).is_text;
+        if (typeof msg === 'string') {
+          messageForVault = msg;
+          isText = explicitIsText !== false; // default true
+          displayMessage = msg;
+        } else if (Array.isArray(msg)) {
+          messageForVault = (msg as number[]).map(b => (b & 0xff).toString(16).padStart(2, '0')).join('');
+          isText = false;
+          displayMessage = messageForVault;
+        } else {
+          throw createProviderRpcError(4000, `${method}: missing or unsupported message field`);
+        }
+      } else {
+        throw createProviderRpcError(4000, `${method}: missing message param`);
+      }
+
+      if (!requestInfo.id) requestInfo.id = uuidv4();
+      const fromAddress = await getTonAddress();
+      const event = {
+        id: requestInfo.id,
+        networkId: TON_NETWORK_ID,
+        chain: 'ton' as const,
+        href: requestInfo.href,
+        language: requestInfo.language,
+        platform: requestInfo.platform,
+        referrer: requestInfo.referrer,
+        requestTime: requestInfo.requestTime,
+        scriptSource: requestInfo.scriptSource,
+        siteUrl: requestInfo.siteUrl,
+        userAgent: requestInfo.userAgent,
+        injectScriptVersion: requestInfo.version,
+        requestInfo,
+        unsignedTx: {
+          kind: 'sign-message',
+          from: fromAddress,
+          message: displayMessage,
+          isText,
+        },
+        type: method,
+        request: params,
+        status: 'request' as const,
+        timestamp: new Date().toISOString(),
+      };
+      const saved = await requestStorage.addEvent(event);
+      if (!saved) throw createProviderRpcError(-32603, 'Failed to create approval event');
+      chrome.runtime.sendMessage({ action: 'TRANSACTION_CONTEXT_UPDATED', id: event.id }).catch(() => {});
+
+      const approval = await requireApproval(TON_NETWORK_ID, requestInfo, 'ton', method, params);
+      if (!approval?.success) {
+        throw createProviderRpcError(4001, 'User denied TON message signing');
+      }
+
+      const { publicKey, signature } = await tonSignMessageViaRest(messageForVault, isText);
+
+      try {
+        const stored = await requestStorage.getEventById(requestInfo.id);
+        if (stored) {
+          stored.signature = signature;
+          stored.publicKey = publicKey;
+          stored.status = 'completed';
+          await requestStorage.updateEventById(requestInfo.id, stored);
+        }
+      } catch (e) {
+        console.warn(tag, 'Failed to persist TON message signature:', e);
+      }
+      chrome.runtime.sendMessage({ action: 'signature_complete', eventId: requestInfo.id }).catch(() => {});
+
+      return { publicKey, signature };
     }
 
     default:

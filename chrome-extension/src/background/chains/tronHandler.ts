@@ -2,6 +2,7 @@ import { requestStorage, assetContextStorage } from '@extension/storage';
 import { v4 as uuidv4 } from 'uuid';
 import * as wallet from '../wallet';
 import { createProviderRpcError } from '../utils';
+import { requireMessageSigningFirmware } from '../firmware';
 
 const TAG = ' | tronHandler | ';
 
@@ -364,6 +365,141 @@ async function signTronViaRest(
   return signature;
 }
 
+/** Strip 0x and validate even-length hex; throws on garbage input. */
+function ensureHex(input: string, label: string, expectedBytes?: number): string {
+  const stripped = String(input).replace(/^0x/i, '');
+  if (!/^[0-9a-fA-F]*$/.test(stripped)) {
+    throw createProviderRpcError(4000, `${label}: invalid hex`);
+  }
+  if (stripped.length % 2 !== 0) {
+    throw createProviderRpcError(4000, `${label}: odd-length hex`);
+  }
+  if (expectedBytes !== undefined && stripped.length !== expectedBytes * 2) {
+    throw createProviderRpcError(4000, `${label}: expected ${expectedBytes} bytes, got ${stripped.length / 2}`);
+  }
+  return stripped.toLowerCase();
+}
+
+/**
+ * POST /tron/sign-message — TIP-191 personal_sign.
+ *
+ * `isText: true` (default) sends `message` as UTF-8; `isText: false`
+ * sends it as raw hex bytes. The vault returns the 65-byte recoverable
+ * signature as a hex string + the recovered base58 address (signer).
+ */
+async function tronSignMessageViaRest(
+  message: string,
+  isText: boolean,
+): Promise<{
+  address: string;
+  signature: string;
+}> {
+  const apiKey = getApiKey();
+  let resp: Response;
+  try {
+    resp = await fetch(`${VAULT_URL}/tron/sign-message`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        addressNList: TRON_ADDRESS_N,
+        message,
+        is_text: isText,
+        show_display: true,
+      }),
+      signal: AbortSignal.timeout(120_000),
+    });
+  } catch (e: any) {
+    if (e.name === 'TimeoutError' || e.name === 'AbortError') {
+      throw createProviderRpcError(-32603, 'Vault Tron sign-message timed out');
+    }
+    throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
+  }
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw createProviderRpcError(-32603, `Vault Tron sign-message failed (${resp.status}): ${text}`);
+  }
+  const result = await resp.json();
+  if (!result?.address || !result?.signature) {
+    throw createProviderRpcError(-32603, 'Vault returned no Tron message signature');
+  }
+  return { address: result.address, signature: result.signature };
+}
+
+/** POST /tron/verify-message — TIP-191 verify. Returns `{ verified }`. */
+async function tronVerifyMessageViaRest(
+  address: string,
+  signatureHex: string,
+  message: string,
+  isText: boolean,
+): Promise<boolean> {
+  const apiKey = getApiKey();
+  // Normalise the signature to bare hex up front so a malformed input
+  // surfaces here rather than as a generic vault 400.
+  const sig = ensureHex(signatureHex, 'tron_verifyMessage.signature', 65);
+  let resp: Response;
+  try {
+    resp = await fetch(`${VAULT_URL}/tron/verify-message`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ address, signature: sig, message, is_text: isText }),
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (e: any) {
+    throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
+  }
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw createProviderRpcError(-32603, `Vault Tron verify failed (${resp.status}): ${text}`);
+  }
+  const result = await resp.json();
+  return !!result?.verified;
+}
+
+/**
+ * POST /tron/sign-typed-hash — TIP-712 typed-data signing (hash mode).
+ * Caller pre-computes the 32-byte domainSeparator and message hashes per
+ * the TIP-712 spec; device assembles `keccak256("\x19\x01" || ds || msg)`
+ * and signs.
+ */
+async function tronSignTypedHashViaRest(
+  domainSeparatorHash: string,
+  messageHash: string | undefined,
+): Promise<{ address: string; signature: string }> {
+  const apiKey = getApiKey();
+  const ds = ensureHex(domainSeparatorHash, 'tron_signTypedHash.domain_separator_hash', 32);
+  const mh =
+    messageHash !== undefined && messageHash !== null && messageHash !== ''
+      ? ensureHex(messageHash, 'tron_signTypedHash.message_hash', 32)
+      : undefined;
+  let resp: Response;
+  try {
+    resp = await fetch(`${VAULT_URL}/tron/sign-typed-hash`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        addressNList: TRON_ADDRESS_N,
+        domain_separator_hash: ds,
+        ...(mh ? { message_hash: mh } : {}),
+      }),
+      signal: AbortSignal.timeout(120_000),
+    });
+  } catch (e: any) {
+    if (e.name === 'TimeoutError' || e.name === 'AbortError') {
+      throw createProviderRpcError(-32603, 'Vault Tron sign-typed-hash timed out');
+    }
+    throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
+  }
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw createProviderRpcError(-32603, `Vault Tron sign-typed-hash failed (${resp.status}): ${text}`);
+  }
+  const result = await resp.json();
+  if (!result?.address || !result?.signature) {
+    throw createProviderRpcError(-32603, 'Vault returned no Tron typed-hash signature');
+  }
+  return { address: result.address, signature: result.signature };
+}
+
 /**
  * Convert a Tron hex address (e.g. `41xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`)
  * to its base58 form (T...). Uses SHA-256 double-hash for the checksum,
@@ -694,13 +830,195 @@ export const handleTronRequest = async (
       return signedTx;
     }
 
+    // TIP-191 personal_sign. dApps reach this through three names:
+    //   - tron_signMessage / signMessage  → V1 (TronWeb): message is hex
+    //   - signMessageV2                   → V2 (TronWeb): message is UTF-8
+    // V1 vs V2 is just the wire encoding of the message bytes; both go
+    // through the same firmware path and produce a 65-byte recoverable
+    // signature. Handle the encoding here so the handler can stay
+    // ignorant of the dApp-side variant.
     case 'tron_signMessage':
     case 'signMessage':
     case 'signMessageV2': {
-      throw createProviderRpcError(
-        4200,
-        'Tron message signing is not yet supported by KeepKey. Use transaction signing instead.',
-      );
+      await requireMessageSigningFirmware('Tron message signing');
+      const raw = params?.[0];
+      if (raw === undefined || raw === null) {
+        throw createProviderRpcError(4000, `${method} expects a message as the first param`);
+      }
+      const isV2 = method === 'signMessageV2';
+      let messageForVault: string;
+      let isText: boolean;
+      if (typeof raw === 'string') {
+        if (isV2) {
+          // V2 always treats input as text — even if it looks 0x-hex, the
+          // signing surface signs the literal characters per the TronWeb
+          // spec.
+          messageForVault = raw;
+          isText = true;
+        } else {
+          // V1 — message is hex with or without 0x.
+          messageForVault = ensureHex(raw, `${method}.message`);
+          isText = false;
+        }
+      } else if (Array.isArray(raw)) {
+        // Some dApps pass Uint8Array-like arrays of bytes.
+        messageForVault = raw.map((b: number) => (b & 0xff).toString(16).padStart(2, '0')).join('');
+        isText = false;
+      } else {
+        throw createProviderRpcError(4000, `${method}: unsupported message type ${typeof raw}`);
+      }
+
+      if (!requestInfo.id) requestInfo.id = uuidv4();
+      const event = buildEvent(requestInfo, method, params, {
+        kind: 'sign-message',
+        from: await getTronAddress(),
+        message: raw,
+        // Kept for the approval card so it can render hex vs text without
+        // having to recompute the encoding decision.
+        isText,
+      });
+      // @ts-expect-error addEvent is untyped on the storage wrapper
+      const saved = await requestStorage.addEvent(event);
+      if (!saved) throw createProviderRpcError(-32603, 'Failed to create approval event');
+      chrome.runtime.sendMessage({ action: 'TRANSACTION_CONTEXT_UPDATED', id: event.id }).catch(() => {});
+
+      const approval = await requireApproval(TRON_NETWORK_ID, requestInfo, 'tron', method, params);
+      if (!approval?.success) {
+        throw createProviderRpcError(4001, 'User denied message signing');
+      }
+
+      const { signature } = await tronSignMessageViaRest(messageForVault, isText);
+      // TronWeb V1/V2 both expect a 0x-prefixed hex signature.
+      const result = '0x' + ensureHex(signature, `${method}.response.signature`, 65);
+
+      try {
+        const stored = await requestStorage.getEventById(requestInfo.id);
+        if (stored) {
+          stored.signature = result;
+          stored.status = 'completed';
+          await requestStorage.updateEventById(requestInfo.id, stored);
+        }
+      } catch (e) {
+        console.warn(tag, 'Failed to persist Tron message signature:', e);
+      }
+      chrome.runtime.sendMessage({ action: 'signature_complete', eventId: requestInfo.id }).catch(() => {});
+
+      return result;
+    }
+
+    // TIP-191 verify — non-standard utility, exposed only as
+    // `tron_verifyMessage` to make clear it doesn't match TronWeb's
+    // signatures:
+    //   - TronWeb V1 verifyMessage(message, signature, address) → boolean
+    //   - TronWeb V2 verifyMessageV2(message, signature)         → recovered address
+    // Our endpoint requires `address` and returns a boolean, which is
+    // V1-shaped but firmware-routed. Standard verification is
+    // client-side and doesn't need the wallet — TronWeb's static
+    // verifyMessage* utilities are the intended path. We keep this
+    // case so internal tooling can round-trip through the device, but
+    // we DON'T expose it on `tronWeb.trx` where the V2 contract is
+    // wrong.
+    case 'tron_verifyMessage': {
+      await requireMessageSigningFirmware('Tron message verification');
+      const arg = (params || [])[0];
+      let address: string | undefined;
+      let signature: string | undefined;
+      let messageRaw: unknown;
+      let isText = true;
+      if (arg && typeof arg === 'object') {
+        address = (arg as any).address;
+        signature = (arg as any).signature;
+        messageRaw = (arg as any).message;
+        const explicit = (arg as any).isText ?? (arg as any).is_text;
+        if (typeof explicit === 'boolean') isText = explicit;
+      } else {
+        // Positional [message, signature, address] — historical V1 shape.
+        messageRaw = (params || [])[0];
+        signature = (params || [])[1] as string | undefined;
+        address = (params || [])[2] as string | undefined;
+        // Heuristic: bare string + 0x-prefixed even-length hex → hex bytes.
+        if (typeof messageRaw === 'string' && /^0x[0-9a-fA-F]*$/i.test(messageRaw)) {
+          isText = false;
+        }
+      }
+      if (typeof address !== 'string' || !address) {
+        throw createProviderRpcError(4000, 'tron_verifyMessage: address is required');
+      }
+      if (typeof signature !== 'string' || !signature) {
+        throw createProviderRpcError(4000, 'tron_verifyMessage: signature is required');
+      }
+      let messageForVault: string;
+      if (typeof messageRaw === 'string') {
+        messageForVault = isText ? messageRaw : ensureHex(messageRaw, 'tron_verifyMessage.message');
+      } else if (Array.isArray(messageRaw)) {
+        messageForVault = (messageRaw as number[]).map(b => (b & 0xff).toString(16).padStart(2, '0')).join('');
+        isText = false;
+      } else {
+        throw createProviderRpcError(4000, `tron_verifyMessage: unsupported message type ${typeof messageRaw}`);
+      }
+      return await tronVerifyMessageViaRest(address, signature, messageForVault, isText);
+    }
+
+    // TIP-712 typed-data signing in HASH MODE. Caller pre-computes the
+    // 32-byte domainSeparator + message hashes per the TIP-712 spec
+    // and passes them in. This is NOT TronWeb's `_signTypedData` /
+    // `signTypedData(domain, types, value)` — those take the full
+    // struct and do the hashing internally. We don't ship a struct →
+    // hashes implementation, so we expose only the lower-level hash
+    // surface and don't claim TronWeb compatibility.
+    case 'tron_signTypedHash': {
+      await requireMessageSigningFirmware('Tron typed-data signing');
+      const arg = (params || [])[0];
+      let dsHash: string | undefined;
+      let msgHash: string | undefined;
+      if (arg && typeof arg === 'object') {
+        // Accept either { domainSeparatorHash, messageHash }
+        // or snake-case { domain_separator_hash, message_hash }.
+        dsHash = arg.domainSeparatorHash ?? arg.domain_separator_hash;
+        msgHash = arg.messageHash ?? arg.message_hash;
+      } else if (typeof arg === 'string') {
+        // Positional: [domainSeparatorHash, messageHash?]
+        dsHash = arg;
+        msgHash = (params || [])[1];
+      }
+      if (!dsHash) {
+        throw createProviderRpcError(
+          4000,
+          `${method} expects { domainSeparatorHash, messageHash? } or two 32-byte hex strings`,
+        );
+      }
+
+      if (!requestInfo.id) requestInfo.id = uuidv4();
+      const event = buildEvent(requestInfo, method, params, {
+        kind: 'sign-typed-hash',
+        from: await getTronAddress(),
+        domainSeparatorHash: dsHash,
+        messageHash: msgHash,
+      });
+      // @ts-expect-error addEvent is untyped on the storage wrapper
+      const saved = await requestStorage.addEvent(event);
+      if (!saved) throw createProviderRpcError(-32603, 'Failed to create approval event');
+      chrome.runtime.sendMessage({ action: 'TRANSACTION_CONTEXT_UPDATED', id: event.id }).catch(() => {});
+
+      const approval = await requireApproval(TRON_NETWORK_ID, requestInfo, 'tron', method, params);
+      if (!approval?.success) {
+        throw createProviderRpcError(4001, 'User denied typed-data signing');
+      }
+
+      const { signature } = await tronSignTypedHashViaRest(dsHash, msgHash);
+      const result = '0x' + ensureHex(signature, `${method}.response.signature`, 65);
+      try {
+        const stored = await requestStorage.getEventById(requestInfo.id);
+        if (stored) {
+          stored.signature = result;
+          stored.status = 'completed';
+          await requestStorage.updateEventById(requestInfo.id, stored);
+        }
+      } catch (e) {
+        console.warn(tag, 'Failed to persist Tron typed-hash signature:', e);
+      }
+      chrome.runtime.sendMessage({ action: 'signature_complete', eventId: requestInfo.id }).catch(() => {});
+      return result;
     }
 
     // Side-panel Send flow. Payload:

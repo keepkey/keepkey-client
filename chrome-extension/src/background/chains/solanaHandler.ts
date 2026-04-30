@@ -2,6 +2,7 @@ import { requestStorage } from '@extension/storage';
 import { v4 as uuidv4 } from 'uuid';
 import * as wallet from '../wallet';
 import { createProviderRpcError } from '../utils';
+import { requireMessageSigningFirmware } from '../firmware';
 
 const TAG = ' | solanaHandler | ';
 
@@ -419,6 +420,67 @@ async function signMessageViaRest(messageBase64: string): Promise<number[]> {
 }
 
 /**
+ * POST /solana/sign-offchain-message — domain-separated envelope.
+ *
+ * Firmware constructs:
+ *   "\xff" || "solana offchain" || version || format || length || msg
+ * and Ed25519-signs the envelope (NOT the bare message). Verifiers must
+ * reconstruct the same envelope before checking the signature — see the
+ * `solana_signOffchainMessage` case below for the verifier guidance we
+ * surface to dApps.
+ *
+ * version: 0 is the only currently-defined revision.
+ * messageFormat:
+ *   0 = restricted ASCII (printable + space, max 1212 bytes)
+ *   1 = UTF-8           (max 1212 bytes; firmware rejects format 2)
+ *
+ * Response: 64-byte Ed25519 signature + 32-byte public key, hex.
+ */
+async function signOffchainMessageViaRest(
+  messageHex: string,
+  version: number,
+  messageFormat: number,
+): Promise<{ publicKey: string; signature: string }> {
+  const apiKey = getApiKey();
+  let resp: Response;
+  try {
+    resp = await fetch(`${VAULT_URL}/solana/sign-offchain-message`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        address_n: SOLANA_ADDRESS_N,
+        message: messageHex,
+        is_text: false, // Pre-encoded to hex above so the vault doesn't second-guess.
+        version,
+        message_format: messageFormat,
+        show_display: true,
+      }),
+      signal: AbortSignal.timeout(120_000),
+    });
+  } catch (e: any) {
+    if (e.name === 'TimeoutError' || e.name === 'AbortError') {
+      throw createProviderRpcError(-32603, 'Vault Solana sign-offchain timed out');
+    }
+    throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
+  }
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw createProviderRpcError(-32603, `Vault Solana sign-offchain failed (${resp.status}): ${text}`);
+  }
+  const result = await resp.json();
+  if (!result?.signature || !result?.publicKey) {
+    throw createProviderRpcError(-32603, 'Vault returned no Solana off-chain signature');
+  }
+  return { publicKey: result.publicKey, signature: result.signature };
+}
+
+function bytesToHex(bytes: Uint8Array | number[]): string {
+  let out = '';
+  for (let i = 0; i < bytes.length; i++) out += (bytes[i] & 0xff).toString(16).padStart(2, '0');
+  return out;
+}
+
+/**
  * Broadcast a signed Solana transaction via Solana JSON-RPC.
  * Vault has NO broadcast endpoint — we send directly to Solana RPC.
  */
@@ -649,7 +711,116 @@ export const handleSolanaRequest = async (
       return txSignature;
     }
 
+    // ---- Sign off-chain message (domain-separated envelope) ----
+    //
+    // CRITICAL — verifier guidance for callers:
+    //
+    // The signature returned here is over the Solana off-chain envelope
+    // (https://github.com/solana-labs/solana/blob/master/docs/src/proposals/off-chain-message-signing.md),
+    // NOT the bare message bytes. Verifiers MUST reconstruct:
+    //
+    //   "\xff" || "solana offchain" || version (1B) || format (1B)
+    //                                || length (2B LE) || message
+    //
+    // and Ed25519-verify against THAT envelope using the returned
+    // `publicKey`. Verifying against the bare bytes will always fail.
+    //
+    // Use this method when you specifically need the off-chain envelope
+    // (some authenticators / dApps require it). For Wallet Standard
+    // bare-message signing, keep using `solana_signMessage`.
+    case 'solana_signOffchainMessage': {
+      await requireMessageSigningFirmware('Solana off-chain message signing');
+      const arg = (params || [])[0];
+      let messageBytes: number[];
+      let version = 0;
+      // Default to UTF-8 (format 1). Format 0 (restricted ASCII) is
+      // stricter and most modern callers use UTF-8.
+      let messageFormat = 1;
+
+      if (Array.isArray(arg)) {
+        messageBytes = arg as number[];
+      } else if (typeof arg === 'string') {
+        messageBytes = Array.from(new TextEncoder().encode(arg));
+      } else if (arg && typeof arg === 'object') {
+        const msg = (arg as any).message;
+        if (Array.isArray(msg)) {
+          messageBytes = msg as number[];
+        } else if (typeof msg === 'string') {
+          messageBytes = Array.from(new TextEncoder().encode(msg));
+        } else {
+          throw createProviderRpcError(4000, 'solana_signOffchainMessage: missing message');
+        }
+        if (typeof (arg as any).version === 'number') version = (arg as any).version;
+        if (typeof (arg as any).messageFormat === 'number') {
+          messageFormat = (arg as any).messageFormat;
+        } else if (typeof (arg as any).message_format === 'number') {
+          messageFormat = (arg as any).message_format;
+        }
+      } else {
+        throw createProviderRpcError(4000, 'solana_signOffchainMessage: invalid params');
+      }
+
+      if (messageBytes.length === 0) {
+        throw createProviderRpcError(4000, 'solana_signOffchainMessage: empty message');
+      }
+      if (messageBytes.length > 1212) {
+        // Firmware rejects > 1212 bytes for both format 0 and 1.
+        throw createProviderRpcError(
+          4000,
+          `solana_signOffchainMessage: message too long (${messageBytes.length} bytes; max 1212 for off-chain spec)`,
+        );
+      }
+
+      const event = buildEvent(requestInfo, method, params);
+      // Decorate the event with the envelope-signing hint so the
+      // approval card can warn the user about the verification model.
+      (event as any).unsignedTx = {
+        kind: 'sign-offchain-message',
+        version,
+        messageFormat,
+        message: bytesToHex(messageBytes),
+        // Used by the approval UI to render the message in plain text
+        // when format=1 (UTF-8). Falls back to hex on decode failure.
+        messageUtf8: tryDecodeUtf8(messageBytes),
+        verifyAgainst: 'envelope', // hint for any downstream UI
+      };
+      await requestUserApproval(event, requestInfo, method, params, requireApproval);
+
+      const { publicKey, signature } = await signOffchainMessageViaRest(
+        bytesToHex(messageBytes),
+        version,
+        messageFormat,
+      );
+
+      try {
+        const stored = await requestStorage.getEventById(requestInfo.id);
+        if (stored) {
+          stored.signature = signature;
+          stored.publicKey = publicKey;
+          stored.status = 'completed';
+          await requestStorage.updateEventById(requestInfo.id, stored);
+        }
+      } catch (e) {
+        console.warn(tag, 'Failed to persist off-chain signature on event:', e);
+      }
+      chrome.runtime.sendMessage({ action: 'signature_complete', eventId: requestInfo.id }).catch(() => {});
+
+      // Return both — caller needs `publicKey` to identify which device
+      // identity signed (Solana off-chain spec ties signer identity to
+      // the envelope) and `signature` to verify. Both hex.
+      return { publicKey, signature };
+    }
+
     default:
       throw createProviderRpcError(4200, `Unsupported Solana method: ${method}`);
   }
 };
+
+/** Best-effort UTF-8 decode for the approval card; returns null on invalid bytes. */
+function tryDecodeUtf8(bytes: number[]): string | null {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(new Uint8Array(bytes));
+  } catch {
+    return null;
+  }
+}
