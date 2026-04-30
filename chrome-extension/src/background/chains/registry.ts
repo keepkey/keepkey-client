@@ -26,12 +26,44 @@
  * chrome.storage would just create a new staleness vector.
  */
 
+import { JsonRpcProvider } from 'ethers';
+
 const PIONEER_API = 'https://api.keepkey.info';
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const FAILURE_TTL_MS = 60 * 1000; // negative-cache misses for a minute
 const FETCH_TIMEOUT_MS = 8000;
 
 const TAG = ' | chains/registry | ';
+
+/**
+ * Construct a JsonRpcProvider with a *pinned* network. Without this,
+ * ethers v6 calls eth_chainId on the first RPC call to detect the
+ * network and retries every 1s indefinitely if the URL is slow / dead /
+ * rate-limited — generating background spam from any timed-out call
+ * site (`Promise.race(getBalance, timeout)` only rejects the awaiting
+ * promise; the abandoned provider keeps retrying).
+ *
+ * Pin the network up front so a bad URL fails fast on the actual call
+ * instead of looping on detection forever.
+ */
+export function makeStaticProvider(url: string, networkOrChainId: string | number): JsonRpcProvider {
+  let chainId: number | null = null;
+  if (typeof networkOrChainId === 'number') {
+    chainId = networkOrChainId;
+  } else if (typeof networkOrChainId === 'string') {
+    const s = networkOrChainId.trim();
+    const m = /^eip155:(\d+)$/.exec(s);
+    if (m) {
+      chainId = parseInt(m[1], 10);
+    } else {
+      const n = /^0x/i.test(s) ? parseInt(s, 16) : parseInt(s, 10);
+      if (Number.isFinite(n)) chainId = n;
+    }
+  }
+  return chainId != null
+    ? new JsonRpcProvider(url.trim(), chainId, { staticNetwork: true })
+    : new JsonRpcProvider(url.trim());
+}
 
 export interface ChainInfo {
   chainId: string; // hex, e.g. '0x38'

@@ -16,7 +16,8 @@ import { ChainToNetworkId, caipToNetworkId, networkIdToIcon } from '../chainConf
 import * as wallet from '../wallet';
 import { buildFeeWarning, type FeeChoice, type FeeWarning } from './feeFloors';
 import { openSidePanel, setApprovalBadge } from '../popup';
-import { getChainInfo } from './registry';
+import { getChainInfo, makeStaticProvider } from './registry';
+import { getLastResortRpcs } from './lastResortRpcs';
 
 const TAG = ' | ethereumHandler | ';
 const DOMAIN_WHITE_LIST = [];
@@ -146,7 +147,7 @@ const getProvider = async (): Promise<JsonRpcProvider> => {
       const cleanUrl = rpcUrl.trim();
       console.log(tag, `Trying RPC [${availableRpcs.indexOf(rpcUrl) + 1}/${availableRpcs.length}]:`, cleanUrl);
 
-      const provider = new JsonRpcProvider(cleanUrl);
+      const provider = makeStaticProvider(cleanUrl, currentProvider.networkId || currentProvider.chainId);
 
       // Test the connection with a quick call (with timeout)
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('RPC timeout')), 5000));
@@ -1414,86 +1415,202 @@ if (typeof chrome !== 'undefined' && chrome.alarms?.onAlarm) {
   });
 }
 
+/**
+ * Classify a broadcast error so the failover loop knows whether to try
+ * the next RPC or stop and surface it.
+ *
+ *  - 'definitive'  → the tx itself is rejected. Trying another RPC will
+ *                    only return the same answer. Stop and surface.
+ *  - 'already-known' → the tx is already in mempool somewhere. Treat as
+ *                    success; pull the hash from the bytes.
+ *  - 'transient'   → rate limit / network / 5xx — retry next URL.
+ */
+type BroadcastErrorKind = 'definitive' | 'already-known' | 'transient';
+const classifyBroadcastError = (msg: string): BroadcastErrorKind => {
+  const m = msg.toLowerCase();
+  // RPC says "we already have this hash" — tx is in mempool. Success.
+  if (m.includes('already known') || m.includes('already in mempool') || m.includes('transaction already in pool'))
+    return 'already-known';
+  // Tx-level rejections — same outcome on any RPC.
+  if (
+    m.includes('insufficient funds') ||
+    m.includes('nonce too low') ||
+    m.includes('replacement transaction underpriced') ||
+    m.includes('intrinsic gas too low') ||
+    m.includes('gas required exceeds') ||
+    m.includes('exceeds block gas limit')
+  )
+    return 'definitive';
+  // Everything else (rate limit, 5xx, network, ethers SERVER_ERROR) is
+  // worth re-trying against the next URL.
+  return 'transient';
+};
+
+const mapDefinitiveError = (msg: string): ProviderRpcError => {
+  const m = msg.toLowerCase();
+  if (m.includes('insufficient funds')) {
+    return createProviderRpcError(4000, 'Insufficient balance to complete this transaction.');
+  }
+  if (m.includes('nonce too low')) {
+    return createProviderRpcError(4000, 'Transaction nonce conflict. Please try again.');
+  }
+  if (m.includes('replacement transaction underpriced')) {
+    return createProviderRpcError(4000, 'Transaction fee too low. Try with a higher gas price.');
+  }
+  if (m.includes('gas required exceeds') || m.includes('exceeds block gas limit')) {
+    return createProviderRpcError(4000, 'Transaction requires more gas than available.');
+  }
+  return createProviderRpcError(4000, `Error broadcasting transaction: ${msg}`);
+};
+
 const broadcastTransaction = async (signedTx: string, expectedFrom?: string) => {
   const tag = TAG + ' | broadcastTransaction | ';
+
+  // ---- Pre-flight: decode + signer-recovery check (unchanged) ----
+  // ethers' `Transaction.from(...)` parses the serialized RLP and
+  // exposes `.from` as the ECDSA-recovered signer. If any of {chainId
+  // encoding, type-2 envelope, v/r/s} is malformed by the signing
+  // pipeline, the recovered address will be a deterministic-but-wrong
+  // address — *not* the user's. Fail closed before broadcast: an RPC
+  // that accepts the bytes against the wrong account is the worst
+  // outcome (funds move from a wallet the user doesn't control). See
+  // RETRO_uniswap_swap_dropped_tx.md and feedback_eip712_diagnosis.md.
+  let parsedHash: string | null = null;
+  let recoveredFrom: string | null = null;
+  let signerMismatch = false;
   try {
-    const provider = await getProvider();
-
-    console.log(tag, 'provider: ', provider);
-    console.log(`[HANDOFF] BEX → RPC (broadcast) signedTx=${signedTx}`);
-
-    // Decode-and-recover BEFORE broadcast. ethers' `Transaction.from(...)` parses
-    // the serialized RLP and exposes `.from` as the ECDSA-recovered signer. If
-    // any of {chainId encoding, type-2 envelope, v/r/s} is malformed by the
-    // signing pipeline, the recovered address will be a deterministic-but-wrong
-    // address — *not* the user's. Fail closed before broadcast: an RPC that
-    // accepts the bytes against the wrong account is the worst outcome (funds
-    // move from a wallet the user doesn't control). See
-    // RETRO_uniswap_swap_dropped_tx.md and feedback_eip712_diagnosis.md.
-    let recoveredFrom: string | null = null;
-    let signerMismatch = false;
-    try {
-      const parsed = Transaction.from(signedTx);
-      recoveredFrom = parsed.from ?? null;
-      const expectedNorm = expectedFrom ? expectedFrom.toLowerCase() : null;
-      const recoveredNorm = recoveredFrom ? recoveredFrom.toLowerCase() : null;
-      const match = expectedNorm && recoveredNorm ? expectedNorm === recoveredNorm : null;
-      console.log(
-        `[DECODE] signed tx parsed:\n` +
-          `  type=${parsed.type} chainId=${parsed.chainId} nonce=${parsed.nonce}\n` +
-          `  to=${parsed.to} value=${parsed.value?.toString()} gasLimit=${parsed.gasLimit?.toString()}\n` +
-          `  maxFeePerGas=${parsed.maxFeePerGas?.toString()} maxPriorityFeePerGas=${parsed.maxPriorityFeePerGas?.toString()} gasPrice=${parsed.gasPrice?.toString()}\n` +
-          `  data=${parsed.data?.slice(0, 80)}${(parsed.data?.length ?? 0) > 80 ? '…' : ''}\n` +
-          `  recoveredFrom=${recoveredFrom ?? '(no signature)'} expectedFrom=${expectedFrom ?? '(unknown)'} match=${match}\n` +
-          `  hash=${parsed.hash} signature=${JSON.stringify(parsed.signature?.toJSON())}`,
-      );
-      signerMismatch = match === false;
-    } catch (decodeErr) {
-      console.warn(`[DECODE] failed to parse signed tx — bytes are likely malformed:`, decodeErr);
-    }
-
-    if (signerMismatch) {
-      const msg = `Refusing to broadcast: recovered signer ${recoveredFrom} ≠ expected ${expectedFrom}. The signed bytes do not represent a tx from your account.`;
-      console.error(`[DECODE] ❌ MALFORMED-HEX ${msg}`);
-      throw createProviderRpcError(4000, msg);
-    }
-
-    const txResponse = await provider.broadcastTransaction(signedTx);
+    const parsed = Transaction.from(signedTx);
+    parsedHash = parsed.hash ?? null;
+    recoveredFrom = parsed.from ?? null;
+    const expectedNorm = expectedFrom ? expectedFrom.toLowerCase() : null;
+    const recoveredNorm = recoveredFrom ? recoveredFrom.toLowerCase() : null;
+    const match = expectedNorm && recoveredNorm ? expectedNorm === recoveredNorm : null;
     console.log(
-      `[HANDOFF] RPC → BEX (broadcast result) hash=${txResponse?.hash} from=${txResponse?.from} nonce=${txResponse?.nonce} to=${txResponse?.to}`,
+      `[DECODE] signed tx parsed:\n` +
+        `  type=${parsed.type} chainId=${parsed.chainId} nonce=${parsed.nonce}\n` +
+        `  to=${parsed.to} value=${parsed.value?.toString()} gasLimit=${parsed.gasLimit?.toString()}\n` +
+        `  maxFeePerGas=${parsed.maxFeePerGas?.toString()} maxPriorityFeePerGas=${parsed.maxPriorityFeePerGas?.toString()} gasPrice=${parsed.gasPrice?.toString()}\n` +
+        `  data=${parsed.data?.slice(0, 80)}${(parsed.data?.length ?? 0) > 80 ? '…' : ''}\n` +
+        `  recoveredFrom=${recoveredFrom ?? '(no signature)'} expectedFrom=${expectedFrom ?? '(unknown)'} match=${match}\n` +
+        `  hash=${parsed.hash} signature=${JSON.stringify(parsed.signature?.toJSON())}`,
     );
-    // Two-stage drop check: 8s catches "never landed in mempool" cases;
-    // 45s catches "landed briefly then evicted" — the user's real failure
-    // mode. Fire-and-forget; do not block the dApp response.
-    if (txResponse?.hash) {
-      scheduleDropCheck(txResponse.hash, 8_000);
-      scheduleDropCheck(txResponse.hash, 45_000);
-    }
-    return txResponse.hash;
-  } catch (e) {
-    console.error(tag, e);
-
-    // Already a ProviderRpcError (e.g. our signer-mismatch fail-closed) —
-    // pass through so the dApp sees the precise reason instead of a wrapped
-    // "Error broadcasting transaction: ...".
-    if (e && typeof (e as { code?: unknown }).code === 'number') throw e;
-
-    const errorMessage = e?.message || JSON.stringify(e);
-
-    if (errorMessage.includes('insufficient funds')) {
-      throw createProviderRpcError(4000, 'Insufficient balance to complete this transaction.');
-    } else if (errorMessage.includes('nonce too low')) {
-      throw createProviderRpcError(4000, 'Transaction nonce conflict. Please try again.');
-    } else if (errorMessage.includes('replacement transaction underpriced')) {
-      throw createProviderRpcError(4000, 'Transaction fee too low. Try with a higher gas price.');
-    } else if (errorMessage.includes('gas required exceeds')) {
-      throw createProviderRpcError(4000, 'Transaction requires more gas than available.');
-    } else if (errorMessage.includes('timeout')) {
-      throw createProviderRpcError(4000, 'Network timeout. Please try again.');
-    }
-
-    throw createProviderRpcError(4000, `Error broadcasting transaction: ${errorMessage}`);
+    signerMismatch = match === false;
+  } catch (decodeErr) {
+    console.warn(`[DECODE] failed to parse signed tx — bytes are likely malformed:`, decodeErr);
   }
+  if (signerMismatch) {
+    const msg = `Refusing to broadcast: recovered signer ${recoveredFrom} ≠ expected ${expectedFrom}. The signed bytes do not represent a tx from your account.`;
+    console.error(`[DECODE] ❌ MALFORMED-HEX ${msg}`);
+    throw createProviderRpcError(4000, msg);
+  }
+
+  // ---- Build candidate URL list ----
+  // Pioneer-discovered URLs always win priority. The hardcoded
+  // last-resort list is appended at the END (see lastResortRpcs.ts) so
+  // it can never preempt a working live node.
+  const currentProvider = await web3ProviderStorage.getWeb3Provider();
+  if (!currentProvider) {
+    throw createProviderRpcError(4900, 'Provider not configured for broadcast');
+  }
+  const networkId: string =
+    currentProvider.networkId ||
+    (parseChainId(currentProvider.chainId) != null ? `eip155:${parseChainId(currentProvider.chainId)}` : '');
+
+  const pioneerUrls: string[] =
+    currentProvider.providers && currentProvider.providers.length > 0
+      ? currentProvider.providers
+      : currentProvider.providerUrl
+        ? [currentProvider.providerUrl]
+        : [];
+  const lastResort = networkId ? getLastResortRpcs(networkId) : [];
+
+  const seen = new Set<string>();
+  const candidates: string[] = [];
+  for (const u of [...pioneerUrls, ...lastResort]) {
+    const t = (u || '').trim();
+    if (t && !seen.has(t)) {
+      seen.add(t);
+      candidates.push(t);
+    }
+  }
+  if (candidates.length === 0) {
+    throw createProviderRpcError(4900, 'No RPC URLs available for broadcast');
+  }
+
+  // Skip URLs in the recent-failure cooldown unless every candidate is
+  // cooling — in that case clear and try the whole set. Same convention
+  // as getProvider.
+  const now = Date.now();
+  for (const [url, failedAt] of failedRpcs) {
+    if (now - failedAt >= RPC_RETRY_DELAY) failedRpcs.delete(url);
+  }
+  let availableRpcs = candidates.filter(url => {
+    const failedAt = failedRpcs.get(url);
+    return !(failedAt && now - failedAt < RPC_RETRY_DELAY);
+  });
+  if (availableRpcs.length === 0) {
+    console.warn(tag, 'All candidate RPCs in cooldown — clearing and retrying');
+    failedRpcs.clear();
+    availableRpcs = candidates.slice();
+  }
+
+  // ---- Failover loop ----
+  const errors: { url: string; error: string }[] = [];
+  for (const url of availableRpcs) {
+    try {
+      console.log(`[HANDOFF] BEX → RPC (broadcast attempt) url=${url} signedTx=${signedTx}`);
+      const provider = makeStaticProvider(url, networkId || currentProvider.chainId);
+      const txResponse = await provider.broadcastTransaction(signedTx);
+      console.log(
+        `[HANDOFF] RPC → BEX (broadcast success) hash=${txResponse?.hash} url=${url} from=${txResponse?.from} nonce=${txResponse?.nonce}`,
+      );
+      // Two-stage drop check: 8s catches "never landed in mempool" cases;
+      // 45s catches "landed briefly then evicted". Fire-and-forget; do
+      // not block the dApp response.
+      if (txResponse?.hash) {
+        scheduleDropCheck(txResponse.hash, 8_000);
+        scheduleDropCheck(txResponse.hash, 45_000);
+      }
+      return txResponse.hash;
+    } catch (e: any) {
+      const errMsg = String(e?.message || e);
+      const kind = classifyBroadcastError(errMsg);
+
+      if (kind === 'definitive') {
+        // Tx-level rejection. Other RPCs will say the same thing —
+        // surface immediately rather than walking the whole list.
+        console.error(tag, `Broadcast definitive error on ${url} — not failing over:`, errMsg);
+        throw mapDefinitiveError(errMsg);
+      }
+
+      if (kind === 'already-known') {
+        // Tx is in mempool somewhere. Use the locally-recovered hash and
+        // treat as success.
+        if (parsedHash) {
+          console.log(tag, `Broadcast on ${url} returned already-known; using parsed hash:`, parsedHash);
+          scheduleDropCheck(parsedHash, 8_000);
+          scheduleDropCheck(parsedHash, 45_000);
+          return parsedHash;
+        }
+        // No parsed hash — fall through to next URL.
+      }
+
+      console.warn(tag, `RPC ${url} broadcast failed (${kind}), trying next:`, errMsg);
+      errors.push({ url, error: errMsg });
+      failedRpcs.set(url, now);
+    }
+  }
+
+  // All candidates failed — surface the last error.
+  console.error(tag, 'All RPC endpoints failed broadcast:', errors);
+  const lastErr = errors[errors.length - 1]?.error || 'unknown error';
+  if (lastErr.toLowerCase().includes('timeout')) {
+    throw createProviderRpcError(4000, 'Network timeout. Please try again.');
+  }
+  throw createProviderRpcError(
+    4900,
+    `All ${availableRpcs.length} RPC endpoints failed broadcast. Last error: ${lastErr}`,
+  );
 };
 
 /**
