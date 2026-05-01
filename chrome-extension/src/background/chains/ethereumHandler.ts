@@ -1376,15 +1376,16 @@ const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string, 
  * a clear warning and emits a runtime message so the side-panel (or any
  * listener) can surface it. See RETRO_uniswap_swap_dropped_tx.md.
  *
- * Two delivery mechanisms:
- *   - Short delays (< 30s): setTimeout. Best-effort; only fires if the
- *     MV3 service worker is still alive. The 8s check usually hits while
- *     the SW is still warm from the broadcast.
- *   - Long delays (>= 30s): chrome.alarms. Survives SW suspension —
- *     the alarm wakes the SW, registering the listener at module load.
- *     Production minimum delay is 30s; we use 45s for the eviction probe.
+ * Best-effort via setTimeout. Both 8s and 45s checks fire only if the
+ * MV3 service worker is still alive at delay time. The 8s check almost
+ * always hits because the broadcast just happened. The 45s check fires
+ * during active dApp interaction (block polling / eth_chainId pings
+ * keep the SW warm) but may miss if the SW idles immediately after
+ * broadcast — acceptable trade for not requiring the chrome.alarms
+ * permission, which would gate Chrome Web Store updates on user
+ * re-consent. The drop warning is diagnostic UX; the tx outcome is
+ * unchanged when the warning is missed.
  */
-const DROP_CHECK_ALARM_PREFIX = 'eth-drop-check-';
 
 // Map hash → URL that successfully accepted the broadcast. Drop-check
 // then queries that exact RPC instead of running getProvider() again,
@@ -1431,37 +1432,8 @@ const performDropCheck = async (hash: string, scheduledDelayMs: number) => {
 
 const scheduleDropCheck = (hash: string, delayMs: number, successUrl?: string) => {
   if (successUrl) dropCheckUrlByHash.set(hash, successUrl);
-  if (delayMs < 30_000) {
-    setTimeout(() => performDropCheck(hash, delayMs), delayMs);
-    return;
-  }
-  // Encode delay in alarm name so the listener can recover it without
-  // a separate storage round-trip. Alarms are unique by name; suffixing
-  // with delayMs lets us schedule multiple checks for the same hash.
-  const alarmName = `${DROP_CHECK_ALARM_PREFIX}${hash}-${delayMs}`;
-  try {
-    chrome.alarms.create(alarmName, { when: Date.now() + delayMs });
-  } catch (e) {
-    console.warn('[DROP-CHECK] alarm scheduling failed, falling back to setTimeout:', e);
-    setTimeout(() => performDropCheck(hash, delayMs), delayMs);
-  }
+  setTimeout(() => performDropCheck(hash, delayMs), delayMs);
 };
-
-// Registered at module load — re-runs on every service-worker startup,
-// which is exactly when the alarm fires and wakes the SW. (URL hint
-// is not recovered across SW restart; drop-check falls back to
-// getProvider in that case.)
-if (typeof chrome !== 'undefined' && chrome.alarms?.onAlarm) {
-  chrome.alarms.onAlarm.addListener(alarm => {
-    if (!alarm.name.startsWith(DROP_CHECK_ALARM_PREFIX)) return;
-    const rest = alarm.name.slice(DROP_CHECK_ALARM_PREFIX.length);
-    const lastDash = rest.lastIndexOf('-');
-    if (lastDash <= 0) return;
-    const hash = rest.slice(0, lastDash);
-    const delayMs = Number(rest.slice(lastDash + 1));
-    void performDropCheck(hash, Number.isFinite(delayMs) ? delayMs : 0);
-  });
-}
 
 /**
  * Classify a broadcast error so the failover loop knows whether to try
