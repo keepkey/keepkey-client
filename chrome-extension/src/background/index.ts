@@ -591,7 +591,7 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
 }
 
 /**
- * Drop any approval events left in `requestStorage` from a previous
+ * Drop pending approval events left in `requestStorage` from a previous
  * service-worker lifecycle.
  *
  * Why: `requireApproval` (in methods.ts) stores the event, sets the
@@ -602,19 +602,44 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
  * after restart sends a message into the void; nothing happens; the
  * dApp eventually times out at 5min.
  *
- * `requestStorage` is reserved for in-flight requests by design —
- * approved/completed events are moved to `approvalStorage` /
- * `completedStorage`. So anything we find here at SW startup IS
- * orphaned. Clean it out and notify any side-panel listener that's
- * still alive so its half-rendered approval UI dismisses.
+ * BUT — `requestStorage` is also briefly used as a "post-broadcast
+ * holding pen" for some chains. EVM writes `txid` into the same entry
+ * after broadcast (ethereumHandler.ts), and the side-panel TxidPage
+ * only moves the entry to `approvalStorage` when the user clicks
+ * Close. Solana flips status to 'broadcasted'; TON to 'completed'. We
+ * MUST NOT cancel those — the tx has already gone out and the user is
+ * still seeing the success page.
+ *
+ * Heuristic for "truly pending and now orphaned":
+ *   - no broadcast artifact (txid / txHash / signedTx) AND
+ *   - status is undefined or 'request'
+ *
+ * Anything else is post-action; preserve and let the normal UI path
+ * complete the lifecycle (Close → moveTo approvalStorage).
  */
+function isOrphanedPendingEvent(ev: any): boolean {
+  if (!ev) return false;
+  if (ev.txid || ev.txHash || ev.signedTx) return false;
+  const status = ev.status;
+  if (status && status !== 'request') return false;
+  return true;
+}
+
 async function clearOrphanedApprovalEvents() {
   const tag = TAG + ' | clearOrphanedApprovalEvents | ';
   try {
     const events = (await requestStorage.getEvents()) || [];
     if (events.length === 0) return;
-    console.log(tag, `dropping ${events.length} orphaned approval event(s) from previous SW lifecycle`);
-    for (const ev of events) {
+    const orphans = events.filter(isOrphanedPendingEvent);
+    if (orphans.length === 0) {
+      console.log(tag, `${events.length} event(s) in storage; all post-broadcast — preserving for UI completion`);
+      return;
+    }
+    console.log(
+      tag,
+      `dropping ${orphans.length} orphaned pending event(s) (preserving ${events.length - orphans.length} post-broadcast)`,
+    );
+    for (const ev of orphans) {
       // Notify side-panel UI (no-op if no panel is listening). The
       // dApp side already received a port-closed error when the SW
       // died, so we don't need to signal there.
@@ -633,21 +658,29 @@ async function clearOrphanedApprovalEvents() {
       }
     }
     // The badge was set when the request was created; the cleanup
-    // that would have unset it died with the SW. Reset.
-    setApprovalBadge(false);
+    // that would have unset it died with the SW. Reset only if every
+    // event in storage is now gone — otherwise a preserved post-
+    // broadcast entry may still legitimately want the badge.
+    const remaining = (await requestStorage.getEvents()) || [];
+    if (remaining.length === 0) setApprovalBadge(false);
   } catch (e) {
     console.warn(tag, 'unexpected error', e);
   }
 }
 
+// Fire as the SW spawns — BEFORE the 5s wallet-init delay below, so the
+// side panel doesn't have a window to render and accept clicks on a
+// stale orphan event during boot. Async; we don't await at top level
+// (would block other listener registrations in MV3).
+void clearOrphanedApprovalEvents();
+
 const onStart = async function () {
   const tag = TAG + ' | onStart | ';
   try {
     console.log(tag, 'Starting...');
-    // First thing: prune orphaned approval events. If a SW restart killed
-    // an in-flight request, the storage entry is now a zombie — UI shows
-    // it but the listener that would resolve approve/reject is gone.
-    await clearOrphanedApprovalEvents();
+    // Orphan cleanup runs at module-load time (above) so the side
+    // panel can't render stale events during the 5s wallet-init
+    // delay. Don't repeat it here.
     resetSolanaState(); // clear stale cached address before re-init
     resetTronState();
     resetTonState();
