@@ -590,10 +590,64 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
   return thisPromise;
 }
 
+/**
+ * Drop any approval events left in `requestStorage` from a previous
+ * service-worker lifecycle.
+ *
+ * Why: `requireApproval` (in methods.ts) stores the event, sets the
+ * badge, and waits for an `eth_sign_response` message via an in-memory
+ * `chrome.runtime.onMessage` listener. When the SW dies mid-flight (MV3
+ * idle eviction, manual reload, dev rebuild) the storage entry survives
+ * but the listener doesn't. A user who clicks Approve in the side panel
+ * after restart sends a message into the void; nothing happens; the
+ * dApp eventually times out at 5min.
+ *
+ * `requestStorage` is reserved for in-flight requests by design —
+ * approved/completed events are moved to `approvalStorage` /
+ * `completedStorage`. So anything we find here at SW startup IS
+ * orphaned. Clean it out and notify any side-panel listener that's
+ * still alive so its half-rendered approval UI dismisses.
+ */
+async function clearOrphanedApprovalEvents() {
+  const tag = TAG + ' | clearOrphanedApprovalEvents | ';
+  try {
+    const events = (await requestStorage.getEvents()) || [];
+    if (events.length === 0) return;
+    console.log(tag, `dropping ${events.length} orphaned approval event(s) from previous SW lifecycle`);
+    for (const ev of events) {
+      // Notify side-panel UI (no-op if no panel is listening). The
+      // dApp side already received a port-closed error when the SW
+      // died, so we don't need to signal there.
+      chrome.runtime
+        .sendMessage({
+          action: 'transaction_error',
+          eventId: ev.id,
+          error: 'Request cancelled — wallet restarted',
+          kind: 'cancelled',
+        })
+        .catch(() => {});
+      try {
+        await requestStorage.removeEventById(ev.id);
+      } catch (e) {
+        console.warn(tag, 'failed to remove orphan', ev.id, e);
+      }
+    }
+    // The badge was set when the request was created; the cleanup
+    // that would have unset it died with the SW. Reset.
+    setApprovalBadge(false);
+  } catch (e) {
+    console.warn(tag, 'unexpected error', e);
+  }
+}
+
 const onStart = async function () {
   const tag = TAG + ' | onStart | ';
   try {
     console.log(tag, 'Starting...');
+    // First thing: prune orphaned approval events. If a SW restart killed
+    // an in-flight request, the storage entry is now a zombie — UI shows
+    // it but the listener that would resolve approve/reject is gone.
+    await clearOrphanedApprovalEvents();
     resetSolanaState(); // clear stale cached address before re-init
     resetTronState();
     resetTonState();
