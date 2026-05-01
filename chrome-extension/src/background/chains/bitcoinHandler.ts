@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { Chain, ChainToNetworkId, shortListSymbolToCaip, caipToNetworkId } from '../chainConfig';
 import * as wallet from '../wallet';
 import { createProviderRpcError } from '../utils';
+import { fetchJsonWithTimeout } from '../fetchUtils';
 
 const TAG = ' | bitcoinHandler | ';
 
@@ -62,34 +63,27 @@ export const handleBitcoinRequest = async (
       };
       console.log(tag, 'Send Payload: ', sendPayload);
 
-      // Build UTXO transaction via Pioneer API HTTP call
-      const buildTx = async function () {
-        try {
-          const buildResponse = await fetch('https://api.keepkey.info/api/v1/buildTx', {
+      // Build the unsigned tx BEFORE creating the approval event so the
+      // event always carries an unsignedTx the moment the user sees it.
+      // The previous fire-and-forget pattern raced: if the user approved
+      // before buildTx resolved, response.unsignedTx was undefined; if
+      // buildTx finished before addEvent, getEventById returned null.
+      let unsignedTx: any;
+      try {
+        unsignedTx = await fetchJsonWithTimeout<any>(
+          'https://api.keepkey.info/api/v1/buildTx',
+          {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ...sendPayload, pubkeys }),
-          });
-          const unsignedTx = await buildResponse.json();
-          console.log(tag, 'unsignedTx: ', unsignedTx);
-
-          const storedEvent = await requestStorage.getEventById(requestInfo.id);
-          storedEvent.unsignedTx = unsignedTx;
-          await requestStorage.updateEventById(requestInfo.id, storedEvent);
-
-          chrome.runtime.sendMessage({
-            action: 'utxo_build_tx',
-            unsignedTx: requestInfo,
-          });
-        } catch (e) {
-          console.error(e);
-          chrome.runtime.sendMessage({
-            action: 'transaction_error',
-            error: JSON.stringify(e),
-          });
-        }
-      };
-      buildTx();
+          },
+          { timeoutMs: 15000, retries: 1 },
+        );
+        console.log(tag, 'unsignedTx: ', unsignedTx);
+      } catch (e) {
+        console.error(tag, 'buildTx failed:', e);
+        throw createProviderRpcError(4000, `Failed to build transaction: ${(e as Error)?.message || e}`);
+      }
 
       const event = {
         id: requestInfo.id,
@@ -105,6 +99,7 @@ export const handleBitcoinRequest = async (
         injectScriptVersion: requestInfo.version,
         chain: 'bitcoin',
         requestInfo,
+        unsignedTx,
         type: 'transfer',
         request: params,
         status: 'request',
@@ -130,13 +125,20 @@ export const handleBitcoinRequest = async (
         await requestStorage.updateEventById(requestInfo.id, response);
 
         try {
-          // Broadcast via Pioneer API
-          const broadcastResponse = await fetch('https://api.keepkey.info/api/v1/broadcastTx', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ caip, signedTx: signedTx.serializedTx || signedTx }),
-          });
-          let txHash = await broadcastResponse.json();
+          // Broadcast via Pioneer API. fetchJsonWithTimeout enforces an
+          // explicit response.ok check + retry on 5xx — without that,
+          // a transient Pioneer hiccup (e.g. node failover) would either
+          // hang the dApp or surface as a malformed JSON error from the
+          // raw `await response.json()` below.
+          let txHash: any = await fetchJsonWithTimeout<any>(
+            'https://api.keepkey.info/api/v1/broadcastTx',
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ caip, signedTx: signedTx.serializedTx || signedTx }),
+            },
+            { timeoutMs: 15000, retries: 1 },
+          );
           if (txHash.txHash) txHash = txHash.txHash;
           if (txHash.txid) txHash = txHash.txid;
 
@@ -145,6 +147,7 @@ export const handleBitcoinRequest = async (
 
           chrome.runtime.sendMessage({
             action: 'transaction_complete',
+            eventId: requestInfo.id,
             txHash: txHash,
             explorerTxLink: 'https://mempool.space/tx/',
           });
@@ -153,8 +156,14 @@ export const handleBitcoinRequest = async (
           console.error(tag, e);
           chrome.runtime.sendMessage({
             action: 'transaction_error',
+            eventId: requestInfo.id,
             error: JSON.stringify(e),
           });
+          // Re-throw so the dApp sees the actual broadcast error. Without
+          // this the case falls through to `default:` below and the dApp
+          // gets "Method transfer not supported" instead of the real
+          // failure (timeout, HTTP 5xx, etc.).
+          throw e instanceof Error ? e : createProviderRpcError(4000, `Broadcast failed: ${String(e)}`);
         }
       } else {
         throw createProviderRpcError(4200, 'User denied transaction');

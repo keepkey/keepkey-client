@@ -1,6 +1,6 @@
 {
   "name": "@extension/sidepanel",
-  "version": "0.0.26",
+  "version": "0.0.29",
   "description": "chrome extension - side panel",
   "private": true,
   "sideEffects": true,
@@ -30,7 +30,10 @@
     "date-fns": "^4.1.0",
     "framer-motion": "^11.5.4",
     "qrcode": "^1.5.4",
-    "react-icons": "^5.5.0"
+    "react-code-blocks": "^0.1.6",
+    "react-confetti": "^6.1.0",
+    "react-icons": "^5.5.0",
+    "react-json-view": "^1.21.3"
   },
   "devDependencies": {
     "@extension/tailwindcss-config": "workspace:*",

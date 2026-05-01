@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { Chain, ChainToNetworkId, shortListSymbolToCaip, caipToNetworkId } from '../chainConfig';
 import * as wallet from '../wallet';
 import { createProviderRpcError } from '../utils';
+import { fetchJsonWithTimeout } from '../fetchUtils';
 
 const TAG = ' | bitcoinCashHandler | ';
 
@@ -41,24 +42,22 @@ export const handleBitcoinCashRequest = async (
         isMax: params[0].isMax,
       };
 
-      const buildTx = async function () {
-        try {
-          const buildResponse = await fetch('https://api.keepkey.info/api/v1/buildTx', {
+      // Build before approval — see bitcoinHandler for the race rationale.
+      let unsignedTx: any;
+      try {
+        unsignedTx = await fetchJsonWithTimeout<any>(
+          'https://api.keepkey.info/api/v1/buildTx',
+          {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ...sendPayload, pubkeys }),
-          });
-          const unsignedTx = await buildResponse.json();
-          const storedEvent = await requestStorage.getEventById(requestInfo.id);
-          storedEvent.unsignedTx = unsignedTx;
-          await requestStorage.updateEventById(requestInfo.id, storedEvent);
-          chrome.runtime.sendMessage({ action: 'utxo_build_tx', unsignedTx: requestInfo });
-        } catch (e) {
-          console.error(e);
-          chrome.runtime.sendMessage({ action: 'transaction_error', error: JSON.stringify(e) });
-        }
-      };
-      buildTx();
+          },
+          { timeoutMs: 15000, retries: 1 },
+        );
+      } catch (e) {
+        console.error(tag, 'buildTx failed:', e);
+        throw createProviderRpcError(4000, `Failed to build transaction: ${(e as Error)?.message || e}`);
+      }
 
       const event = {
         id: requestInfo.id,
@@ -74,6 +73,7 @@ export const handleBitcoinCashRequest = async (
         injectScriptVersion: requestInfo.version,
         chain: 'bitcoincash',
         requestInfo,
+        unsignedTx,
         type: 'transfer',
         request: params,
         status: 'request',
@@ -92,18 +92,22 @@ export const handleBitcoinCashRequest = async (
         response.signedTx = signedTx;
         await requestStorage.updateEventById(requestInfo.id, response);
 
-        const broadcastResponse = await fetch('https://api.keepkey.info/api/v1/broadcastTx', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ caip, signedTx: signedTx.serializedTx || signedTx }),
-        });
-        let txHash = await broadcastResponse.json();
+        let txHash: any = await fetchJsonWithTimeout<any>(
+          'https://api.keepkey.info/api/v1/broadcastTx',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ caip, signedTx: signedTx.serializedTx || signedTx }),
+          },
+          { timeoutMs: 15000, retries: 1 },
+        );
         if (txHash.txHash) txHash = txHash.txHash;
         if (txHash.txid) txHash = txHash.txid;
         response.txid = txHash;
         await requestStorage.updateEventById(requestInfo.id, response);
         chrome.runtime.sendMessage({
           action: 'transaction_complete',
+          eventId: requestInfo.id,
           txHash,
           explorerTxLink: 'https://blockchair.com/bitcoin-cash/transaction/',
         });

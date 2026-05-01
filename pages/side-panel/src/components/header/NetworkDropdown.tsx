@@ -104,13 +104,13 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
         cursor="pointer"
         onClick={() => setIsExpanded(prev => !prev)}
         px={2}
-        py={1}
+        h="32px"
         borderRadius="md"
         bg="whiteAlpha.100"
         _hover={{ bg: 'whiteAlpha.200' }}
         transition="background 0.15s"
         minW={0}>
-        <Avatar size="2xs" src={selected?.icon || 'https://api.keepkey.info/coins/keepkey.png'} mr={1.5} />
+        {selected?.icon && <Avatar size="2xs" src={selected.icon} name={selected.name} mr={1.5} />}
         <Text fontSize="xs" fontWeight="semibold" color="white" isTruncated maxW="90px">
           {selected?.name || 'Network'}
         </Text>

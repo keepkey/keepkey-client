@@ -19,7 +19,7 @@ export function getIconUrl(chainSymbol: string, networkId?: string): string {
   if (networkId) return networkIdToIcon(networkId);
   const nid = (ChainToNetworkId as Record<string, string>)[chainSymbol];
   if (nid) return networkIdToIcon(nid);
-  return `https://api.keepkey.info/coins/${btoa(chainSymbol.toLowerCase())}.png`;
+  return '';
 }
 
 export function parseAccountIndex(note?: string, accountIndex?: number): number {
@@ -152,20 +152,52 @@ function buildEvmAccounts(pubkeys: any[], networkId: string, ethAccounts: number
   return items;
 }
 
+// "Bitcoin account 1 Native Segwit (Bech32)" → 1, "Default ATOM path" → null
+function extractAccountIdxFromNote(note?: string): number | null {
+  if (!note) return null;
+  const m = note.match(/account\s*(\d+)/i);
+  return m ? parseInt(m[1], 10) : null;
+}
+
 function buildBtcAccounts(pubkeys: any[]): AccountItem[] {
   const items: AccountItem[] = [];
   const btcPubkeys = pubkeys.filter(pk => (pk.networks || []).includes(BTC_NETWORK_ID) && pk.script_type);
 
+  // Multiple paths can share a script_type (chainConfig has BTC account 0
+  // and account 1 both at p2wpkh, plus several legacy accounts). Track
+  // duplicates so we know whether to suffix the label with the account
+  // index — single-account script types stay clean ("Native SegWit"),
+  // repeats get disambiguated ("Native SegWit · Account 1").
+  const scriptTypeCounts = new Map<string, number>();
   for (const pk of btcPubkeys) {
-    const label = BTC_SCRIPT_LABELS[pk.script_type] || pk.script_type;
+    scriptTypeCounts.set(pk.script_type, (scriptTypeCounts.get(pk.script_type) || 0) + 1);
+  }
+
+  let defaultAssigned = false;
+  for (const pk of btcPubkeys) {
+    const baseLabel = BTC_SCRIPT_LABELS[pk.script_type] || pk.script_type;
+    const accountIdx = extractAccountIdxFromNote(pk.note);
+    const repeats = (scriptTypeCounts.get(pk.script_type) || 0) > 1;
+    const label = repeats && accountIdx !== null ? `${baseLabel} · Account ${accountIdx}` : baseLabel;
+    // Only the first p2wpkh row is the default — flagging every Native
+    // Segwit row as default would let React's selection tracking pick
+    // whichever happened to render first, regardless of account.
+    const isDefault = !defaultAssigned && pk.script_type === 'p2wpkh';
+    if (isDefault) defaultAssigned = true;
+
     const address = pk.address || pk.master || '';
     items.push({
-      key: `btc:${pk.script_type}`,
+      // Key on note (unique per chainConfig path) so React doesn't
+      // collapse two p2wpkh rows into one and so selectedAccountKey
+      // can disambiguate them.
+      key: pk.note ? `btc:${pk.note}` : `btc:${pk.script_type}`,
       label,
       address,
       pubkey: pk,
       scriptType: pk.script_type,
-      isDefault: pk.script_type === 'p2wpkh', // Native SegWit is default
+      accountIndex: accountIdx ?? undefined,
+      note: pk.note,
+      isDefault,
     });
   }
 
@@ -176,15 +208,28 @@ function buildUtxoAccounts(pubkeys: any[], networkId: string): AccountItem[] {
   const items: AccountItem[] = [];
   const relevant = pubkeys.filter(pk => (pk.networks || []).includes(networkId));
 
+  // Same dedup logic as BTC — a non-BTC UTXO chain (LTC) has both
+  // p2pkh and p2wpkh entries, and could grow to multiple of each.
+  const scriptTypeCounts = new Map<string, number>();
   for (const pk of relevant) {
-    const label = pk.script_type ? BTC_SCRIPT_LABELS[pk.script_type] || pk.script_type : 'Default';
+    if (pk.script_type) scriptTypeCounts.set(pk.script_type, (scriptTypeCounts.get(pk.script_type) || 0) + 1);
+  }
+
+  for (const pk of relevant) {
+    const baseLabel = pk.script_type ? BTC_SCRIPT_LABELS[pk.script_type] || pk.script_type : 'Default';
+    const accountIdx = extractAccountIdxFromNote(pk.note);
+    const repeats = pk.script_type ? (scriptTypeCounts.get(pk.script_type) || 0) > 1 : false;
+    const label = repeats && accountIdx !== null ? `${baseLabel} · Account ${accountIdx}` : baseLabel;
+
     const address = pk.address || pk.master || '';
     items.push({
-      key: `utxo:${pk.script_type || 'default'}`,
+      key: pk.note ? `utxo:${pk.note}` : `utxo:${pk.script_type || 'default'}`,
       label,
       address,
       pubkey: pk,
       scriptType: pk.script_type,
+      accountIndex: accountIdx ?? undefined,
+      note: pk.note,
       isDefault: items.length === 0,
     });
   }

@@ -7,8 +7,13 @@ globalThis.Buffer = Buffer;
 
 import packageJson from '../../package.json';
 import * as wallet from './wallet';
-import { resetSolanaState } from './chains/solanaHandler';
+import { deriveUtxoAddress } from './utxoDerive';
+import { resetSolanaState, prefetchSolanaPubkey } from './chains/solanaHandler';
+import { resetTonState, prefetchTonAddress } from './chains/tonHandler';
+import { resetTronState, prefetchTronPubkey } from './chains/tronHandler';
 import { handleWalletRequest } from './methods';
+import { setApprovalBadge } from './popup';
+import { fetchJsonWithTimeout } from './fetchUtils';
 import { JsonRpcProvider, formatEther } from 'ethers';
 import { ChainToNetworkId, Chain, COIN_MAP_LONG, shortListSymbolToCaip, NetworkIdToChain } from './chainConfig';
 import {
@@ -21,12 +26,24 @@ import {
   ethAccountsStorage,
   customEvmNetworksStorage,
 } from '@extension/storage';
-import { EIP155_CHAINS } from './chains';
+import { getChainInfo, makeStaticProvider } from './chains/registry';
+import { withRpcFailoverByNetworkId } from './chains/rpcFailover';
 import { formatUserError } from './utils';
+import { filterSpamTokens } from './spamFilter';
 
 const TAG = ' | background/index.js | ';
 console.log('Background script loaded');
 console.log('Version:', packageJson.version);
+
+// Make clicking the extension icon open the side panel. Required because
+// `chrome.sidePanel.open()` from a dApp-triggered approval flow isn't a
+// user gesture and may be ignored — the icon click is the guaranteed
+// fallback path. No-op on Firefox (no sidePanel API).
+if (chrome.sidePanel?.setPanelBehavior) {
+  chrome.sidePanel
+    .setPanelBehavior({ openPanelOnActionClick: true })
+    .catch(e => console.warn(TAG, 'setPanelBehavior failed', e));
+}
 
 const PIONEER_API = 'https://api.keepkey.info';
 
@@ -40,15 +57,45 @@ const KEEPKEY_STATES = {
 };
 let KEEPKEY_STATE = 0;
 
-function updateIcon() {
-  let iconPath = './icon-128.png';
+// MV3 service workers sometimes fail `chrome.action.setIcon({path})` with
+// "Failed to fetch" when the worker has just (re-)started — the extension's
+// file-map isn't always ready to serve its own packaged assets immediately.
+// Guards:
+//   1. Deduplicate: don't re-invoke the API when the path hasn't changed
+//      (checkKeepKey fires updateIcon every 5s; 99% of those calls are
+//       redundant and each one is a chance to hit the transient error).
+//   2. Retry by re-running updateIcon() — NOT by replaying the captured
+//      path. If KEEPKEY_STATE flipped during the 500 ms gap, re-running
+//      reads the current state and applies whatever is correct now,
+//      preventing a stale "online" icon from painting over a subsequent
+//      "errored" transition.
+let lastIconPath: string | null = null;
+let iconRetryPending = false;
+
+function currentIconPath(): string {
   // Show green/online icon when connected (state 2) or paired (state 5)
-  if (KEEPKEY_STATE === 2 || KEEPKEY_STATE === 5) iconPath = './icon-128-online.png';
+  return KEEPKEY_STATE === 2 || KEEPKEY_STATE === 5 ? './icon-128-online.png' : './icon-128.png';
+}
+
+function updateIcon() {
+  const iconPath = currentIconPath();
+  if (iconPath === lastIconPath) return;
+  lastIconPath = iconPath;
 
   chrome.action.setIcon({ path: iconPath }, () => {
-    if (chrome.runtime.lastError) {
-      console.error('Error setting icon:', chrome.runtime.lastError);
-    }
+    const err = chrome.runtime.lastError;
+    if (!err) return;
+    // Clear the dedupe so the retry path can actually re-apply an icon
+    // (even if it's the same string) and then call updateIcon() again.
+    // Re-running reads CURRENT state, so a state flip during the 500ms
+    // backoff doesn't leave us painting a stale icon.
+    lastIconPath = null;
+    if (iconRetryPending) return; // one retry in flight is enough
+    iconRetryPending = true;
+    setTimeout(() => {
+      iconRetryPending = false;
+      updateIcon();
+    }, 500);
   });
 }
 
@@ -67,10 +114,79 @@ function pushStateChangeEvent() {
 let lastDeviceProbeAt = 0;
 const DEVICE_PROBE_INTERVAL_MS = 15_000;
 
+// Separate, longer throttle for the "already-connected, verify deviceId hasn't
+// changed" re-probe. Vault + device hot-swap is rare enough that 30s latency
+// on detection is fine; keeping this longer than the view-only probe avoids
+// doubling the getFeatures traffic on the steady-state path.
+let lastDeviceVerifyAt = 0;
+const DEVICE_VERIFY_INTERVAL_MS = 30_000;
+
+/**
+ * Called when we detect that the vault is now paired with a different
+ * KeepKey than the one we had cached. Clears every piece of state keyed
+ * to the previous device and re-fetches from the new one.
+ */
+async function handleDeviceSwitch(newDeviceInfo: any) {
+  const tag = TAG + ' | handleDeviceSwitch | ';
+  console.warn(tag, 'Device swap detected. Purging caches and re-fetching.');
+
+  // In-memory + storage cache owned by wallet.ts
+  await wallet.handleDeviceSwitch(newDeviceInfo);
+
+  // Balance caches — pubkey-keyed, so they're poisoned by the old device
+  cachedBalances = [];
+  balancesFetchInProgress = null;
+
+  // Per-chain address caches (Solana/Tron/TON each keep their own lookup
+  // cache above the pubkey layer)
+  resetSolanaState();
+  resetTronState();
+  resetTonState();
+
+  // Re-fetch against the new device. refreshPubkeys re-probes and pulls
+  // a fresh pubkey batch, then updates state.initialized.
+  try {
+    await wallet.refreshPubkeys();
+
+    // refreshPubkeys only hits getDefaultPaths() — the big batched
+    // derivation. Solana, Tron, and TON addresses are *dynamically*
+    // added at onStart via these prefetches (SOL needs solanaGetAddress,
+    // TRX needs tronGetAddress, TON needs tonGetAddress — none of which
+    // are in the xpub.getPublicKeys batch). Without re-running them on
+    // a device swap, those three chains end up with stale per-chain
+    // caches (zeroed out by resetXState above) and no pubkeys, so
+    // they'd vanish from the network dropdown until a user manually
+    // visited the asset or reloaded the extension.
+    //
+    // Fire in parallel — each is non-throwing, so an individual chain
+    // failure won't take the others down.
+    await Promise.allSettled([prefetchSolanaPubkey(), prefetchTronPubkey(), prefetchTonAddress()]);
+
+    pushStateChangeEvent();
+    pushBalancesUpdated();
+    // Kick a fresh balance fetch in the background so the dashboard
+    // swaps to the new device's balances without waiting for the next
+    // user-triggered refresh.
+    fetchBalancesFromPioneer(true).catch(e => console.warn(tag, 'Post-switch balance fetch failed:', e));
+  } catch (e) {
+    console.error(tag, 'Failed to re-fetch pubkeys after device switch:', (e as Error)?.message || e);
+    pushStateChangeEvent();
+  }
+}
+
+// Singleflight guard: a stalled localhost:1646 request would otherwise
+// stack probes every 5s, generating overlapping async work and stale
+// state transitions. If the previous tick is still running, skip this
+// one. Combined with AbortSignal.timeout(3000) below, the worst case is
+// one stalled request hung for 3s before the next tick can run.
+let healthPollInflight = false;
+
 async function checkKeepKey() {
+  if (healthPollInflight) return;
+  healthPollInflight = true;
   const prevState = KEEPKEY_STATE;
   try {
-    const response = await fetch('http://localhost:1646/docs');
+    const response = await fetch('http://localhost:1646/docs', { signal: AbortSignal.timeout(3000) });
     if (response.ok) {
       if (KEEPKEY_STATE < 2) {
         KEEPKEY_STATE = 2; // Set state to connected
@@ -96,6 +212,28 @@ async function checkKeepKey() {
         // First-run case: init failed earlier (no device, no cache) — retry.
         lastDeviceProbeAt = now;
         onStart();
+      } else if (wallet.isInitialized() && wallet.isDeviceConnected()) {
+        // Steady state: vault-up, device-connected. Periodically re-probe
+        // features to verify the same physical device is still paired. A
+        // hot-swap to a different KeepKey will look identical to the /docs
+        // endpoint but returns a different device_id from getFeatures.
+        const mayVerify = now - lastDeviceVerifyAt >= DEVICE_VERIFY_INTERVAL_MS;
+        if (mayVerify) {
+          lastDeviceVerifyAt = now;
+          const beforeId = wallet.getDeviceId();
+          wallet
+            .probeDevice()
+            .then(ok => {
+              if (!ok) return; // probe failure — next tick will set state=4
+              const afterId = wallet.getDeviceId();
+              if (beforeId && afterId && beforeId !== afterId) {
+                handleDeviceSwitch(wallet.getDeviceInfo()).catch(e =>
+                  console.error(TAG, 'handleDeviceSwitch failed:', e),
+                );
+              }
+            })
+            .catch(e => console.warn(TAG, 'Feature re-probe failed:', (e as Error)?.message || e));
+        }
       }
     }
   } catch (error: any) {
@@ -106,10 +244,14 @@ async function checkKeepKey() {
     // so a hot-swapped device doesn't sign against a stale cached address.
     if (prevState === 2 || prevState === 5) {
       resetSolanaState();
+      resetTronState();
+      resetTonState();
     }
     KEEPKEY_STATE = 4; // Set state to errored
     updateIcon();
     if (KEEPKEY_STATE !== prevState) pushStateChangeEvent();
+  } finally {
+    healthPollInflight = false;
   }
 }
 
@@ -119,13 +261,21 @@ setInterval(checkKeepKey, 5000);
 updateIcon();
 console.log('Background loaded');
 
-const provider = new JsonRpcProvider(EIP155_CHAINS['eip155:1'].rpc);
-
 let ADDRESS = '';
 
 // ---- Balance fetching via Pioneer API ----
 let cachedBalances: any[] = [];
 let balancesFetchInProgress: Promise<any[]> | null = null;
+// Monotonic sequence so an earlier, slower fetch can't clobber a later fetch's
+// result when they overlap. Bumped each time a new fetch actually starts work
+// (not for calls that return the in-flight dedup promise).
+let latestFetchId = 0;
+
+function pushBalancesUpdated() {
+  chrome.runtime.sendMessage({ type: 'BALANCES_UPDATED' }).catch(() => {
+    // No popup/sidebar listening — ignore.
+  });
+}
 
 // All EVM CAPIPs (deduplicated) — used to fan out EVM wildcard addresses
 const EVM_CAIPS = [...new Set(Object.values(shortListSymbolToCaip).filter(caip => caip.startsWith('eip155:')))];
@@ -134,6 +284,7 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
   // Deduplicate concurrent calls — but honor forceRefresh
   if (balancesFetchInProgress && !forceRefresh) return balancesFetchInProgress;
 
+  const myFetchId = ++latestFetchId;
   const thisPromise: Promise<any[]> = (async () => {
     try {
       const allPubkeys = wallet.getPubkeys();
@@ -181,58 +332,112 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
       console.log(`[fetchBalances] Sending ${pioneerPubkeys.length} pubkeys to Pioneer API`);
       console.log(`[fetchBalances] Sample pubkeys:`, pioneerPubkeys.slice(0, 3));
 
-      // Use /api/v1/charts/portfolio endpoint — blocking, includes Zapper/Unchained token fetch
-      const portfolioUrl = `${PIONEER_API}/api/v1/charts/portfolio`;
+      // One call, one endpoint: /api/v1/portfolio (GetPortfolioBalances).
+      // Matches the vault's flow exactly — it's the only endpoint that
+      // runs Pioneer's token auto-discovery (ERC-20 via Unchained, SPL
+      // for Solana, TRC-20 for Tron). The older /charts/portfolio served
+      // natives from a pre-computed cache with Zapper-provided EVM tokens
+      // but dropped SPL/TRC-20 discovery; splitting traffic across both
+      // was the reason USDT-Tron showed $0 in the BEX while the vault
+      // dashboard had it. Slower per call (no pre-warm cache), but
+      // correctness > speed for balance display.
 
-      // Split into address-based (EVM, Cosmos, etc.) and xpub-based (UTXO) batches
-      // to prevent a bad xpub from poisoning the entire request
-      const addressPubkeys = pioneerPubkeys.filter(
-        p => !p.pubkey.startsWith('xpub') && !p.pubkey.startsWith('zpub') && !p.pubkey.startsWith('ypub'),
-      );
-      const xpubPubkeys = pioneerPubkeys.filter(
-        p => p.pubkey.startsWith('xpub') || p.pubkey.startsWith('zpub') || p.pubkey.startsWith('ypub'),
-      );
+      // Normalize Pioneer's response networkIds to the canonical form
+      // used throughout the codebase. Two distinct problems, same shape:
+      //
+      //   1. CASING — Pioneer echoes mixed-case IDs (Solana, Tron) back
+      //      lowercased. Side-panel uses strict equality against
+      //      ChainToNetworkId, so lowercased entries get excluded.
+      //
+      //   2. TRON'S TWO IDS — Pioneer emits native TRX under the CAIP-2
+      //      genesis hash id `tron:27Lqcw`, but TRC-20 tokens under the
+      //      hex chain-id `tron:0x2b6653dc`. Both refer to Tron mainnet.
+      //      Without aliasing, USDT-TRON is a ghost — the row is present
+      //      in the balance cache but no Tron-filtered view ever finds it.
+      //
+      // Source rewrites (any of these lowercased or exact) → canonical:
+      const NETWORK_ID_ALIASES: Record<string, string> = {
+        'solana:5eykt4usfv8p8njdtrepy1vzqkqzkvdp': 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
+        'tron:27lqcw': 'tron:27Lqcw',
+        'tron:0x2b6653dc': 'tron:27Lqcw',
+      };
+      const normalizeCasing = (entry: any) => {
+        const caip = entry.caip || '';
+        const netId = entry.networkId || '';
+        const canonical = NETWORK_ID_ALIASES[netId.toLowerCase()];
+        if (canonical) {
+          entry.networkId = canonical;
+          // Rewrite caip's network-id prefix too, keeping the path
+          // segment ("slip44:195", "token:TR7NHq...") intact.
+          const slashIdx = caip.indexOf('/');
+          if (slashIdx > 0) {
+            entry.caip = canonical + caip.slice(slashIdx);
+          }
+        }
+        return entry;
+      };
 
-      const fetchBatch = async (batch: typeof pioneerPubkeys, label: string) => {
+      const fetchPortfolio = async (batch: typeof pioneerPubkeys) => {
         if (batch.length === 0) return { balances: [] as any[], tokens: [] as any[] };
         try {
-          const response = await fetch(portfolioUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pubkeys: batch, forceRefresh }),
-          });
-          if (!response.ok) {
-            console.warn(`[fetchBalances] ${label} batch returned ${response.status}`);
-            return { balances: [] as any[], tokens: [] as any[] };
-          }
-          const json = await response.json();
-          const data = json?.data || {};
-          console.log(
-            `[fetchBalances] ${label} batch: ${data.balances?.length || 0} balances, ${data.tokens?.length || 0} tokens`,
+          const url = `${PIONEER_API}/api/v1/portfolio${forceRefresh ? '?forceRefresh=true' : ''}`;
+          // 12s budget: portfolio is the heaviest Pioneer endpoint
+          // (cold token discovery), so default 8s is too tight on first
+          // load. One retry on 5xx absorbs single transient failures.
+          const json = await fetchJsonWithTimeout<any>(
+            url,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                // Pioneer's api_key security reads the Authorization
+                // header verbatim (no Bearer prefix). Any unique
+                // `key:public-*` string works for anonymous reads; the
+                // timestamp is just a cache-busting nonce.
+                Authorization: `key:public-${Date.now()}`,
+              },
+              body: JSON.stringify({ pubkeys: batch }),
+            },
+            { timeoutMs: 12000, retries: 1 },
           );
-          return { balances: data.balances || [], tokens: data.tokens || [] };
+          // Unwrap: /portfolio returns { balances: [...] } at the top
+          // level; some deployments wrap in { data: { balances } } via
+          // middleware, so handle both.
+          const allEntries: any[] = json?.balances || json?.data?.balances || [];
+          const natives: any[] = [];
+          const tokens: any[] = [];
+          for (const raw of allEntries) {
+            const entry = normalizeCasing({ ...raw });
+            // Match vault's classification exactly: token if caip path
+            // is not slip44:/native:, or type === 'token', or explicit
+            // isNative===false + contract. Covers ERC-20 (erc20:),
+            // SPL (spl:/token:), TRC-20 (trc20:/token:) uniformly.
+            const caipPath = (entry.caip || '').split('/')[1] || '';
+            const isTokenByCaip = caipPath && !caipPath.startsWith('slip44:') && !caipPath.startsWith('native:');
+            const isTokenByType = entry.type === 'token' || (entry.isNative === false && entry.contract);
+            if (isTokenByCaip || isTokenByType) tokens.push(entry);
+            else natives.push(entry);
+          }
+          console.log(`[fetchBalances] portfolio: ${natives.length} natives, ${tokens.length} tokens`);
+          return { balances: natives, tokens };
         } catch (e: any) {
-          console.warn(`[fetchBalances] ${label} batch error:`, e.message);
+          console.warn('[fetchBalances] portfolio error:', e.message);
           return { balances: [] as any[], tokens: [] as any[] };
         }
       };
 
-      // Fetch both batches in parallel
-      const [addressResult, xpubResult] = await Promise.all([
-        fetchBatch(addressPubkeys, 'address'),
-        fetchBatch(xpubPubkeys, 'xpub'),
-      ]);
-
-      const rawBalances: any[] = [...addressResult.balances, ...xpubResult.balances];
-      const rawTokens: any[] = [...addressResult.tokens, ...xpubResult.tokens];
+      const portfolioResult = await fetchPortfolio(pioneerPubkeys);
+      const rawBalances: any[] = [...portfolioResult.balances];
+      const rawTokens: any[] = [...portfolioResult.tokens];
 
       if (rawBalances.length === 0 && rawTokens.length === 0) {
         console.warn('[fetchBalances] Pioneer returned 0 balances for', pioneerPubkeys.length, 'pubkeys');
         return cachedBalances;
       }
 
-      // Transform native balances
-      const balances: any[] = rawBalances.map((b: any) => {
+      // Transform native balances. `let` because we reassign after spam
+      // filtering below; token entries are appended earlier, filtered later.
+      let balances: any[] = rawBalances.map((b: any) => {
         const caip = b.caip || '';
         const networkId = b.networkId || caip.split('/')[0] || '';
         return {
@@ -249,33 +454,31 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
         };
       });
 
-      // Add token balances (ERC-20s etc.)
-      // /charts/portfolio returns tokens in nested format:
-      //   { assetCaip, networkId, pubkey, token: { symbol, name, balance, price, balanceUSD, icon, decimal } }
-      // OR flat format from /charts: { caip, symbol, balance, ... }
+      // Add token balances. /portfolio returns tokens in flat format
+      // alongside natives (ERC-20, SPL, TRC-20 all classified already).
       for (const t of rawTokens) {
-        const isNested = t.token && typeof t.token === 'object';
-        const tok = isNested ? t.token : t;
-        const caip = t.assetCaip || t.caip || '';
+        const caip = t.caip || '';
         const networkId = t.networkId || caip.split('/')[0] || '';
-        const contractMatch = caip.match(/\/erc20:(0x[a-fA-F0-9]+)/);
+        // Pioneer's token caips vary by chain: erc20 (EVM), spl+token
+        // (Solana), token+trc20 (Tron). Match all so `contractAddress`
+        // is populated uniformly; fall back to `t.contract` which
+        // Pioneer also emits for TRC-20 / SPL discovery rows.
+        const contractMatch = caip.match(/\/(?:erc20|spl|trc20|token):([^\s]+)/);
         balances.push({
           networkId,
           caip,
-          symbol: tok.symbol || tok.ticker || '',
-          name: tok.name || tok.symbol || '',
-          balance: String(tok.balance ?? '0'),
-          valueUsd: String(isNested ? (tok.balanceUSD ?? '0') : (tok.valueUsd ?? '0')),
-          priceUsd: String(isNested ? (tok.price ?? '0') : (tok.priceUsd ?? '0')),
+          symbol: t.symbol || t.ticker || '',
+          name: t.name || t.symbol || '',
+          balance: String(t.balance ?? '0'),
+          valueUsd: String(t.valueUsd ?? '0'),
+          priceUsd: String(t.priceUsd ?? '0'),
           icon:
-            tok.icon ||
-            tok.image ||
-            (caip ? `https://api.keepkey.info/coins/${btoa(caip).replace(/=+$/, '')}.png` : ''),
-          decimals: tok.decimal || tok.decimals,
+            t.icon || t.image || (caip ? `https://api.keepkey.info/coins/${btoa(caip).replace(/=+$/, '')}.png` : ''),
+          decimals: t.decimals ?? t.decimal,
           isNative: false,
           token: true,
           address: t.pubkey || t.address || '',
-          contractAddress: contractMatch ? contractMatch[1] : tok.contractAddress || tok.contract || '',
+          contractAddress: contractMatch ? contractMatch[1] : t.contract || t.contractAddress || '',
         });
       }
 
@@ -294,7 +497,7 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
             if (!chainData?.providerUrl) continue;
 
             try {
-              const rpcProvider = new JsonRpcProvider(chainData.providerUrl);
+              const rpcProvider = makeStaticProvider(chainData.providerUrl, networkId);
               const rawBal = await Promise.race([
                 rpcProvider.getBalance(evmAddress),
                 new Promise<bigint>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
@@ -323,10 +526,53 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
         console.warn('[fetchBalances] Custom chain enrichment error:', e.message);
       }
 
-      cachedBalances = balances;
+      const preFilterCount = balances.length;
+      balances = filterSpamTokens(balances);
+      if (balances.length !== preFilterCount) {
+        console.log(
+          `[fetchBalances] Spam filter dropped ${preFilterCount - balances.length}/${preFilterCount} token entries`,
+        );
+      }
+
       console.log(
         `[fetchBalances] Got ${balances.length} balance entries (${balances.filter((b: any) => b.isNative).length} native, ${balances.filter((b: any) => !b.isNative).length} tokens)`,
       );
+      // Only commit if we are still the most recent fetch AND our pubkey
+      // snapshot hasn't been invalidated by a subsequent addPubkey. The
+      // id check alone is not enough: concurrent prefetches all bump
+      // latestFetchId at start, so a fetch that *started last* (highest
+      // id) wins the id check even if its snapshot was taken *before*
+      // prefetchTonAddress / prefetchSolanaPubkey / prefetchTronPubkey
+      // landed their dynamic pubkey. That's exactly how a
+      // post-prefetch "committed" snapshot can be missing TON — the
+      // fetch that came in latest was also the one that missed the
+      // add. Compare pubkey counts now vs at snapshot; if the set has
+      // grown, supersede ourselves so the next (already queued)
+      // force-refetch that DID see the new pubkey can commit cleanly.
+      const currentPubkeyCount = wallet.getPubkeys().length;
+      const snapshotStale = currentPubkeyCount > allPubkeys.length;
+      if (myFetchId === latestFetchId && !snapshotStale) {
+        cachedBalances = balances;
+        // Native-row summary keyed by networkId — makes it easy to spot
+        // a chain that got dropped silently between fetches. One line
+        // per fetch commit; if a balance looks missing on the dashboard,
+        // this is the quickest place to see whether the cache actually
+        // has the row at all.
+        const nativeSummary = balances
+          .filter((b: any) => b.isNative)
+          .map((b: any) => `${b.networkId}=${b.balance}`)
+          .join('; ');
+        console.log(`[fetchBalances] #${myFetchId} committed. natives: ${nativeSummary}`);
+        pushBalancesUpdated();
+      } else if (snapshotStale) {
+        console.log(
+          `[fetchBalances] discarding #${myFetchId} — pubkey set grew from ${allPubkeys.length} to ${currentPubkeyCount} since snapshot`,
+        );
+      } else {
+        console.log(
+          `[fetchBalances] discarding result from superseded fetch #${myFetchId} (latest: #${latestFetchId})`,
+        );
+      }
       return balances;
     } catch (e: any) {
       console.error('[fetchBalances] Error:', e.message || e);
@@ -344,11 +590,100 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
   return thisPromise;
 }
 
+/**
+ * Drop pending approval events left in `requestStorage` from a previous
+ * service-worker lifecycle.
+ *
+ * Why: `requireApproval` (in methods.ts) stores the event, sets the
+ * badge, and waits for an `eth_sign_response` message via an in-memory
+ * `chrome.runtime.onMessage` listener. When the SW dies mid-flight (MV3
+ * idle eviction, manual reload, dev rebuild) the storage entry survives
+ * but the listener doesn't. A user who clicks Approve in the side panel
+ * after restart sends a message into the void; nothing happens; the
+ * dApp eventually times out at 5min.
+ *
+ * BUT — `requestStorage` is also briefly used as a "post-broadcast
+ * holding pen" for some chains. EVM writes `txid` into the same entry
+ * after broadcast (ethereumHandler.ts), and the side-panel TxidPage
+ * only moves the entry to `approvalStorage` when the user clicks
+ * Close. Solana flips status to 'broadcasted'; TON to 'completed'. We
+ * MUST NOT cancel those — the tx has already gone out and the user is
+ * still seeing the success page.
+ *
+ * Heuristic for "truly pending and now orphaned":
+ *   - no broadcast artifact (txid / txHash / signedTx) AND
+ *   - status is undefined or 'request'
+ *
+ * Anything else is post-action; preserve and let the normal UI path
+ * complete the lifecycle (Close → moveTo approvalStorage).
+ */
+function isOrphanedPendingEvent(ev: any): boolean {
+  if (!ev) return false;
+  if (ev.txid || ev.txHash || ev.signedTx) return false;
+  const status = ev.status;
+  if (status && status !== 'request') return false;
+  return true;
+}
+
+async function clearOrphanedApprovalEvents() {
+  const tag = TAG + ' | clearOrphanedApprovalEvents | ';
+  try {
+    const events = (await requestStorage.getEvents()) || [];
+    if (events.length === 0) return;
+    const orphans = events.filter(isOrphanedPendingEvent);
+    if (orphans.length === 0) {
+      console.log(tag, `${events.length} event(s) in storage; all post-broadcast — preserving for UI completion`);
+      return;
+    }
+    console.log(
+      tag,
+      `dropping ${orphans.length} orphaned pending event(s) (preserving ${events.length - orphans.length} post-broadcast)`,
+    );
+    for (const ev of orphans) {
+      // Notify side-panel UI (no-op if no panel is listening). The
+      // dApp side already received a port-closed error when the SW
+      // died, so we don't need to signal there.
+      chrome.runtime
+        .sendMessage({
+          action: 'transaction_error',
+          eventId: ev.id,
+          error: 'Request cancelled — wallet restarted',
+          kind: 'cancelled',
+        })
+        .catch(() => {});
+      try {
+        await requestStorage.removeEventById(ev.id);
+      } catch (e) {
+        console.warn(tag, 'failed to remove orphan', ev.id, e);
+      }
+    }
+    // The badge was set when the request was created; the cleanup
+    // that would have unset it died with the SW. Reset only if every
+    // event in storage is now gone — otherwise a preserved post-
+    // broadcast entry may still legitimately want the badge.
+    const remaining = (await requestStorage.getEvents()) || [];
+    if (remaining.length === 0) setApprovalBadge(false);
+  } catch (e) {
+    console.warn(tag, 'unexpected error', e);
+  }
+}
+
+// Fire as the SW spawns — BEFORE the 5s wallet-init delay below, so the
+// side panel doesn't have a window to render and accept clicks on a
+// stale orphan event during boot. Async; we don't await at top level
+// (would block other listener registrations in MV3).
+void clearOrphanedApprovalEvents();
+
 const onStart = async function () {
   const tag = TAG + ' | onStart | ';
   try {
     console.log(tag, 'Starting...');
+    // Orphan cleanup runs at module-load time (above) so the side
+    // panel can't render stale events during the 5s wallet-init
+    // delay. Don't repeat it here.
     resetSolanaState(); // clear stale cached address before re-init
+    resetTronState();
+    resetTonState();
     await wallet.init();
     console.log(tag, 'Wallet initialized');
 
@@ -423,23 +758,53 @@ const onStart = async function () {
         pushStateChangeEvent();
       }
 
-      const defaultProvider: any = {
-        chainId: '0x1',
-        caip: 'eip155:1/slip44:60',
-        blockExplorerUrls: ['https://etherscan.io'],
-        name: 'Ethereum',
-        providerUrl: 'https://eth.llamarpc.com',
-        fallbacks: [],
-      };
-      // Get current provider
+      // Get current provider — only build a default if none is stored.
+      // Source the default from Pioneer rather than a hardcoded URL so
+      // we never ship a stale RPC behind a release.
       const currentProvider = await web3ProviderStorage.getWeb3Provider();
       if (!currentProvider) {
-        console.log(tag, 'No provider set, setting default provider');
-        await web3ProviderStorage.saveWeb3Provider(defaultProvider);
+        console.log(tag, 'No provider set, fetching default ETH config from Pioneer');
+        const ethInfo = await getChainInfo('eip155:1');
+        if (ethInfo?.rpc) {
+          await web3ProviderStorage.saveWeb3Provider({
+            chainId: ethInfo.chainId,
+            caip: ethInfo.caip,
+            blockExplorerUrls: ethInfo.explorer ? [ethInfo.explorer] : [],
+            name: ethInfo.name,
+            providerUrl: ethInfo.rpc,
+            fallbacks: ethInfo.rpcs.slice(1),
+          } as any);
+        } else {
+          console.warn(tag, 'Pioneer did not return ETH chain info — leaving provider unset until user picks one');
+        }
       }
 
-      // Fetch balances in background (non-blocking)
+      // Fetch balances in background (non-blocking). First pass covers EVM/UTXO
+      // quickly — on first run the Solana / Tron / TON pubkeys haven't been
+      // derived yet, so they won't be in this request.
       fetchBalancesFromPioneer().catch(e => console.warn(tag, 'Initial balance fetch failed:', e));
+
+      // Solana / Tron / TON addresses are derived outside the batch xpub
+      // flow (firmware message type is separate). Each prefetch internally
+      // calls wallet.addPubkey, so once they all settle the wallet has the
+      // complete pubkey set. We then fire ONE force-refresh against Pioneer
+      // /portfolio with everyone present — that's the request whose
+      // snapshot won't be invalidated mid-flight, so its commit actually
+      // lands.
+      //
+      // Why not chain a force-fetch after each individual prefetch (the
+      // old shape)? Because they ran in parallel: each fetch's snapshot
+      // misses the pubkeys still being added by the other two prefetches,
+      // and the staleness guard at fetchBalancesFromPioneer's commit step
+      // discards them. With three parallel prefetches, only the last one
+      // to commit could survive — and if that one was Tron/TON without
+      // Solana having fully landed yet, SPL tokens never made it into
+      // cachedBalances. Users saw "No tokens" until they hit the manual
+      // Discover button (which by coincidence runs after the slowest
+      // prefetch finally lands).
+      Promise.allSettled([prefetchSolanaPubkey(), prefetchTronPubkey(), prefetchTonAddress()])
+        .then(() => fetchBalancesFromPioneer(true))
+        .catch(e => console.warn(tag, 'Post-prefetch balance fetch failed:', e));
     } else {
       console.error(tag, 'FAILED TO INIT, No Ethereum address found');
     }
@@ -466,56 +831,49 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           const { requestInfo } = message;
           const { method, params, chain } = requestInfo;
 
+          // Tag the request with the sender's browser tab/window so the
+          // approval side panel opens in the SAME window the dApp lives
+          // in — not whichever web tab was focused last. Using "most
+          // recently accessed" risked surfacing a signing prompt in a
+          // completely different browser window than the one that
+          // triggered it, which is a real phishing / mis-sign risk now
+          // that the sidebar is the sole approval surface.
+          if (sender?.tab) {
+            requestInfo.__senderTabId = sender.tab.id;
+            requestInfo.__senderWindowId = sender.tab.windowId;
+          }
+
           if (method) {
             try {
               // KEEPKEY_WALLET and ADDRESS are passed for backward compat with handler signatures
               const result = await handleWalletRequest(requestInfo, chain, method, params, null, ADDRESS);
+
+              // [HANDOFF] log: emit params + result on a single line per call so a
+              // dApp-flow audit can be reconstructed by `grep '[HANDOFF]'` in the
+              // background console. Especially valuable for read-side RPCs (eth_call,
+              // eth_getBalance, eth_estimateGas, eth_getCode, eth_getTransactionCount)
+              // that build the dApp's view of wallet state — if any of those return a
+              // value that contradicts mainnet, the dApp builds a doomed request body
+              // (e.g. wrong Permit2 nonce → /v1/swap 404).
+              const resultType = typeof result;
+              const resultPreview =
+                resultType === 'string'
+                  ? `len=${(result as string).length} value=${result}`
+                  : `value=${JSON.stringify(result)}`;
+              console.log(
+                `[HANDOFF] BEX → content script (${chain}/${method})\n  params=${JSON.stringify(params)}\n  type=${resultType} ${resultPreview}`,
+              );
               sendResponse({ result });
             } catch (error) {
+              console.log(
+                `[HANDOFF] BEX → content script (${chain}/${method}) ERROR\n  params=${JSON.stringify(params)}\n  error=`,
+                error,
+              );
               sendResponse({ error: formatUserError(error) });
             }
           } else {
             sendResponse({ error: 'Invalid request: missing method' });
           }
-          break;
-        }
-
-        case 'open_sidebar':
-        case 'OPEN_SIDEBAR': {
-          console.log(tag, 'Opening sidebar ** ');
-          chrome.tabs.query({}, tabs => {
-            if (chrome.runtime.lastError) {
-              console.error('Error querying tabs:', chrome.runtime.lastError);
-              return;
-            }
-
-            const webPageTabs = tabs.filter(tab => {
-              return (
-                tab.url &&
-                !tab.url.startsWith('chrome://') &&
-                !tab.url.startsWith('chrome-extension://') &&
-                !tab.url.startsWith('about:')
-              );
-            });
-
-            if (webPageTabs.length > 0) {
-              webPageTabs.sort((a, b) => b.lastAccessed - a.lastAccessed);
-              const tab = webPageTabs[0];
-              const windowId = tab.windowId;
-
-              console.log(tag, 'Opening sidebar in tab:', tab);
-
-              chrome.sidePanel.open({ windowId }, () => {
-                if (chrome.runtime.lastError) {
-                  console.error('Error opening side panel:', chrome.runtime.lastError);
-                } else {
-                  console.log('Side panel opened successfully.');
-                }
-              });
-            } else {
-              console.error('No suitable web page tabs found to open the side panel.');
-            }
-          });
           break;
         }
 
@@ -574,8 +932,13 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
 
         case 'RESET_APP': {
           console.log(tag, 'Resetting app...');
+          // Reply FIRST so the caller sees the ack before the service worker
+          // reload tears down the message channel. Every other handler in
+          // this file returns `{ success: true }` — align here too so UI
+          // callers that branch on `response?.success` don't log/toast a
+          // false failure on a successful reset.
+          sendResponse({ success: true });
           chrome.runtime.reload();
-          sendResponse({ result: true });
           break;
         }
 
@@ -608,12 +971,15 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             if (!tx) throw new Error('Invalid request: missing tx');
             if (!source) throw new Error('Invalid request: missing source');
 
-            const response = await fetch(`${PIONEER_API}/api/v1/insight`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ tx, source }),
-            });
-            const result = await response.json();
+            const result = await fetchJsonWithTimeout<any>(
+              `${PIONEER_API}/api/v1/insight`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tx, source }),
+              },
+              { timeoutMs: 8000, retries: 1 },
+            );
             console.log(tag, 'GET_TX_INSIGHT result:', result);
             sendResponse(result);
           } catch (error: any) {
@@ -627,7 +993,10 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           try {
             const providerInfo = await web3ProviderStorage.getWeb3Provider();
             if (!providerInfo) throw Error('Failed to get provider info');
-            const evmProvider = new JsonRpcProvider(providerInfo.providerUrl);
+            const evmProvider = makeStaticProvider(
+              providerInfo.providerUrl,
+              providerInfo.networkId || providerInfo.chainId,
+            );
             const feeData = await evmProvider.getFeeData();
             sendResponse(feeData);
           } catch (error: any) {
@@ -671,12 +1040,54 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                 if (!asset.address && asset.pubkeys?.[0]?.address) {
                   asset.address = asset.pubkeys[0].address;
                 }
+
+                // UTXO assets coming from non-header paths (global
+                // Receive, dashboard balance click, asset list) don't
+                // carry a specific note/script_type. Without one,
+                // GET_PUBKEY_CONTEXT falls back to scoped[0] and
+                // Receive shows a different address from what the
+                // header dropdown displays.
+                //
+                // Default selection mirrors what the header builders do
+                // so all entry points stay in sync:
+                //   - BTC: first p2wpkh (buildBtcAccounts marks Native
+                //     Segwit as isDefault).
+                //   - Other UTXO (LTC, DOGE, DASH, BCH): first scoped
+                //     pubkey in chainConfig order — buildUtxoAccounts
+                //     uses items.length === 0, so e.g. LTC defaults to
+                //     legacy p2pkh (configured before p2wpkh) and we
+                //     must NOT silently shift it to native segwit.
+                const BTC_GENESIS_PREFIX = 'bip122:000000000019d6689c085ae165831e93';
+                if (asset.networkId.startsWith('bip122:') && !asset.note && !asset.script_type) {
+                  const scoped = wallet.getPubkeys(asset.networkId);
+                  const isBtc = asset.networkId.startsWith(BTC_GENESIS_PREFIX);
+                  const preferred = isBtc
+                    ? scoped.find((pk: any) => pk.script_type === 'p2wpkh') || scoped[0]
+                    : scoped[0];
+                  if (preferred) {
+                    asset.note = preferred.note;
+                    asset.script_type = preferred.script_type;
+                  }
+                }
               }
 
-              // Track previous address/chain to detect changes for dApp notification
-              const prevAddress = ADDRESS;
-              const prevProvider = await web3ProviderStorage.getWeb3Provider();
-              const prevChainId = prevProvider?.chainId;
+              // Enrich asset with cached native balance so Send/Transfer can
+              // read a scalar `balance`. GET_ASSETS returns the catalog (no
+              // balance), so without this step the Transfer component saw
+              // `undefined` and fell back to 0 — Max/50% became no-ops and the
+              // "Sending X SOL" hero read 0. Prefer exact caip match, then the
+              // native row for the network.
+              if (asset.networkId && !asset.balance) {
+                const exact = asset.caip && cachedBalances.find((b: any) => b.caip === asset.caip);
+                const nativeFallback = cachedBalances.find((b: any) => b.networkId === asset.networkId && b.isNative);
+                const match = exact || nativeFallback;
+                if (match) {
+                  asset.balance = match.balance;
+                  if (!asset.priceUsd) asset.priceUsd = match.priceUsd;
+                  if (!asset.valueUsd) asset.valueUsd = match.valueUsd;
+                  if (!asset.icon && match.icon) asset.icon = match.icon;
+                }
+              }
 
               // Update global ADDRESS for EVM signing when account changes
               if (asset.networkId?.startsWith('eip155:') && asset.address) {
@@ -688,31 +1099,32 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               await assetContextStorage.updateContext(asset);
 
               // If eip155 then set web3 provider
-              let newChainId: string | undefined;
               if (asset.networkId && asset.networkId.includes('eip155')) {
                 // Try to get provider data from custom chains first (user-added networks)
                 let providerData = await blockchainDataStorage.getBlockchainData(asset.networkId);
 
-                // Fallback to static chain list if not found in custom storage
+                // Fall through to Pioneer registry if user hasn't added
+                // this chain manually. Pioneer is the source of truth for
+                // RPC + chain metadata; misses here mean Pioneer doesn't
+                // know the chain (rare — its catalog has 196+ EVMs).
                 if (!providerData) {
-                  const chainInfo = EIP155_CHAINS[asset.networkId];
+                  const chainInfo = await getChainInfo(asset.networkId);
                   if (chainInfo) {
                     providerData = {
                       chainId: chainInfo.chainId,
                       caip: chainInfo.caip,
-                      blockExplorerUrls: [],
+                      blockExplorerUrls: chainInfo.explorer ? [chainInfo.explorer] : [],
                       name: chainInfo.name,
                       providerUrl: chainInfo.rpc,
-                      fallbacks: [],
+                      fallbacks: chainInfo.rpcs.slice(1),
                     };
                   } else {
-                    console.error(tag, 'Network not found in custom or static chains:', asset.networkId);
+                    console.error(tag, 'Network not found in custom storage or Pioneer:', asset.networkId);
                   }
                 }
 
                 if (providerData) {
                   await web3ProviderStorage.saveWeb3Provider(providerData);
-                  newChainId = providerData.chainId;
                 }
               }
 
@@ -722,36 +1134,6 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                   assetContext: asset,
                 })
                 .catch(() => {});
-
-              // EIP-1193: Notify dApps of account/chain changes via content script relay
-              if (asset.networkId?.startsWith('eip155:')) {
-                const addressChanged = asset.address && asset.address !== prevAddress;
-                const chainChanged = newChainId && newChainId !== prevChainId;
-
-                if (addressChanged || chainChanged) {
-                  chrome.tabs.query({}, tabs => {
-                    for (const tab of tabs) {
-                      if (!tab.id) continue;
-                      if (addressChanged) {
-                        chrome.tabs
-                          .sendMessage(tab.id, {
-                            type: 'ACCOUNTS_CHANGED',
-                            accounts: [ADDRESS],
-                          })
-                          .catch(() => {});
-                      }
-                      if (chainChanged) {
-                        chrome.tabs
-                          .sendMessage(tab.id, {
-                            type: 'CHAIN_CHANGED',
-                            provider: { chainId: newChainId },
-                          })
-                          .catch(() => {});
-                      }
-                    }
-                  });
-                }
-              }
 
               sendResponse(asset);
             } catch (error) {
@@ -765,9 +1147,48 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         }
 
         case 'GET_PUBKEY_CONTEXT': {
-          // Return first pubkey as context
-          const pubkeys = wallet.getPubkeys();
-          sendResponse({ pubkeyContext: pubkeys.length > 0 ? pubkeys[0] : null });
+          // Scope to the currently selected asset so Receive shows the correct
+          // address. Returning pubkeys[0] unconditionally meant a multi-account
+          // or multi-chain wallet would surface account-0 / Bitcoin for every
+          // asset switch — a foot-gun serious enough to send funds to the
+          // wrong place. Fall back to pubkeys[0] only if no asset context is
+          // set (cold-start before any selection).
+          try {
+            const ctx = await assetContextStorage.get();
+            const allPubkeys = wallet.getPubkeys();
+            let chosen: any = null;
+
+            if (ctx?.networkId) {
+              const scoped = wallet.getPubkeys(ctx.networkId);
+              if (scoped.length > 0) {
+                // Match priority: note → script_type → accountIndex →
+                // scoped[0]. Note is the only identifier that's unique
+                // across every chainConfig path; script_type collapses
+                // BTC account 0 / account 1 (both p2wpkh) and would
+                // always pick the first one. accountIndex is fine for
+                // multi-account EVM but is unset on UTXO header rows.
+                const ctxNote = (ctx as any).note;
+                const ctxScriptType = (ctx as any).script_type;
+                if (ctxNote) {
+                  chosen = scoped.find((pk: any) => pk.note === ctxNote);
+                }
+                if (!chosen && ctxScriptType) {
+                  chosen = scoped.find((pk: any) => pk.script_type === ctxScriptType);
+                }
+                if (!chosen && (ctx as any).accountIndex !== undefined) {
+                  chosen = scoped.find((pk: any) => pk.accountIndex === (ctx as any).accountIndex);
+                }
+                if (!chosen) chosen = scoped[0];
+              }
+            }
+
+            if (!chosen) chosen = allPubkeys[0] ?? null;
+            sendResponse({ pubkeyContext: chosen });
+          } catch (e) {
+            console.error('GET_PUBKEY_CONTEXT failed:', e);
+            const pubkeys = wallet.getPubkeys();
+            sendResponse({ pubkeyContext: pubkeys[0] ?? null });
+          }
           break;
         }
 
@@ -793,6 +1214,56 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           const { networkId } = message;
           const pubkeys = wallet.getPubkeys(networkId);
           sendResponse({ pubkeys });
+          break;
+        }
+
+        // Derive a UTXO receive address locally from the xpub held in the
+        // matching pubkey entry. Needed because /api/pubkeys/batch returns
+        // UTXO rows with { pubkey: "<xpub>", address: "" } — showing the
+        // xpub as an address was the endless-spinner / wrong-address bug on
+        // the Receive page. Pubkey-to-address is pure BIP32 + script-type
+        // encoding, so no device round-trip is required; this works in
+        // view-only mode too. Not cached: derivation is microseconds, and
+        // a session-storage cache keyed without the xpub would surface the
+        // previous device's address after a hot-swap.
+        case 'GET_UTXO_ADDRESS': {
+          const { networkId, scriptType, note } = message as {
+            networkId: string;
+            scriptType?: string;
+            note?: string;
+          };
+          try {
+            const scoped = wallet.getPubkeys(networkId);
+            if (scoped.length === 0) {
+              sendResponse({ error: 'No pubkey for network' });
+              break;
+            }
+            // `note` is unique per path config, so match it first —
+            // multiple accounts can share a script_type (e.g. several BTC
+            // p2wpkh accounts), and matching by script_type first would
+            // always pick the first one regardless of which account the
+            // caller asked for. Raw pubkey objects use snake_case
+            // `script_type`, matching chainConfig.ts and the SDK request
+            // shape; do not rename them here.
+            const match =
+              (note && scoped.find((pk: any) => pk.note === note)) ||
+              (scriptType && scoped.find((pk: any) => pk.script_type === scriptType)) ||
+              scoped[0];
+            const xpub: string | undefined = match.pubkey || match.master;
+            if (!xpub) {
+              sendResponse({ error: 'No xpub on pubkey entry' });
+              break;
+            }
+            const address = deriveUtxoAddress({
+              xpub,
+              scriptType: match.script_type,
+              networkId,
+            });
+            sendResponse({ address, scriptType: match.script_type });
+          } catch (e: any) {
+            console.error('GET_UTXO_ADDRESS failed:', e);
+            sendResponse({ error: e?.message || 'deriveUtxoAddress failed' });
+          }
           break;
         }
 
@@ -854,7 +1325,12 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           const { accountIndex: removeIdx } = message;
           try {
             const accounts = await ethAccountsStorage.removeAccount(removeIdx);
-            sendResponse({ success: true, accounts });
+            // Without clearing runtime state the signer and pubkey list keep
+            // the removed account — the UI shows it gone while the wallet
+            // still holds it, and the next request could sign against the
+            // supposedly-removed account.
+            await wallet.removePathByNote(`Ethereum account ${removeIdx}`);
+            sendResponse({ success: true, accounts, pubkeys: wallet.getPubkeys() });
           } catch (error) {
             console.error('Error removing ETH account:', error);
             sendResponse({ error: 'Failed to remove ETH account' });
@@ -877,6 +1353,30 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           const { network } = message;
           try {
             const networks = await customEvmNetworksStorage.addNetwork(network);
+            // Mirror into the storages the SET_ASSET_CONTEXT handler reads
+            // for provider config. Without this, the header dropdown renders
+            // the new network (from customEvmNetworksStorage) but selecting
+            // it falls through to the Pioneer registry, which won't have
+            // the user's custom RPC URL — only the chain's public ones.
+            // Persisting here keeps the user's overrides authoritative.
+            const cleanRpc = (network.rpc || '').trim();
+            const cleanExplorer = (network.explorerUrl || '').trim();
+            const chainIdHex = '0x' + Number(network.chainId).toString(16);
+            await blockchainDataStorage.addBlockchainData(network.networkId, {
+              chainId: chainIdHex,
+              caip: `${network.networkId}/slip44:60`,
+              name: network.name,
+              symbol: network.symbol,
+              explorer: cleanExplorer,
+              explorerAddressLink: cleanExplorer ? `${cleanExplorer}/address/` : '',
+              explorerTxLink: cleanExplorer ? `${cleanExplorer}/tx/` : '',
+              blockExplorerUrls: cleanExplorer ? [cleanExplorer] : [],
+              providerUrl: cleanRpc,
+              providers: cleanRpc ? [cleanRpc] : [],
+              nativeCurrency: { name: network.symbol, symbol: network.symbol, decimals: 18 },
+              type: 'evm',
+            } as any);
+            await blockchainStorage.addBlockchain(network.networkId);
             sendResponse({ success: true, networks });
           } catch (error) {
             console.error('Error adding custom EVM network:', error);
@@ -889,6 +1389,29 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           const { networkId: removeNetId } = message;
           try {
             const networks = await customEvmNetworksStorage.removeNetwork(removeNetId);
+            await blockchainStorage.removeBlockchain(removeNetId);
+            // blockchainDataStorage has no remove API; drop the key via the
+            // raw set helper so we don't leave an orphaned provider entry.
+            await blockchainDataStorage.set((prev: any) => {
+              if (!prev || !(removeNetId in prev)) return prev || {};
+              const next = { ...prev };
+              delete next[removeNetId];
+              return next;
+            });
+            // If the removed network was actively selected, the asset
+            // context and web3 provider still point at it — the signer
+            // would keep using a chain the user just deleted. Clear both
+            // and tell the sidebar so it can drop its drawer / header
+            // selection.
+            const currentCtx = await assetContextStorage.get().catch(() => null);
+            const currentProvider = await web3ProviderStorage.getWeb3Provider().catch(() => null);
+            if ((currentCtx as any)?.networkId === removeNetId) {
+              await assetContextStorage.clearContext().catch(() => {});
+              chrome.runtime.sendMessage({ type: 'ASSET_CONTEXT_CLEARED' }).catch(() => {});
+            }
+            if ((currentProvider as any)?.networkId === removeNetId) {
+              await web3ProviderStorage.clearWeb3Provider().catch(() => {});
+            }
             sendResponse({ success: true, networks });
           } catch (error) {
             console.error('Error removing custom EVM network:', error);
@@ -920,15 +1443,14 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             console.log(tag, 'GET_ASSET_BALANCE');
             const { networkId } = message;
 
-            // Get RPC provider for the network
-            const chainInfo = EIP155_CHAINS[networkId];
-            if (chainInfo && ADDRESS) {
-              const evmProvider = new JsonRpcProvider(chainInfo.rpc);
-              const balance = await evmProvider.getBalance(ADDRESS);
-              sendResponse('0x' + balance.toString(16));
-            } else {
+            if (!ADDRESS) {
               sendResponse('0');
+              break;
             }
+            // Fail over across user-override → Pioneer → last-resort if
+            // any candidate rate-limits or 5xx's.
+            const balance = await withRpcFailoverByNetworkId(networkId, p => p.getBalance(ADDRESS));
+            sendResponse('0x' + balance.toString(16));
           } catch (error) {
             console.error('Error fetching balance:', error);
             sendResponse({ error: 'Failed to fetch balance' });
@@ -940,8 +1462,11 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           try {
             const { networkId } = message;
             const chainId = networkId.replace('eip155:', '');
-            const response = await fetch(`${PIONEER_API}/api/v1/nodes?chainId=${encodeURIComponent(chainId)}`);
-            const data = await response.json();
+            const data = await fetchJsonWithTimeout<any>(
+              `${PIONEER_API}/api/v1/nodes?chainId=${encodeURIComponent(chainId)}`,
+              {},
+              { timeoutMs: 5000, retries: 1 },
+            );
             sendResponse(data);
           } catch (error) {
             console.error('Error fetching asset info:', error);
@@ -1041,31 +1566,28 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               break;
             }
 
-            // Find RPC URL — try custom chains first, then static list
-            let rpcUrl: string | undefined;
+            // Resolve display metadata. The actual RPC call goes through
+            // withRpcFailoverByNetworkId below, which iterates the same
+            // priority list (custom → Pioneer → last-resort) on transient
+            // failure. If neither custom nor Pioneer knows the chain, the
+            // failover helper itself throws — caught and surfaced.
             let chainName = evmNetworkId;
             let chainSymbol = 'ETH';
-
             const customChain = await blockchainDataStorage.getBlockchainData(evmNetworkId);
-            if (customChain?.providerUrl) {
-              rpcUrl = customChain.providerUrl;
+            if (customChain) {
               chainName = customChain.name || evmNetworkId;
               chainSymbol = customChain.nativeCurrency?.symbol || customChain.symbol || 'ETH';
-            } else if (EIP155_CHAINS[evmNetworkId]) {
-              rpcUrl = EIP155_CHAINS[evmNetworkId].rpc;
-              chainName = EIP155_CHAINS[evmNetworkId].name;
+            } else {
+              const pioneerChain = await getChainInfo(evmNetworkId);
+              if (pioneerChain) {
+                chainName = pioneerChain.name;
+                chainSymbol = pioneerChain.symbol || 'ETH';
+              }
             }
 
-            if (!rpcUrl) {
-              sendResponse({ balance: '0', valueUsd: '0', error: 'No RPC for network' });
-              break;
-            }
-
-            const rpcProvider = new JsonRpcProvider(rpcUrl);
-            const rawBal = await Promise.race([
-              rpcProvider.getBalance(evmAddress),
-              new Promise<bigint>((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
-            ]);
+            const rawBal = await withRpcFailoverByNetworkId(evmNetworkId, p => p.getBalance(evmAddress), {
+              timeoutMs: 8000,
+            });
             const balStr = formatEther(rawBal);
 
             // Try to get USD price from cached balances for this network
@@ -1094,9 +1616,18 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
 
         case 'GET_CHARTS': {
           try {
+            const { networkIds } = message;
             let balances = cachedBalances;
             if (balances.length === 0 && wallet.isInitialized()) {
               balances = await fetchBalancesFromPioneer();
+            }
+            // Honor the networkIds filter the UI hooks send. Previously this
+            // parameter was ignored and "discover tokens for this network"
+            // returned the global set, making stale/unrelated balances leak
+            // into single-network views.
+            if (Array.isArray(networkIds) && networkIds.length > 0) {
+              const allow = new Set<string>(networkIds);
+              balances = balances.filter((b: any) => allow.has(b.networkId));
             }
             const totalValueUsd = balances.reduce((sum: number, b: any) => sum + parseFloat(b.valueUsd || '0'), 0);
             sendResponse({
@@ -1121,12 +1652,15 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             const payload: any = { networkId, contractAddress };
             if (userAddress) payload.userAddress = userAddress;
 
-            const response = await fetch(`${PIONEER_API}/api/v1/tokens/metadata`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
-            });
-            const data = await response.json();
+            const data = await fetchJsonWithTimeout<any>(
+              `${PIONEER_API}/api/v1/tokens/metadata`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+              },
+              { timeoutMs: 8000, retries: 1 },
+            );
             sendResponse({ success: true, data });
           } catch (error: any) {
             console.error('Error looking up token metadata:', error);
@@ -1142,24 +1676,27 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               throw new Error('userAddress and token are required');
             }
 
-            const response = await fetch(`${PIONEER_API}/api/v1/tokens/custom`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                userAddress,
-                token: {
-                  networkId: token.networkId,
-                  address: token.address,
-                  caip: token.caip,
-                  name: token.name,
-                  symbol: token.symbol,
-                  decimals: token.decimals,
-                  icon: token.icon,
-                  coingeckoId: token.coingeckoId,
-                },
-              }),
-            });
-            const data = await response.json();
+            const data = await fetchJsonWithTimeout<any>(
+              `${PIONEER_API}/api/v1/tokens/custom`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  userAddress,
+                  token: {
+                    networkId: token.networkId,
+                    address: token.address,
+                    caip: token.caip,
+                    name: token.name,
+                    symbol: token.symbol,
+                    decimals: token.decimals,
+                    icon: token.icon,
+                    coingeckoId: token.coingeckoId,
+                  },
+                }),
+              },
+              { timeoutMs: 8000, retries: 1 },
+            );
             sendResponse({ success: data?.success || false, data });
           } catch (error: any) {
             console.error('Error adding custom token:', error);
@@ -1178,8 +1715,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             let url = `${PIONEER_API}/api/v1/tokens/custom?userAddress=${encodeURIComponent(userAddress)}`;
             if (networkId) url += `&networkId=${encodeURIComponent(networkId)}`;
 
-            const response = await fetch(url);
-            const data = await response.json();
+            const data = await fetchJsonWithTimeout<any>(url, {}, { timeoutMs: 8000, retries: 1 });
             const tokens = data?.data?.tokens || data?.tokens || [];
             sendResponse({ success: true, tokens });
           } catch (error: any) {
@@ -1196,10 +1732,11 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               throw new Error('networkId and address are required');
             }
 
-            const response = await fetch(
+            const data = await fetchJsonWithTimeout<any>(
               `${PIONEER_API}/api/v1/tokens/balances?networkId=${encodeURIComponent(networkId)}&address=${encodeURIComponent(address)}`,
+              {},
+              { timeoutMs: 8000, retries: 1 },
             );
-            const data = await response.json();
             const tokens = data?.data?.tokens || data?.tokens || [];
             sendResponse({ success: true, tokens });
           } catch (error: any) {
@@ -1216,12 +1753,15 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               throw new Error('userAddress, networkId, and tokenAddress are required');
             }
 
-            const response = await fetch(`${PIONEER_API}/api/v1/tokens/custom`, {
-              method: 'DELETE',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ userAddress, networkId, tokenAddress }),
-            });
-            const data = await response.json();
+            const data = await fetchJsonWithTimeout<any>(
+              `${PIONEER_API}/api/v1/tokens/custom`,
+              {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userAddress, networkId, tokenAddress }),
+              },
+              { timeoutMs: 8000, retries: 1 },
+            );
             sendResponse({ success: data?.success || false, data });
           } catch (error: any) {
             console.error('Error removing custom token:', error);
@@ -1244,15 +1784,6 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               break;
             }
 
-            // Get RPC provider for the network
-            const chainInfo = EIP155_CHAINS[networkId];
-            if (!chainInfo) {
-              sendResponse({ valid: false, error: 'Unsupported network' });
-              break;
-            }
-
-            const rpcProvider = new JsonRpcProvider(chainInfo.rpc);
-
             // ERC-20 ABI for name, symbol, and decimals
             const ERC20_ABI = [
               'function name() view returns (string)',
@@ -1261,13 +1792,25 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             ];
 
             const { Contract } = await import('ethers');
-            const tokenContract = new Contract(contractAddress, ERC20_ABI, rpcProvider);
 
-            const [name, symbol, decimals] = await Promise.all([
-              tokenContract.name(),
-              tokenContract.symbol(),
-              tokenContract.decimals(),
-            ]);
+            // Run all three reads against the same provider per failover
+            // attempt — splitting them across providers would risk a
+            // partial result if one URL rate-limits mid-validation.
+            // ERC20 reads are read-only views; if they fail, the next
+            // candidate URL gets the whole bundle.
+            const { name, symbol, decimals } = await withRpcFailoverByNetworkId(
+              networkId,
+              async rpcProvider => {
+                const tokenContract = new Contract(contractAddress, ERC20_ABI, rpcProvider);
+                const [n, s, d] = await Promise.all([
+                  tokenContract.name(),
+                  tokenContract.symbol(),
+                  tokenContract.decimals(),
+                ]);
+                return { name: n, symbol: s, decimals: d };
+              },
+              { timeoutMs: 8000 },
+            );
 
             const caip = `${networkId}/erc20:${contractAddress.toLowerCase()}`;
 
@@ -1294,6 +1837,16 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
 
         case 'INJECTION_SUCCESS': {
           console.log(tag, 'Injection successful:', message.url);
+          sendResponse({ success: true });
+          break;
+        }
+
+        case 'CLEAR_APPROVAL_BADGE': {
+          // Sent from info-only side-panel surfaces (e.g. chain-not-enabled
+          // card) that bypass the requireApproval flow. The standard
+          // approval path manages its own badge in popup.ts; this lets
+          // out-of-band cards clean up after themselves.
+          setApprovalBadge(false);
           sendResponse({ success: true });
           break;
         }
@@ -1380,12 +1933,6 @@ exampleSidebarStorage
     console.error('Error fetching sidebar storage:', error);
   });
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === 'getMaskingSettings') {
-    chrome.storage.local.get(['enableMetaMaskMasking', 'enableXfiMasking', 'enableKeplrMasking'], result => {
-      console.log('getMaskingSettings result: ', result);
-      sendResponse(result);
-    });
-    return true;
-  }
-});
+// Masking settings are read directly by the content script from
+// chrome.storage.local before injection; there's no background handler
+// for them.

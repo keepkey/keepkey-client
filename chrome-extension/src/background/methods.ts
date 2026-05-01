@@ -14,64 +14,24 @@ import { handleOsmosisRequest } from './chains/osmosisHandler';
 import { handleMayaRequest } from './chains/mayaHandler';
 import { handleRippleRequest } from './chains/rippleHandler';
 import { handleSolanaRequest } from './chains/solanaHandler';
-import { createProviderRpcError, ProviderRpcError, formatUserError } from './utils';
+import { handleTronRequest } from './chains/tronHandler';
+import { handleTonRequest } from './chains/tonHandler';
+import type { ProviderRpcError } from './utils';
+import { createProviderRpcError, formatUserError } from './utils';
+import { openSidePanel, setApprovalBadge } from './popup';
 
 const TAG = ' | METHODS | ';
 
-let isPopupOpen = false; // Flag to track popup state
-let popupWindowId: number | null = null; // Track the popup window ID
-
-const openPopup = function () {
-  const tag = TAG + ' | openPopup | ';
-  try {
-    // If popup is already open, focus it instead of creating a new one
-    if (isPopupOpen && popupWindowId !== null) {
-      console.log(tag, 'Popup already open, focusing existing window:', popupWindowId);
-      chrome.windows.update(popupWindowId, { focused: true }).catch(err => {
-        console.error(tag, 'Failed to focus existing popup, creating new one:', err);
-        isPopupOpen = false;
-        popupWindowId = null;
-        openPopup();
-      });
-      return;
-    }
-
-    console.log(tag, 'Opening popup');
-    isPopupOpen = true;
-    chrome.windows.create(
-      {
-        url: chrome.runtime.getURL('popup/index.html'), // Adjust the URL to your popup file
-        type: 'popup',
-        width: 360,
-        height: 900,
-      },
-      window => {
-        if (chrome.runtime.lastError) {
-          console.error('Error creating popup:', chrome.runtime.lastError);
-          isPopupOpen = false;
-          popupWindowId = null;
-        } else {
-          console.log('Popup window created:', window);
-          popupWindowId = window?.id || null;
-
-          // Listen for when the popup is closed
-          chrome.windows.onRemoved.addListener(function windowClosedListener(windowId) {
-            if (windowId === popupWindowId) {
-              console.log(tag, 'Popup closed, resetting state');
-              isPopupOpen = false;
-              popupWindowId = null;
-              chrome.windows.onRemoved.removeListener(windowClosedListener);
-            }
-          });
-        }
-      },
-    );
-  } catch (e) {
-    console.error(tag, e);
-    isPopupOpen = false;
-    popupWindowId = null;
-  }
-};
+// Approval requests are dApp-triggered, which means we're NOT inside a user
+// gesture. `chrome.sidePanel.open()` requires a recent user gesture, so the
+// call below may be ignored. The fallback path is the action badge plus
+// `setPanelBehavior({openPanelOnActionClick: true})` wired in index.ts —
+// the user clicks the extension icon (a real user gesture), the sidebar
+// opens, and its `requestStorage` subscription picks up the pending event.
+//
+// Hard timeout on the promise so nothing hangs forever if the user
+// ignores the request. Matches the sidebar's event-age eviction window.
+const APPROVAL_TIMEOUT_MS = 10 * 60_000;
 
 /*
   "requestInfo": {
@@ -153,36 +113,44 @@ const requireApproval = async function (
     //   throw new Error('Event not saved');
     // }
 
-    openPopup();
+    setApprovalBadge(true);
+    await openSidePanel(requestInfo);
 
-    // Wait for user's decision and return the result
+    // Wait for user's decision. Resolves on ANY of:
+    //   - user approves/rejects in sidebar (eth_sign_response arrives)
+    //   - APPROVAL_TIMEOUT_MS elapses without a response (treated as reject)
     return new Promise(resolve => {
-      const listener = (message: any, sender: chrome.runtime.MessageSender, sendResponse: any) => {
-        if (message.action === 'eth_sign_response' && message.response.eventId === requestInfo.id) {
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+
+      const cleanup = () => {
+        chrome.runtime.onMessage.removeListener(listener);
+        if (timer != null) clearTimeout(timer);
+        setApprovalBadge(false);
+      };
+
+      const listener = (message: any) => {
+        if (message?.action === 'eth_sign_response' && message?.response?.eventId === requestInfo.id) {
+          if (settled) return;
+          settled = true;
           console.log(tag, 'Received eth_sign_response for event:', message.response.eventId);
-          chrome.runtime.onMessage.removeListener(listener);
-          if (message.response.decision === 'accept') {
-            resolve({ success: true });
-          } else {
-            resolve({ success: false });
-          }
+          cleanup();
+          resolve({ success: message.response.decision === 'accept' });
         }
       };
       chrome.runtime.onMessage.addListener(listener);
+
+      timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        console.log(tag, 'Approval timed out, rejecting for event:', requestInfo.id);
+        cleanup();
+        resolve({ success: false });
+      }, APPROVAL_TIMEOUT_MS);
     });
   } catch (e) {
     console.error(tag, e);
     return { success: false }; // Return failure in case of error
-  }
-};
-
-const requireUnlock = async function () {
-  const tag = TAG + ' | requireUnlock | ';
-  try {
-    console.log(tag, 'requireUnlock for domain');
-    // openPopup();
-  } catch (e) {
-    console.error(e);
   }
 };
 
@@ -253,6 +221,15 @@ export const handleWalletRequest = async (
         return await handleSolanaRequest(method, params, requestInfo, ADDRESS, __KEEPKEY_WALLET, requireApproval);
         break;
       }
+      case 'tron':
+      case 'trx': {
+        return await handleTronRequest(method, params, requestInfo, ADDRESS, __KEEPKEY_WALLET, requireApproval);
+        break;
+      }
+      case 'ton': {
+        return await handleTonRequest(method, params, requestInfo, ADDRESS, __KEEPKEY_WALLET, requireApproval);
+        break;
+      }
       default: {
         console.log(tag, `Chain ${chain} not supported`);
         throw createProviderRpcError(4200, `Chain ${chain} not supported`);
@@ -280,9 +257,15 @@ export const handleWalletRequest = async (
     errorMessage = formatUserError({ message: errorMessage });
 
     //push error to the popup
+    // Forward `kind` so the side panel can render category-specific UI
+    // (e.g. friendly retry card for timeouts) without regex-matching
+    // the message.
+    const kind = (error as ProviderRpcError).kind;
     chrome.runtime.sendMessage({
       action: 'transaction_error',
+      eventId: requestInfo?.id,
       error: errorMessage,
+      kind,
     });
 
     if ((error as ProviderRpcError).code && (error as ProviderRpcError).message) {

@@ -86,7 +86,7 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
       const newBlockchains = [];
 
       for (const networkId of blockchainsEnabled) {
-        let blockchain: Chain = {
+        const blockchain: Chain = {
           networkId,
           name: COIN_MAP_LONG[(NetworkIdToChain as any)[networkId]] || 'unknown',
           image: networkIdToIcon(networkId),

@@ -68,6 +68,7 @@ const Connect: React.FC<ConnectProps> = ({ setIsConnecting }) => {
   return (
     <Box display="flex" justifyContent="center" alignItems="center" height="100vh" position="relative">
       <Card
+        bg="gray.800"
         borderRadius="md"
         p={6}
         mb={6}
@@ -75,12 +76,14 @@ const Connect: React.FC<ConnectProps> = ({ setIsConnecting }) => {
         flexDirection="column"
         alignItems="center"
         textAlign="center"
-        boxShadow="lg">
+        boxShadow="lg"
+        borderWidth="1px"
+        borderColor="whiteAlpha.100">
         <Image src={'https://i.ibb.co/jR8WcJM/kk.gif'} alt="KeepKey" />
-        <Text fontSize="lg" fontWeight="bold" mb={2}>
+        <Text fontSize="lg" fontWeight="bold" mb={2} color="white">
           KeepKey Vault Required
         </Text>
-        <Text fontSize="sm" mb={4} color="gray.500">
+        <Text fontSize="sm" mb={4} color="whiteAlpha.700">
           The KeepKey Vault desktop app must be running to use this extension.
         </Text>
         <Stack direction="column" spacing={4} mb={4}>
@@ -88,16 +91,16 @@ const Connect: React.FC<ConnectProps> = ({ setIsConnecting }) => {
             Launch KeepKey Vault
           </Button>
 
-          <Text fontSize="xs" color="gray.400">
+          <Text fontSize="xs" color="whiteAlpha.600">
             Already running?
           </Text>
           <Button colorScheme="teal" onClick={connectKeepkey}>
             Retry Connection
           </Button>
         </Stack>
-        <Text fontSize="sm" mt={4}>
+        <Text fontSize="sm" mt={4} color="whiteAlpha.700">
           Don't have KeepKey Vault?{' '}
-          <Button variant="link" color="teal.500" onClick={openKeepKeyLink}>
+          <Button variant="link" color="teal.300" onClick={openKeepKeyLink}>
             Download at keepkey.com
           </Button>
         </Text>

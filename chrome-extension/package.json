@@ -1,6 +1,6 @@
 {
   "name": "chrome-extension",
-  "version": "0.0.26",
+  "version": "0.0.29",
   "description": "chrome extension - core settings",
   "type": "module",
   "scripts": {
@@ -19,9 +19,12 @@
   "dependencies": {
     "@extension/shared": "workspace:*",
     "@extension/storage": "workspace:*",
+    "@noble/hashes": "^1.5.0",
+    "@scure/base": "^1.1.9",
+    "@scure/bip32": "^1.5.0",
     "buffer": "^6.0.3",
     "ethers": "^6.13.2",
-    "keepkey-vault-sdk": "^2.0.1",
+    "keepkey-vault-sdk": "^3.0.1",
     "uuid": "^10.0.0",
     "webextension-polyfill": "^0.12.0",
     "@wallet-standard/wallet": "^1.1.0",

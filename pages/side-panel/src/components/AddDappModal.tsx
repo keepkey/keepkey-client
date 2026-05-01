@@ -16,6 +16,7 @@ import {
   useToast,
 } from '@chakra-ui/react';
 import { dappStorage } from '@extension/storage';
+import { caipToIcon } from '@extension/shared';
 
 interface AddDappModalProps {
   isOpen: boolean;
@@ -29,7 +30,7 @@ export function AddDappModal({ networkId, isOpen, onClose, onSave }: AddDappModa
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const toast = useToast();
-  const defaultIcon = 'https://api.keepkey.info/coins/ethereum.png';
+  const defaultIcon = caipToIcon('eip155:1/slip44:60');
 
   const handleSave = async () => {
     if (!url || !name) {
@@ -60,7 +61,7 @@ export function AddDappModal({ networkId, isOpen, onClose, onSave }: AddDappModa
       <ModalContent>
         <ModalHeader>
           <Flex align="center">
-            <Avatar src="https://api.keepkey.info/coins/pioneerMan.png" size="sm" mr={2} />
+            <Avatar src="/kk-logo.png" name="KeepKey" size="sm" mr={2} />
             <Text>Discovery</Text>
           </Flex>
         </ModalHeader>

@@ -71,7 +71,7 @@ export async function init(): Promise<WalletState> {
       apiKey: savedApiKey,
       baseUrl: 'http://localhost:1646',
       serviceName: 'KeepKey Browser Extension',
-      serviceImageUrl: 'https://api.keepkey.info/coins/keepkey.png',
+      serviceImageUrl: 'https://pioneers.dev/coins/keepkey.png',
     });
 
     state.sdk = sdk;
@@ -97,6 +97,22 @@ export async function init(): Promise<WalletState> {
       }
       if (!state.deviceInfo) {
         state.deviceInfo = { label: 'KeepKey', model: 'KeepKey', deviceId: 'unknown' };
+      }
+    } else {
+      // Device is reachable — validate that any cached pubkeys match this
+      // specific device. Service worker restarts and hot-swaps can both
+      // leave the pubkey cache pointing at a previously-connected device;
+      // reusing it would surface the wrong addresses and stale balances.
+      try {
+        const cached = await pubkeyStorage.loadPubkeys();
+        const cachedId = cached?.deviceInfo?.deviceId;
+        const currentId = state.deviceInfo?.deviceId;
+        if (cachedId && currentId && cachedId !== 'unknown' && cachedId !== currentId) {
+          console.warn(tag, `Device changed: cache=${cachedId} → probed=${currentId}. Invalidating cache.`);
+          await pubkeyStorage.clearPubkeys();
+        }
+      } catch (e) {
+        console.warn(tag, 'Cache validation failed:', (e as Error)?.message || e);
       }
     }
 
@@ -205,8 +221,28 @@ async function fetchPubkeys(): Promise<void> {
     }
   } catch (e) {
     console.error(tag, 'Error fetching pubkeys from device:', e);
-    // Device call failed — downgrade to view-only and use cache if available
     state.deviceConnected = false;
+
+    // Auth errors mean the vault's pairing with this extension is broken
+    // (e.g. user re-paired with a different device, or vault rotated the
+    // key). Silently falling back to cached pubkeys from the *previous*
+    // device would mask the re-pair requirement — the user would see
+    // stale addresses with no explanation. Throw so the sidebar can
+    // prompt re-pair and the cached pubkeys are only used when we've
+    // chosen view-only mode, not when auth is rejecting us.
+    if (isAuthError(e)) {
+      console.warn(tag, 'Auth error from vault — clearing stale API key and failing fast');
+      try {
+        await keepKeyApiKeyStorage.saveApiKey('');
+      } catch {
+        /* ignore */
+      }
+      throw new Error('Vault auth failed. Your KeepKey needs to be re-paired with the extension.');
+    }
+
+    // Non-auth failure (network blip, device busy, etc.) — view-only via
+    // cache is acceptable. We keep deviceConnected=false so signing paths
+    // will re-probe.
     if (cachedPubkeys.length > 0) {
       console.warn(tag, 'Falling back to', cachedPubkeys.length, 'cached pubkeys (view-only)');
       state.pubkeys = cachedPubkeys;
@@ -214,6 +250,26 @@ async function fetchPubkeys(): Promise<void> {
     }
     throw e;
   }
+}
+
+/**
+ * Heuristic for "the vault rejected our credentials." Covers the
+ * error shapes we've seen from the vault-sdk client: HTTP 401 wrapped
+ * in a fetch error, plus bare messages that include those substrings.
+ * Conservative — misclassifying a non-auth failure as auth would just
+ * wipe the API key and force re-pairing, which is recoverable; the
+ * opposite direction (missing a real auth error and silently serving
+ * stale pubkeys) is the bug we're fixing.
+ */
+function isAuthError(e: unknown): boolean {
+  const msg = ((e as Error)?.message || String(e)).toLowerCase();
+  return (
+    msg.includes('401') ||
+    msg.includes('unauthorized') ||
+    msg.includes('auth') ||
+    msg.includes('invalid api key') ||
+    msg.includes('not paired')
+  );
 }
 
 /**
@@ -251,6 +307,32 @@ export function getPaths(): PathConfig[] {
 
 export function addPath(path: PathConfig): void {
   state.paths.push(path);
+}
+
+/**
+ * Remove a path (and its corresponding pubkey) by matching note.
+ * Counterpart to addPath so callers that remove accounts from storage
+ * can also clear the runtime signer state — otherwise the wallet keeps
+ * signing against a path that no longer appears in the UI.
+ * Persists the updated pubkey list if a device is known.
+ */
+export async function removePathByNote(note: string): Promise<void> {
+  const tag = TAG + ' | removePathByNote | ';
+  const beforePaths = state.paths.length;
+  const beforePubkeys = state.pubkeys.length;
+  state.paths = state.paths.filter(p => p.note !== note);
+  state.pubkeys = state.pubkeys.filter((pk: any) => pk.note !== note);
+  console.log(
+    tag,
+    `Removed ${beforePaths - state.paths.length} paths and ${beforePubkeys - state.pubkeys.length} pubkeys for note: ${note}`,
+  );
+  if (state.deviceInfo) {
+    try {
+      await pubkeyStorage.savePubkeys(state.pubkeys, state.deviceInfo);
+    } catch (e) {
+      console.warn(tag, 'Failed to persist pubkeys after removal:', e);
+    }
+  }
 }
 
 /**
@@ -338,6 +420,46 @@ export async function refreshFromDevice(): Promise<boolean> {
  */
 export function getDeviceInfo() {
   return state.deviceInfo;
+}
+
+/**
+ * Current device id, or null if unknown. Used by background polling to
+ * detect device hot-swaps without duplicating the probe logic.
+ */
+export function getDeviceId(): string | null {
+  const id = state.deviceInfo?.deviceId;
+  return id && id !== 'unknown' ? id : null;
+}
+
+/**
+ * Tear down everything keyed to the previously-connected device so the
+ * next `refreshPubkeys()` / `fetchPubkeys()` starts clean:
+ *   - in-memory pubkeys (cleared)
+ *   - paths (rebuilt to defaults — refreshPubkeys does NOT repopulate
+ *     them, so leaving paths empty would silently send an empty batch
+ *     to the device and return zero pubkeys)
+ *   - persisted pubkey cache (wiped)
+ *   - `deviceConnected` flag (forces re-probe on next call)
+ *
+ * We intentionally keep `state.sdk` alive — the vault REST client can
+ * happily serve the new device once pubkeys are re-fetched — and we
+ * keep `state.deviceInfo` populated with the freshly-probed device's
+ * info (passed in by the caller) so UI can show the new label
+ * immediately without waiting for the re-fetch to finish.
+ */
+export async function handleDeviceSwitch(newDeviceInfo: WalletState['deviceInfo']): Promise<void> {
+  const tag = TAG + ' | handleDeviceSwitch | ';
+  console.warn(tag, 'Device switch detected — clearing caches');
+  state.pubkeys = [];
+  state.paths = getDefaultPaths();
+  state.deviceInfo = newDeviceInfo;
+  state.deviceConnected = false;
+  state.initialized = false;
+  try {
+    await pubkeyStorage.clearPubkeys();
+  } catch (e) {
+    console.warn(tag, 'Failed to clear pubkey storage:', e);
+  }
 }
 
 /**

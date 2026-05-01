@@ -48,40 +48,30 @@ const AccountDropdown: React.FC<AccountDropdownProps> = ({
 
   return (
     <Box position="relative">
-      {/* Trigger — always interactive */}
+      {/* Trigger — single-line to match NetworkDropdown height. Label when
+          we have multiple accounts so the user can tell them apart; short
+          address when we only have one (the label is redundant then). */}
       <Flex
         alignItems="center"
         cursor={hasMultiple ? 'pointer' : 'default'}
         onClick={() => hasMultiple && setIsExpanded(prev => !prev)}
         px={2}
-        py={1}
+        h="32px"
         borderRadius="md"
         bg="whiteAlpha.50"
         _hover={hasMultiple ? { bg: 'whiteAlpha.150' } : {}}
         transition="background 0.15s"
-        minW={0}>
-        <Box minW={0} flex={1}>
-          {hasMultiple && (
-            <Text fontSize="xs" color="whiteAlpha.800" isTruncated maxW="80px">
-              {selected?.label || 'Account'}
-            </Text>
-          )}
-          <Text
-            fontSize="xs"
-            fontFamily="mono"
-            color="whiteAlpha.500"
-            isTruncated
-            maxW="100px"
-            cursor="pointer"
-            _hover={{ color: 'whiteAlpha.800' }}
-            onClick={e => {
-              e.stopPropagation();
-              if (selected?.address) handleCopy(selected.address, selected.key);
-            }}
-            title={selected?.address || ''}>
-            {selected ? formatAddress(selected.address) : ''}
-          </Text>
-        </Box>
+        minW={0}
+        title={selected?.address || ''}>
+        <Text
+          fontSize="xs"
+          fontWeight={hasMultiple ? 'semibold' : 500}
+          color="white"
+          isTruncated
+          maxW="100px"
+          className={hasMultiple ? undefined : 'mono'}>
+          {hasMultiple ? selected?.label || 'Account' : selected ? formatAddress(selected.address) : ''}
+        </Text>
         {!hasMultiple && selected?.address && (
           <IconButton
             icon={copiedKey === selected.key ? <CheckIcon /> : <CopyIcon />}

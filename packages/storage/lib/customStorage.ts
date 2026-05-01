@@ -1,4 +1,5 @@
-import { BaseStorage, createStorage, StorageType } from './base';
+import type { BaseStorage } from './base';
+import { createStorage, StorageType } from './base';
 
 type Event = {
   id: string;
@@ -175,7 +176,14 @@ const createAssetContextStorage = (): AssetContextStorage => {
   return {
     ...storage,
     updateContext: async (newContext: AssetContext) => {
-      await storage.set(prev => ({ ...prev, ...newContext }));
+      // REPLACE, not merge. The previous `{...prev, ...newContext}` let
+      // stale fields from an earlier asset (decimals, contractAddress,
+      // token flags) leak into the new context on switch — e.g. a
+      // user clicking TON after ETH would keep ETH's contract decimals
+      // around and the Send page's token-detection would misfire.
+      // Callers that want to update a single field should read-modify-
+      // write explicitly.
+      await storage.set(() => newContext);
     },
     clearContext: async () => {
       await storage.set(() => ({}));
@@ -355,7 +363,12 @@ const createMaskingSettingsStorage = (): MaskingSettingsStorage => {
   const storage = createStorage<MaskingSettings>(
     'masking-settings',
     {
-      enableMetaMaskMasking: false,
+      // Default ON — modern dApps (CowSwap, swap aggregators, several
+      // older sites) expect a window.ethereum with isMetaMask:true and
+      // bail out of their connect flow without it. Modern dApps that
+      // discover wallets via EIP-6963 still see KeepKey as itself.
+      // Existing installs keep whatever they previously set.
+      enableMetaMaskMasking: true,
       enableXfiMasking: false,
       enableKeplrMasking: false,
     },

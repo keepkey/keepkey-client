@@ -4,6 +4,20 @@ import deepmerge from 'deepmerge';
 const packageJson = JSON.parse(fs.readFileSync('../package.json', 'utf8'));
 const isFirefox = process.env.__FIREFOX__ === 'true';
 
+// Firefox has no side-panel API and the approval popup was removed in the
+// popup→side-panel merge. Building for Firefox in this state would produce
+// an extension with no UI at all for approvals — silently unusable on the
+// Firefox side. Fail loud until task #5 restores a Firefox-specific surface
+// (a popup shim or `sidebar_action`). Set KEEPKEY_ALLOW_BROKEN_FIREFOX=1 to
+// override if you really want to build it anyway (e.g. portfolio-only dev).
+if (isFirefox && process.env.KEEPKEY_ALLOW_BROKEN_FIREFOX !== '1') {
+  throw new Error(
+    'Firefox build is disabled: approval surface is still missing. ' +
+      'See task #5 (Firefox fallback) in the popup→side-panel merge PR. ' +
+      'Set KEEPKEY_ALLOW_BROKEN_FIREFOX=1 to force-build anyway.',
+  );
+}
+
 const sidePanelConfig = {
   side_panel: {
     default_path: 'side-panel/index.html',
@@ -23,7 +37,7 @@ const manifest = deepmerge(
     version: packageJson.version,
     description: '__MSG_extensionDescription__',
     host_permissions: ['<all_urls>'],
-    permissions: ['storage', 'tabs', 'commands'],
+    permissions: ['storage', 'tabs', 'commands', 'alarms'],
     options_page: 'options/index.html',
     background: {
       service_worker: 'background.iife.js',
@@ -46,7 +60,7 @@ const manifest = deepmerge(
     devtools_page: 'devtools/index.html',
     web_accessible_resources: [
       {
-        resources: ['*.js', '*.css', '*.svg', 'icon-128.png', 'icon-34.png'],
+        resources: ['*.js', '*.css', '*.svg', 'icon-128.png', 'icon-34.png', 'kk-logo.png'],
         matches: ['*://*/*'],
       },
     ],
