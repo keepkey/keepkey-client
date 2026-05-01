@@ -328,7 +328,11 @@ const handleEthGetCode = async params => {
 };
 
 const handleEthGetStorageAt = async params => {
-  return withRpcFailover(p => p.getStorageAt(params[0], params[1], params[2]), { tag: TAG + ' eth_getStorageAt' });
+  // Raw passthrough: ethers v6 renamed `getStorageAt` → `getStorage`,
+  // so the helper isn't where we used to call it. Sending the JSON-RPC
+  // method directly is byte-exact with what the dApp asked for, and
+  // sidesteps the v5/v6 method-name divergence entirely.
+  return withRpcFailover(p => p.send('eth_getStorageAt', params), { tag: TAG + ' eth_getStorageAt' });
 };
 
 const handleEthGetTransactionCount = async params => {
@@ -1603,7 +1607,12 @@ const isTransientRpcError = (errMsg: string): boolean => {
     m.includes('method not supported') ||
     m.includes('method does not exist') ||
     m.includes('-32601') ||
-    m.includes('403') // catches "server response 403" wrapped by ethers
+    // Narrow to ethers' transport-level wrapper text. A bare `.includes('403')`
+    // would misfire on revert reasons or hex payloads that happen to
+    // contain "403", causing a successfully-rejected eth_call to be
+    // replayed across every URL and pointlessly cool them all.
+    m.includes('server response 403') ||
+    m.includes('http 403')
   );
 };
 
