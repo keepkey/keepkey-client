@@ -363,7 +363,12 @@ const createMaskingSettingsStorage = (): MaskingSettingsStorage => {
   const storage = createStorage<MaskingSettings>(
     'masking-settings',
     {
-      enableMetaMaskMasking: false,
+      // Default ON — modern dApps (CowSwap, swap aggregators, several
+      // older sites) expect a window.ethereum with isMetaMask:true and
+      // bail out of their connect flow without it. Modern dApps that
+      // discover wallets via EIP-6963 still see KeepKey as itself.
+      // Existing installs keep whatever they previously set.
+      enableMetaMaskMasking: true,
       enableXfiMasking: false,
       enableKeplrMasking: false,
     },
