@@ -220,6 +220,17 @@ const handleNetVersion = async () => {
   return (n ?? 1).toString();
 };
 
+// All read handlers below run through `withRpcFailover` (defined later
+// in this file) so a narrow-purpose URL like Flashbots — whose
+// `getBlockNumber` succeeds but whose `eth_call` / `eth_getBalance` /
+// `eth_getCode` / etc. return HTTP 403 with JSON-RPC -32601 "rpc method
+// is not whitelisted" — gets demoted on the actual call instead of
+// being repeatedly preferred by `getProvider`'s pre-flight test.
+//
+// Method-rejection errors are classified as transient by
+// `isTransientRpcError`, so each failure cools the URL for 60s in
+// `failedRpcs` and the next call goes elsewhere.
+
 const handleEthGetBlockByNumber = async params => {
   // Passthrough raw RPC. ethers v6 `provider.getBlock(...)` returns a
   // `Block` class instance whose field set is a SUBSET of the JSON-RPC
@@ -228,13 +239,11 @@ const handleEthGetBlockByNumber = async params => {
   // and whose prototype/methods are stripped when we send the value
   // through `chrome.runtime.sendMessage`. dApps parse the JSON-RPC shape,
   // not the wrapper. See docs/RPC_PASSTHROUGH_AUDIT.md.
-  const provider = await getProvider();
-  return provider.send('eth_getBlockByNumber', params);
+  return withRpcFailover(p => p.send('eth_getBlockByNumber', params), { tag: TAG + ' eth_getBlockByNumber' });
 };
 
 const handleEthBlockNumber = async () => {
-  const provider = await getProvider();
-  const blockNumber = await provider.getBlockNumber();
+  const blockNumber = await withRpcFailover(p => p.getBlockNumber(), { tag: TAG + ' eth_blockNumber' });
   return '0x' + blockNumber.toString(16);
 };
 
@@ -242,12 +251,8 @@ const handleEthGetBalance = async params => {
   const tag = TAG + ' | handleEthGetBalance | ';
   try {
     console.log(tag, 'Getting balance for address:', params[0], 'block:', params[1]);
-    const provider = await getProvider();
-    console.log(tag, 'Provider created, calling getBalance...');
-
-    const balance = await provider.getBalance(params[0], params[1]);
+    const balance = await withRpcFailover(p => p.getBalance(params[0], params[1]), { tag: TAG + ' eth_getBalance' });
     console.log(tag, 'Balance retrieved:', balance.toString());
-
     return '0x' + balance.toString(16);
   } catch (error) {
     console.error(tag, 'Error getting balance:', error);
@@ -261,8 +266,7 @@ const handleEthGetTransactionReceipt = async params => {
   // class with `index` (vs spec `transactionIndex`), reshaped `logs[]`,
   // and stripped methods after structured-clone — dApps parse the
   // JSON-RPC spec shape and reject the wrapper.
-  const provider = await getProvider();
-  return provider.send('eth_getTransactionReceipt', params);
+  return withRpcFailover(p => p.send('eth_getTransactionReceipt', params), { tag: TAG + ' eth_getTransactionReceipt' });
 };
 
 const handleEthGetTransactionByHash = async params => {
@@ -274,14 +278,11 @@ const handleEthGetTransactionByHash = async params => {
   // gone too. This is the polling endpoint Uniswap (and most dApps) use
   // to track a tx after `eth_sendTransaction`; the wrapper shape was
   // breaking that handoff.
-  const provider = await getProvider();
-  return provider.send('eth_getTransactionByHash', params);
+  return withRpcFailover(p => p.send('eth_getTransactionByHash', params), { tag: TAG + ' eth_getTransactionByHash' });
 };
 
 const handleWeb3ClientVersion = async () => {
-  const provider = await getProvider();
-  const clientVersion = await provider.send('web3_clientVersion', []);
-  return clientVersion;
+  return withRpcFailover(p => p.send('web3_clientVersion', []), { tag: TAG + ' web3_clientVersion' });
 };
 
 const handleEthCall = async params => {
@@ -290,32 +291,27 @@ const handleEthCall = async params => {
   // model the not-yet-broadcasted Permit2 approval; if we drop it the
   // simulation reverts and the quote is rejected (/v1/swap returns 404).
   // Passthrough raw RPC so the dApp's params arrive byte-identical.
-  const provider = await getProvider();
-  return provider.send('eth_call', params);
+  return withRpcFailover(p => p.send('eth_call', params), { tag: TAG + ' eth_call' });
 };
 
 const handleEthMaxPriorityFeePerGas = async () => {
-  const provider = await getProvider();
-  const feeData = await provider.getFeeData();
+  const feeData = await withRpcFailover(p => p.getFeeData(), { tag: TAG + ' eth_maxPriorityFeePerGas' });
   return feeData.maxPriorityFeePerGas ? '0x' + feeData.maxPriorityFeePerGas.toString(16) : '0x0';
 };
 
 const handleEthMaxFeePerGas = async () => {
-  const provider = await getProvider();
-  const feeData = await provider.getFeeData();
+  const feeData = await withRpcFailover(p => p.getFeeData(), { tag: TAG + ' eth_maxFeePerGas' });
   return feeData.maxFeePerGas ? '0x' + feeData.maxFeePerGas.toString(16) : '0x0';
 };
 
 const handleEthEstimateGas = async params => {
   // ethers v6 provider.estimateGas(tx) takes 1 arg and drops blockTag.
   // Passthrough raw RPC for spec-compliant behavior.
-  const provider = await getProvider();
-  return provider.send('eth_estimateGas', params);
+  return withRpcFailover(p => p.send('eth_estimateGas', params), { tag: TAG + ' eth_estimateGas' });
 };
 
 const handleEthGasPrice = async () => {
-  const provider = await getProvider();
-  const feeData = await provider.getFeeData();
+  const feeData = await withRpcFailover(p => p.getFeeData(), { tag: TAG + ' eth_gasPrice' });
   return feeData.gasPrice ? '0x' + feeData.gasPrice.toString(16) : '0x0';
 };
 
@@ -324,25 +320,21 @@ const handleEthFeeHistory = async params => {
   // estimator) call eth_feeHistory for percentile-based fee math. Without
   // this case the request hits the default branch and throws "method not
   // supported", forcing the dApp onto a stale eth_gasPrice fallback.
-  const provider = await getProvider();
-  return provider.send('eth_feeHistory', params);
+  return withRpcFailover(p => p.send('eth_feeHistory', params), { tag: TAG + ' eth_feeHistory' });
 };
 
 const handleEthGetCode = async params => {
-  const provider = await getProvider();
-  const code = await provider.getCode(params[0], params[1]);
-  return code;
+  return withRpcFailover(p => p.getCode(params[0], params[1]), { tag: TAG + ' eth_getCode' });
 };
 
 const handleEthGetStorageAt = async params => {
-  const provider = await getProvider();
-  const storage = await provider.getStorageAt(params[0], params[1], params[2]);
-  return storage;
+  return withRpcFailover(p => p.getStorageAt(params[0], params[1], params[2]), { tag: TAG + ' eth_getStorageAt' });
 };
 
 const handleEthGetTransactionCount = async params => {
-  const provider = await getProvider();
-  const transactionCount = await provider.getTransactionCount(params[0], params[1]);
+  const transactionCount = await withRpcFailover(p => p.getTransactionCount(params[0], params[1]), {
+    tag: TAG + ' eth_getTransactionCount',
+  });
   return '0x' + transactionCount.toString(16);
 };
 
@@ -733,14 +725,21 @@ const handleSigningMethods = async (method, params, requestInfo, ADDRESS, KEEPKE
   let nonceInfo: { latest: number; pending: number; willReplace: boolean } | null = null;
   if ((method === 'eth_sendTransaction' || method === 'eth_signTransaction') && unsignedTx) {
     try {
-      const provider = await getProvider();
       const fromAddr = unsignedTx.from || ADDRESS;
-      const [feeData, latestBlock, latestNonce, pendingNonce] = await Promise.all([
-        provider.getFeeData(),
-        provider.getBlock('latest'),
-        fromAddr ? provider.getTransactionCount(fromAddr, 'latest') : Promise.resolve(0),
-        fromAddr ? provider.getTransactionCount(fromAddr, 'pending') : Promise.resolve(0),
-      ]);
+      // Run all four reads against the same provider per failover
+      // attempt — cleaner UX than splitting them across URLs (which
+      // would risk inconsistent baseFee/nonce snapshots) and the
+      // payload is small enough that retrying the bundle is cheap.
+      const [feeData, latestBlock, latestNonce, pendingNonce] = await withRpcFailover(
+        p =>
+          Promise.all([
+            p.getFeeData(),
+            p.getBlock('latest'),
+            fromAddr ? p.getTransactionCount(fromAddr, 'latest') : Promise.resolve(0),
+            fromAddr ? p.getTransactionCount(fromAddr, 'pending') : Promise.resolve(0),
+          ]),
+        { tag: TAG + ' fee-warning preflight' },
+      );
       feeWarning = buildFeeWarning({
         chainId: unsignedTx.chainId ?? currentProvider?.chainId ?? 1,
         dappMaxFeePerGas: unsignedTx.maxFeePerGas,
@@ -826,7 +825,6 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
   if (!networkId) throw Error('Failed to set context before sending!');
 
   // Build EVM transfer locally
-  const provider = await getProvider();
   const amountWei = '0x' + parseEther(params[0].amount?.amount || params[0].amount || '0').toString(16);
   const chainId = currentProviderCtx?.chainId || '1';
 
@@ -840,19 +838,25 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
     data: '0x',
   };
 
-  // Get nonce and gas — 'pending' so an in-flight tx from this account
-  // doesn't get reused (see signTransaction comment for the failure mode).
-  const nonce = await provider.getTransactionCount(ADDRESS, 'pending');
+  // Each read fails over independently — see signTransaction for the
+  // same pattern. 'pending' nonce so an in-flight tx from this account
+  // doesn't get reused.
+  const nonce = await withRpcFailover(p => p.getTransactionCount(ADDRESS, 'pending'), {
+    tag: tag + ' transfer.nonce',
+  });
   unsignedTx.nonce = '0x' + nonce.toString(16);
   try {
-    let estimatedGas = await provider.estimateGas({ from: ADDRESS, to: unsignedTx.to, value: unsignedTx.value });
+    let estimatedGas = await withRpcFailover(
+      p => p.estimateGas({ from: ADDRESS, to: unsignedTx.to, value: unsignedTx.value }),
+      { tag: tag + ' transfer.estimateGas' },
+    );
     const gasBuffer = BigInt(estimatedGas) / BigInt(5);
     estimatedGas = BigInt(estimatedGas) + gasBuffer;
     unsignedTx.gasLimit = '0x' + estimatedGas.toString(16);
   } catch (e) {
     unsignedTx.gasLimit = '0x' + BigInt(21000).toString(16);
   }
-  const feeData = await provider.getFeeData();
+  const feeData = await withRpcFailover(p => p.getFeeData(), { tag: tag + ' transfer.feeData' });
   if (feeData.maxFeePerGas) {
     unsignedTx.maxFeePerGas = '0x' + feeData.maxFeePerGas.toString(16);
     unsignedTx.maxPriorityFeePerGas = feeData.maxPriorityFeePerGas
@@ -1569,6 +1573,16 @@ async function getCandidateRpcs(): Promise<{
  * Used by withRpcFailover (read calls). Broadcast has its own
  * classifier because it has additional tx-level definitive cases
  * (insufficient funds, nonce too low, etc.).
+ *
+ * Includes "method-rejection" patterns because narrow-purpose RPCs in
+ * Pioneer's catalog (Flashbots' rpc.flashbots.net is the canonical
+ * example — only supports eth_sendRawTransaction / eth_chainId /
+ * eth_blockNumber, rejects everything else with HTTP 403 + JSON-RPC
+ * code -32601 "rpc method is not whitelisted") would otherwise be
+ * sticky: their pre-flight `getBlockNumber()` test passes, so they get
+ * picked first on every read, and every read fails 403. Treating the
+ * rejection as transient lets the loop blacklist them for 60s and try
+ * the next URL.
  */
 const isTransientRpcError = (errMsg: string): boolean => {
   const m = errMsg.toLowerCase();
@@ -1582,7 +1596,14 @@ const isTransientRpcError = (errMsg: string): boolean => {
     m.includes('network') ||
     m.includes('server_error') ||
     m.includes('exceeded maximum retry') ||
-    /\b5\d{2}\b/.test(m) // 5xx HTTP code
+    /\b5\d{2}\b/.test(m) || // 5xx HTTP code
+    // Method-rejection: this URL doesn't support this method. Try next.
+    m.includes('rpc method is not whitelisted') ||
+    m.includes('method not found') ||
+    m.includes('method not supported') ||
+    m.includes('method does not exist') ||
+    m.includes('-32601') ||
+    m.includes('403') // catches "server response 403" wrapped by ethers
   );
 };
 
