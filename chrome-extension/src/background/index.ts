@@ -590,10 +590,97 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
   return thisPromise;
 }
 
+/**
+ * Drop pending approval events left in `requestStorage` from a previous
+ * service-worker lifecycle.
+ *
+ * Why: `requireApproval` (in methods.ts) stores the event, sets the
+ * badge, and waits for an `eth_sign_response` message via an in-memory
+ * `chrome.runtime.onMessage` listener. When the SW dies mid-flight (MV3
+ * idle eviction, manual reload, dev rebuild) the storage entry survives
+ * but the listener doesn't. A user who clicks Approve in the side panel
+ * after restart sends a message into the void; nothing happens; the
+ * dApp eventually times out at 5min.
+ *
+ * BUT — `requestStorage` is also briefly used as a "post-broadcast
+ * holding pen" for some chains. EVM writes `txid` into the same entry
+ * after broadcast (ethereumHandler.ts), and the side-panel TxidPage
+ * only moves the entry to `approvalStorage` when the user clicks
+ * Close. Solana flips status to 'broadcasted'; TON to 'completed'. We
+ * MUST NOT cancel those — the tx has already gone out and the user is
+ * still seeing the success page.
+ *
+ * Heuristic for "truly pending and now orphaned":
+ *   - no broadcast artifact (txid / txHash / signedTx) AND
+ *   - status is undefined or 'request'
+ *
+ * Anything else is post-action; preserve and let the normal UI path
+ * complete the lifecycle (Close → moveTo approvalStorage).
+ */
+function isOrphanedPendingEvent(ev: any): boolean {
+  if (!ev) return false;
+  if (ev.txid || ev.txHash || ev.signedTx) return false;
+  const status = ev.status;
+  if (status && status !== 'request') return false;
+  return true;
+}
+
+async function clearOrphanedApprovalEvents() {
+  const tag = TAG + ' | clearOrphanedApprovalEvents | ';
+  try {
+    const events = (await requestStorage.getEvents()) || [];
+    if (events.length === 0) return;
+    const orphans = events.filter(isOrphanedPendingEvent);
+    if (orphans.length === 0) {
+      console.log(tag, `${events.length} event(s) in storage; all post-broadcast — preserving for UI completion`);
+      return;
+    }
+    console.log(
+      tag,
+      `dropping ${orphans.length} orphaned pending event(s) (preserving ${events.length - orphans.length} post-broadcast)`,
+    );
+    for (const ev of orphans) {
+      // Notify side-panel UI (no-op if no panel is listening). The
+      // dApp side already received a port-closed error when the SW
+      // died, so we don't need to signal there.
+      chrome.runtime
+        .sendMessage({
+          action: 'transaction_error',
+          eventId: ev.id,
+          error: 'Request cancelled — wallet restarted',
+          kind: 'cancelled',
+        })
+        .catch(() => {});
+      try {
+        await requestStorage.removeEventById(ev.id);
+      } catch (e) {
+        console.warn(tag, 'failed to remove orphan', ev.id, e);
+      }
+    }
+    // The badge was set when the request was created; the cleanup
+    // that would have unset it died with the SW. Reset only if every
+    // event in storage is now gone — otherwise a preserved post-
+    // broadcast entry may still legitimately want the badge.
+    const remaining = (await requestStorage.getEvents()) || [];
+    if (remaining.length === 0) setApprovalBadge(false);
+  } catch (e) {
+    console.warn(tag, 'unexpected error', e);
+  }
+}
+
+// Fire as the SW spawns — BEFORE the 5s wallet-init delay below, so the
+// side panel doesn't have a window to render and accept clicks on a
+// stale orphan event during boot. Async; we don't await at top level
+// (would block other listener registrations in MV3).
+void clearOrphanedApprovalEvents();
+
 const onStart = async function () {
   const tag = TAG + ' | onStart | ';
   try {
     console.log(tag, 'Starting...');
+    // Orphan cleanup runs at module-load time (above) so the side
+    // panel can't render stale events during the 5s wallet-init
+    // delay. Don't repeat it here.
     resetSolanaState(); // clear stale cached address before re-init
     resetTronState();
     resetTonState();
