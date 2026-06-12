@@ -94,6 +94,19 @@ const sanitizeChainId = (chainId: string): string => {
 const failedRpcs = new Map<string, number>(); // URL -> timestamp of failure
 const RPC_RETRY_DELAY = 60000; // Don't retry failed RPC for 1 minute
 
+// Stored RPC list for the active provider. Legacy shim: pre-0.0.31
+// Pioneer seeds wrote the fallback list under `fallbacks` — a key no
+// failover loop reads — so existing installs degenerated to a single
+// URL. Merge it in so they get the full list without waiting for a
+// reseed.
+const storedRpcList = (currentProvider: any): string[] =>
+  currentProvider.providers && currentProvider.providers.length > 0
+    ? currentProvider.providers
+    : [
+        currentProvider.providerUrl,
+        ...(Array.isArray(currentProvider.fallbacks) ? currentProvider.fallbacks : []),
+      ].filter(Boolean);
+
 // Helper function to get the provider with RPC failover
 const getProvider = async (): Promise<JsonRpcProvider> => {
   const tag = TAG + ' | getProvider | ';
@@ -114,10 +127,7 @@ const getProvider = async (): Promise<JsonRpcProvider> => {
   }
 
   // Get all available RPC URLs
-  const rpcUrls =
-    currentProvider.providers && currentProvider.providers.length > 0
-      ? currentProvider.providers
-      : [currentProvider.providerUrl];
+  const rpcUrls = storedRpcList(currentProvider);
   if (!rpcUrls || rpcUrls.length === 0 || !rpcUrls[0]) {
     throw createProviderRpcError(4900, 'No RPC URLs available');
   }
@@ -1535,12 +1545,7 @@ async function getCandidateRpcs(): Promise<{
     currentProvider.networkId ||
     (parseChainId(currentProvider.chainId) != null ? `eip155:${parseChainId(currentProvider.chainId)}` : '');
 
-  const pioneerUrls: string[] =
-    currentProvider.providers && currentProvider.providers.length > 0
-      ? currentProvider.providers
-      : currentProvider.providerUrl
-        ? [currentProvider.providerUrl]
-        : [];
+  const pioneerUrls: string[] = storedRpcList(currentProvider);
   const lastResort = networkId ? getLastResortRpcs(networkId) : [];
 
   const seen = new Set<string>();

@@ -78,6 +78,7 @@ const RequestFeeCard = ({ transaction }) => {
     high: '',
   });
   const [loading, setLoading] = useState(true);
+  const [feeError, setFeeError] = useState('');
   const [usdFee, setUsdFee] = useState('');
   const [assetContext, setAssetContext] = useState(null);
 
@@ -113,9 +114,16 @@ const RequestFeeCard = ({ transaction }) => {
   const getFee = async () => {
     const tag = TAG + ' | getFee | ';
     setLoading(true);
+    setFeeError('');
     try {
       const feeData = await requestFeeData();
       console.log(tag, ' feeData: ', feeData);
+
+      // Background responds { error } when every RPC failed — don't feed
+      // that (or a null gasPrice) into BigInt.
+      if (!feeData || feeData.error || feeData.gasPrice == null) {
+        throw new Error(feeData?.error || 'No gas price returned from RPC');
+      }
 
       // feeData.gasPrice appears to already be in wei (not gwei)
       const networkGasPriceWei = BigInt(feeData.gasPrice);
@@ -147,6 +155,7 @@ const RequestFeeCard = ({ transaction }) => {
       setFeeWarning(false);
     } catch (e) {
       console.error('Error fetching fee data:', e);
+      setFeeError(e?.message || 'Failed to fetch fee data');
     } finally {
       setLoading(false);
     }
@@ -296,6 +305,18 @@ const RequestFeeCard = ({ transaction }) => {
         <Alert status="warning" borderRadius="md" mb={2}>
           <AlertTitle>Warning</AlertTitle>
           DApp suggested fee is lower than the network recommended fee.
+        </Alert>
+      )}
+
+      {!loading && feeError && (
+        <Alert status="error" borderRadius="md" mb={2}>
+          <AlertTitle>Fee estimation failed</AlertTitle>
+          <Box>
+            <Text fontSize="sm">{feeError}</Text>
+            <Button size="sm" mt={2} onClick={getFee}>
+              Retry
+            </Button>
+          </Box>
         </Alert>
       )}
 
