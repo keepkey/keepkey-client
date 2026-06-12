@@ -171,14 +171,20 @@ const RequestFeeCard = ({ transaction }) => {
     const isEthereumMainnet = transaction.networkId === 'eip155:1';
     setIsEIP1559(isEthereumMainnet);
 
-    if (
-      !transaction.request.maxPriorityFeePerGas &&
-      !transaction.request.maxFeePerGas &&
-      !transaction.request.gasPrice
-    ) {
-      getFee();
+    // Fees already on the request only count as "dApp provided" when WE
+    // didn't write them there — handleUpdateTransaction persists fees to
+    // storage, which reloads this component with its own values echoed
+    // back. Without the marker the card flipped into dApp-suggested mode
+    // on its own write and looped forever (write → storage reload → new
+    // transaction prop → refetch → write).
+    const dappSuppliedFees =
+      !transaction.feeSetByWallet &&
+      (transaction.request.maxPriorityFeePerGas || transaction.request.maxFeePerGas || transaction.request.gasPrice);
+
+    if (!dappSuppliedFees) {
+      if (!fees.medium) getFee();
       setDappProvidedFee(false);
-      setSelectedFee('medium');
+      setSelectedFee(prev => prev || 'medium');
     } else {
       const dappGasPrice = BigInt(hexToDecimal(transaction.request.gasPrice || '0x0'));
       const dappGasPriceGwei = weiToGwei(dappGasPrice);
@@ -193,7 +199,7 @@ const RequestFeeCard = ({ transaction }) => {
         getFee();
       }
 
-      setSelectedFee('dappSuggested');
+      setSelectedFee(prev => prev || 'dappSuggested');
     }
   }, [transaction, assetContext]);
 
@@ -248,6 +254,16 @@ const RequestFeeCard = ({ transaction }) => {
         maxPriorityFeePerGas: decimalToHex(priorityFeeInWei),
       };
 
+      // No-op write guard: storage writes reload this component (the
+      // side panel subscribes to requestStorage), so persisting an
+      // unchanged fee loops forever.
+      if (
+        transaction.request.maxFeePerGas === selectedFeeData.maxFeePerGas &&
+        transaction.request.maxPriorityFeePerGas === selectedFeeData.maxPriorityFeePerGas
+      ) {
+        return;
+      }
+
       // Remove gasPrice from request and requestInfo.params[0]
       delete transaction.request.gasPrice;
       delete transaction.requestInfo.params[0].gasPrice;
@@ -268,6 +284,10 @@ const RequestFeeCard = ({ transaction }) => {
         gasPrice: decimalToHex(gasPriceInWei),
       };
 
+      if (transaction.request.gasPrice === selectedFeeData.gasPrice) {
+        return;
+      }
+
       // Set gasPrice in request and requestInfo.params[0]
       transaction.request.gasPrice = selectedFeeData.gasPrice;
       transaction.requestInfo.params[0].gasPrice = selectedFeeData.gasPrice;
@@ -287,7 +307,9 @@ const RequestFeeCard = ({ transaction }) => {
       delete transaction.maxPriorityFeePerGas;
     }
 
-    //
+    // Mark the fees as wallet-written so the reload doesn't mistake
+    // them for dApp-supplied values and flip into dappSuggested mode.
+    transaction.feeSetByWallet = true;
     requestStorage.updateEventById(transaction.id, transaction);
   };
 

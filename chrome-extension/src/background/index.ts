@@ -959,6 +959,19 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         case 'GET_ASSET_CONTEXT': {
           // Asset context lives in assetContextStorage (set by SET_ASSET_CONTEXT)
           const assetCtx = await assetContextStorage.get();
+          // The context may have been stored before the first balance
+          // fetch landed (SET_ASSET_CONTEXT enriches from cachedBalances
+          // at write time). Re-attach price data at read time so the fee
+          // card can render USD once balances arrive.
+          if (assetCtx?.networkId && (!assetCtx.priceUsd || assetCtx.priceUsd === '0')) {
+            const exact = assetCtx.caip && cachedBalances.find((b: any) => b.caip === assetCtx.caip);
+            const nativeFallback = cachedBalances.find((b: any) => b.networkId === assetCtx.networkId && b.isNative);
+            const match = exact || nativeFallback;
+            if (match?.priceUsd && match.priceUsd !== '0') {
+              assetCtx.priceUsd = match.priceUsd;
+              if (!assetCtx.balance) assetCtx.balance = match.balance;
+            }
+          }
           sendResponse({ assets: assetCtx && Object.keys(assetCtx).length > 0 ? assetCtx : null });
           break;
         }
