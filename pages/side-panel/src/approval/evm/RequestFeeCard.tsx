@@ -64,6 +64,17 @@ const decimalToHex = decimal => {
   return '0x' + BigInt(decimal).toString(16);
 };
 
+// Mainnet gas is routinely sub-1-gwei now — integer-gwei math
+// (Math.floor / BigInt division) zeroes every option. Keep fees as
+// decimal-gwei strings for display and convert via float math.
+const weiToGwei = wei => {
+  const gwei = Number(wei) / 1e9;
+  if (gwei >= 10) return Math.round(gwei).toString();
+  return parseFloat(gwei.toPrecision(3)).toString();
+};
+
+const gweiToWei = gwei => BigInt(Math.round(parseFloat(gwei) * 1e9));
+
 const RequestFeeCard = ({ transaction }) => {
   const [selectedFee, setSelectedFee] = useState('');
   const [customFee, setCustomFee] = useState('');
@@ -138,16 +149,11 @@ const RequestFeeCard = ({ transaction }) => {
       console.log(tag, ' mediumGasPriceWei: ', mediumGasPriceWei);
       console.log(tag, ' highGasPriceWei: ', highGasPriceWei);
 
-      // Convert from wei to gwei for display (divide by 1e9)
-      // If the values are small (< 1000000), they might already be in gwei
-      const isAlreadyGwei = Number(networkGasPriceWei) < 1000000;
-      const divider = isAlreadyGwei ? 1 : 1e9;
-
       const feeSettings = {
         dappSuggested: fees.dappSuggested,
-        low: Math.floor(Number(lowGasPriceWei) / divider).toString(),
-        medium: Math.floor(Number(mediumGasPriceWei) / divider).toString(),
-        high: Math.floor(Number(highGasPriceWei) / divider).toString(),
+        low: weiToGwei(lowGasPriceWei),
+        medium: weiToGwei(mediumGasPriceWei),
+        high: weiToGwei(highGasPriceWei),
       };
       console.log(tag, ' feeSettings: ', feeSettings);
       setFees(feeSettings);
@@ -175,7 +181,7 @@ const RequestFeeCard = ({ transaction }) => {
       setSelectedFee('medium');
     } else {
       const dappGasPrice = BigInt(hexToDecimal(transaction.request.gasPrice || '0x0'));
-      const dappGasPriceGwei = (dappGasPrice / BigInt(1e9)).toString();
+      const dappGasPriceGwei = weiToGwei(dappGasPrice);
 
       setDappProvidedFee(true);
       setFees(prevFees => ({
@@ -230,9 +236,10 @@ const RequestFeeCard = ({ transaction }) => {
   };
 
   const handleUpdateTransaction = async feeInGwei => {
+    if (!Number.isFinite(parseFloat(feeInGwei)) || parseFloat(feeInGwei) <= 0) return;
     let selectedFeeData = {};
     if (isEIP1559) {
-      const baseFeeInWei = BigInt(feeInGwei) * BigInt(1e9);
+      const baseFeeInWei = gweiToWei(feeInGwei);
       const priorityFeeInWei = BigInt(2 * 1e9);
       const maxFeeInWei = baseFeeInWei + priorityFeeInWei;
 
@@ -255,7 +262,7 @@ const RequestFeeCard = ({ transaction }) => {
       // Remove gasPrice from top-level transaction
       delete transaction.gasPrice;
     } else {
-      const gasPriceInWei = BigInt(feeInGwei) * BigInt(1e9);
+      const gasPriceInWei = gweiToWei(feeInGwei);
 
       selectedFeeData = {
         gasPrice: decimalToHex(gasPriceInWei),
