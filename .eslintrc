@@ -37,6 +37,9 @@
   "rules": {
     "react/react-in-jsx-scope": "off",
     "import/no-unresolved": "off",
+    "import/named": "off",
+    "import/namespace": "off",
+    "import/default": "off",
     "@typescript-eslint/consistent-type-imports": "error",
     "@typescript-eslint/no-explicit-any": "warn",
     "@typescript-eslint/ban-types": "warn",
