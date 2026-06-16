@@ -772,7 +772,9 @@ const onStart = async function () {
             blockExplorerUrls: ethInfo.explorer ? [ethInfo.explorer] : [],
             name: ethInfo.name,
             providerUrl: ethInfo.rpc,
-            fallbacks: ethInfo.rpcs.slice(1),
+            // Full list (primary included) under `providers` — the key the
+            // failover loops (getProvider / withRpcFailover) actually read.
+            providers: ethInfo.rpcs,
           } as any);
         } else {
           console.warn(tag, 'Pioneer did not return ETH chain info — leaving provider unset until user picks one');
@@ -957,6 +959,19 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         case 'GET_ASSET_CONTEXT': {
           // Asset context lives in assetContextStorage (set by SET_ASSET_CONTEXT)
           const assetCtx = await assetContextStorage.get();
+          // The context may have been stored before the first balance
+          // fetch landed (SET_ASSET_CONTEXT enriches from cachedBalances
+          // at write time). Re-attach price data at read time so the fee
+          // card can render USD once balances arrive.
+          if (assetCtx?.networkId && (!assetCtx.priceUsd || assetCtx.priceUsd === '0')) {
+            const exact = assetCtx.caip && cachedBalances.find((b: any) => b.caip === assetCtx.caip);
+            const nativeFallback = cachedBalances.find((b: any) => b.networkId === assetCtx.networkId && b.isNative);
+            const match = exact || nativeFallback;
+            if (match?.priceUsd && match.priceUsd !== '0') {
+              assetCtx.priceUsd = match.priceUsd;
+              if (!assetCtx.balance) assetCtx.balance = match.balance;
+            }
+          }
           sendResponse({ assets: assetCtx && Object.keys(assetCtx).length > 0 ? assetCtx : null });
           break;
         }
@@ -993,11 +1008,14 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           try {
             const providerInfo = await web3ProviderStorage.getWeb3Provider();
             if (!providerInfo) throw Error('Failed to get provider info');
-            const evmProvider = makeStaticProvider(
-              providerInfo.providerUrl,
-              providerInfo.networkId || providerInfo.chainId,
-            );
-            const feeData = await evmProvider.getFeeData();
+            const rawChainId = String(providerInfo.chainId ?? '');
+            const chainIdNum = /^0x/i.test(rawChainId) ? parseInt(rawChainId, 16) : parseInt(rawChainId, 10);
+            const networkId = providerInfo.networkId || (Number.isFinite(chainIdNum) ? `eip155:${chainIdNum}` : '');
+            if (!networkId) throw Error('Cannot resolve networkId for active provider');
+            // A single rate-limited primary must not kill the approval
+            // flow — fail over custom → Pioneer → last-resort like the
+            // other read sites.
+            const feeData = await withRpcFailoverByNetworkId(networkId, p => p.getFeeData());
             sendResponse(feeData);
           } catch (error: any) {
             sendResponse({ error: error.message });
@@ -1116,7 +1134,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                       blockExplorerUrls: chainInfo.explorer ? [chainInfo.explorer] : [],
                       name: chainInfo.name,
                       providerUrl: chainInfo.rpc,
-                      fallbacks: chainInfo.rpcs.slice(1),
+                      providers: chainInfo.rpcs,
                     };
                   } else {
                     console.error(tag, 'Network not found in custom storage or Pioneer:', asset.networkId);

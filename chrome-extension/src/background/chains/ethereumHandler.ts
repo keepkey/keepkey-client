@@ -14,7 +14,7 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { ChainToNetworkId, caipToNetworkId, networkIdToIcon } from '../chainConfig';
 import * as wallet from '../wallet';
-import { buildFeeWarning, type FeeChoice, type FeeWarning } from './feeFloors';
+import { buildFeeWarning, getFeeFloor, getPriorityFeeFloor, type FeeChoice, type FeeWarning } from './feeFloors';
 import { openSidePanel, setApprovalBadge } from '../popup';
 import { getChainInfo, makeStaticProvider } from './registry';
 import { getLastResortRpcs } from './lastResortRpcs';
@@ -94,6 +94,19 @@ const sanitizeChainId = (chainId: string): string => {
 const failedRpcs = new Map<string, number>(); // URL -> timestamp of failure
 const RPC_RETRY_DELAY = 60000; // Don't retry failed RPC for 1 minute
 
+// Stored RPC list for the active provider. Legacy shim: pre-0.0.31
+// Pioneer seeds wrote the fallback list under `fallbacks` — a key no
+// failover loop reads — so existing installs degenerated to a single
+// URL. Merge it in so they get the full list without waiting for a
+// reseed.
+const storedRpcList = (currentProvider: any): string[] =>
+  currentProvider.providers && currentProvider.providers.length > 0
+    ? currentProvider.providers
+    : [
+        currentProvider.providerUrl,
+        ...(Array.isArray(currentProvider.fallbacks) ? currentProvider.fallbacks : []),
+      ].filter(Boolean);
+
 // Helper function to get the provider with RPC failover
 const getProvider = async (): Promise<JsonRpcProvider> => {
   const tag = TAG + ' | getProvider | ';
@@ -114,10 +127,7 @@ const getProvider = async (): Promise<JsonRpcProvider> => {
   }
 
   // Get all available RPC URLs
-  const rpcUrls =
-    currentProvider.providers && currentProvider.providers.length > 0
-      ? currentProvider.providers
-      : [currentProvider.providerUrl];
+  const rpcUrls = storedRpcList(currentProvider);
   if (!rpcUrls || rpcUrls.length === 0 || !rpcUrls[0]) {
     throw createProviderRpcError(4900, 'No RPC URLs available');
   }
@@ -815,6 +825,44 @@ const convertToHex = (amountInEther: string) => {
   return '0x' + amountInWei.toString(16);
 };
 
+/**
+ * Fee fields for the wallet-chosen path — used when the dApp supplied no
+ * fee fields at all. Raw eth_gasPrice can lag the head block and land
+ * BELOW the current base fee (seen 2026-06-12: gasPrice 0.119 gwei vs
+ * baseFee 0.139 gwei → legacy tx stuck pending), so floor against the
+ * per-chain feeFloors + live base fee. Prefers EIP-1559 when the node
+ * reports it.
+ */
+const walletChosenFees = async (
+  chainId: string | number,
+  tag: string,
+): Promise<{ maxFeePerGas?: string; maxPriorityFeePerGas?: string; gasPrice?: string }> => {
+  const [feeData, latestBlock] = await withRpcFailover(p => Promise.all([p.getFeeData(), p.getBlock('latest')]), {
+    tag: tag + ' walletChosenFees',
+  });
+  const baseFee: bigint | null = latestBlock?.baseFeePerGas ?? null;
+  const floor = getFeeFloor(chainId, baseFee);
+
+  if (feeData.maxFeePerGas != null) {
+    const tipFloor = getPriorityFeeFloor(chainId);
+    const oracleTip = feeData.maxPriorityFeePerGas ?? 0n;
+    const tip = oracleTip > tipFloor ? oracleTip : tipFloor;
+    // maxFee must leave the full tip on top of baseFee, or EIP-1559
+    // squeezes the effective tip below the floor we just enforced.
+    const headroomFloor = (baseFee ?? 0n) + tip;
+    let maxFee = feeData.maxFeePerGas > floor ? feeData.maxFeePerGas : floor;
+    if (maxFee < headroomFloor) maxFee = headroomFloor;
+    return {
+      maxFeePerGas: '0x' + maxFee.toString(16),
+      maxPriorityFeePerGas: '0x' + tip.toString(16),
+    };
+  }
+
+  const gasPrice = feeData.gasPrice ?? 0n;
+  const floored = gasPrice > floor ? gasPrice : floor;
+  return { gasPrice: '0x' + floored.toString(16) };
+};
+
 // For 'transfer', build transaction info before calling requireApproval
 const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval) => {
   const tag = TAG + ' | handleTransfer | ';
@@ -860,15 +908,7 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
   } catch (e) {
     unsignedTx.gasLimit = '0x' + BigInt(21000).toString(16);
   }
-  const feeData = await withRpcFailover(p => p.getFeeData(), { tag: tag + ' transfer.feeData' });
-  if (feeData.maxFeePerGas) {
-    unsignedTx.maxFeePerGas = '0x' + feeData.maxFeePerGas.toString(16);
-    unsignedTx.maxPriorityFeePerGas = feeData.maxPriorityFeePerGas
-      ? '0x' + feeData.maxPriorityFeePerGas.toString(16)
-      : '0x0';
-  } else if (feeData.gasPrice) {
-    unsignedTx.gasPrice = '0x' + feeData.gasPrice.toString(16);
-  }
+  Object.assign(unsignedTx, await walletChosenFees(chainId, tag + ' transfer'));
 
   console.log(tag, 'unsignedTx:', unsignedTx);
   requestInfo.unsignedTx = unsignedTx;
@@ -1268,9 +1308,8 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
     } else if (transaction.gasPrice) {
       input.gasPrice = transaction.gasPrice;
     } else {
-      // Fetch fee data if not provided
-      const feeData = await withRpcFailover(p => p.getFeeData(), { tag: tag + ' feeData' });
-      input.gasPrice = feeData.gasPrice ? '0x' + feeData.gasPrice.toString(16) : undefined;
+      // dApp gave no fee fields — wallet picks, with floors applied.
+      Object.assign(input, await walletChosenFees(transaction.chainId, tag));
     }
 
     console.log(`${tag} Final input: `, input);
@@ -1535,12 +1574,7 @@ async function getCandidateRpcs(): Promise<{
     currentProvider.networkId ||
     (parseChainId(currentProvider.chainId) != null ? `eip155:${parseChainId(currentProvider.chainId)}` : '');
 
-  const pioneerUrls: string[] =
-    currentProvider.providers && currentProvider.providers.length > 0
-      ? currentProvider.providers
-      : currentProvider.providerUrl
-        ? [currentProvider.providerUrl]
-        : [];
+  const pioneerUrls: string[] = storedRpcList(currentProvider);
   const lastResort = networkId ? getLastResortRpcs(networkId) : [];
 
   const seen = new Set<string>();
