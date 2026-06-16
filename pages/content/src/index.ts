@@ -24,12 +24,14 @@ interface MaskingSettings {
   enableMetaMaskMasking: boolean;
   enableXfiMasking: boolean;
   enableKeplrMasking: boolean;
+  enablePhantomMasking: boolean;
 }
 
 const MASKING_DEFAULTS: MaskingSettings = {
   enableMetaMaskMasking: false,
   enableXfiMasking: false,
   enableKeplrMasking: false,
+  enablePhantomMasking: false,
 };
 
 async function readMaskingSettings(): Promise<MaskingSettings> {
@@ -41,6 +43,7 @@ async function readMaskingSettings(): Promise<MaskingSettings> {
       enableMetaMaskMasking: raw.enableMetaMaskMasking === true,
       enableXfiMasking: raw.enableXfiMasking === true,
       enableKeplrMasking: raw.enableKeplrMasking === true,
+      enablePhantomMasking: raw.enablePhantomMasking === true,
     };
   } catch {
     return MASKING_DEFAULTS;

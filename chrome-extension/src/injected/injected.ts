@@ -10,6 +10,7 @@ import type {
 } from './types';
 import { KeepKeySolanaWallet } from './solana-wallet-standard';
 import { registerSolanaWallet } from './solana-wallet-register';
+import { KeepKeySolanaProvider } from './solana-provider';
 import { KeepKeyTronProvider } from './tron-provider';
 
 (function () {
@@ -51,12 +52,14 @@ import { KeepKeyTronProvider } from './tron-provider';
     enableMetaMaskMasking: boolean;
     enableXfiMasking: boolean;
     enableKeplrMasking: boolean;
+    enablePhantomMasking: boolean;
   }
   const masking: Masking = (() => {
     const fallback: Masking = {
       enableMetaMaskMasking: false,
       enableXfiMasking: false,
       enableKeplrMasking: false,
+      enablePhantomMasking: false,
     };
     try {
       // currentScript works during script execution; the getElementById
@@ -72,6 +75,7 @@ import { KeepKeyTronProvider } from './tron-provider';
         enableMetaMaskMasking: parsed.enableMetaMaskMasking === true,
         enableXfiMasking: parsed.enableXfiMasking === true,
         enableKeplrMasking: parsed.enableKeplrMasking === true,
+        enablePhantomMasking: parsed.enablePhantomMasking === true,
       };
     } catch {
       return fallback;
@@ -84,7 +88,8 @@ import { KeepKeyTronProvider } from './tron-provider';
   console.log(
     `[KeepKey] masking: metamask=${masking.enableMetaMaskMasking ? 'on' : 'off'} ` +
       `xfi=${masking.enableXfiMasking ? 'on' : 'off'} ` +
-      `keplr=${masking.enableKeplrMasking ? 'on' : 'off'}`,
+      `keplr=${masking.enableKeplrMasking ? 'on' : 'off'} ` +
+      `phantom=${masking.enablePhantomMasking ? 'on' : 'off'}`,
   );
 
   // Enhanced source information
@@ -604,13 +609,34 @@ import { KeepKeyTronProvider } from './tron-provider';
       announceProvider(ethereum);
     }, 100);
 
-    // Solana Wallet Standard registration (completely separate from Ethereum)
-    // Never touches window.solana — relies purely on wallet-standard registry
+    // Solana Wallet Standard registration (completely separate from Ethereum).
+    // This is the modern discovery path and is always active — it relies
+    // purely on the wallet-standard registry and never touches window.solana.
     try {
       const solanaWallet = new KeepKeySolanaWallet(walletRequest);
       registerSolanaWallet(solanaWallet);
     } catch (_e) {
       // swallow; Solana registration is best-effort
+    }
+
+    // Legacy window.solana shim — the Solana counterpart to MetaMask
+    // masking. Gated on the Phantom masking toggle and mounted only if
+    // nothing else (a real Phantom/Solflare) already claims the global, so
+    // we never clobber an installed wallet. Modern dApps keep discovering
+    // KeepKey via the Wallet Standard registration above regardless.
+    if (masking.enablePhantomMasking) {
+      try {
+        if (!(kWindow as any).solana) {
+          const solanaProvider = new KeepKeySolanaProvider(walletRequest);
+          Object.defineProperty(kWindow, 'solana', {
+            value: solanaProvider,
+            writable: false,
+            configurable: true,
+          });
+        }
+      } catch (_e) {
+        // swallow; legacy provider is best-effort
+      }
     }
 
     // TronLink / TronWeb shim — mount only if nothing claims those
