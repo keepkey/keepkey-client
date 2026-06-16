@@ -37,7 +37,18 @@
   "rules": {
     "react/react-in-jsx-scope": "off",
     "import/no-unresolved": "off",
-    "@typescript-eslint/consistent-type-imports": "error"
+    "import/named": "off",
+    "import/namespace": "off",
+    "import/default": "off",
+    "@typescript-eslint/consistent-type-imports": "error",
+    "@typescript-eslint/no-explicit-any": "warn",
+    "@typescript-eslint/ban-types": "warn",
+    "@typescript-eslint/ban-ts-comment": "warn",
+    "@typescript-eslint/no-unused-vars": "warn",
+    "@typescript-eslint/no-this-alias": "warn",
+    "no-empty": "warn",
+    "no-useless-escape": "warn",
+    "react/no-unescaped-entities": "warn"
   },
   "globals": {
     "chrome": "readonly"
@@ -45,6 +56,7 @@
   "ignorePatterns": [
     "watch.js",
     "dist/**",
-    "pages/side-panel/src/approval/**"
+    "pages/side-panel/src/approval/**",
+    "chrome-extension/public/injected.js"
   ]
 }
