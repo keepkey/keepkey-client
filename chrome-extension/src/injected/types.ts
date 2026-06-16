@@ -100,4 +100,5 @@ export interface KeepKeyWindow extends Window {
   keepkey?: Record<ChainType, WalletProvider>;
   tronLink?: any;
   tronWeb?: any;
+  solana?: any;
 }

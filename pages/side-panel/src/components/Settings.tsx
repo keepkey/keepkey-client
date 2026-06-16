@@ -23,6 +23,7 @@ const Settings = () => {
     enableMetaMaskMasking: false,
     enableXfiMasking: false,
     enableKeplrMasking: false,
+    enablePhantomMasking: false,
   });
 
   // Fetch initial masking settings from storage
@@ -31,11 +32,13 @@ const Settings = () => {
       const metaMaskSetting = await maskingSettingsStorage.getEnableMetaMaskMasking();
       const xfiSetting = await maskingSettingsStorage.getEnableXfiMasking();
       const keplrSetting = await maskingSettingsStorage.getEnableKeplrMasking();
+      const phantomSetting = await maskingSettingsStorage.getEnablePhantomMasking();
 
       setMaskingSettings({
         enableMetaMaskMasking: metaMaskSetting,
         enableXfiMasking: xfiSetting,
         enableKeplrMasking: keplrSetting,
+        enablePhantomMasking: phantomSetting,
       });
     };
 
@@ -59,6 +62,12 @@ const Settings = () => {
     const newValue = !maskingSettings.enableKeplrMasking;
     await maskingSettingsStorage.setEnableKeplrMasking(newValue);
     setMaskingSettings(prev => ({ ...prev, enableKeplrMasking: newValue }));
+  };
+
+  const togglePhantomMasking = async () => {
+    const newValue = !maskingSettings.enablePhantomMasking;
+    await maskingSettingsStorage.setEnablePhantomMasking(newValue);
+    setMaskingSettings(prev => ({ ...prev, enablePhantomMasking: newValue }));
   };
 
   const clearCustomStorages = async () => {
@@ -203,6 +212,21 @@ const Settings = () => {
           <code> window.ethereum </code>
           with <code>isMetaMask: true</code>. Modern dApps still see KeepKey via EIP-6963. Refresh any open dApp after
           toggling.
+        </Text>
+
+        {/* Phantom (Solana) Masking */}
+        <HStack w="100%" justifyContent="space-between">
+          <HStack>
+            <Avatar size="md" name="Phantom" src="/brand/phantom.svg" />
+            <Text>Enable Phantom Masking</Text>
+          </HStack>
+          <Switch size="md" isChecked={maskingSettings.enablePhantomMasking} onChange={togglePhantomMasking} />
+        </HStack>
+        <Text fontSize="xs" color="whiteAlpha.700" mt={-2} mb={2}>
+          When on, KeepKey claims to be Phantom on legacy Solana dApps by mounting
+          <code> window.solana </code>
+          with <code>isPhantom: true</code>. Modern dApps still see KeepKey via the Solana Wallet Standard. Only mounts
+          if no other Solana wallet is installed. Refresh any open dApp after toggling.
         </Text>
 
         {/* Xfi Masking - Coming Soon */}
