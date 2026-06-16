@@ -64,6 +64,17 @@ const decimalToHex = decimal => {
   return '0x' + BigInt(decimal).toString(16);
 };
 
+// Mainnet gas is routinely sub-1-gwei now — integer-gwei math
+// (Math.floor / BigInt division) zeroes every option. Keep fees as
+// decimal-gwei strings for display and convert via float math.
+const weiToGwei = wei => {
+  const gwei = Number(wei) / 1e9;
+  if (gwei >= 10) return Math.round(gwei).toString();
+  return parseFloat(gwei.toPrecision(3)).toString();
+};
+
+const gweiToWei = gwei => BigInt(Math.round(parseFloat(gwei) * 1e9));
+
 const RequestFeeCard = ({ transaction }) => {
   const [selectedFee, setSelectedFee] = useState('');
   const [customFee, setCustomFee] = useState('');
@@ -78,6 +89,7 @@ const RequestFeeCard = ({ transaction }) => {
     high: '',
   });
   const [loading, setLoading] = useState(true);
+  const [feeError, setFeeError] = useState('');
   const [usdFee, setUsdFee] = useState('');
   const [assetContext, setAssetContext] = useState(null);
 
@@ -113,9 +125,16 @@ const RequestFeeCard = ({ transaction }) => {
   const getFee = async () => {
     const tag = TAG + ' | getFee | ';
     setLoading(true);
+    setFeeError('');
     try {
       const feeData = await requestFeeData();
       console.log(tag, ' feeData: ', feeData);
+
+      // Background responds { error } when every RPC failed — don't feed
+      // that (or a null gasPrice) into BigInt.
+      if (!feeData || feeData.error || feeData.gasPrice == null) {
+        throw new Error(feeData?.error || 'No gas price returned from RPC');
+      }
 
       // feeData.gasPrice appears to already be in wei (not gwei)
       const networkGasPriceWei = BigInt(feeData.gasPrice);
@@ -130,16 +149,11 @@ const RequestFeeCard = ({ transaction }) => {
       console.log(tag, ' mediumGasPriceWei: ', mediumGasPriceWei);
       console.log(tag, ' highGasPriceWei: ', highGasPriceWei);
 
-      // Convert from wei to gwei for display (divide by 1e9)
-      // If the values are small (< 1000000), they might already be in gwei
-      const isAlreadyGwei = Number(networkGasPriceWei) < 1000000;
-      const divider = isAlreadyGwei ? 1 : 1e9;
-
       const feeSettings = {
         dappSuggested: fees.dappSuggested,
-        low: Math.floor(Number(lowGasPriceWei) / divider).toString(),
-        medium: Math.floor(Number(mediumGasPriceWei) / divider).toString(),
-        high: Math.floor(Number(highGasPriceWei) / divider).toString(),
+        low: weiToGwei(lowGasPriceWei),
+        medium: weiToGwei(mediumGasPriceWei),
+        high: weiToGwei(highGasPriceWei),
       };
       console.log(tag, ' feeSettings: ', feeSettings);
       setFees(feeSettings);
@@ -147,6 +161,7 @@ const RequestFeeCard = ({ transaction }) => {
       setFeeWarning(false);
     } catch (e) {
       console.error('Error fetching fee data:', e);
+      setFeeError(e?.message || 'Failed to fetch fee data');
     } finally {
       setLoading(false);
     }
@@ -156,17 +171,23 @@ const RequestFeeCard = ({ transaction }) => {
     const isEthereumMainnet = transaction.networkId === 'eip155:1';
     setIsEIP1559(isEthereumMainnet);
 
-    if (
-      !transaction.request.maxPriorityFeePerGas &&
-      !transaction.request.maxFeePerGas &&
-      !transaction.request.gasPrice
-    ) {
-      getFee();
+    // Fees already on the request only count as "dApp provided" when WE
+    // didn't write them there — handleUpdateTransaction persists fees to
+    // storage, which reloads this component with its own values echoed
+    // back. Without the marker the card flipped into dApp-suggested mode
+    // on its own write and looped forever (write → storage reload → new
+    // transaction prop → refetch → write).
+    const dappSuppliedFees =
+      !transaction.feeSetByWallet &&
+      (transaction.request.maxPriorityFeePerGas || transaction.request.maxFeePerGas || transaction.request.gasPrice);
+
+    if (!dappSuppliedFees) {
+      if (!fees.medium) getFee();
       setDappProvidedFee(false);
-      setSelectedFee('medium');
+      setSelectedFee(prev => prev || 'medium');
     } else {
       const dappGasPrice = BigInt(hexToDecimal(transaction.request.gasPrice || '0x0'));
-      const dappGasPriceGwei = (dappGasPrice / BigInt(1e9)).toString();
+      const dappGasPriceGwei = weiToGwei(dappGasPrice);
 
       setDappProvidedFee(true);
       setFees(prevFees => ({
@@ -178,7 +199,7 @@ const RequestFeeCard = ({ transaction }) => {
         getFee();
       }
 
-      setSelectedFee('dappSuggested');
+      setSelectedFee(prev => prev || 'dappSuggested');
     }
   }, [transaction, assetContext]);
 
@@ -221,9 +242,10 @@ const RequestFeeCard = ({ transaction }) => {
   };
 
   const handleUpdateTransaction = async feeInGwei => {
+    if (!Number.isFinite(parseFloat(feeInGwei)) || parseFloat(feeInGwei) <= 0) return;
     let selectedFeeData = {};
     if (isEIP1559) {
-      const baseFeeInWei = BigInt(feeInGwei) * BigInt(1e9);
+      const baseFeeInWei = gweiToWei(feeInGwei);
       const priorityFeeInWei = BigInt(2 * 1e9);
       const maxFeeInWei = baseFeeInWei + priorityFeeInWei;
 
@@ -231,6 +253,16 @@ const RequestFeeCard = ({ transaction }) => {
         maxFeePerGas: decimalToHex(maxFeeInWei),
         maxPriorityFeePerGas: decimalToHex(priorityFeeInWei),
       };
+
+      // No-op write guard: storage writes reload this component (the
+      // side panel subscribes to requestStorage), so persisting an
+      // unchanged fee loops forever.
+      if (
+        transaction.request.maxFeePerGas === selectedFeeData.maxFeePerGas &&
+        transaction.request.maxPriorityFeePerGas === selectedFeeData.maxPriorityFeePerGas
+      ) {
+        return;
+      }
 
       // Remove gasPrice from request and requestInfo.params[0]
       delete transaction.request.gasPrice;
@@ -246,11 +278,15 @@ const RequestFeeCard = ({ transaction }) => {
       // Remove gasPrice from top-level transaction
       delete transaction.gasPrice;
     } else {
-      const gasPriceInWei = BigInt(feeInGwei) * BigInt(1e9);
+      const gasPriceInWei = gweiToWei(feeInGwei);
 
       selectedFeeData = {
         gasPrice: decimalToHex(gasPriceInWei),
       };
+
+      if (transaction.request.gasPrice === selectedFeeData.gasPrice) {
+        return;
+      }
 
       // Set gasPrice in request and requestInfo.params[0]
       transaction.request.gasPrice = selectedFeeData.gasPrice;
@@ -271,7 +307,9 @@ const RequestFeeCard = ({ transaction }) => {
       delete transaction.maxPriorityFeePerGas;
     }
 
-    //
+    // Mark the fees as wallet-written so the reload doesn't mistake
+    // them for dApp-supplied values and flip into dappSuggested mode.
+    transaction.feeSetByWallet = true;
     requestStorage.updateEventById(transaction.id, transaction);
   };
 
@@ -296,6 +334,18 @@ const RequestFeeCard = ({ transaction }) => {
         <Alert status="warning" borderRadius="md" mb={2}>
           <AlertTitle>Warning</AlertTitle>
           DApp suggested fee is lower than the network recommended fee.
+        </Alert>
+      )}
+
+      {!loading && feeError && (
+        <Alert status="error" borderRadius="md" mb={2}>
+          <AlertTitle>Fee estimation failed</AlertTitle>
+          <Box>
+            <Text fontSize="sm">{feeError}</Text>
+            <Button size="sm" mt={2} onClick={getFee}>
+              Retry
+            </Button>
+          </Box>
         </Alert>
       )}
 

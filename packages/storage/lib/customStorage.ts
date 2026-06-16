@@ -44,6 +44,7 @@ type MaskingSettings = {
   enableMetaMaskMasking: boolean;
   enableXfiMasking: boolean;
   enableKeplrMasking: boolean;
+  enablePhantomMasking: boolean;
 };
 
 type MaskingSettingsStorage = BaseStorage<MaskingSettings> & {
@@ -53,6 +54,8 @@ type MaskingSettingsStorage = BaseStorage<MaskingSettings> & {
   getEnableXfiMasking: () => Promise<boolean>;
   setEnableKeplrMasking: (value: boolean) => Promise<void>;
   getEnableKeplrMasking: () => Promise<boolean>;
+  setEnablePhantomMasking: (value: boolean) => Promise<void>;
+  getEnablePhantomMasking: () => Promise<boolean>;
 };
 
 const TAG = ' | customStorage | ';
@@ -371,6 +374,10 @@ const createMaskingSettingsStorage = (): MaskingSettingsStorage => {
       enableMetaMaskMasking: true,
       enableXfiMasking: false,
       enableKeplrMasking: false,
+      // Default ON — legacy Solana dApps (and wallet-adapter-phantom, which
+      // gates on window.solana.isPhantom) only see KeepKey when this shim is
+      // mounted. Modern dApps still discover KeepKey via the Wallet Standard.
+      enablePhantomMasking: true,
     },
     {
       storageType: StorageType.Local,
@@ -409,6 +416,16 @@ const createMaskingSettingsStorage = (): MaskingSettingsStorage => {
     getEnableKeplrMasking: async () => {
       const settings = await storage.get();
       return settings.enableKeplrMasking;
+    },
+    setEnablePhantomMasking: async (value: boolean) => {
+      await storage.set(prev => ({
+        ...prev,
+        enablePhantomMasking: value,
+      }));
+    },
+    getEnablePhantomMasking: async () => {
+      const settings = await storage.get();
+      return settings.enablePhantomMasking;
     },
   };
 };
