@@ -11,6 +11,7 @@
     "build": "pnpm build:injected && vite build",
     "dev": "cross-env __DEV__=true NODE_ENV=development pnpm build:injected && vite build --mode development",
     "test": "vitest run",
+    "test:watch": "vitest",
     "lint": "eslint ./ --ext .ts,.js,.tsx,.jsx",
     "lint:fix": "pnpm lint --fix",
     "prettier": "prettier . --write --ignore-path ../.prettierignore",
@@ -42,6 +43,7 @@
     "cross-env": "^7.0.3",
     "deepmerge": "^4.3.1",
     "magic-string": "^0.30.11",
-    "ts-loader": "^9.5.1"
+    "ts-loader": "^9.5.1",
+    "vitest": "^2.1.9"
   }
 }
