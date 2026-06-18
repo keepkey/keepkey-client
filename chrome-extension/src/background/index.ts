@@ -285,11 +285,7 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
   if (balancesFetchInProgress && !forceRefresh) return balancesFetchInProgress;
 
   const myFetchId = ++latestFetchId;
-  // Declared with a definite-assignment assertion: the IIFE's `finally`
-  // references `thisPromise`, but that runs only after the synchronous
-  // assignment below completes.
-  let thisPromise!: Promise<any[]>;
-  thisPromise = (async () => {
+  const thisPromise = (async () => {
     try {
       const allPubkeys = wallet.getPubkeys();
       if (allPubkeys.length === 0) return cachedBalances;
@@ -582,9 +578,11 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
       console.error('[fetchBalances] Error:', e.message || e);
       return cachedBalances;
     } finally {
-      // Only clear the in-flight ref if it still points to this promise — a newer
-      // forceRefresh call may have replaced it while we were running.
-      if (balancesFetchInProgress === thisPromise) {
+      // Only clear the in-flight ref if WE are still the active fetch — a newer
+      // forceRefresh bumps latestFetchId (and replaces balancesFetchInProgress)
+      // while we run. Comparing fetch ids avoids referencing thisPromise from
+      // inside its own initializer (which would force a `let` + self-reference).
+      if (myFetchId === latestFetchId) {
         balancesFetchInProgress = null;
       }
     }

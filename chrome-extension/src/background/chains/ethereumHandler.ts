@@ -2,8 +2,10 @@
     Ethereum Provider Refactored
 */
 
-import { JsonRpcProvider, parseEther, Transaction } from 'ethers';
-import { createProviderRpcError, ProviderRpcError } from '../utils';
+import type { JsonRpcProvider } from 'ethers';
+import { parseEther, Transaction } from 'ethers';
+import type { ProviderRpcError } from '../utils';
+import { createProviderRpcError } from '../utils';
 import {
   requestStorage,
   web3ProviderStorage,
