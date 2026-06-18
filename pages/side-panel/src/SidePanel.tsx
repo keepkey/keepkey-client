@@ -450,9 +450,9 @@ const SidePanel = () => {
       </Drawer>
 
       {/* Settings Modal */}
-      <Modal isOpen={isSettingsOpen} onClose={onSettingsClose} size="xl">
+      <Modal isOpen={isSettingsOpen} onClose={onSettingsClose} size="xl" scrollBehavior="inside">
         <ModalOverlay />
-        <ModalContent>
+        <ModalContent maxH="85vh">
           <ModalHeader>
             <Text fontSize="lg" fontWeight="bold" textAlign="center">
               Settings

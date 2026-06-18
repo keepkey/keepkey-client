@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Flex, Text, Box, Icon, Collapse, IconButton, Badge, Button, useToast } from '@chakra-ui/react';
+import React, { useState, useRef } from 'react';
+import { Flex, Text, Box, Icon, IconButton, Badge, Button, useToast, useOutsideClick } from '@chakra-ui/react';
 import { ChevronDownIcon, ChevronUpIcon, CopyIcon, CheckIcon, AddIcon, SmallCloseIcon } from '@chakra-ui/icons';
 import type { AccountItem } from './headerTypes';
 import { formatAddress } from './headerUtils';
@@ -28,6 +28,10 @@ const AccountDropdown: React.FC<AccountDropdownProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const toast = useToast();
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Close when the user clicks anywhere outside the trigger + panel.
+  useOutsideClick({ ref: containerRef, handler: () => setIsExpanded(false) });
 
   const selected = accounts.find(a => a.key === selectedAccountKey) || accounts[0] || null;
 
@@ -47,7 +51,7 @@ const AccountDropdown: React.FC<AccountDropdownProps> = ({
   const hasMultiple = accounts.length > 1 || canAddAccount;
 
   return (
-    <Box position="relative">
+    <Box position="relative" ref={containerRef}>
       {/* Trigger — single-line to match NetworkDropdown height. Label when
           we have multiple accounts so the user can tell them apart; short
           address when we only have one (the label is redundant then). */}
@@ -91,8 +95,10 @@ const AccountDropdown: React.FC<AccountDropdownProps> = ({
         )}
       </Flex>
 
-      {/* Dropdown panel */}
-      <Collapse in={isExpanded} animateOpacity>
+      {/* Dropdown panel — conditionally rendered (no Collapse wrapper: an
+          absolutely-positioned child reports zero height to Collapse, which
+          then clamps overflow and breaks the panel's own scroll). */}
+      {isExpanded && (
         <Box
           position="absolute"
           top="100%"
@@ -103,9 +109,10 @@ const AccountDropdown: React.FC<AccountDropdownProps> = ({
           border="1px solid"
           borderColor="whiteAlpha.200"
           bg="gray.800"
-          maxH="300px"
+          maxH="calc(100vh - 84px)"
           minW="180px"
           overflowY="auto"
+          overscrollBehavior="contain"
           sx={{
             '&::-webkit-scrollbar': { width: '4px' },
             '&::-webkit-scrollbar-thumb': { bg: 'whiteAlpha.300', borderRadius: '2px' },
@@ -200,7 +207,7 @@ const AccountDropdown: React.FC<AccountDropdownProps> = ({
             </Flex>
           )}
         </Box>
-      </Collapse>
+      )}
     </Box>
   );
 };
