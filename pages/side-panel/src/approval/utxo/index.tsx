@@ -65,7 +65,7 @@ export function UtxoTransaction({ transaction: initialTransaction, handleRespons
     try {
       const data = await requestStorage.getEventById(id);
       console.log(tag, 'data: ', data);
-      if (data.unsignedTx) {
+      if (data && data.unsignedTx) {
         setTransaction(data);
         setIsLoading(false);
       }
@@ -127,8 +127,8 @@ export function UtxoTransaction({ transaction: initialTransaction, handleRespons
           <Divider />
           <RequestMethodCard transaction={transaction} />
           <Divider />
-          <Tabs>
-            <TabList defaultIndex={1}>
+          <Tabs defaultIndex={1}>
+            <TabList>
               <Tab>Basic</Tab>
               <Tab>Fees</Tab>
               <Tab>Raw</Tab>

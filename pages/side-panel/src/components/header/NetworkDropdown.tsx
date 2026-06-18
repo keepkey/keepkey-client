@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { Flex, Text, Box, Avatar, Icon, Collapse, IconButton, Badge } from '@chakra-ui/react';
+import React, { useState, useMemo, useRef } from 'react';
+import { Flex, Text, Box, Avatar, Icon, IconButton, Badge, useOutsideClick } from '@chakra-ui/react';
 import {
   ChevronDownIcon,
   ChevronUpIcon,
@@ -8,6 +8,7 @@ import {
   SmallCloseIcon,
   ExternalLinkIcon,
 } from '@chakra-ui/icons';
+import { NetworkIdToChain } from '@extension/shared';
 import type { ChainFamily, NetworkItem } from './headerTypes';
 import { CHAIN_FAMILY_LABELS } from './headerConstants';
 import { getChainFamily } from './headerUtils';
@@ -29,11 +30,23 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeFamily, setActiveFamily] = useState<ChainFamily | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Close when the user clicks anywhere outside the trigger + panel.
+  useOutsideClick({ ref: containerRef, handler: () => setIsExpanded(false) });
 
   const selected = useMemo(
     () => networks.find(n => n.networkId === selectedNetworkId) || null,
     [networks, selectedNetworkId],
   );
+
+  // Trigger shows the compact chain symbol (BNB, ETH, MATIC…) instead of the
+  // long network name ("BNB Smart Chain") so the crowded header doesn't
+  // mid-word-truncate. The dropdown list below keeps full names for clarity.
+  const triggerLabel = useMemo(() => {
+    if (!selected) return 'Network';
+    return (selected.networkId && NetworkIdToChain[selected.networkId]) || selected.name;
+  }, [selected]);
 
   const groupedNetworks = useMemo(() => {
     const groups: Partial<Record<ChainFamily, NetworkItem[]>> = {};
@@ -97,7 +110,7 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
   );
 
   return (
-    <Box position="relative">
+    <Box position="relative" ref={containerRef}>
       {/* Trigger */}
       <Flex
         alignItems="center"
@@ -111,14 +124,16 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
         transition="background 0.15s"
         minW={0}>
         {selected?.icon && <Avatar size="2xs" src={selected.icon} name={selected.name} mr={1.5} />}
-        <Text fontSize="xs" fontWeight="semibold" color="white" isTruncated maxW="90px">
-          {selected?.name || 'Network'}
+        <Text fontSize="xs" fontWeight="semibold" color="white" isTruncated maxW="72px">
+          {triggerLabel}
         </Text>
         <Icon as={isExpanded ? ChevronUpIcon : ChevronDownIcon} boxSize={3} ml={1} color="whiteAlpha.700" />
       </Flex>
 
-      {/* Dropdown panel */}
-      <Collapse in={isExpanded} animateOpacity>
+      {/* Dropdown panel — conditionally rendered (no Collapse wrapper: an
+          absolutely-positioned child reports zero height to Collapse, which
+          then clamps overflow and breaks the panel's own scroll). */}
+      {isExpanded && (
         <Box
           position="absolute"
           top="100%"
@@ -130,9 +145,10 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
           border="1px solid"
           borderColor="whiteAlpha.200"
           bg="gray.800"
-          maxH="350px"
+          maxH="calc(100vh - 84px)"
           minW="200px"
           overflowY="auto"
+          overscrollBehavior="contain"
           sx={{
             '&::-webkit-scrollbar': { width: '4px' },
             '&::-webkit-scrollbar-thumb': { bg: 'whiteAlpha.300', borderRadius: '2px' },
@@ -239,7 +255,7 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
             </Text>
           </Flex>
         </Box>
-      </Collapse>
+      )}
     </Box>
   );
 };

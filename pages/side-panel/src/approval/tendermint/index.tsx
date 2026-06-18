@@ -60,8 +60,8 @@ export function TendermintTransaction({ transaction: initialTransaction, handleR
           <RequestMethodCard transaction={transaction} />
           <Divider />
 
-          <Tabs>
-            <TabList defaultIndex={1}>
+          <Tabs defaultIndex={1}>
+            <TabList>
               <Tab>Basic</Tab>
               {/*<Tab>Fees</Tab>*/}
               <Tab>Raw</Tab>

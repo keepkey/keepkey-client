@@ -87,9 +87,14 @@ export const theme = extendTheme({
   styles: {
     global: {
       'html, body, #app-container': {
+        height: '100%',
+        margin: 0,
         background: colors.kkSurface.bg,
         color: colors.kkText.base,
         fontFamily: "'Inter', system-ui, sans-serif",
+        // Inner panels own their scrolling (the body Flex / drawer bodies);
+        // pin the document so the wheel drives those, not the whole window.
+        overscrollBehavior: 'none',
       },
       // Uppercase letter-spaced micro-label used throughout the design.
       '.kk-eyebrow': {

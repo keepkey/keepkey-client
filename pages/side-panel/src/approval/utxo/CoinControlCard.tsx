@@ -17,9 +17,9 @@ import {
 } from '@chakra-ui/react';
 import { ExternalLinkIcon } from '@chakra-ui/icons';
 
-export default function CoinControl({ transaction }) {
-  const [inputs, setInputs] = useState([]);
-  const [outputs, setOutputs] = useState([]);
+export default function CoinControl({ transaction }: any) {
+  const [inputs, setInputs] = useState<any[]>([]);
+  const [outputs, setOutputs] = useState<any[]>([]);
   const [adjustedFee, setAdjustedFee] = useState<number>(0);
   const [assetContext, setAssetContext] = useState({ priceUsd: 30000 }); // Placeholder for asset price
   const [feeOption, setFeeOption] = useState<string>('medium');

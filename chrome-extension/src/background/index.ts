@@ -285,7 +285,7 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
   if (balancesFetchInProgress && !forceRefresh) return balancesFetchInProgress;
 
   const myFetchId = ++latestFetchId;
-  const thisPromise: Promise<any[]> = (async () => {
+  const thisPromise = (async () => {
     try {
       const allPubkeys = wallet.getPubkeys();
       if (allPubkeys.length === 0) return cachedBalances;
@@ -489,7 +489,7 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
         const evmAddress = allPubkeys.find((pk: any) => pk.networks?.includes('eip155:*'))?.address;
 
         if (evmAddress) {
-          for (const networkId of savedChains) {
+          for (const networkId of savedChains || []) {
             if (coveredNetworks.has(networkId)) continue;
             if (!networkId.startsWith('eip155:')) continue;
 
@@ -578,9 +578,11 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
       console.error('[fetchBalances] Error:', e.message || e);
       return cachedBalances;
     } finally {
-      // Only clear the in-flight ref if it still points to this promise — a newer
-      // forceRefresh call may have replaced it while we were running.
-      if (balancesFetchInProgress === thisPromise) {
+      // Only clear the in-flight ref if WE are still the active fetch — a newer
+      // forceRefresh bumps latestFetchId (and replaces balancesFetchInProgress)
+      // while we run. Comparing fetch ids avoids referencing thisPromise from
+      // inside its own initializer (which would force a `let` + self-reference).
+      if (myFetchId === latestFetchId) {
         balancesFetchInProgress = null;
       }
     }
@@ -1514,7 +1516,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
 
             // Custom chains from storage (dApp-added via wallet_addEthereumChain)
             const savedChains = await blockchainStorage.getAllBlockchains();
-            for (const networkId of savedChains) {
+            for (const networkId of savedChains || []) {
               if (assetMap.has(networkId)) continue;
               const data = await blockchainDataStorage.getBlockchainData(networkId);
               if (data) {
@@ -1924,7 +1926,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
       }
     } catch (error) {
       console.error('Error handling message:', error);
-      sendResponse({ error: error.message });
+      sendResponse({ error: error instanceof Error ? error.message : String(error) });
     }
   })();
 
@@ -1938,7 +1940,7 @@ exampleSidebarStorage
     chrome.action.onClicked.addListener((tab: any) => {
       if (openSidebar === true) {
         chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
-          chrome.sidePanel.open({ tabId: tab.id }, () => {
+          chrome.sidePanel.open({ tabId: tab.id, windowId: tab.windowId }, () => {
             if (chrome.runtime.lastError) {
               console.error('Error opening side panel:', chrome.runtime.lastError);
             }

@@ -38,13 +38,13 @@ const requestAssetContext = () => {
 };
 
 // Function to estimate transaction size
-const estimateTxSize = (inputs, outputs) => {
+const estimateTxSize = (inputs: any[], outputs: any[]) => {
   const baseTransactionWeight = 10 * 4; // 10 bytes * 4 weight units
 
   let totalWeight = 0;
 
   // Inputs
-  inputs.forEach(input => {
+  inputs.forEach((input: any) => {
     let weight = 0;
     if (input.scriptType === 'p2wpkh') {
       weight = 41 * 4; // P2WPKH input: 41 bytes * 4 weight units
@@ -59,7 +59,7 @@ const estimateTxSize = (inputs, outputs) => {
   });
 
   // Outputs
-  outputs.forEach(output => {
+  outputs.forEach((output: any) => {
     let weight = 0;
     if (output.address && output.address.startsWith('bc1')) {
       weight = 31 * 4; // P2WPKH output: 31 bytes * 4 weight units
@@ -76,7 +76,7 @@ const estimateTxSize = (inputs, outputs) => {
 };
 
 // Main component
-const ProjectFeeCard = ({ transaction }) => {
+const ProjectFeeCard = ({ transaction }: any) => {
   const [feeOption, setFeeOption] = useState<string>('medium');
   const [customFeeRate, setCustomFeeRate] = useState<string>('');
   const [adjustedFee, setAdjustedFee] = useState<number>(0);
@@ -127,7 +127,7 @@ const ProjectFeeCard = ({ transaction }) => {
 
     if (!isNaN(txSizeInBytes) && txSizeInBytes > 0 && feeRate > 0) {
       let newFee = Math.ceil(txSizeInBytes * feeRate); // Fee in sats
-      const totalInputs = inputs.reduce((sum, input) => sum + Number(input.amount), 0);
+      const totalInputs = inputs.reduce((sum: number, input: any) => sum + Number(input.amount), 0);
       const amountToSend = 0;
       // const amountToSend = Number(transaction.request.amount) * 1e8;
       const maxAvailableFee = totalInputs - amountToSend;
@@ -167,7 +167,7 @@ const ProjectFeeCard = ({ transaction }) => {
     try {
       // Update transaction with new fee here (same as your logic)
       console.log('Update transaction with fee:', adjustedFee);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating fee:', error.message);
       toast({
         title: 'Error updating fee',

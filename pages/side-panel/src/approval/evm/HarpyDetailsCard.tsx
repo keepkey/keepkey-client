@@ -158,7 +158,7 @@ export default function ContractDetailsCard({ transaction }: ContractDetailsCard
     <Card mt={4} shadow="md" borderWidth="1px">
       <CardHeader>
         <Flex alignItems="center">
-          <Avatar src={harpieLogoUrl} size="md" mr={4} />
+          <Avatar name="Harpie" size="md" mr={4} />
           <Heading as="h5" size="lg">
             Harpie Analysis
           </Heading>
