@@ -4,7 +4,7 @@ import UtxoTransaction from './utxo';
 import OtherTransaction from './other';
 import TendermintTransaction from './tendermint';
 import ChainNotEnabledCard from './ChainNotEnabledCard';
-import { approvalStorage, requestStorage } from '@extension/storage/dist/lib';
+import { approvalStorage, requestStorage } from '@extension/storage';
 import { Flex, Spinner, Alert, AlertIcon, Button, Icon } from '@chakra-ui/react';
 import { WarningIcon } from '@chakra-ui/icons';
 import AwaitingApproval from './AwaitingApproval';
