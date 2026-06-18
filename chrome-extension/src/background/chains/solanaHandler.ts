@@ -291,7 +291,6 @@ async function requestUserApproval(
   params: any[],
   requireApproval: (networkId: string, requestInfo: any, chain: any, method: string, params: any) => Promise<any>,
 ) {
-  // @ts-expect-error
   await requestStorage.addEvent(event);
   chrome.runtime
     .sendMessage({

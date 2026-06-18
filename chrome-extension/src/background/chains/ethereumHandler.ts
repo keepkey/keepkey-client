@@ -163,9 +163,13 @@ const getProvider = async (): Promise<JsonRpcProvider> => {
       // request alive (and re-tries on backoff). With timeoutMs the
       // transport itself aborts at 5s, so the outer Promise.race is
       // redundant.
-      const provider = makeStaticProvider(cleanUrl, currentProvider.networkId || currentProvider.chainId, {
-        timeoutMs: 5000,
-      });
+      const provider = makeStaticProvider(
+        cleanUrl,
+        currentProvider.networkId || currentProvider.chainId || 'eip155:1',
+        {
+          timeoutMs: 5000,
+        },
+      );
       const blockNumber = await provider.getBlockNumber();
 
       console.log(tag, '✅ RPC working! Block:', blockNumber, 'URL:', cleanUrl);
@@ -179,8 +183,9 @@ const getProvider = async (): Promise<JsonRpcProvider> => {
 
       return provider;
     } catch (error) {
-      console.error(tag, '❌ RPC failed:', rpcUrl, error.message);
-      errors.push({ url: rpcUrl, error: error.message });
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(tag, '❌ RPC failed:', rpcUrl, message);
+      errors.push({ url: rpcUrl, error: message });
       failedRpcs.set(rpcUrl, now);
     }
   }
@@ -241,7 +246,7 @@ const handleNetVersion = async () => {
 // `isTransientRpcError`, so each failure cools the URL for 60s in
 // `failedRpcs` and the next call goes elsewhere.
 
-const handleEthGetBlockByNumber = async params => {
+const handleEthGetBlockByNumber = async (params: any) => {
   // Passthrough raw RPC. ethers v6 `provider.getBlock(...)` returns a
   // `Block` class instance whose field set is a SUBSET of the JSON-RPC
   // spec response (drops sha3Uncles, logsBloom, transactionsRoot,
@@ -257,7 +262,7 @@ const handleEthBlockNumber = async () => {
   return '0x' + blockNumber.toString(16);
 };
 
-const handleEthGetBalance = async params => {
+const handleEthGetBalance = async (params: any) => {
   const tag = TAG + ' | handleEthGetBalance | ';
   try {
     console.log(tag, 'Getting balance for address:', params[0], 'block:', params[1]);
@@ -270,7 +275,7 @@ const handleEthGetBalance = async params => {
   }
 };
 
-const handleEthGetTransactionReceipt = async params => {
+const handleEthGetTransactionReceipt = async (params: any) => {
   // Passthrough raw RPC — see docs/RPC_PASSTHROUGH_AUDIT.md. ethers v6
   // `provider.getTransactionReceipt(...)` returns a `TransactionReceipt`
   // class with `index` (vs spec `transactionIndex`), reshaped `logs[]`,
@@ -279,7 +284,7 @@ const handleEthGetTransactionReceipt = async params => {
   return withRpcFailover(p => p.send('eth_getTransactionReceipt', params), { tag: TAG + ' eth_getTransactionReceipt' });
 };
 
-const handleEthGetTransactionByHash = async params => {
+const handleEthGetTransactionByHash = async (params: any) => {
   // Passthrough raw RPC — see docs/RPC_PASSTHROUGH_AUDIT.md. ethers v6
   // `provider.getTransaction(...)` returns a `TransactionResponse` class
   // whose field names diverge from the JSON-RPC spec: `gasLimit` vs
@@ -295,7 +300,7 @@ const handleWeb3ClientVersion = async () => {
   return withRpcFailover(p => p.send('web3_clientVersion', []), { tag: TAG + ' web3_clientVersion' });
 };
 
-const handleEthCall = async params => {
+const handleEthCall = async (params: any) => {
   // ethers v6 provider.call(tx) ignores extra args, dropping blockTag AND
   // stateOverride. Uniswap's pre-quote simulation uses stateOverride to
   // model the not-yet-broadcasted Permit2 approval; if we drop it the
@@ -314,7 +319,7 @@ const handleEthMaxFeePerGas = async () => {
   return feeData.maxFeePerGas ? '0x' + feeData.maxFeePerGas.toString(16) : '0x0';
 };
 
-const handleEthEstimateGas = async params => {
+const handleEthEstimateGas = async (params: any) => {
   // ethers v6 provider.estimateGas(tx) takes 1 arg and drops blockTag.
   // Passthrough raw RPC for spec-compliant behavior.
   return withRpcFailover(p => p.send('eth_estimateGas', params), { tag: TAG + ' eth_estimateGas' });
@@ -325,7 +330,7 @@ const handleEthGasPrice = async () => {
   return feeData.gasPrice ? '0x' + feeData.gasPrice.toString(16) : '0x0';
 };
 
-const handleEthFeeHistory = async params => {
+const handleEthFeeHistory = async (params: any) => {
   // Raw passthrough — modern dApps (incl. Uniswap's UI via ethers v6 fee
   // estimator) call eth_feeHistory for percentile-based fee math. Without
   // this case the request hits the default branch and throws "method not
@@ -333,11 +338,11 @@ const handleEthFeeHistory = async params => {
   return withRpcFailover(p => p.send('eth_feeHistory', params), { tag: TAG + ' eth_feeHistory' });
 };
 
-const handleEthGetCode = async params => {
+const handleEthGetCode = async (params: any) => {
   return withRpcFailover(p => p.getCode(params[0], params[1]), { tag: TAG + ' eth_getCode' });
 };
 
-const handleEthGetStorageAt = async params => {
+const handleEthGetStorageAt = async (params: any) => {
   // Raw passthrough: ethers v6 renamed `getStorageAt` → `getStorage`,
   // so the helper isn't where we used to call it. Sending the JSON-RPC
   // method directly is byte-exact with what the dApp asked for, and
@@ -345,14 +350,14 @@ const handleEthGetStorageAt = async params => {
   return withRpcFailover(p => p.send('eth_getStorageAt', params), { tag: TAG + ' eth_getStorageAt' });
 };
 
-const handleEthGetTransactionCount = async params => {
+const handleEthGetTransactionCount = async (params: any) => {
   const transactionCount = await withRpcFailover(p => p.getTransactionCount(params[0], params[1]), {
     tag: TAG + ' eth_getTransactionCount',
   });
   return '0x' + transactionCount.toString(16);
 };
 
-const handleEthSendRawTransaction = async params => {
+const handleEthSendRawTransaction = async (params: any) => {
   // Decode-friendly handoff log — captures the dApp-supplied raw tx
   // (already signed externally) BEFORE we relay it to the RPC. Paste
   // params[0] into an EVM tx decoder to inspect its contents.
@@ -439,7 +444,7 @@ const switchToProvider = async (currentProvider: any, KEEPKEY_WALLET: any, tag: 
 };
 
 // Handle wallet_switchEthereumChain - switch to existing chain only
-const handleWalletSwitchEthereumChain = async (params, KEEPKEY_WALLET, requestInfo: any) => {
+const handleWalletSwitchEthereumChain = async (params: any, KEEPKEY_WALLET: any, requestInfo: any) => {
   const tag = TAG + ' | handleWalletSwitchEthereumChain | ';
   console.log(tag, 'Switch Chain params: ', params);
 
@@ -471,7 +476,6 @@ const handleWalletSwitchEthereumChain = async (params, KEEPKEY_WALLET, requestIn
   if (pioneerChain?.rpc) {
     console.log(tag, 'Chain found in Pioneer registry, provisioning + switching...');
     try {
-      // @ts-expect-error storage typing is loose
       await blockchainDataStorage.addBlockchainData(networkId, {
         chainId: pioneerChain.chainId,
         caip: pioneerChain.caip,
@@ -516,7 +520,6 @@ const handleWalletSwitchEthereumChain = async (params, KEEPKEY_WALLET, requestIn
   try {
     const eventId = (requestInfo?.id as string) || uuidv4();
     if (requestInfo) requestInfo.id = eventId;
-    // @ts-expect-error storage typing is loose
     await requestStorage.addEvent({
       id: eventId,
       networkId,
@@ -545,7 +548,12 @@ const handleWalletSwitchEthereumChain = async (params, KEEPKEY_WALLET, requestIn
 };
 
 // Handle wallet_addEthereumChain - add new chain with user approval
-const handleWalletAddEthereumChain = async (params, KEEPKEY_WALLET, requestInfo, requireApproval) => {
+const handleWalletAddEthereumChain = async (
+  params: any,
+  KEEPKEY_WALLET: any,
+  requestInfo: any,
+  requireApproval: any,
+) => {
   const tag = TAG + ' | handleWalletAddEthereumChain | ';
   console.log(tag, 'Add Chain params: ', params);
   console.log(tag, 'KEEPKEY_WALLET exists:', !!KEEPKEY_WALLET);
@@ -705,17 +713,24 @@ const handleWalletGetCapabilities = async (params: any[]) => {
   return capabilities;
 };
 
-const handleEthAccounts = async ADDRESS => {
+const handleEthAccounts = async (ADDRESS: any) => {
   const accounts = [ADDRESS];
   return accounts;
 };
 
-const handleEthRequestAccounts = async ADDRESS => {
+const handleEthRequestAccounts = async (ADDRESS: any) => {
   const requestAccounts = [ADDRESS];
   return requestAccounts;
 };
 
-const handleSigningMethods = async (method, params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval) => {
+const handleSigningMethods = async (
+  method: any,
+  params: any,
+  requestInfo: any,
+  ADDRESS: any,
+  KEEPKEY_WALLET: any,
+  requireApproval: any,
+) => {
   const tag = TAG + ` | handleSigningMethods | `;
   console.log(tag, 'method:', method);
   console.log(tag, 'params:', params);
@@ -864,7 +879,13 @@ const walletChosenFees = async (
 };
 
 // For 'transfer', build transaction info before calling requireApproval
-const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requireApproval) => {
+const handleTransfer = async (
+  params: any,
+  requestInfo: any,
+  ADDRESS: any,
+  KEEPKEY_WALLET: any,
+  requireApproval: any,
+) => {
   const tag = TAG + ' | handleTransfer | ';
   console.log(tag, 'method: transfer');
   console.log(tag, 'params:', params);
@@ -948,6 +969,7 @@ const handleTransfer = async (params, requestInfo, ADDRESS, KEEPKEY_WALLET, requ
   //get payload from storage
   const response = await requestStorage.getEventById(requestInfo.id);
   console.log(tag, 'response:', response);
+  if (!response) throw Error('Failed to load event for signing!');
 
   if (result.success && response.unsignedTx) {
     console.log(tag, 'FINAL: unsignedTx: ', response.unsignedTx);
@@ -1148,7 +1170,7 @@ const processApprovedEvent = async (method: string, params: any, KEEPKEY_WALLET:
   }
 };
 
-const signMessage = async (message, KEEPKEY_WALLET, ADDRESS: string, eventId?: string) => {
+const signMessage = async (message: any, KEEPKEY_WALLET: any, ADDRESS: string, eventId?: string) => {
   const tag = TAG + ' [signMessage] ';
   try {
     console.log(tag, '**** message: ', message);
@@ -1185,7 +1207,7 @@ const signMessage = async (message, KEEPKEY_WALLET, ADDRESS: string, eventId?: s
     console.error(e);
 
     // Extract meaningful error message
-    const errorMessage = e?.message || JSON.stringify(e);
+    const errorMessage = (e as any)?.message || JSON.stringify(e);
 
     // Transform device-specific errors to user-friendly messages
     if (errorMessage.includes('unrecognized address')) {
@@ -1330,7 +1352,7 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
     console.error(`${tag} Error: `, e);
 
     // Extract meaningful error message
-    const errorMessage = e?.message || JSON.stringify(e);
+    const errorMessage = (e as any)?.message || JSON.stringify(e);
 
     // Transform device-specific errors to user-friendly messages
     if (errorMessage.includes('unrecognized address')) {
@@ -1389,7 +1411,7 @@ const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string, 
     console.error(`${tag} Error: `, e);
 
     // Extract meaningful error message
-    const errorMessage = e?.message || JSON.stringify(e);
+    const errorMessage = (e as any)?.message || JSON.stringify(e);
 
     // Transform device-specific errors to user-friendly messages
     if (errorMessage.includes('unrecognized address')) {
@@ -1603,7 +1625,7 @@ async function getCandidateRpcs(): Promise<{
     availableRpcs = candidates.slice();
   }
 
-  return { availableRpcs, networkId, chainIdRaw: currentProvider.chainId };
+  return { availableRpcs, networkId, chainIdRaw: currentProvider.chainId ?? '' };
 }
 
 /**
@@ -1851,6 +1873,7 @@ const sendTransaction = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string
     console.log(tag, 'transaction:', params);
     const transaction = params[0];
     const currentProvider = await web3ProviderStorage.getWeb3Provider();
+    if (!currentProvider) throw createProviderRpcError(4900, 'Provider not properly configured');
     const chainId = currentProvider.chainId;
 
     transaction.chainId = chainId;
@@ -1866,6 +1889,7 @@ const sendTransaction = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string
 
     const response = await requestStorage.getEventById(id);
     console.log(tag, 'response:', response);
+    if (!response) throw Error('Failed to load event for broadcast!');
 
     response.txid = txHash;
     await requestStorage.updateEventById(id, response);

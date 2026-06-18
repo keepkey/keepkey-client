@@ -114,6 +114,7 @@ export const handleBitcoinRequest = async (
       console.log(tag, 'result:', result);
 
       const response = await requestStorage.getEventById(requestInfo.id);
+      if (!response) throw Error('Failed to load event for signing!');
 
       if (result.success && response.unsignedTx) {
         // Sign using vault SDK

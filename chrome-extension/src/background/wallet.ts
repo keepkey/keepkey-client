@@ -89,8 +89,14 @@ export async function init(): Promise<WalletState> {
       try {
         const cached = await pubkeyStorage.loadPubkeys();
         if (cached?.deviceInfo) {
-          state.deviceInfo = cached.deviceInfo;
-          console.log(tag, 'Using cached device info:', state.deviceInfo.label);
+          const di = cached.deviceInfo;
+          state.deviceInfo = {
+            label: di.label,
+            model: di.model ?? 'KeepKey',
+            deviceId: di.deviceId ?? 'unknown',
+            features: di.features,
+          };
+          console.log(tag, 'Using cached device info:', di.label);
         }
       } catch {
         // ignore

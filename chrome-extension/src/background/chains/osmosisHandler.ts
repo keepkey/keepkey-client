@@ -85,6 +85,7 @@ export const handleOsmosisRequest = async (
 
       const result = await requireApproval(networkId, requestInfo, 'osmosis', method, params[0]);
       const response = await requestStorage.getEventById(requestInfo.id);
+      if (!response) throw Error('Failed to load event for signing!');
 
       if (result.success && response.unsignedTx) {
         const sdk = wallet.getSdk();
