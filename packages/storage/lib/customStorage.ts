@@ -217,7 +217,9 @@ export const assetContextStorage = createAssetContextStorage();
 type BlockchainStorage = BaseStorage<string[]> & {
   getAllBlockchains: () => Promise<string[] | null>;
   addBlockchain: (blockchain: string) => Promise<void>;
+  addBlockchains: (blockchains: string[]) => Promise<void>;
   removeBlockchain: (blockchain: string) => Promise<void>;
+  removeBlockchains: (blockchains: string[]) => Promise<void>;
 };
 
 const createBlockchainStorage = (): BlockchainStorage => {
@@ -242,12 +244,26 @@ const createBlockchainStorage = (): BlockchainStorage => {
       }
       console.log(TAG, 'Added blockchain:', blockchain);
     },
+    addBlockchains: async (toAdd: string[]) => {
+      const blockchains = (await storage.get()) || [];
+      const merged = Array.from(new Set([...blockchains, ...toAdd]));
+      await storage.set(() => merged);
+      console.log(TAG, 'Added blockchains:', toAdd);
+    },
     removeBlockchain: async (blockchain: string) => {
       const blockchains = await storage.get();
       if (blockchains && blockchains.includes(blockchain)) {
         const updatedBlockchains = blockchains.filter(b => b !== blockchain);
         await storage.set(() => updatedBlockchains);
         console.log(TAG, 'Removed blockchain:', blockchain);
+      }
+    },
+    removeBlockchains: async (toRemove: string[]) => {
+      const blockchains = await storage.get();
+      if (blockchains && blockchains.length) {
+        const drop = new Set(toRemove);
+        await storage.set(() => blockchains.filter(b => !drop.has(b)));
+        console.log(TAG, 'Removed blockchains:', toRemove);
       }
     },
   };
@@ -275,6 +291,7 @@ type BlockchainDataStorage = BaseStorage<BlockchainData> & {
   addBlockchainData: (chainId: string, data: BlockchainData[string]) => Promise<void>;
   getBlockchainData: (chainId: string) => Promise<BlockchainData[string] | null>;
   getBlockchainDataByArray: (chainIds: string[]) => Promise<(BlockchainData[string] | null)[]>;
+  removeBlockchainData: (chainId: string) => Promise<void>;
 };
 
 const createBlockchainDataStorage = (): BlockchainDataStorage => {
@@ -308,6 +325,14 @@ const createBlockchainDataStorage = (): BlockchainDataStorage => {
       const data = chainIds.map(chainId => blockchainData[chainId] || null);
       console.log(TAG, 'Retrieved blockchain data for chain array:', data);
       return data;
+    },
+    removeBlockchainData: async (chainId: string) => {
+      const blockchainData = await storage.get();
+      if (blockchainData && chainId in blockchainData) {
+        const { [chainId]: _removed, ...rest } = blockchainData;
+        await storage.set(() => rest);
+        console.log(TAG, 'Removed blockchain data for:', chainId);
+      }
     },
     subscribe: storage.subscribe, // Ensure subscribe is included if needed
   };

@@ -175,7 +175,7 @@ const Settings = () => {
   };
 
   // Helper function to determine if an option is coming soon
-  const isComingSoon = name => ['Xfi', 'Keplr'].includes(name);
+  const isComingSoon = (name: string) => ['Xfi', 'Keplr'].includes(name);
 
   return (
     <VStack spacing={4}>

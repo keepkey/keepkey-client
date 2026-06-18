@@ -65,8 +65,8 @@ export function OtherTransaction({ transaction: initialTransaction, handleRespon
           <RequestMethodCard transaction={transaction} />
           <Divider />
 
-          <Tabs>
-            <TabList defaultIndex={1}>
+          <Tabs defaultIndex={1}>
+            <TabList>
               <Tab>Basic</Tab>
               {/*<Tab>Fees</Tab>*/}
               <Tab>Raw</Tab>

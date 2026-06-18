@@ -297,7 +297,7 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
    * Handles the continuation action, such as closing the modal.
    */
   const handleContinue = async () => {
-    await loadEnabledChains(); // Reload enabled chains from storage
+    await onStart(); // Reload enabled chains from storage
     setShowAssetSelect(false); // Close the modal or asset selection view
     toast({
       title: 'Selection Updated',

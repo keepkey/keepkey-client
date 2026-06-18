@@ -61,7 +61,7 @@ const Transaction = ({
         setAssetContext(context); // Set asset context state
         console.log('assetContext: ', context);
       })
-      .catch(error => {
+      .catch((error: any) => {
         console.error('Failed to fetch asset context:', error);
       });
   }, []);
@@ -157,7 +157,7 @@ const Transaction = ({
               onDismiss();
             }, 500);
           })
-          .catch(error => {
+          .catch((error: any) => {
             console.error('Error removing event:', error);
             setTimeout(() => {
               onDismiss();

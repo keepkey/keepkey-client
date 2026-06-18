@@ -239,7 +239,7 @@ export default function RequestDetailsCard({ transaction }: any) {
         <Flex direction="column" mb={4}>
           {ctxIcon && (
             <Flex justify="center" mb={4}>
-              <Avatar size="md" src={ctxIcon} alt="Asset Icon" />
+              <Avatar size="md" src={ctxIcon} />
             </Flex>
           )}
           <Box mb={2}>
@@ -285,7 +285,7 @@ export default function RequestDetailsCard({ transaction }: any) {
             otherwise we risk showing a wildly-off icon for dApp events. */}
         {ctxIcon && (
           <Flex justify="center" mb={4}>
-            <Avatar size="md" src={ctxIcon} alt="Asset Icon" />
+            <Avatar size="md" src={ctxIcon} />
           </Flex>
         )}
         <Box mb={2}>
