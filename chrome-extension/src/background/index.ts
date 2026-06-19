@@ -8,14 +8,23 @@ globalThis.Buffer = Buffer;
 import packageJson from '../../package.json';
 import * as wallet from './wallet';
 import { deriveUtxoAddress } from './utxoDerive';
-import { resetSolanaState, prefetchSolanaPubkey } from './chains/solanaHandler';
+import { resetSolanaState, prefetchSolanaAccounts, deriveSolanaAccount } from './chains/solanaHandler';
 import { resetTonState, prefetchTonAddress } from './chains/tonHandler';
 import { resetTronState, prefetchTronPubkey } from './chains/tronHandler';
 import { handleWalletRequest } from './methods';
 import { setApprovalBadge } from './popup';
 import { fetchJsonWithTimeout } from './fetchUtils';
 import { JsonRpcProvider, formatEther } from 'ethers';
-import { ChainToNetworkId, Chain, COIN_MAP_LONG, shortListSymbolToCaip, NetworkIdToChain } from './chainConfig';
+import {
+  ChainToNetworkId,
+  Chain,
+  COIN_MAP_LONG,
+  shortListSymbolToCaip,
+  NetworkIdToChain,
+  buildAccountPaths,
+  supportsMultiAccount,
+  SOLANA_NETWORK_ID,
+} from './chainConfig';
 import {
   requestStorage,
   exampleSidebarStorage,
@@ -24,6 +33,7 @@ import {
   blockchainStorage,
   assetContextStorage,
   ethAccountsStorage,
+  accountsByNetworkStorage,
   customEvmNetworksStorage,
 } from '@extension/storage';
 import { getChainInfo, makeStaticProvider } from './chains/registry';
@@ -160,7 +170,7 @@ async function handleDeviceSwitch(newDeviceInfo: any) {
     //
     // Fire in parallel — each is non-throwing, so an individual chain
     // failure won't take the others down.
-    await Promise.allSettled([prefetchSolanaPubkey(), prefetchTronPubkey(), prefetchTonAddress()]);
+    await Promise.allSettled([prefetchSolanaAccounts(), prefetchTronPubkey(), prefetchTonAddress()]);
 
     pushStateChangeEvent();
     pushBalancesUpdated();
@@ -734,6 +744,32 @@ const onStart = async function () {
       console.warn(tag, 'Failed to load persisted ETH accounts:', e);
     }
 
+    // Load persisted non-EVM batch accounts (UTXO non-BTC + Cosmos-family) and
+    // re-add their paths so refreshPubkeys derives them — same contract as the
+    // ETH reload above. Solana is off-batch and handled by prefetchSolanaAccounts.
+    try {
+      const map = (await accountsByNetworkStorage.get()) || {};
+      let needsNonEvmRefresh = false;
+      for (const [networkId, indices] of Object.entries(map)) {
+        if (!supportsMultiAccount(networkId) || networkId === SOLANA_NETWORK_ID) continue;
+        for (const idx of indices as number[]) {
+          if (idx === 0) continue; // account 0 lives in the default paths
+          for (const p of buildAccountPaths(networkId, idx)) {
+            if (!wallet.getPaths().some((e: any) => e.note === p.note)) {
+              wallet.addPath(p);
+              needsNonEvmRefresh = true;
+            }
+          }
+        }
+      }
+      if (needsNonEvmRefresh) {
+        await wallet.refreshPubkeys();
+        console.log(tag, 'Refreshed pubkeys with persisted non-EVM accounts');
+      }
+    } catch (e) {
+      console.warn(tag, 'Failed to load persisted non-EVM accounts:', e);
+    }
+
     const pubkeys = wallet.getPubkeys();
     console.log(tag, 'pubkeys:', pubkeys.length);
 
@@ -806,7 +842,7 @@ const onStart = async function () {
       // cachedBalances. Users saw "No tokens" until they hit the manual
       // Discover button (which by coincidence runs after the slowest
       // prefetch finally lands).
-      Promise.allSettled([prefetchSolanaPubkey(), prefetchTronPubkey(), prefetchTonAddress()])
+      Promise.allSettled([prefetchSolanaAccounts(), prefetchTronPubkey(), prefetchTonAddress()])
         .then(() => fetchBalancesFromPioneer(true))
         .catch(e => console.warn(tag, 'Post-prefetch balance fetch failed:', e));
     } else {
@@ -1046,15 +1082,19 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
 
               // Enrich asset with pubkeys from wallet so Asset.tsx has addresses
               if (asset.networkId) {
-                const networkPubkeys = wallet.getPubkeys(asset.networkId);
-                // For EVM wildcard, also try the base eip155 network
-                if (networkPubkeys.length === 0 && asset.networkId.startsWith('eip155')) {
-                  const evmPubkeys = wallet
+                // An EVM address is identical on every EVM chain, so all
+                // ETH-derived accounts (0/1/2/...) are valid receive targets
+                // regardless of which EVM network is selected. Accounts 1+ are
+                // registered with networks:['eip155:1'] (only account 0 carries
+                // eip155:*), so a literal getPubkeys(networkId) drops them on
+                // every non-mainnet EVM chain — Receive then collapses to
+                // account 0. Mirror buildEvmAccounts() in headerUtils.ts.
+                if (asset.networkId.startsWith('eip155:')) {
+                  asset.pubkeys = wallet
                     .getPubkeys()
-                    .filter((pk: any) => pk.networks?.includes('eip155:*') || pk.networks?.includes(asset.networkId));
-                  if (evmPubkeys.length > 0) asset.pubkeys = evmPubkeys;
+                    .filter((pk: any) => pk.networks?.includes('eip155:1') || pk.networks?.includes('eip155:*'));
                 } else {
-                  asset.pubkeys = networkPubkeys;
+                  asset.pubkeys = wallet.getPubkeys(asset.networkId);
                 }
                 // Set address from first pubkey
                 if (!asset.address && asset.pubkeys?.[0]?.address) {
@@ -1179,7 +1219,17 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             let chosen: any = null;
 
             if (ctx?.networkId) {
-              const scoped = wallet.getPubkeys(ctx.networkId);
+              // EVM addresses are identical across all EVM chains, and accounts
+              // 1+ are registered only under eip155:1 (no eip155:* wildcard). A
+              // literal getPubkeys(networkId) returns empty on non-mainnet EVM
+              // chains, so the accountIndex match below would never run and
+              // selection would fall through to allPubkeys[0]. Scope to all EVM
+              // pubkeys instead — matches SET_ASSET_CONTEXT enrichment.
+              const scoped = ctx.networkId.startsWith('eip155:')
+                ? wallet
+                    .getPubkeys()
+                    .filter((pk: any) => pk.networks?.includes('eip155:1') || pk.networks?.includes('eip155:*'))
+                : wallet.getPubkeys(ctx.networkId);
               if (scoped.length > 0) {
                 // Match priority: note → script_type → accountIndex →
                 // scoped[0]. Note is the only identifier that's unique
@@ -1354,6 +1404,71 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           } catch (error) {
             console.error('Error removing ETH account:', error);
             sendResponse({ error: 'Failed to remove ETH account' });
+          }
+          break;
+        }
+
+        // ---- Multi-account for non-EVM families (UTXO non-BTC, Cosmos, Solana) ----
+        // EVM uses ADD_ETH_ACCOUNT above (cross-chain wildcard); these handlers
+        // are per-network and keyed by networkId in accountsByNetworkStorage.
+        case 'GET_ACCOUNTS_FOR_NETWORK': {
+          const { networkId } = message;
+          try {
+            const accounts = await accountsByNetworkStorage.getAccounts(networkId);
+            sendResponse({ accounts });
+          } catch (error) {
+            console.error('Error getting accounts for network:', error);
+            sendResponse({ accounts: [0] });
+          }
+          break;
+        }
+
+        case 'ADD_ACCOUNT': {
+          const { networkId, accountIndex } = message;
+          try {
+            if (!supportsMultiAccount(networkId)) {
+              sendResponse({ error: `Network ${networkId} does not support multiple accounts` });
+              break;
+            }
+            const accounts = await accountsByNetworkStorage.addAccount(networkId, accountIndex);
+            if (networkId === SOLANA_NETWORK_ID) {
+              // Solana derives outside the batch xpub flow (device call).
+              await deriveSolanaAccount(accountIndex);
+            } else {
+              // UTXO / Cosmos: clone account-0 template(s), add to the batch, re-derive.
+              const paths = buildAccountPaths(networkId, accountIndex);
+              if (paths.length === 0) {
+                sendResponse({ error: `No path template for ${networkId}` });
+                break;
+              }
+              for (const p of paths) wallet.addPath(p);
+              await wallet.refreshPubkeys();
+            }
+            sendResponse({ success: true, accounts, pubkeys: wallet.getPubkeys() });
+          } catch (error) {
+            console.error('Error adding account:', error);
+            sendResponse({ error: `Failed to add account: ${(error as Error)?.message || error}` });
+          }
+          break;
+        }
+
+        case 'REMOVE_ACCOUNT': {
+          const { networkId, accountIndex: removeIdx } = message;
+          try {
+            const accounts = await accountsByNetworkStorage.removeAccount(networkId, removeIdx);
+            if (networkId === SOLANA_NETWORK_ID) {
+              await wallet.removePathByNote(`Solana account ${removeIdx}`);
+            } else {
+              // Regenerate the same notes deterministically to clear every
+              // script-type path this account produced.
+              for (const p of buildAccountPaths(networkId, removeIdx)) {
+                await wallet.removePathByNote(p.note);
+              }
+            }
+            sendResponse({ success: true, accounts, pubkeys: wallet.getPubkeys() });
+          } catch (error) {
+            console.error('Error removing account:', error);
+            sendResponse({ error: 'Failed to remove account' });
           }
           break;
         }

@@ -519,6 +519,64 @@ const createEthAccountsStorage = (): EthAccountsStorage => {
 
 export const ethAccountsStorage = createEthAccountsStorage();
 
+// ---- Per-network Accounts Storage (non-EVM multi-account) ----
+// EVM keeps its own ethAccountsStorage because one EVM account is valid across
+// every EVM chain (wildcard) — it's keyed by "family", not network. The
+// families added here (non-Bitcoin UTXO, Cosmos-family, Solana) are per-network:
+// each chain's accounts are independent, so we key the derived account indices
+// by networkId. Bitcoin is intentionally excluded — its accounts are static in
+// chainConfig.
+type AccountsByNetwork = Record<string, number[]>;
+type AccountsByNetworkStorage = BaseStorage<AccountsByNetwork> & {
+  getAccounts: (networkId: string) => Promise<number[]>;
+  addAccount: (networkId: string, index: number) => Promise<number[]>;
+  removeAccount: (networkId: string, index: number) => Promise<number[]>;
+};
+
+const createAccountsByNetworkStorage = (): AccountsByNetworkStorage => {
+  const storage = createStorage<AccountsByNetwork>(
+    'keepkey-accounts-by-network',
+    {},
+    { storageType: StorageType.Local, liveUpdate: true },
+  );
+
+  const normalize = (list: number[] | undefined): number[] =>
+    list && list.length > 0 ? Array.from(new Set(list)).sort((a, b) => a - b) : [0];
+
+  return {
+    ...storage,
+    getAccounts: async (networkId: string) => {
+      const map = (await storage.get()) || {};
+      return normalize(map[networkId]);
+    },
+    // Compute the new per-network array INSIDE the updater (from prev) so the
+    // merge and the value both derive from the same snapshot — otherwise two
+    // concurrent adds for the same network read the same stale list and the
+    // second set() clobbers the first, dropping an account.
+    addAccount: async (networkId: string, index: number) => {
+      let result: number[] = [0];
+      await storage.set(prev => {
+        const cur = normalize((prev || {})[networkId]);
+        result = cur.includes(index) ? cur : normalize([...cur, index]);
+        return { ...(prev || {}), [networkId]: result };
+      });
+      return result;
+    },
+    removeAccount: async (networkId: string, index: number) => {
+      let result: number[] = [0];
+      await storage.set(prev => {
+        const cur = normalize((prev || {})[networkId]);
+        const next = index === 0 ? cur : cur.filter(i => i !== index); // never remove account 0
+        result = next.length > 0 ? next : [0];
+        return { ...(prev || {}), [networkId]: result };
+      });
+      return result;
+    },
+  };
+};
+
+export const accountsByNetworkStorage = createAccountsByNetworkStorage();
+
 // ---- Custom EVM Networks Storage ----
 type CustomEvmNetwork = {
   networkId: string; // e.g. 'eip155:42220'

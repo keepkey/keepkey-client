@@ -192,6 +192,13 @@ export function Transfer(): JSX.Element {
         recipient,
         memo,
         isMax,
+        // Carry the selected account so the background signs/builds from the
+        // chosen account instead of defaulting to account 0: accountIndex
+        // scopes the pubkey set for UTXO/Cosmos buildTx and selects the Solana
+        // address_n. Without this, receiving on account 2 but spending from
+        // account 0 is possible.
+        accountIndex: assetContext?.accountIndex,
+        note: assetContext?.note,
       };
 
       // Log token transaction info for debugging
