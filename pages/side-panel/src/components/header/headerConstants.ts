@@ -32,6 +32,7 @@ export const BTC_SCRIPT_LABELS: Record<string, string> = {
 };
 
 export const BTC_NETWORK_ID = 'bip122:000000000019d6689c085ae165831e93';
+export const SOLANA_NETWORK_ID = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp';
 
 export const CHAIN_FAMILY_LABELS: Record<ChainFamily, string> = {
   evm: 'EVM Networks',

@@ -50,7 +50,7 @@ export const handleBitcoinRequest = async (
         id: requestInfo.id,
       });
 
-      const pubkeys = wallet.getPubkeys(ChainToNetworkId[Chain.Bitcoin]);
+      const pubkeys = wallet.getSendPubkeys(ChainToNetworkId[Chain.Bitcoin], params[0]?.accountIndex);
       console.log(tag, 'pubkeys: ', pubkeys);
       if (!pubkeys || pubkeys.length === 0) throw Error('Failed to locate pubkeys for Bitcoin');
 

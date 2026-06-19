@@ -1,12 +1,32 @@
 import { NetworkIdToChain, ChainToNetworkId, networkIdToIcon } from '@extension/shared';
 import type { ChainFamily, NetworkItem, AccountItem, CustomEvmNetwork } from './headerTypes';
-import { KNOWN_EVM_CHAINS, NETWORK_DISPLAY_NAMES, BTC_SCRIPT_LABELS, BTC_NETWORK_ID } from './headerConstants';
+import {
+  KNOWN_EVM_CHAINS,
+  NETWORK_DISPLAY_NAMES,
+  BTC_SCRIPT_LABELS,
+  BTC_NETWORK_ID,
+  SOLANA_NETWORK_ID,
+} from './headerConstants';
 
 export function getChainFamily(networkId: string): ChainFamily {
   if (networkId.startsWith('eip155:')) return 'evm';
   if (networkId.startsWith('bip122:')) return 'utxo';
   if (networkId.startsWith('cosmos:')) return 'cosmos';
   return 'other';
+}
+
+// Whether a network supports adding extra accounts. EVM goes through
+// ethAccountsStorage (ADD_ETH_ACCOUNT); the rest through accountsByNetworkStorage
+// (ADD_ACCOUNT). Bitcoin is excluded (its accounts are static in chainConfig);
+// single-address chains (Ripple/TON/Tron) are excluded too. Mirror of the
+// background's supportsMultiAccount — keep the two in sync.
+export function supportsMultiAccount(networkId?: string | null): boolean {
+  if (!networkId) return false;
+  if (networkId.startsWith('eip155:')) return true;
+  const family = getChainFamily(networkId);
+  if (family === 'cosmos') return true; // ATOM / OSMO / RUNE / CACAO
+  if (family === 'utxo') return networkId !== BTC_NETWORK_ID; // LTC / DOGE / DASH / BCH
+  return networkId === SOLANA_NETWORK_ID;
 }
 
 export function formatAddress(address: string): string {
@@ -119,8 +139,8 @@ export function buildAccountList(pubkeys: any[], selectedNetworkId: string, ethA
   if (family === 'utxo') {
     return buildUtxoAccounts(pubkeys, selectedNetworkId);
   }
-  // cosmos, other — single account
-  return buildSingleAccount(pubkeys, selectedNetworkId);
+  // cosmos, other — one row per derived account (Cosmos/Solana can be multi)
+  return buildMultiAccounts(pubkeys, selectedNetworkId);
 }
 
 function buildEvmAccounts(pubkeys: any[], networkId: string, ethAccounts: number[]): AccountItem[] {
@@ -251,17 +271,29 @@ function buildUtxoAccounts(pubkeys: any[], networkId: string): AccountItem[] {
   return items;
 }
 
-function buildSingleAccount(pubkeys: any[], networkId: string): AccountItem[] {
-  const pk = pubkeys.find(p => (p.networks || []).includes(networkId));
-  if (!pk) return [];
+// Cosmos-family, Solana, and other account-model chains (Ripple/TON/Tron).
+// One row per pubkey on the network: single-account chains naturally yield one
+// row; multi-account chains (Cosmos/Solana) show Account 0, 1, 2…
+function buildMultiAccounts(pubkeys: any[], networkId: string): AccountItem[] {
+  const relevant = pubkeys.filter(p => (p.networks || []).includes(networkId));
+  if (relevant.length === 0) return [];
   const chainSymbol = NetworkIdToChain[networkId];
-  return [
-    {
-      key: `single:${networkId}`,
-      label: NETWORK_DISPLAY_NAMES[networkId] || chainSymbol || 'Default',
+  const baseLabel = NETWORK_DISPLAY_NAMES[networkId] || chainSymbol || 'Account';
+  return relevant.map(pk => {
+    // accountIndex is enriched onto the pubkey (Solana) or parsed from the note
+    // ("Cosmos account 1"). Account-0 default paths have ad-hoc notes with no
+    // index, so parseAccountIndex falls back to 0.
+    const idx = parseAccountIndex(pk.note, pk.accountIndex);
+    return {
+      // Key on note (unique per path) so two accounts don't collapse and
+      // selectedAccountKey can disambiguate them.
+      key: pk.note ? `acct:${networkId}:${pk.note}` : `acct:${networkId}:${idx}`,
+      label: idx === 0 ? baseLabel : `${baseLabel} · Account ${idx}`,
       address: pk.address || pk.master || '',
       pubkey: pk,
-      isDefault: true,
-    },
-  ];
+      accountIndex: idx,
+      note: pk.note,
+      isDefault: idx === 0,
+    };
+  });
 }

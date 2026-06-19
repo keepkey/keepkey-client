@@ -296,6 +296,44 @@ export function getPubkeys(networkId?: string): any[] {
   return state.pubkeys.filter((pk: any) => pk.networks && pk.networks.includes(networkId));
 }
 
+// Extract the BIP44 account index from a pubkey: prefer the enriched
+// accountIndex field, else parse "account N" from the note, else 0 (account-0
+// default paths carry ad-hoc notes with no index).
+function pubkeyAccountIndex(pk: any): number {
+  if (typeof pk?.accountIndex === 'number') return pk.accountIndex;
+  const m = /account\s*(\d+)/i.exec(pk?.note || '');
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+/**
+ * Pubkeys for a network scoped to a single account index. Used to keep a send
+ * within one account so a multi-account wallet doesn't bleed inputs/UTXOs
+ * across accounts (receive-on-N but spend-from-0).
+ */
+export function getAccountPubkeys(networkId: string, accountIndex: number): any[] {
+  return getPubkeys(networkId).filter(pk => pubkeyAccountIndex(pk) === accountIndex);
+}
+
+/**
+ * Resolve the pubkey set a send/build should use.
+ *
+ * - No explicit account (dApp transfers and any caller that doesn't scope):
+ *   use the FULL network set. This preserves prior aggregate behavior —
+ *   notably Bitcoin's static accounts 0-3 — so a send never silently drops
+ *   funds the caller didn't ask to exclude.
+ * - Explicit account index: scope to it. A non-zero account that resolves to
+ *   no pubkeys returns EMPTY (not a fallback to all) so the caller's "no
+ *   pubkeys" guard fires rather than silently building/signing from account 0
+ *   — the receive-on-N / sign-from-0 hazard this feature exists to prevent.
+ *   Account 0 may broaden to the network default when its scope is empty.
+ */
+export function getSendPubkeys(networkId: string, accountIndex: unknown): any[] {
+  if (typeof accountIndex !== 'number') return getPubkeys(networkId);
+  const scoped = getAccountPubkeys(networkId, accountIndex);
+  if (scoped.length > 0) return scoped;
+  return accountIndex === 0 ? getPubkeys(networkId) : [];
+}
+
 /**
  * Get the first address for a given network.
  */

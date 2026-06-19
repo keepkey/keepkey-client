@@ -11,6 +11,7 @@ import {
   blockchainDataStorage,
   dappStorage,
   ethAccountsStorage,
+  accountsByNetworkStorage,
   customEvmNetworksStorage,
 } from './customStorage';
 import { chainIdStorage } from './providerStorage';
@@ -41,6 +42,7 @@ export {
   exampleSidebarStorage,
   pubkeyStorage,
   ethAccountsStorage,
+  accountsByNetworkStorage,
   customEvmNetworksStorage,
 };
 

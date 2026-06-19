@@ -327,3 +327,60 @@ export function getDefaultPaths(): PathConfig[] {
     },
   ];
 }
+
+// ---- Multi-account support (non-EVM families) ----
+export const SOLANA_NETWORK_ID = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp';
+
+// Human-readable per-network labels used to mint unique, parseable notes for
+// dynamically-added accounts. Only networks listed here support "Add account"
+// via accountsByNetworkStorage. Bitcoin (static accounts in getDefaultPaths)
+// and EVM (ethAccountsStorage + eip155 wildcard) are intentionally absent —
+// they have their own account models.
+export const MULTI_ACCOUNT_LABELS: Record<string, string> = {
+  'bip122:12a765e31ffd4059bada1e25190f6e98': 'Litecoin',
+  'bip122:00000000001a91e3dace36e2be3bf030': 'Dogecoin',
+  'bip122:000007d91d1254d60e2dd1ae58038307': 'Dash',
+  'bip122:000000000000000000651ef99cb9fcbe': 'Bitcoin Cash',
+  'cosmos:cosmoshub-4': 'Cosmos',
+  'cosmos:osmosis-1': 'Osmosis',
+  'cosmos:thorchain-mainnet-v1': 'THORChain',
+  'cosmos:mayachain-mainnet-v1': 'Maya',
+  [SOLANA_NETWORK_ID]: 'Solana',
+};
+
+export function supportsMultiAccount(networkId?: string): boolean {
+  return !!networkId && networkId in MULTI_ACCOUNT_LABELS;
+}
+
+// Mint the derivation path(s) for `accountIndex` on `networkId` by cloning the
+// account-0 template(s) from getDefaultPaths() and bumping the BIP44 account
+// segment. For every family handled here the account index sits at
+// addressNList[2] (UTXO: m/44'|49'|84'/coin'/account'; Cosmos:
+// m/44'/coin'/account'/0/0), so we replace index 2 in both addressNList and
+// addressNListMaster. UTXO chains with several script types (LTC has p2pkh +
+// p2wpkh) yield one path per script type. Solana is excluded — it derives
+// outside the batch xpub flow via solanaHandler. Returns [] for unsupported
+// networks (including Bitcoin/EVM/Solana).
+export function buildAccountPaths(networkId: string, accountIndex: number): PathConfig[] {
+  const label = MULTI_ACCOUNT_LABELS[networkId];
+  if (!label || networkId === SOLANA_NETWORK_ID) return [];
+  const H = HARDENED;
+  const templates = getDefaultPaths().filter(
+    p =>
+      p.networks?.includes(networkId) &&
+      Array.isArray(p.addressNList) &&
+      p.addressNList.length >= 3 &&
+      p.addressNList[2] === H + 0,
+  );
+  const bump = (arr: number[]): number[] => arr.map((seg, i) => (i === 2 ? H + accountIndex : seg));
+  return templates.map(t => ({
+    ...t,
+    // Note must be globally unique AND parseable as "account N": GET_PUBKEY_CONTEXT
+    // scopes by note and the header parses the index out of it. Include
+    // script_type so a chain's multiple script types don't collide on one index.
+    note: `${label} account ${accountIndex}${t.script_type ? ` ${t.script_type}` : ''}`,
+    addressNList: bump(t.addressNList),
+    addressNListMaster: t.addressNListMaster ? bump(t.addressNListMaster) : bump(t.addressNList),
+    accountIndex,
+  }));
+}

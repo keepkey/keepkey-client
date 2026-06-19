@@ -87,12 +87,15 @@ export class KeepKeySolanaWallet {
         if (this.#accounts.length > 0) {
           return { accounts: this.#accounts };
         }
-        // Use cached address (from silent connect or localStorage) for instant response,
-        // otherwise fetch from vault
-        const address = this.#cachedAddress || (await this.#rpc('solana_connect', []));
-        if (address) {
-          this.#setConnected(address);
+        // Enumerate every derived account so the dApp can pick among them.
+        // Fall back to a single-account connect (cached/vault) if enumeration
+        // is unavailable (older background, device offline).
+        let list: { address: string }[] | null = await this.#rpc('solana_getAccounts', []).catch(() => null);
+        if (!Array.isArray(list) || list.length === 0) {
+          const address = this.#cachedAddress || (await this.#rpc('solana_connect', []));
+          list = address ? [{ address }] : [];
         }
+        this.#setAccounts(list);
         return { accounts: this.#accounts };
       },
     },
@@ -127,8 +130,11 @@ export class KeepKeySolanaWallet {
       version: '1.0.0' as const,
       signMessage: async (...inputs: { message: Uint8Array; account: WalletAccount }[]) => {
         const outputs: { signedMessage: Uint8Array; signature: Uint8Array }[] = [];
-        for (const { message } of inputs) {
-          const sigArray: number[] = await this.#rpc('solana_signMessage', [Array.from(message)]);
+        for (const { message, account } of inputs) {
+          const sigArray: number[] = await this.#rpc('solana_signMessage', [
+            Array.from(message),
+            { accountAddress: account?.address },
+          ]);
           outputs.push({
             signedMessage: message,
             signature: new Uint8Array(sigArray),
@@ -143,8 +149,11 @@ export class KeepKeySolanaWallet {
       supportedTransactionVersions: new Set(['legacy', 0] as const),
       signTransaction: async (...inputs: { transaction: Uint8Array; account: WalletAccount; chain?: string }[]) => {
         const outputs: { signedTransaction: Uint8Array }[] = [];
-        for (const { transaction } of inputs) {
-          const signedArray: number[] = await this.#rpc('solana_signTransaction', [Array.from(transaction)]);
+        for (const { transaction, account } of inputs) {
+          const signedArray: number[] = await this.#rpc('solana_signTransaction', [
+            Array.from(transaction),
+            { accountAddress: account?.address },
+          ]);
           outputs.push({
             signedTransaction: new Uint8Array(signedArray),
           });
@@ -160,8 +169,11 @@ export class KeepKeySolanaWallet {
         ...inputs: { transaction: Uint8Array; account: WalletAccount; chain?: string; options?: any }[]
       ) => {
         const outputs: { signature: Uint8Array }[] = [];
-        for (const { transaction } of inputs) {
-          const txSig: string = await this.#rpc('solana_signAndSendTransaction', [Array.from(transaction)]);
+        for (const { transaction, account } of inputs) {
+          const txSig: string = await this.#rpc('solana_signAndSendTransaction', [
+            Array.from(transaction),
+            { accountAddress: account?.address },
+          ]);
           // txSig is a base58 transaction signature string — decode to bytes
           outputs.push({
             signature: base58Decode(txSig),
@@ -219,7 +231,9 @@ export class KeepKeySolanaWallet {
             const address = this.#cachedAddress || (await this.#rpc('solana_connect', []));
             if (address) this.#setConnected(address);
           }
-          const account = this.#accounts[0];
+          // Honor a requested sign-in account when it matches one we hold.
+          const account =
+            (input?.address && this.#accounts.find(a => a.address === input.address)) || this.#accounts[0];
           if (!account) throw new Error('Not connected');
 
           // Build SIWS message per CAIP-122 / EIP-4361
@@ -248,7 +262,10 @@ export class KeepKeySolanaWallet {
           }
 
           const messageBytes = new TextEncoder().encode(msg);
-          const sigArray: number[] = await this.#rpc('solana_signMessage', [Array.from(messageBytes)]);
+          const sigArray: number[] = await this.#rpc('solana_signMessage', [
+            Array.from(messageBytes),
+            { accountAddress: account.address },
+          ]);
 
           outputs.push({
             account,
@@ -305,6 +322,20 @@ export class KeepKeySolanaWallet {
     this.#accounts = [this.#makeAccount(address)];
     try {
       localStorage.setItem('keepkey-solana', JSON.stringify({ address }));
+    } catch {
+      /* ignore */
+    }
+    this.#emitChange();
+  }
+
+  // Populate accounts from the enumerated list (multi-account). The dApp picks
+  // an account and hands it back on each sign call; the background maps its
+  // address to the right derivation path.
+  #setAccounts(list: { address: string }[]) {
+    this.#accounts = list.filter(a => a?.address).map(a => this.#makeAccount(a.address));
+    try {
+      const primary = this.#accounts[0]?.address;
+      if (primary) localStorage.setItem('keepkey-solana', JSON.stringify({ address: primary }));
     } catch {
       /* ignore */
     }

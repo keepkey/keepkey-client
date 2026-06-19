@@ -8,11 +8,11 @@ interface AccountDropdownProps {
   accounts: AccountItem[];
   selectedAccountKey: string | null;
   onSelect: (account: AccountItem) => void;
-  /** Only shown for Ethereum (eip155:1) */
+  /** True for families that support add-account (EVM + non-Bitcoin UTXO, Cosmos, Solana) */
   canAddAccount: boolean;
   onAddAccount?: () => void;
   isAddingAccount?: boolean;
-  /** Show remove button for non-default ETH accounts */
+  /** Show remove button for non-default accounts (accountIndex > 0) */
   onRemoveAccount?: (accountIndex: number) => void;
 }
 
@@ -150,8 +150,12 @@ const AccountDropdown: React.FC<AccountDropdownProps> = ({
                   </Text>
                 )}
               </Box>
-              {/* Remove button for non-default ETH accounts */}
-              {onRemoveAccount && account.accountIndex !== undefined && !account.isDefault && (
+              {/* Remove button for non-default accounts. Gate on accountIndex > 0
+                  (not just !isDefault): a UTXO chain's account 0 has multiple
+                  script-type rows, and only the first is flagged isDefault —
+                  the others still carry accountIndex 0 and must stay
+                  non-removable. */}
+              {onRemoveAccount && account.accountIndex !== undefined && account.accountIndex > 0 && (
                 <IconButton
                   icon={<SmallCloseIcon />}
                   aria-label={`Remove account ${account.accountIndex}`}

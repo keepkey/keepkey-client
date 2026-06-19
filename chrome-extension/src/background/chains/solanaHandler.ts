@@ -1,4 +1,4 @@
-import { requestStorage } from '@extension/storage';
+import { requestStorage, accountsByNetworkStorage } from '@extension/storage';
 import { v4 as uuidv4 } from 'uuid';
 import * as wallet from '../wallet';
 import { createProviderRpcError, createTimeoutError } from '../utils';
@@ -42,12 +42,15 @@ async function getSolanaRpcUrl(): Promise<string> {
   return SOLANA_RPC_URLS[0]; // fallback to primary
 }
 
-// Cached address from device
-let cachedAddress: string | null = null;
+// Cached addresses keyed by BIP44 account index (m/44'/501'/<index>'/0').
+// A single slot would pin whichever account derived first and return it for
+// every other account (the multi-account "sign-from-0" footgun); keying by
+// index lets each account resolve independently.
+const cachedAddresses = new Map<number, string>();
 
 /** Reset cached state (call when device disconnects or wallet re-inits) */
 export function resetSolanaState() {
-  cachedAddress = null;
+  cachedAddresses.clear();
 }
 
 /**
@@ -60,6 +63,27 @@ export async function prefetchSolanaPubkey(): Promise<void> {
     await getSolanaAddress();
   } catch (e: any) {
     console.log(TAG, 'Solana prefetch skipped:', e?.message || e);
+  }
+}
+
+/**
+ * Prefetch account 0 AND every persisted Solana account so multi-account
+ * setups survive a service-worker restart / device reconnect. Best-effort per
+ * account — a single account's derivation failure doesn't block the others.
+ */
+export async function prefetchSolanaAccounts(): Promise<void> {
+  let indices: number[] = [0];
+  try {
+    indices = await accountsByNetworkStorage.getAccounts(SOLANA_NETWORK_ID);
+  } catch {
+    /* fall back to account 0 only */
+  }
+  for (const idx of indices) {
+    try {
+      await getSolanaAddress(idx);
+    } catch (e: any) {
+      console.log(TAG, `Solana prefetch account ${idx} skipped:`, e?.message || e);
+    }
   }
 }
 
@@ -193,25 +217,50 @@ function buildSolanaTransferTx(
   return new Uint8Array(out);
 }
 
-// BIP44 path for Solana: m/44'/501'/0'/0'
-const SOLANA_ADDRESS_N = [
-  0x80000000 + 44, // 0x8000002C
-  0x80000000 + 501, // 0x800001F5
-  0x80000000 + 0, // 0x80000000
-  0x80000000 + 0, // 0x80000000
-];
-
+// BIP44 path for Solana: m/44'/501'/<account>'/0' — every level hardened
+// (SLIP-0010 ed25519). The account index sits at array index 2; index 3 stays
+// pinned at 0'. Account 0 is m/44'/501'/0'/0'.
+function solanaAddressN(accountIndex: number): number[] {
+  return [
+    0x80000000 + 44, // 44'
+    0x80000000 + 501, // 501'
+    0x80000000 + accountIndex, // account'
+    0x80000000 + 0, // 0'
+  ];
+}
 const SOLANA_NETWORK_ID = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp';
-const SOLANA_PUBKEY_NOTE = 'Solana account 0';
+const solanaNote = (accountIndex: number) => `Solana account ${accountIndex}`;
 
-async function getSolanaAddress(): Promise<string> {
-  if (cachedAddress) return cachedAddress;
+// Resolve which Solana account a request targets so signing uses the matching
+// derivation path. In-app Transfer threads `accountIndex` on the payload
+// object; dApp wallet-standard threads the signing account's base58 address as
+// `requestInfo.solanaAccountAddress`, which we map back to its account index
+// via the cached pubkeys. Defaults to account 0 (prior single-account behavior).
+function resolveSolanaAccountIndex(params: any[], requestInfo: any): number {
+  const p = params?.[0];
+  if (p && !Array.isArray(p) && typeof p.accountIndex === 'number') return p.accountIndex;
+  // Wallet-standard sign methods thread the signing account's base58 address as
+  // params[1].accountAddress; map it back to the derived account index.
+  const addr = params?.[1]?.accountAddress || requestInfo?.solanaAccountAddress;
+  if (typeof addr === 'string') {
+    const match = wallet.getPubkeys(SOLANA_NETWORK_ID).find((pk: any) => pk.address === addr);
+    if (match) return typeof match.accountIndex === 'number' ? match.accountIndex : 0;
+  }
+  return 0;
+}
+
+async function getSolanaAddress(accountIndex = 0): Promise<string> {
+  const cached = cachedAddresses.get(accountIndex);
+  if (cached) return cached;
 
   // Try the persisted wallet pubkey cache first — works in watch-only mode.
-  const walletAddress = wallet.getAddressForNetwork(SOLANA_NETWORK_ID);
-  if (walletAddress) {
-    cachedAddress = walletAddress;
-    return walletAddress;
+  // Match by note (account index): getAddressForNetwork returns pubkeys[0] and
+  // is account-blind, so it would hand account 0's address back for account N.
+  const note = solanaNote(accountIndex);
+  const cachedPubkey = wallet.getPubkeys(SOLANA_NETWORK_ID).find((pk: any) => pk.note === note);
+  if (cachedPubkey?.address) {
+    cachedAddresses.set(accountIndex, cachedPubkey.address);
+    return cachedPubkey.address;
   }
 
   // Not cached — need the device.
@@ -227,34 +276,44 @@ async function getSolanaAddress(): Promise<string> {
   }
 
   const sdk = wallet.getSdk();
-  const result = await sdk.address.solanaGetAddress({ address_n: SOLANA_ADDRESS_N });
+  const address_n = solanaAddressN(accountIndex);
+  const result = await sdk.address.solanaGetAddress({ address_n });
 
   const address = result.address || result;
   if (!address || typeof address !== 'string') {
     throw createProviderRpcError(-32603, 'Vault returned invalid Solana address');
   }
 
-  cachedAddress = address;
+  cachedAddresses.set(accountIndex, address);
 
   // Persist to the shared pubkey cache so future watch-only sessions have it.
   try {
     await wallet.addPubkey({
-      note: SOLANA_PUBKEY_NOTE,
+      note,
       networks: [SOLANA_NETWORK_ID],
       type: 'address',
       address,
       pubkey: address,
-      addressNList: SOLANA_ADDRESS_N,
-      addressNListMaster: SOLANA_ADDRESS_N,
+      addressNList: address_n,
+      addressNListMaster: address_n,
       curve: 'ed25519',
       script_type: 'solana',
-      accountIndex: 0,
+      accountIndex,
     });
   } catch (e) {
     console.warn(TAG, 'Failed to cache Solana address:', e);
   }
 
   return address;
+}
+
+/**
+ * Derive (and persist) a specific Solana account on demand. Used by the
+ * ADD_ACCOUNT background handler and the startup reload of persisted accounts,
+ * which both need to materialize account N's pubkey outside the batch xpub flow.
+ */
+export async function deriveSolanaAccount(accountIndex: number): Promise<string> {
+  return getSolanaAddress(accountIndex);
 }
 
 /** Build the event object for popup approval flow */
@@ -330,7 +389,10 @@ function getApiKey(): string {
  * The vault replaces the dummy 64-byte signature at bytes 1-64 in raw_tx
  * with the real Ed25519 signature from the device.
  */
-async function signTransactionViaRest(txBase64: string): Promise<{ signature: string; serializedTx: string }> {
+async function signTransactionViaRest(
+  txBase64: string,
+  accountIndex = 0,
+): Promise<{ signature: string; serializedTx: string }> {
   const apiKey = getApiKey();
   let resp: Response;
   try {
@@ -342,7 +404,7 @@ async function signTransactionViaRest(txBase64: string): Promise<{ signature: st
       },
       body: JSON.stringify({
         raw_tx: txBase64,
-        address_n: SOLANA_ADDRESS_N,
+        address_n: solanaAddressN(accountIndex),
       }),
       // Wait on the user holding the device button — see the matching
       // comment in signMessageViaRest for the rationale.
@@ -381,7 +443,7 @@ async function signTransactionViaRest(txBase64: string): Promise<{ signature: st
  *
  * Returns: { signature: base64(64 bytes), publicKey: base64(32 bytes) }
  */
-async function signMessageViaRest(messageBase64: string): Promise<number[]> {
+async function signMessageViaRest(messageBase64: string, accountIndex = 0): Promise<number[]> {
   const apiKey = getApiKey();
   let resp: Response;
   try {
@@ -393,7 +455,7 @@ async function signMessageViaRest(messageBase64: string): Promise<number[]> {
       },
       body: JSON.stringify({
         message: messageBase64,
-        address_n: SOLANA_ADDRESS_N,
+        address_n: solanaAddressN(accountIndex),
       }),
       // Hardware signing waits on the user reading the message and
       // confirming on-device. Match the injected-script callback ceiling
@@ -446,6 +508,7 @@ async function signOffchainMessageViaRest(
   messageHex: string,
   version: number,
   messageFormat: number,
+  accountIndex = 0,
 ): Promise<{ publicKey: string; signature: string }> {
   const apiKey = getApiKey();
   let resp: Response;
@@ -454,7 +517,7 @@ async function signOffchainMessageViaRest(
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
-        address_n: SOLANA_ADDRESS_N,
+        address_n: solanaAddressN(accountIndex),
         message: messageHex,
         is_text: false, // Pre-encoded to hex above so the vault doesn't second-guess.
         version,
@@ -693,7 +756,7 @@ export const handleSolanaRequest = async (
 
     // ---- Disconnect ----
     case 'solana_disconnect': {
-      cachedAddress = null;
+      cachedAddresses.clear();
       console.log(tag, 'Disconnected');
       return true;
     }
@@ -701,6 +764,25 @@ export const handleSolanaRequest = async (
     // ---- Get public key ----
     case 'solana_getPublicKey': {
       return await getSolanaAddress();
+    }
+
+    // ---- Enumerate accounts (wallet-standard multi-account) ----
+    // Returns every derived Solana account (address + index) so the injected
+    // wallet-standard can expose them all. Sign requests carry the chosen
+    // account's address, which the sign handlers map back to its index.
+    case 'solana_getAccounts': {
+      const existing = wallet
+        .getPubkeys(SOLANA_NETWORK_ID)
+        .filter((pk: any) => pk.address)
+        .map((pk: any) => ({
+          address: pk.address as string,
+          accountIndex: typeof pk.accountIndex === 'number' ? pk.accountIndex : 0,
+        }));
+      if (existing.length === 0) {
+        const addr = await getSolanaAddress(0);
+        return [{ address: addr, accountIndex: 0 }];
+      }
+      return existing.sort((a, b) => a.accountIndex - b.accountIndex);
     }
 
     // ---- Sign message ----
@@ -716,7 +798,7 @@ export const handleSolanaRequest = async (
 
       // Direct REST call — vault signs whatever raw bytes it receives
       const messageBase64 = toBase64(messageArray);
-      const signatureArray = await signMessageViaRest(messageBase64);
+      const signatureArray = await signMessageViaRest(messageBase64, resolveSolanaAccountIndex(params, requestInfo));
 
       chrome.runtime.sendMessage({ action: 'signature_complete', eventId: requestInfo.id }).catch(() => {});
       return signatureArray;
@@ -733,7 +815,7 @@ export const handleSolanaRequest = async (
       await requestUserApproval(txEvent, requestInfo, method, params, requireApproval);
 
       const txBase64 = toBase64(txArray);
-      const txSignResult = await signTransactionViaRest(txBase64);
+      const txSignResult = await signTransactionViaRest(txBase64, resolveSolanaAccountIndex(params, requestInfo));
 
       // Return the fully signed transaction (vault replaces dummy sig at bytes 1-64)
       const signedTxArray = fromBase64(txSignResult.serializedTx);
@@ -764,7 +846,10 @@ export const handleSolanaRequest = async (
       const lamports = BigInt(Math.round(amountFloat * 1e9));
       if (lamports <= 0n) throw createProviderRpcError(4000, 'Amount too small');
 
-      const sender = await getSolanaAddress();
+      // sender and signer MUST use the same account or the built tx won't
+      // match the signature. Both derive from acctIdx.
+      const acctIdx = typeof payload.accountIndex === 'number' ? payload.accountIndex : 0;
+      const sender = await getSolanaAddress(acctIdx);
       const blockhash = await getLatestBlockhash();
       const txBytes = buildSolanaTransferTx(sender, recipient, lamports, blockhash);
       const txBase64 = toBase64(Array.from(txBytes));
@@ -807,7 +892,7 @@ export const handleSolanaRequest = async (
         throw createProviderRpcError(4001, 'User denied transaction');
       }
 
-      const signResult = await signTransactionViaRest(txBase64);
+      const signResult = await signTransactionViaRest(txBase64, acctIdx);
       const txSignature = await broadcastTransaction(signResult.serializedTx);
 
       // Persist txid so the approval UI's success state can show it.
@@ -847,7 +932,7 @@ export const handleSolanaRequest = async (
 
       // Sign via direct REST call
       const sendBase64 = toBase64(sendTxArray);
-      const signResult = await signTransactionViaRest(sendBase64);
+      const signResult = await signTransactionViaRest(sendBase64, resolveSolanaAccountIndex(params, requestInfo));
 
       // Broadcast via Solana RPC (vault has no broadcast endpoint)
       const txSignature = await broadcastTransaction(signResult.serializedTx);
@@ -944,6 +1029,7 @@ export const handleSolanaRequest = async (
         bytesToHex(messageBytes),
         version,
         messageFormat,
+        resolveSolanaAccountIndex(params, requestInfo),
       );
 
       try {
