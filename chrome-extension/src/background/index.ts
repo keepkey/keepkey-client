@@ -9,6 +9,7 @@ import packageJson from '../../package.json';
 import * as wallet from './wallet';
 import { deriveUtxoAddress } from './utxoDerive';
 import { resetSolanaState, prefetchSolanaAccounts, deriveSolanaAccount } from './chains/solanaHandler';
+import { handleSwapMessage } from './swapHandler';
 import { resetTonState, prefetchTonAddress } from './chains/tonHandler';
 import { resetTronState, prefetchTronPubkey } from './chains/tronHandler';
 import { handleWalletRequest } from './methods';
@@ -2027,6 +2028,12 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           } catch (error) {
             sendResponse({ error: 'Failed to update cache setting' });
           }
+          break;
+        }
+
+        case 'SWAP_REQUEST': {
+          // Native side-panel swap → vault headless swap REST (see swapHandler.ts).
+          sendResponse(await handleSwapMessage(message, cachedBalances));
           break;
         }
 
