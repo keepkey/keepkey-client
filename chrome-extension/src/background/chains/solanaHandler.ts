@@ -245,6 +245,7 @@ function resolveSolanaAccountIndex(params: any[], requestInfo: any): number {
   if (typeof addr === 'string') {
     const match = wallet.getPubkeys(SOLANA_NETWORK_ID).find((pk: any) => pk.address === addr);
     if (match) return typeof match.accountIndex === 'number' ? match.accountIndex : 0;
+    throw createProviderRpcError(4000, `Unknown Solana account: ${addr}`);
   }
   return 0;
 }

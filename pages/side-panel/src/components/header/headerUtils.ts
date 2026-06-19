@@ -237,9 +237,9 @@ function buildUtxoAccounts(pubkeys: any[], networkId: string): AccountItem[] {
 
   for (const pk of relevant) {
     const baseLabel = pk.script_type ? BTC_SCRIPT_LABELS[pk.script_type] || pk.script_type : 'Default';
-    const accountIdx = extractAccountIdxFromNote(pk.note);
+    const accountIdx = parseAccountIndex(pk.note, pk.accountIndex);
     const repeats = pk.script_type ? (scriptTypeCounts.get(pk.script_type) || 0) > 1 : false;
-    const label = repeats && accountIdx !== null ? `${baseLabel} · Account ${accountIdx}` : baseLabel;
+    const label = repeats ? `${baseLabel} · Account ${accountIdx}` : baseLabel;
 
     const address = pk.address || pk.master || '';
     items.push({
@@ -248,7 +248,7 @@ function buildUtxoAccounts(pubkeys: any[], networkId: string): AccountItem[] {
       address,
       pubkey: pk,
       scriptType: pk.script_type,
-      accountIndex: accountIdx ?? undefined,
+      accountIndex: accountIdx,
       note: pk.note,
       isDefault: items.length === 0,
     });
