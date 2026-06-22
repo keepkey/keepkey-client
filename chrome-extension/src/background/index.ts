@@ -289,6 +289,56 @@ let tokenDiscoveryDone = false;
 // (not for calls that return the in-flight dedup promise).
 let latestFetchId = 0;
 
+// ---- Last-good portfolio persistence (chrome.storage.local) ----
+// Hydrate cached balances at worker start so the dashboard shows real numbers
+// immediately after MV3 evicts the service worker, instead of a $0 flash.
+// Scoped to a fingerprint of the active wallet's pubkeys so a different device —
+// or a different passphrase wallet on the same device — never shows the previous
+// wallet's balances (the GET_APP_BALANCES guard drops a hydrated cache whose
+// fingerprint doesn't match the connected wallet).
+const PORTFOLIO_CACHE_KEY = 'keepkey-portfolio-cache';
+let portfolioUpdatedAt = 0;
+let cacheFromHydrate = false;
+let hydratedFingerprint: string | null = null;
+
+function walletFingerprint(): string {
+  const pks = wallet.getPubkeys();
+  if (!pks.length) return '';
+  const addrs = pks
+    .map((p: any) => p.address || p.master || p.pubkey || '')
+    .filter(Boolean)
+    .sort();
+  let h = 0;
+  const s = addrs.join('|');
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return String(h);
+}
+
+function persistPortfolio(balances: any[]) {
+  portfolioUpdatedAt = Date.now();
+  chrome.storage.local
+    .set({ [PORTFOLIO_CACHE_KEY]: { fingerprint: walletFingerprint(), balances, updatedAt: portfolioUpdatedAt } })
+    .catch(() => {});
+}
+
+// Kicked once at worker start. GET_APP_BALANCES awaits it before reading the
+// cache so the very first dashboard paint can use last-good data.
+const portfolioHydrated: Promise<void> = (async () => {
+  try {
+    const data = await chrome.storage.local.get(PORTFOLIO_CACHE_KEY);
+    const cached = data[PORTFOLIO_CACHE_KEY];
+    if (cached?.balances?.length && cachedBalances.length === 0) {
+      cachedBalances = cached.balances;
+      portfolioUpdatedAt = cached.updatedAt || 0;
+      hydratedFingerprint = cached.fingerprint || null;
+      cacheFromHydrate = true;
+      console.log(`[portfolio] hydrated ${cachedBalances.length} balances from storage`);
+    }
+  } catch {
+    /* no persisted portfolio — ignore */
+  }
+})();
+
 function pushBalancesUpdated() {
   chrome.runtime.sendMessage({ type: 'BALANCES_UPDATED' }).catch(() => {
     // No popup/sidebar listening — ignore.
@@ -612,6 +662,10 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
       const snapshotStale = currentPubkeyCount > allPubkeys.length;
       if (myFetchId === latestFetchId && !snapshotStale) {
         cachedBalances = balances;
+        // This commit is authoritative for the connected wallet — supersede any
+        // hydrated last-good cache and persist the fresh set for next worker start.
+        cacheFromHydrate = false;
+        persistPortfolio(balances);
         // A forced fetch performs token discovery (ERC-20/SPL/TRC-20); record
         // that so the GET_APP_BALANCES backstop stops re-triggering.
         if (forceRefresh) tokenDiscoveryDone = true;
@@ -1803,6 +1857,20 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
 
         case 'GET_APP_BALANCES': {
           try {
+            await portfolioHydrated;
+            // Drop a hydrated last-good cache that belongs to a different wallet
+            // (different device, or a different passphrase on the same device)
+            // once the connected wallet's pubkeys are known.
+            if (
+              cacheFromHydrate &&
+              wallet.isInitialized() &&
+              hydratedFingerprint &&
+              walletFingerprint() !== hydratedFingerprint
+            ) {
+              cachedBalances = [];
+              cacheFromHydrate = false;
+              hydratedFingerprint = null;
+            }
             if (cachedBalances.length > 0) {
               // Backstop for the "empty tokens until manual Refresh" bug: a
               // non-empty cache that holds only natives (no token rows) means
@@ -1815,7 +1883,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               // force-refresh when one isn't already running, and stop entirely
               // once a discovery has committed (tokenDiscoveryDone).
               const discovering = !tokenDiscoveryDone && !cachedBalances.some((b: any) => b.token === true);
-              sendResponse({ balances: cachedBalances, discovering });
+              sendResponse({ balances: cachedBalances, discovering, updatedAt: portfolioUpdatedAt });
               if (discovering && !balancesFetchInProgress) {
                 fetchBalancesFromPioneer(true).catch(e => console.warn(tag, 'auto token-discovery failed:', e));
               }
