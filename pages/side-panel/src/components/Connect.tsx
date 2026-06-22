@@ -72,7 +72,7 @@ const Connect: React.FC<ConnectProps> = ({ setIsConnecting }) => {
   return (
     <Box display="flex" justifyContent="center" alignItems="center" height="100vh" position="relative">
       <Card
-        bg="gray.800"
+        bg="kk.surface"
         borderRadius="md"
         p={6}
         mb={6}
@@ -82,29 +82,27 @@ const Connect: React.FC<ConnectProps> = ({ setIsConnecting }) => {
         textAlign="center"
         boxShadow="lg"
         borderWidth="1px"
-        borderColor="whiteAlpha.100">
+        borderColor="kk.line">
         <Image src={'https://i.ibb.co/jR8WcJM/kk.gif'} alt="KeepKey" />
-        <Text fontSize="lg" fontWeight="bold" mb={2} color="white">
+        <Text fontSize="lg" fontWeight="bold" mb={2} color="kk.text">
           KeepKey Vault Required
         </Text>
-        <Text fontSize="sm" mb={4} color="whiteAlpha.700">
+        <Text fontSize="sm" mb={4} color="kk.dim">
           The KeepKey Vault desktop app must be running to use this extension.
         </Text>
         <Stack direction="column" spacing={4} mb={4}>
-          <Button colorScheme="blue" onClick={launchKeepKey}>
-            Launch KeepKey Vault
-          </Button>
+          <Button onClick={launchKeepKey}>Launch KeepKey Vault</Button>
 
-          <Text fontSize="xs" color="whiteAlpha.600">
+          <Text fontSize="xs" color="kk.faint">
             Already running?
           </Text>
-          <Button colorScheme="teal" onClick={connectKeepkey}>
+          <Button variant="ghost" onClick={connectKeepkey}>
             Retry Connection
           </Button>
         </Stack>
-        <Text fontSize="sm" mt={4} color="whiteAlpha.700">
+        <Text fontSize="sm" mt={4} color="kk.dim">
           Don't have KeepKey Vault?{' '}
-          <Button variant="link" color="teal.300" onClick={openKeepKeyLink}>
+          <Button variant="link" color="kk.accent" onClick={openKeepKeyLink}>
             Download at keepkey.com
           </Button>
         </Text>
@@ -120,9 +118,9 @@ const Connect: React.FC<ConnectProps> = ({ setIsConnecting }) => {
           display="flex"
           justifyContent="center"
           alignItems="center"
-          bg="rgba(255, 255, 255, 0.8)"
+          bg="rgba(11, 13, 16, 0.85)"
           zIndex={1}>
-          <Spinner size="xl" thickness="4px" color="teal.500" />
+          <Spinner size="xl" thickness="4px" color="kk.accent" />
         </Box>
       )}
     </Box>

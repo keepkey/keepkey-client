@@ -1,15 +1,7 @@
 import React, { useMemo } from 'react';
 import { Box, Text, Flex } from '@chakra-ui/react';
 import { motion } from 'framer-motion';
-
-const COLORS = [
-  '#4299E1', // blue.400
-  '#48BB78', // green.400
-  '#ED8936', // orange.400
-  '#9F7AEA', // purple.400
-  '#F56565', // red.400
-  '#718096', // gray.500 (Other)
-];
+import { colorForSymbol } from '../styles/assetColor';
 
 interface DonutChartProps {
   balances: any[];
@@ -27,14 +19,13 @@ const DonutChart: React.FC<DonutChartProps> = ({ balances, totalUsd }) => {
     const top5 = sorted.slice(0, 5);
     const otherValue = sorted.slice(5).reduce((sum, b) => sum + parseFloat(b.valueUsd || '0'), 0);
 
-    const items = top5.map((b, i) => ({
-      symbol: b.symbol || b.ticker || '?',
-      value: parseFloat(b.valueUsd || '0'),
-      color: COLORS[i],
-    }));
+    const items = top5.map(b => {
+      const symbol = b.symbol || b.ticker || '?';
+      return { symbol, value: parseFloat(b.valueUsd || '0'), color: colorForSymbol(symbol) };
+    });
 
     if (otherValue > 0) {
-      items.push({ symbol: 'Other', value: otherValue, color: COLORS[5] });
+      items.push({ symbol: 'Other', value: otherValue, color: colorForSymbol('Other') });
     }
 
     return items;

@@ -220,17 +220,17 @@ const Balances = ({ onSelectAsset, showAddBlockchain, setShowAddBlockchain }: Ba
               height="56px"
               borderRadius="full"
               transform="translate(-50%, -50%)"
-              bg="rgba(56, 178, 172, 0.15)"
+              bg="rgba(210, 153, 41, 0.15)"
               sx={{ animation: 'kk-glow 2.4s ease-in-out infinite' }}
             />
-            {/* Outer ring — clockwise, teal */}
+            {/* Outer ring — clockwise, gold */}
             <Box
               position="absolute"
               inset={0}
               borderRadius="full"
               border="3px solid transparent"
-              borderTopColor="teal.300"
-              borderRightColor="teal.400"
+              borderTopColor="kk.accent"
+              borderRightColor="keepKeyGold.300"
               sx={{ animation: 'kk-spin-cw 1.4s cubic-bezier(0.5, 0, 0.5, 1) infinite' }}
             />
             {/* Middle ring — counter-clockwise, paler */}
@@ -242,7 +242,7 @@ const Balances = ({ onSelectAsset, showAddBlockchain, setShowAddBlockchain }: Ba
               bottom="10px"
               borderRadius="full"
               border="2px solid transparent"
-              borderBottomColor="teal.200"
+              borderBottomColor="keepKeyGold.200"
               borderLeftColor="whiteAlpha.400"
               sx={{ animation: 'kk-spin-ccw 2.1s cubic-bezier(0.4, 0, 0.6, 1) infinite' }}
             />
@@ -267,8 +267,8 @@ const Balances = ({ onSelectAsset, showAddBlockchain, setShowAddBlockchain }: Ba
               height="10px"
               borderRadius="full"
               transform="translate(-50%, -50%)"
-              bg="teal.300"
-              boxShadow="0 0 10px 2px rgba(56, 178, 172, 0.6)"
+              bg="kk.accent"
+              boxShadow="0 0 10px 2px rgba(210, 153, 41, 0.6)"
               sx={{ animation: 'kk-dot-pulse 1.2s ease-in-out infinite' }}
             />
           </Box>
