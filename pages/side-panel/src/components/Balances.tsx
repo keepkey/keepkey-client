@@ -69,16 +69,25 @@ const Balances = ({ onSelectAsset, showAddBlockchain, setShowAddBlockchain }: Ba
     return () => chrome.runtime.onMessage.removeListener(listener);
   }, []);
 
-  // Sort assets by total USD value descending
-  const sortedAssets = [...assets].sort((assetA: any, assetB: any) => {
-    const valueA = balances
-      .filter(bal => bal.networkId === assetA.networkId)
-      .reduce((s, bal) => s + parseFloat(bal.valueUsd || '0'), 0);
-    const valueB = balances
-      .filter(bal => bal.networkId === assetB.networkId)
-      .reduce((s, bal) => s + parseFloat(bal.valueUsd || '0'), 0);
-    return valueB - valueA;
-  });
+  // Drive the dashboard from HOLDINGS, not the full static catalog: a chain
+  // shows only if it has a positive balance (native or token). Keying off the
+  // balance AMOUNT — not USD value — keeps a held asset visible even when its
+  // price is missing/0. The complete catalog stays one tap away via
+  // "+ Add blockchain", so empty chains no longer render as $0.00 rows.
+  const heldNetworkIds = new Set(
+    balances.filter(bal => parseFloat(bal.balance ?? bal.amount ?? '0') > 0).map(bal => bal.networkId),
+  );
+  const sortedAssets = [...assets]
+    .filter((asset: any) => heldNetworkIds.has(asset.networkId))
+    .sort((assetA: any, assetB: any) => {
+      const valueA = balances
+        .filter(bal => bal.networkId === assetA.networkId)
+        .reduce((s, bal) => s + parseFloat(bal.valueUsd || '0'), 0);
+      const valueB = balances
+        .filter(bal => bal.networkId === assetB.networkId)
+        .reduce((s, bal) => s + parseFloat(bal.valueUsd || '0'), 0);
+      return valueB - valueA;
+    });
 
   if (showAddBlockchain) {
     return <AssetSelect setShowAssetSelect={setShowAddBlockchain} />;
@@ -298,10 +307,26 @@ const Balances = ({ onSelectAsset, showAddBlockchain, setShowAddBlockchain }: Ba
     <Flex flex="1" overflowY="auto" width="100%" direction="column">
       <Stack width="100%">
         {sortedAssets.length === 0 ? (
-          <Flex justifyContent="center" alignItems="center" width="100%" minH="40vh">
+          <Flex direction="column" justifyContent="center" alignItems="center" gap={4} width="100%" minH="30vh">
             <Text color="kk.faint" fontSize="sm">
-              No assets found
+              No assets yet — receive funds to get started
             </Text>
+            <Flex
+              align="center"
+              justify="center"
+              gap={1.5}
+              px={4}
+              py={2}
+              borderRadius="12px"
+              border="1px dashed"
+              borderColor="kk.line"
+              _hover={{ borderColor: 'kk.lineHi', cursor: 'pointer' }}
+              onClick={() => setShowAddBlockchain(true)}
+              transition="border-color 0.15s">
+              <Text color="kk.faint" fontSize="xs">
+                + Add blockchain
+              </Text>
+            </Flex>
           </Flex>
         ) : (
           <>
