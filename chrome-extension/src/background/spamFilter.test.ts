@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { detectSpamToken, filterSpamTokens, KNOWN_STABLECOINS, type TokenBalanceEntry } from './spamFilter';
+import {
+  detectSpamToken,
+  filterSpamTokens,
+  partitionSpamTokens,
+  KNOWN_STABLECOINS,
+  type TokenBalanceEntry,
+} from './spamFilter';
 
 const clean: TokenBalanceEntry = {
   symbol: 'LINK',
@@ -50,8 +56,8 @@ describe('detectSpamToken — confirmed spam', () => {
     expect(r.level).toBe('confirmed');
   });
 
-  it('flags a fake stablecoin trading far from $1', () => {
-    const r = detectSpamToken({ symbol: 'USDC', name: 'USD Coin', valueUsd: '0.01' });
+  it('flags a fake stablecoin trading far from $1 (when priced)', () => {
+    const r = detectSpamToken({ symbol: 'USDC', name: 'USD Coin', valueUsd: '0.01', priceUsd: '0.01' });
     expect(r.level).toBe('confirmed');
     expect(r.reason).toContain('Fake');
   });
@@ -139,9 +145,7 @@ describe('filterSpamTokens', () => {
     expect(out).toHaveLength(1);
   });
 
-  it('a "hidden" override kills a token that passes every heuristic (the "Mortal" case)', () => {
-    // A scam token with a benign symbol and a fabricated >=$1 value passes all
-    // heuristic tiers and lands "clean" — only a user override removes it.
+  it('suppresses a benign-symbol fabricated-value token by default (the "Mortal" case), recoverably', () => {
     const mortal: TokenBalanceEntry = {
       symbol: 'MORTAL',
       name: 'Mortal',
@@ -150,12 +154,50 @@ describe('filterSpamTokens', () => {
       balance: '1',
       caip: 'eip155:1/erc20:0xDEAD',
     };
-    // No override → survives (proves the heuristics alone don't catch it).
-    expect(filterSpamTokens([mortal]).map(t => t.caip)).toContain(mortal.caip);
-    // Hidden override → dropped (the kill switch).
-    const hidden = new Map([['eip155:1/erc20:0xdead', 'hidden' as const]]);
-    expect(filterSpamTokens([mortal], hidden)).toHaveLength(0);
-    // Override removed → reappears.
-    expect(filterSpamTokens([mortal], new Map()).map(t => t.caip)).toContain(mortal.caip);
+    // Default: detected 'suppressed' and routed to the recoverable Hidden bucket.
+    expect(detectSpamToken(mortal)).toMatchObject({ isSpam: true, level: 'suppressed' });
+    const def = partitionSpamTokens([mortal]);
+    expect(def.visible).toHaveLength(0);
+    expect(def.hidden.map(t => t.caip)).toContain(mortal.caip);
+    // A 'visible' override un-hides it permanently.
+    const shown = new Map([['eip155:1/erc20:0xdead', 'visible' as const]]);
+    expect(partitionSpamTokens([mortal], shown).visible.map(t => t.caip)).toContain(mortal.caip);
+    // A user-added custom token of the same shape is NOT suppressed.
+    expect(partitionSpamTokens([mortal], undefined, () => true).visible.map(t => t.caip)).toContain(mortal.caip);
+  });
+
+  it('keeps a not-yet-priced legit token (price-aware tiers do not fire at price 0)', () => {
+    const newtkn: TokenBalanceEntry = {
+      symbol: 'NEWTKN',
+      name: 'New Token',
+      balance: '10',
+      priceUsd: '0',
+      valueUsd: '0',
+      caip: 'eip155:1/erc20:0xBEEF',
+    };
+    expect(detectSpamToken(newtkn).isSpam).toBe(false);
+    expect(partitionSpamTokens([newtkn]).visible.map(t => t.caip)).toContain(newtkn.caip);
+  });
+
+  it('hard-drops confirmed phishing but routes suppressed into the Hidden bucket', () => {
+    const phishing: TokenBalanceEntry = { symbol: 'X', name: 'claim at evil.io', valueUsd: '0', caip: 'a' };
+    const mortal: TokenBalanceEntry = {
+      symbol: 'MORTAL',
+      name: 'Mortal',
+      valueUsd: '5',
+      priceUsd: '5',
+      balance: '1',
+      caip: 'b',
+    };
+    const { visible, hidden } = partitionSpamTokens([phishing, mortal]);
+    expect(visible).toHaveLength(0);
+    expect(hidden.map(t => t.caip)).toEqual(['b']); // mortal hidden; phishing hard-dropped
+  });
+
+  it('keeps a native row visible even with $0 value', () => {
+    const nativeDust: TokenBalanceEntry = { symbol: 'ETH', name: 'Ethereum', isNative: true, valueUsd: '0', caip: 'n' };
+    const { visible, hidden } = partitionSpamTokens([nativeDust]);
+    expect(visible).toHaveLength(1);
+    expect(hidden).toHaveLength(0);
   });
 });
