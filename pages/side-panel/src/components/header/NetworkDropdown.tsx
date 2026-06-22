@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { Flex, Text, Box, Avatar, Icon, IconButton, Badge, useOutsideClick } from '@chakra-ui/react';
+import { Flex, Text, Box, Icon, IconButton, Badge, useOutsideClick } from '@chakra-ui/react';
+import { AssetIcon } from '../AssetIcon';
 import {
   ChevronDownIcon,
   ChevronUpIcon,
@@ -75,19 +76,19 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
       px={3}
       py={2}
       cursor="pointer"
-      bg={selectedNetworkId === net.networkId ? 'whiteAlpha.150' : 'transparent'}
-      _hover={{ bg: 'whiteAlpha.100' }}
+      bg={selectedNetworkId === net.networkId ? 'kk.surfaceHi' : 'transparent'}
+      _hover={{ bg: 'kk.surfaceHi' }}
       transition="background 0.1s"
       onClick={() => handleSelect(net)}
       borderBottom="1px solid"
-      borderColor="whiteAlpha.50">
-      <Avatar size="xs" src={net.icon} name={net.name} mr={2} />
+      borderColor="kk.line">
+      <AssetIcon src={net.icon} symbol={net.name} size={24} style={{ marginRight: 8 }} />
       <Flex alignItems="center" gap={1} flex={1} minW={0}>
-        <Text fontSize="xs" color="white" isTruncated>
+        <Text fontSize="xs" color="kk.text" isTruncated>
           {net.name}
         </Text>
         {net.isCustom && (
-          <Badge fontSize="0.5rem" colorScheme="purple" variant="subtle" px={1}>
+          <Badge fontSize="0.5rem" bg="kk.surfaceHi" color="kk.dim" variant="subtle" px={1}>
             Custom
           </Badge>
         )}
@@ -98,7 +99,7 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
           aria-label="Remove network"
           size="xs"
           variant="ghost"
-          colorScheme="red"
+          color="kk.bad"
           onClick={e => {
             e.stopPropagation();
             onRemoveNetwork(net.networkId);
@@ -119,15 +120,15 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
         px={2}
         h="32px"
         borderRadius="md"
-        bg="whiteAlpha.100"
-        _hover={{ bg: 'whiteAlpha.200' }}
+        bg="kk.surface"
+        _hover={{ bg: 'kk.surfaceHi' }}
         transition="background 0.15s"
         minW={0}>
-        {selected?.icon && <Avatar size="2xs" src={selected.icon} name={selected.name} mr={1.5} />}
-        <Text fontSize="xs" fontWeight="semibold" color="white" isTruncated maxW="72px">
+        {selected && <AssetIcon src={selected.icon} symbol={selected.name} size={16} style={{ marginRight: 6 }} />}
+        <Text fontSize="xs" fontWeight="semibold" color="kk.text" isTruncated maxW="72px">
           {triggerLabel}
         </Text>
-        <Icon as={isExpanded ? ChevronUpIcon : ChevronDownIcon} boxSize={3} ml={1} color="whiteAlpha.700" />
+        <Icon as={isExpanded ? ChevronUpIcon : ChevronDownIcon} boxSize={3} ml={1} color="kk.dim" />
       </Flex>
 
       {/* Dropdown panel — conditionally rendered (no Collapse wrapper: an
@@ -143,8 +144,8 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
           zIndex={10}
           borderRadius="md"
           border="1px solid"
-          borderColor="whiteAlpha.200"
-          bg="gray.800"
+          borderColor="kk.lineHi"
+          bg="kk.surface"
           maxH="calc(100vh - 84px)"
           minW="200px"
           overflowY="auto"
@@ -160,12 +161,12 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
                 px={3}
                 py={2}
                 cursor="pointer"
-                _hover={{ bg: 'whiteAlpha.100' }}
+                _hover={{ bg: 'kk.surfaceHi' }}
                 onClick={() => setActiveFamily(null)}
                 borderBottom="1px solid"
-                borderColor="whiteAlpha.100">
-                <Icon as={ChevronLeftIcon} boxSize={4} color="whiteAlpha.600" mr={1} />
-                <Text fontSize="xs" color="whiteAlpha.600" fontWeight="medium">
+                borderColor="kk.line">
+                <Icon as={ChevronLeftIcon} boxSize={4} color="kk.dim" mr={1} />
+                <Text fontSize="xs" color="kk.dim" fontWeight="medium">
                   All Networks
                 </Text>
               </Flex>
@@ -180,14 +181,14 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
                   <Text
                     fontSize="xs"
                     fontWeight="bold"
-                    color="whiteAlpha.500"
+                    color="kk.dim"
                     px={3}
                     pt={2}
                     pb={1}
                     textTransform="uppercase"
                     letterSpacing="wider"
                     cursor="pointer"
-                    _hover={{ color: 'whiteAlpha.700' }}
+                    _hover={{ color: 'kk.dim' }}
                     onClick={() => setActiveFamily(family)}>
                     {CHAIN_FAMILY_LABELS[family]}
                   </Text>
@@ -195,11 +196,11 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
                   {nets.length > 3 && (
                     <Text
                       fontSize="xs"
-                      color="blue.300"
+                      color="kk.accent"
                       px={3}
                       py={1}
                       cursor="pointer"
-                      _hover={{ color: 'blue.200' }}
+                      _hover={{ color: 'kk.accent' }}
                       onClick={() => setActiveFamily(family)}>
                       +{nets.length - 3} more
                     </Text>
@@ -210,7 +211,7 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
           )}
 
           {networks.length === 0 && (
-            <Text fontSize="xs" color="whiteAlpha.400" p={3} textAlign="center">
+            <Text fontSize="xs" color="kk.faint" p={3} textAlign="center">
               No networks available
             </Text>
           )}
@@ -222,16 +223,16 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
             px={3}
             py={2}
             cursor="pointer"
-            _hover={{ bg: 'whiteAlpha.100' }}
+            _hover={{ bg: 'kk.surfaceHi' }}
             onClick={e => {
               e.stopPropagation();
               window.open('https://chainlist.org/', '_blank');
               setIsExpanded(false);
             }}
             borderTop="1px solid"
-            borderColor="whiteAlpha.100">
-            <Icon as={ExternalLinkIcon} boxSize={3} color="blue.300" mr={2} />
-            <Text fontSize="xs" color="blue.300" fontWeight="medium">
+            borderColor="kk.line">
+            <Icon as={ExternalLinkIcon} boxSize={3} color="kk.accent" mr={2} />
+            <Text fontSize="xs" color="kk.accent" fontWeight="medium">
               Browse Chainlist.org
             </Text>
           </Flex>
@@ -243,14 +244,14 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
             px={3}
             py={1.5}
             cursor="pointer"
-            _hover={{ bg: 'whiteAlpha.100' }}
+            _hover={{ bg: 'kk.surfaceHi' }}
             onClick={e => {
               e.stopPropagation();
               onAddNetwork();
               setIsExpanded(false);
             }}>
-            <Icon as={AddIcon} boxSize={3} color="whiteAlpha.500" mr={2} />
-            <Text fontSize="xs" color="whiteAlpha.500" fontWeight="medium">
+            <Icon as={AddIcon} boxSize={3} color="kk.dim" mr={2} />
+            <Text fontSize="xs" color="kk.dim" fontWeight="medium">
               Add Custom Network
             </Text>
           </Flex>

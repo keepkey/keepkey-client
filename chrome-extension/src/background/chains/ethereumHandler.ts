@@ -5,6 +5,7 @@
 import type { JsonRpcProvider } from 'ethers';
 import { parseEther, Transaction } from 'ethers';
 import type { ProviderRpcError } from '../utils';
+import { reportActivityToVault } from '../activityReport';
 import { createProviderRpcError } from '../utils';
 import {
   requestStorage,
@@ -1787,6 +1788,19 @@ const broadcastTransaction = async (signedTx: string, expectedFrom?: string) => 
       if (txResponse?.hash) {
         scheduleDropCheck(txResponse.hash, 8_000, url);
         scheduleDropCheck(txResponse.hash, 45_000, url);
+        // Hand the txid to vault so its activity DB stays complete. This is the
+        // EVM chokepoint for both eth_sendTransaction and eth_sendRawTransaction
+        // (dApp/DeFi) — the txids that otherwise never reach vault. Best-effort.
+        const evmNetworkId =
+          networkId || (chainIdRaw ? `eip155:${parseInt(String(chainIdRaw), 16) || chainIdRaw}` : '');
+        if (evmNetworkId) {
+          void reportActivityToVault({
+            txid: txResponse.hash,
+            networkId: evmNetworkId,
+            address: txResponse.from || expectedFrom,
+            type: 'evm',
+          });
+        }
       }
       return txResponse.hash;
     } catch (e: any) {

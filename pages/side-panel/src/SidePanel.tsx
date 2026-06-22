@@ -21,7 +21,7 @@ import {
   DrawerHeader,
   DrawerBody,
 } from '@chakra-ui/react';
-import { ArrowUpIcon, ArrowDownIcon, ChevronLeftIcon } from '@chakra-ui/icons';
+import { ArrowUpIcon, ArrowDownIcon, ChevronLeftIcon, RepeatIcon } from '@chakra-ui/icons';
 import { withErrorBoundary, withSuspense } from '@extension/shared';
 import { requestStorage } from '@extension/storage';
 
@@ -32,6 +32,7 @@ import History from './components/History';
 import Settings from './components/Settings';
 import { Transfer } from './components/Transfer';
 import { Receive } from './components/Receive';
+import Swap from './swap/Swap';
 import AssetDetail from './components/AssetDetail';
 import DonutChart from './components/DonutChart';
 import NetworkAccountHeader from './components/NetworkAccountHeader';
@@ -51,6 +52,9 @@ const SidePanel = () => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<any>(null);
+  // CAIP to preselect as the swap "from" when launched from an asset page;
+  // undefined when opened via the generic home Swap button.
+  const [swapFromCaip, setSwapFromCaip] = useState<string | undefined>(undefined);
   const [balancesInitialLoading, setBalancesInitialLoading] = useState(true);
   const [pendingEvent, setPendingEvent] = useState<any | null>(null);
   // "Add blockchain" picker takeover — lifted out of <Balances> so the home
@@ -63,6 +67,7 @@ const SidePanel = () => {
   const { isOpen: isSettingsOpen, onOpen: onSettingsOpen, onClose: onSettingsClose } = useDisclosure();
   const { isOpen: isSendOpen, onOpen: onSendOpen, onClose: onSendClose } = useDisclosure();
   const { isOpen: isReceiveOpen, onOpen: onReceiveOpen, onClose: onReceiveClose } = useDisclosure();
+  const { isOpen: isSwapOpen, onOpen: onSwapOpen, onClose: onSwapClose } = useDisclosure();
   const { isOpen: isAssetDetailOpen, onOpen: onAssetDetailOpen, onClose: onAssetDetailClose } = useDisclosure();
   // Fetch total balance
   const fetchTotalBalance = useCallback(() => {
@@ -104,6 +109,7 @@ const SidePanel = () => {
     if (isAssetDetailOpen) handleAssetDetailClose();
     if (isSendOpen) onSendClose();
     if (isReceiveOpen) onReceiveClose();
+    if (isSwapOpen) onSwapClose();
     if (transactionContext) setTransactionContext(null);
     if (showAddBlockchain) setShowAddBlockchain(false);
     setSelectedAsset(null);
@@ -149,6 +155,12 @@ const SidePanel = () => {
 
   const handleAssetReceive = () => {
     onReceiveOpen();
+  };
+
+  const handleAssetSwap = () => {
+    setSwapFromCaip(selectedAsset?.caip);
+    handleAssetDetailClose();
+    onSwapOpen();
   };
 
   const refreshBalances = async () => {
@@ -401,6 +413,16 @@ const SidePanel = () => {
                 Send
               </Button>
               <Button
+                leftIcon={<RepeatIcon />}
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSwapFromCaip(undefined);
+                  onSwapOpen();
+                }}>
+                Swap
+              </Button>
+              <Button
                 leftIcon={<ArrowDownIcon />}
                 variant="ghost"
                 size="sm"
@@ -442,6 +464,7 @@ const SidePanel = () => {
                   balances={balances}
                   onSend={handleAssetSend}
                   onReceive={handleAssetReceive}
+                  onSwap={handleAssetSwap}
                 />
               )}
             </Box>
@@ -509,6 +532,17 @@ const SidePanel = () => {
             <Box pt={10} h="full">
               <Receive onClose={onReceiveClose} balances={balances} />
             </Box>
+          </DrawerBody>
+        </DrawerContent>
+      </Drawer>
+
+      {/* Swap Drawer — native swap UI (faithful port of the BEX design); the Swap
+          component provides its own back/close affordance. */}
+      <Drawer isOpen={isSwapOpen} placement="bottom" onClose={onSwapClose} size="full">
+        <DrawerOverlay bg="blackAlpha.800" />
+        <DrawerContent bg="kk.bg" h={`calc(100vh - ${HEADER_HEIGHT})`} mt={HEADER_HEIGHT}>
+          <DrawerBody p={0}>
+            <Swap onClose={onSwapClose} initialFromCaip={swapFromCaip} />
           </DrawerBody>
         </DrawerContent>
       </Drawer>

@@ -1,80 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { VStack, HStack, Box, Text, Image, Spinner, Button, Flex, Badge } from '@chakra-ui/react';
-import { FaCoins, FaSync, FaPlus } from 'react-icons/fa';
+import { VStack, HStack, Box, Text, Spinner, Button, Flex, Badge, IconButton } from '@chakra-ui/react';
+import { FaCoins, FaSync, FaPlus, FaEyeSlash } from 'react-icons/fa';
 import { customTokensStorageApi, type CustomToken } from '@extension/storage';
 import { CustomTokenDialog } from './CustomTokenDialog';
+import { AssetIcon } from './AssetIcon';
 
 interface TokensProps {
   asset: any;
   networkId?: string;
 }
-
-// Icon component with fallback for broken/empty images
-const IconWithFallback = ({ src, alt, boxSize }: { src: string | null; alt: string; boxSize: string }) => {
-  const [error, setError] = useState(false);
-
-  const cleanUrl = React.useMemo(() => {
-    if (!src || src.trim() === '') {
-      return null;
-    }
-
-    if (src.includes(',')) {
-      const urls = src
-        .split(',')
-        .map(u => u.trim())
-        .filter(u => u.startsWith('http://') || u.startsWith('https://'));
-      return urls[0] || null;
-    }
-
-    if (!src.startsWith('http://') && !src.startsWith('https://')) {
-      return null;
-    }
-
-    return src;
-  }, [src]);
-
-  if (!cleanUrl || error) {
-    return (
-      <Box
-        boxSize={boxSize}
-        display="flex"
-        alignItems="center"
-        justifyContent="center"
-        fontSize="lg"
-        color="whiteAlpha.500"
-        bg="rgba(255, 255, 255, 0.08)"
-        borderRadius="md"
-        border="1px solid"
-        borderColor="whiteAlpha.200">
-        <FaCoins />
-      </Box>
-    );
-  }
-
-  return (
-    <Box
-      boxSize={boxSize}
-      display="flex"
-      alignItems="center"
-      justifyContent="center"
-      bg="rgba(255, 255, 255, 0.08)"
-      borderRadius="md"
-      p="3px"
-      position="relative"
-      border="1px solid"
-      borderColor="whiteAlpha.200">
-      <Image
-        src={cleanUrl}
-        alt={alt}
-        boxSize="100%"
-        objectFit="contain"
-        onError={() => {
-          setError(true);
-        }}
-      />
-    </Box>
-  );
-};
 
 export const Tokens = ({ asset, networkId }: TokensProps) => {
   const [tokens, setTokens] = useState<any[]>([]);
@@ -83,6 +17,9 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
   const [isCustomTokenDialogOpen, setIsCustomTokenDialogOpen] = useState(false);
   const [customTokens, setCustomTokens] = useState<CustomToken[]>([]);
   const [loadingTokenId, setLoadingTokenId] = useState<string | null>(null);
+  // True when the background is discovering tokens (natives present, no tokens
+  // yet) — lets us show "Discovering…" instead of a premature "No Tokens Found".
+  const [discovering, setDiscovering] = useState(false);
 
   useEffect(() => {
     fetchTokens();
@@ -142,6 +79,9 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
           });
 
           setTokens(networkTokens);
+          // Background signals it kicked token discovery for a natives-only
+          // cache — show the discovering state rather than a premature empty.
+          setDiscovering(Boolean(response.discovering) && networkTokens.length === 0);
         }
         setLoading(false);
       });
@@ -214,6 +154,20 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
         setTimeout(() => setLoadingTokenId(null), 2000);
       },
     );
+  };
+
+  // Permanently hide a token (e.g. a scam 'Mortal' with a fabricated USD value
+  // that slips past the spam heuristics). Persists a tier-0 user override in the
+  // background; the row vanishes immediately and stays gone across reloads.
+  const handleHideToken = (e: React.MouseEvent, token: any) => {
+    e.stopPropagation();
+    if (!token?.caip) return;
+    setTokens(prev => prev.filter(t => t.caip !== token.caip));
+    chrome.runtime.sendMessage({ type: 'SET_TOKEN_VISIBILITY', caip: token.caip, status: 'hidden' }, () => {
+      if (chrome.runtime.lastError) {
+        console.error('Error hiding token:', chrome.runtime.lastError.message);
+      }
+    });
   };
 
   const formatUsd = (value: number | null | undefined) => {
@@ -312,15 +266,10 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
       {/* Header */}
       <Flex justify="space-between" align="center" mb={1}>
         <HStack spacing={1}>
-          <Text
-            fontSize="xs"
-            fontWeight="semibold"
-            color="whiteAlpha.500"
-            textTransform="uppercase"
-            letterSpacing="wider">
+          <Text fontSize="xs" fontWeight="semibold" color="kk.dim" textTransform="uppercase" letterSpacing="wider">
             {isEvmNetwork ? 'ERC-20' : isCosmosNetwork ? 'IBC' : 'Tokens'}
           </Text>
-          <Text fontSize="xs" color="whiteAlpha.400">
+          <Text fontSize="xs" color="kk.faint">
             ({tokens.length})
           </Text>
         </HStack>
@@ -331,11 +280,11 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
               variant="ghost"
               onClick={() => setIsCustomTokenDialogOpen(true)}
               leftIcon={<FaPlus size={8} />}
-              color="whiteAlpha.500"
+              color="kk.dim"
               fontSize="xs"
               h="22px"
               px={2}
-              _hover={{ bg: 'whiteAlpha.100', color: 'whiteAlpha.800' }}>
+              _hover={{ bg: 'kk.surfaceHi', color: 'kk.text' }}>
               Add
             </Button>
           )}
@@ -345,11 +294,11 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
             onClick={handleRefresh}
             isLoading={isRefreshing}
             leftIcon={<FaSync size={8} />}
-            color="whiteAlpha.500"
+            color="kk.dim"
             fontSize="xs"
             h="22px"
             px={2}
-            _hover={{ bg: 'whiteAlpha.100', color: 'whiteAlpha.800' }}>
+            _hover={{ bg: 'kk.surfaceHi', color: 'kk.text' }}>
             Refresh
           </Button>
         </HStack>
@@ -358,8 +307,8 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
       {/* Loading State */}
       {loading ? (
         <Flex justify="center" align="center" py={8}>
-          <Spinner size="lg" color="blue.400" />
-          <Text ml={3} color="whiteAlpha.800">
+          <Spinner size="lg" color="kk.accent" />
+          <Text ml={3} color="kk.text">
             Loading tokens...
           </Text>
         </Flex>
@@ -405,18 +354,19 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
               return (
                 <Box
                   key={`${token.caip}-${index}`}
+                  role="group"
                   px={2}
                   py={1.5}
-                  bg="rgba(255, 255, 255, 0.03)"
+                  bg="kk.surface"
                   borderRadius="md"
                   borderWidth="1px"
-                  borderColor="whiteAlpha.100"
+                  borderColor="kk.line"
                   cursor={isLoading ? 'wait' : 'pointer'}
                   opacity={isLoading ? 0.6 : 1}
                   pointerEvents={isLoading ? 'none' : 'auto'}
                   _hover={{
-                    bg: 'rgba(255, 255, 255, 0.07)',
-                    borderColor: 'whiteAlpha.200',
+                    bg: 'kk.surfaceHi',
+                    borderColor: 'kk.lineHi',
                   }}
                   _active={{
                     transform: 'scale(0.99)',
@@ -426,41 +376,60 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
                   <Flex justify="space-between" align="center">
                     <HStack gap={2}>
                       {isLoading ? (
-                        <Flex
-                          boxSize="28px"
-                          align="center"
-                          justify="center"
-                          bg="rgba(255, 255, 255, 0.08)"
-                          borderRadius="md">
-                          <Spinner size="xs" color="blue.400" />
+                        <Flex boxSize="28px" align="center" justify="center" bg="kk.surfaceHi" borderRadius="md">
+                          <Spinner size="xs" color="kk.accent" />
                         </Flex>
                       ) : (
-                        <IconWithFallback src={token.icon} alt={token.name || token.symbol} boxSize="28px" />
+                        <AssetIcon src={token.icon} symbol={token.symbol} size={28} />
                       )}
                       <VStack align="flex-start" gap={0} spacing={0}>
-                        <Text fontSize="xs" fontWeight="semibold" color="whiteAlpha.900" lineHeight="1.3">
+                        <Text fontSize="xs" fontWeight="semibold" color="kk.text" lineHeight="1.3">
                           {token.symbol || 'Unknown'}
                         </Text>
-                        <Text fontSize="2xs" color="whiteAlpha.400" lineHeight="1.3">
+                        <Text fontSize="2xs" color="kk.faint" lineHeight="1.3">
                           {isLoading ? 'Loading...' : token.name || 'Unknown Token'}
                         </Text>
                       </VStack>
                     </HStack>
 
-                    <VStack align="flex-end" gap={0} spacing={0}>
-                      <Text fontSize="xs" color="green.400" fontWeight="medium" lineHeight="1.3">
-                        ${formatUsd(tokenValueUsd)}
-                      </Text>
-                      <Text fontSize="2xs" color="whiteAlpha.400" lineHeight="1.3">
-                        {tokenBalance.toFixed(6)} {token.symbol}
-                      </Text>
-                    </VStack>
+                    <HStack gap={1} align="center">
+                      <VStack align="flex-end" gap={0} spacing={0}>
+                        <Text fontSize="xs" color="kk.good" fontWeight="medium" lineHeight="1.3">
+                          ${formatUsd(tokenValueUsd)}
+                        </Text>
+                        <Text fontSize="2xs" color="kk.faint" lineHeight="1.3">
+                          {tokenBalance.toFixed(6)} {token.symbol}
+                        </Text>
+                      </VStack>
+                      <IconButton
+                        aria-label="Hide token"
+                        title="Hide this token"
+                        icon={<FaEyeSlash size={11} />}
+                        size="xs"
+                        variant="ghost"
+                        minW="auto"
+                        h="22px"
+                        color="whiteAlpha.400"
+                        opacity={0}
+                        _groupHover={{ opacity: 1 }}
+                        _hover={{ color: 'whiteAlpha.900', bg: 'whiteAlpha.100' }}
+                        onClick={e => handleHideToken(e, token)}
+                      />
+                    </HStack>
                   </Flex>
                 </Box>
               );
             })}
           </VStack>
         </Box>
+      ) : discovering ? (
+        /* Discovering State — background is fetching this network's tokens */
+        <Flex justify="center" align="center" direction="column" gap={3} py={8}>
+          <Spinner size="md" color="kk.accent" />
+          <Text color="kk.dim" fontSize="sm">
+            Discovering tokens…
+          </Text>
+        </Flex>
       ) : (
         /* Empty State */
         <VStack align="center" gap={4} py={8}>
@@ -468,17 +437,17 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
             w="60px"
             h="60px"
             borderRadius="full"
-            bg="rgba(255, 255, 255, 0.05)"
+            bg="kk.surface"
             display="flex"
             alignItems="center"
             justifyContent="center">
             <FaCoins color="rgba(255, 255, 255, 0.4)" size="24px" />
           </Box>
           <VStack gap={2}>
-            <Text fontSize="md" fontWeight="medium" color="whiteAlpha.900">
+            <Text fontSize="md" fontWeight="medium" color="kk.text">
               No Tokens Found
             </Text>
-            <Text fontSize="sm" color="whiteAlpha.600" textAlign="center" maxW="sm" px={4}>
+            <Text fontSize="sm" color="kk.dim" textAlign="center" maxW="sm" px={4}>
               {isEvmNetwork
                 ? "You don't have any ERC-20 tokens on this network yet."
                 : isCosmosNetwork
@@ -489,22 +458,16 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
           <HStack gap={3}>
             <Button
               size="sm"
-              colorScheme="whiteAlpha"
+              variant="ghost"
               onClick={handleRefresh}
               isLoading={isRefreshing}
               leftIcon={<FaSync />}
-              bg="rgba(255, 255, 255, 0.1)"
-              _hover={{ bg: 'rgba(255, 255, 255, 0.2)' }}>
+              bg="kk.surfaceHi"
+              _hover={{ bg: 'kk.surfaceHi' }}>
               Discover Tokens
             </Button>
             {isEvmNetwork && (
-              <Button
-                size="sm"
-                colorScheme="blue"
-                onClick={() => setIsCustomTokenDialogOpen(true)}
-                leftIcon={<FaPlus />}
-                bg="rgba(66, 153, 225, 0.2)"
-                _hover={{ bg: 'rgba(66, 153, 225, 0.3)' }}>
+              <Button size="sm" onClick={() => setIsCustomTokenDialogOpen(true)} leftIcon={<FaPlus />}>
                 Add Token
               </Button>
             )}
