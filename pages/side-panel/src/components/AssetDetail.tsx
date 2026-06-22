@@ -98,10 +98,14 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
     } else if (asset.networkId) {
       setLoadingAddress(true);
       chrome.runtime.sendMessage({ type: 'GET_PUBKEYS_FOR_NETWORK', networkId: asset.networkId }, response => {
-        if (response?.pubkeys?.[0]) {
-          setAddress(response.pubkeys[0].address || response.pubkeys[0].master || '');
-        }
+        const resolved = response?.pubkeys?.[0]?.address || response?.pubkeys?.[0]?.master || '';
+        if (resolved) setAddress(resolved);
         setLoadingAddress(false);
+        // EVM: refresh the cache for the resolved account so detail + dashboard
+        // stay fresh even when the address was resolved asynchronously here.
+        if (isEvm && resolved) {
+          chrome.runtime.sendMessage({ type: 'GET_EVM_BALANCE', networkId: asset.networkId, address: resolved });
+        }
       });
       return;
     }

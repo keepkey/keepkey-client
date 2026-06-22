@@ -149,8 +149,8 @@ describe('filterSpamTokens', () => {
     const mortal: TokenBalanceEntry = {
       symbol: 'MORTAL',
       name: 'Mortal',
-      valueUsd: '5',
-      priceUsd: '5',
+      valueUsd: '5000',
+      priceUsd: '5000',
       balance: '1',
       caip: 'eip155:1/erc20:0xDEAD',
     };
@@ -184,8 +184,8 @@ describe('filterSpamTokens', () => {
     const mortal: TokenBalanceEntry = {
       symbol: 'MORTAL',
       name: 'Mortal',
-      valueUsd: '5',
-      priceUsd: '5',
+      valueUsd: '5000',
+      priceUsd: '5000',
       balance: '1',
       caip: 'b',
     };

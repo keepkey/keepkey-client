@@ -42,7 +42,7 @@ import {
 } from '@extension/storage';
 import { getChainInfo } from './chains/registry';
 import { withRpcFailoverByNetworkId } from './chains/rpcFailover';
-import { EVM_TESTNETS, SOLANA_DEVNET } from './testnetPresets';
+import { EVM_TESTNETS, SOLANA_DEVNET, ALL_TESTNET_NETWORK_IDS } from './testnetPresets';
 import { formatUserError } from './utils';
 import { partitionSpamTokens, getTokenVisibilityMap, setTokenVisibility } from './spamFilter';
 
@@ -150,7 +150,12 @@ async function handleDeviceSwitch(newDeviceInfo: any) {
 
   // Balance caches — pubkey-keyed, so they're poisoned by the old device
   cachedBalances = [];
+  hiddenBalances = [];
   balancesFetchInProgress = null;
+  lastFetchError = null;
+  cacheFromHydrate = false;
+  hydratedFingerprint = null;
+  tokenDiscoveryDone = false;
 
   // Per-chain address caches (Solana/Tron/TON each keep their own lookup
   // cache above the pubkey layer)
@@ -317,16 +322,22 @@ function walletFingerprint(): string {
     .map((p: any) => p.address || p.master || p.pubkey || '')
     .filter(Boolean)
     .sort();
-  let h = 0;
-  const s = addrs.join('|');
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return String(h);
+  // Direct content fingerprint of the wallet's address set — no hashing, so no
+  // collision risk for the cross-wallet cache guard.
+  return addrs.join('|');
 }
 
 function persistPortfolio(balances: any[]) {
   portfolioUpdatedAt = Date.now();
   chrome.storage.local
-    .set({ [PORTFOLIO_CACHE_KEY]: { fingerprint: walletFingerprint(), balances, updatedAt: portfolioUpdatedAt } })
+    .set({
+      [PORTFOLIO_CACHE_KEY]: {
+        fingerprint: walletFingerprint(),
+        balances,
+        hidden: hiddenBalances,
+        updatedAt: portfolioUpdatedAt,
+      },
+    })
     .catch(() => {});
 }
 
@@ -338,10 +349,13 @@ const portfolioHydrated: Promise<void> = (async () => {
     const cached = data[PORTFOLIO_CACHE_KEY];
     if (cached?.balances?.length && cachedBalances.length === 0) {
       cachedBalances = cached.balances;
+      hiddenBalances = cached.hidden || [];
       portfolioUpdatedAt = cached.updatedAt || 0;
       hydratedFingerprint = cached.fingerprint || null;
       cacheFromHydrate = true;
-      console.log(`[portfolio] hydrated ${cachedBalances.length} balances from storage`);
+      console.log(
+        `[portfolio] hydrated ${cachedBalances.length} balances (+${hiddenBalances.length} hidden) from storage`,
+      );
     }
   } catch {
     /* no persisted portfolio — ignore */
@@ -374,7 +388,16 @@ function backfillNativePrices(balances: any[]): void {
     if (parseFloat(b.priceUsd || '0') > 0) continue;
     const sym = String(b.symbol || '').toUpperCase();
     let price = b.caip ? priceByCaip.get(b.caip) : undefined;
-    if (!price && b.networkId?.startsWith('eip155:') && sym === 'ETH') price = ethPrice;
+    // Testnets register their native as 'ETH' too — never borrow the real
+    // mainnet price for faucet ETH (would put fake money in the dashboard total).
+    if (
+      !price &&
+      b.networkId?.startsWith('eip155:') &&
+      sym === 'ETH' &&
+      !ALL_TESTNET_NETWORK_IDS.includes(b.networkId)
+    ) {
+      price = ethPrice;
+    }
     if (price) {
       b.priceUsd = price;
       b.valueUsd = (parseFloat(b.balance) * parseFloat(price)).toString();
@@ -709,7 +732,6 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
         b => !!b.caip && customCaips.has(String(b.caip).toLowerCase()),
       );
       balances = visible;
-      hiddenBalances = hidden;
       if (hidden.length > 0) {
         console.log(`[fetchBalances] Spam: ${visible.length} visible, ${hidden.length} hidden of ${preFilterCount}`);
       }
@@ -733,6 +755,9 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
       const snapshotStale = currentPubkeyCount > allPubkeys.length;
       if (myFetchId === latestFetchId && !snapshotStale) {
         cachedBalances = balances;
+        // Adopt the Hidden bucket only on the winning commit (mirrors cachedBalances)
+        // so a superseded fetch can't leave the Hidden section out of sync.
+        hiddenBalances = hidden;
         // This commit is authoritative for the connected wallet — supersede any
         // hydrated last-good cache and persist the fresh set for next worker start.
         cacheFromHydrate = false;
@@ -764,7 +789,9 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
       return balances;
     } catch (e: any) {
       console.error('[fetchBalances] Error:', e.message || e);
-      lastFetchError = e?.message || 'balance fetch failed';
+      // Only the winning fetch may record an error — a superseded/late failure
+      // must not clobber a newer fetch's cleared state.
+      if (myFetchId === latestFetchId) lastFetchError = e?.message || 'balance fetch failed';
       return cachedBalances;
     } finally {
       // Only clear the in-flight ref if WE are still the active fetch — a newer
@@ -1934,12 +1961,9 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             // Drop a hydrated last-good cache that belongs to a different wallet
             // (different device, or a different passphrase on the same device)
             // once the connected wallet's pubkeys are known.
-            if (
-              cacheFromHydrate &&
-              wallet.isInitialized() &&
-              hydratedFingerprint &&
-              walletFingerprint() !== hydratedFingerprint
-            ) {
+            if (cacheFromHydrate && wallet.isInitialized() && walletFingerprint() !== hydratedFingerprint) {
+              // Drop a hydrated cache that doesn't match the connected wallet —
+              // including a legacy entry with no fingerprint (untrusted).
               cachedBalances = [];
               hiddenBalances = [];
               cacheFromHydrate = false;
@@ -2071,7 +2095,13 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             let nativeCached = cachedBalances.find((b: any) => b.networkId === evmNetworkId && b.isNative);
             // Fallback: L2 chains (Base, Arbitrum, Optimism, etc.) use ETH as native gas —
             // if no cached price for this specific chain, use Ethereum mainnet ETH price.
-            if (!nativeCached?.priceUsd && evmNetworkId !== 'eip155:1') {
+            // NOT for testnets — faucet ETH is worthless (and this value is now
+            // written back into the cached/persisted row by the reconcile block below).
+            if (
+              !nativeCached?.priceUsd &&
+              evmNetworkId !== 'eip155:1' &&
+              !ALL_TESTNET_NETWORK_IDS.includes(evmNetworkId)
+            ) {
               nativeCached = cachedBalances.find((b: any) => b.networkId === 'eip155:1' && b.isNative) || nativeCached;
             }
             const priceUsd = parseFloat(nativeCached?.priceUsd || '0');

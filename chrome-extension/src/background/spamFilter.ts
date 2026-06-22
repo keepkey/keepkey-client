@@ -139,8 +139,11 @@ export const TRUSTED_CAIPS = new Set<string>([
 ]);
 
 /** A non-allowlisted token reporting at least this USD value is treated as a
- *  fabricated-value lure ('Mortal' class) and suppressed by default (recoverable). */
-export const SUSPICIOUS_VALUE_FLOOR = 1;
+ *  fabricated-value lure ('Mortal' class) and suppressed by default (recoverable).
+ *  Set HIGH on purpose: only egregiously-large fabricated values are auto-hidden,
+ *  so legit mid-cap holdings stay visible (and counted in the total). Smaller
+ *  scams are still hideable per-row. Tune as the trusted allowlist grows. */
+export const SUSPICIOUS_VALUE_FLOOR = 1000;
 
 export interface SpamResult {
   isSpam: boolean;
