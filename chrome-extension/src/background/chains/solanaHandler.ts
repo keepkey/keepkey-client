@@ -1,4 +1,5 @@
-import { requestStorage, accountsByNetworkStorage } from '@extension/storage';
+import { requestStorage, accountsByNetworkStorage, assetContextStorage } from '@extension/storage';
+import { SOLANA_DEVNET } from '../testnetPresets';
 import { v4 as uuidv4 } from 'uuid';
 import * as wallet from '../wallet';
 import { createProviderRpcError, createTimeoutError } from '../utils';
@@ -8,10 +9,23 @@ const TAG = ' | solanaHandler | ';
 
 // Vault REST API and Solana mainnet RPC
 const VAULT_URL = 'http://localhost:1646';
-const SOLANA_RPC_URLS = [
+const SOLANA_MAINNET_RPC_URLS = [
   'https://api.mainnet-beta.solana.com',
   'https://mainnet.helius-rpc.com/?api-key=1d8740dc-e5f4-421c-b823-e1bad1889eff',
 ];
+
+// Pick the cluster's RPC list from the active asset context. When the user
+// has Solana Devnet selected, sign/broadcast must hit devnet — otherwise a
+// devnet tx silently fails on mainnet. Defaults to mainnet.
+async function getSolanaRpcUrls(): Promise<string[]> {
+  try {
+    const ctx = await assetContextStorage.get();
+    if ((ctx as any)?.networkId === SOLANA_DEVNET.networkId) return SOLANA_DEVNET.rpcs;
+  } catch {
+    /* fall through to mainnet */
+  }
+  return SOLANA_MAINNET_RPC_URLS;
+}
 
 let cachedRpcUrl: string | null = null;
 let cachedRpcTimestamp = 0;
@@ -19,10 +33,14 @@ const RPC_CACHE_TTL = 60000; // cache healthy RPC for 60s
 
 async function getSolanaRpcUrl(): Promise<string> {
   const now = Date.now();
+  const urls = await getSolanaRpcUrls();
+  // Invalidate the cache if it points at a URL outside the active cluster
+  // (e.g. user just switched mainnet <-> devnet).
+  if (cachedRpcUrl && !urls.includes(cachedRpcUrl)) cachedRpcUrl = null;
   if (cachedRpcUrl && now - cachedRpcTimestamp < RPC_CACHE_TTL) {
     return cachedRpcUrl;
   }
-  for (const url of SOLANA_RPC_URLS) {
+  for (const url of urls) {
     try {
       const resp = await fetch(url, {
         method: 'POST',
@@ -39,7 +57,7 @@ async function getSolanaRpcUrl(): Promise<string> {
       /* try next */
     }
   }
-  return SOLANA_RPC_URLS[0]; // fallback to primary
+  return urls[0]; // fallback to primary
 }
 
 // Cached addresses keyed by BIP44 account index (m/44'/501'/<index>'/0').
@@ -646,7 +664,7 @@ function classifySolanaBroadcastError(msg: string): SolanaBroadcastErrorKind {
  * Broadcast a signed Solana transaction via Solana JSON-RPC.
  * Vault has NO broadcast endpoint — we send directly to Solana RPC.
  *
- * Iterates SOLANA_RPC_URLS on transient failures. Health-checked URLs
+ * Iterates the active cluster's RPC URLs on transient failures. Health-checked URLs
  * sometimes pass `getHealth` but reject `sendTransaction` (rate-limit,
  * regional throttling), so the failover loop reaches further than the
  * pre-flight selection in `getSolanaRpcUrl`.
@@ -655,7 +673,8 @@ async function broadcastTransaction(signedTxBase64: string): Promise<string> {
   const errors: { url: string; error: string }[] = [];
   // Try the cached/healthy URL first, then any others not yet attempted.
   const primary = await getSolanaRpcUrl();
-  const ordered = [primary, ...SOLANA_RPC_URLS.filter(u => u !== primary)];
+  const clusterUrls = await getSolanaRpcUrls();
+  const ordered = [primary, ...clusterUrls.filter(u => u !== primary)];
 
   for (const rpcUrl of ordered) {
     let response: Response;

@@ -13,6 +13,7 @@ import {
   web3ProviderStorage,
   customEvmNetworksStorage,
   ethAccountsStorage,
+  testnetSettingsStorage,
 } from '@extension/storage';
 
 const TAG = ' | Settings | ';
@@ -25,6 +26,7 @@ const Settings = () => {
     enableKeplrMasking: false,
     enablePhantomMasking: false,
   });
+  const [showTestnets, setShowTestnets] = useState(false);
 
   // Fetch initial masking settings from storage
   useEffect(() => {
@@ -40,10 +42,30 @@ const Settings = () => {
         enableKeplrMasking: keplrSetting,
         enablePhantomMasking: phantomSetting,
       });
+
+      const testnetSetting = await testnetSettingsStorage.getShowTestnets();
+      setShowTestnets(testnetSetting);
     };
 
     loadSettings();
   }, []);
+
+  const toggleTestnets = async () => {
+    const newValue = !showTestnets;
+    setShowTestnets(newValue); // optimistic
+    chrome.runtime.sendMessage({ type: 'SET_TESTNETS_ENABLED', enabled: newValue }, response => {
+      if (response?.success) {
+        toast({
+          title: newValue ? 'Testnets added' : 'Testnets removed',
+          status: 'success',
+          duration: 2000,
+        });
+      } else {
+        setShowTestnets(!newValue); // revert
+        toast({ title: 'Failed to toggle testnets', description: response?.error, status: 'error', duration: 3000 });
+      }
+    });
+  };
 
   // Toggle functions
   const toggleMetaMaskMasking = async () => {
@@ -195,6 +217,19 @@ const Settings = () => {
       <Image src="/kk.gif" alt="KeepKey" />
 
       <VStack spacing={4} align="stretch">
+        <Text fontSize="md" fontWeight="bold">
+          Networks
+        </Text>
+
+        {/* Show Testnets */}
+        <HStack w="100%" justifyContent="space-between">
+          <Text>Show Testnets</Text>
+          <Switch size="md" isChecked={showTestnets} onChange={toggleTestnets} />
+        </HStack>
+        <Text fontSize="xs" color="whiteAlpha.700" mt={-2} mb={2}>
+          Adds Ethereum Sepolia, Base Sepolia, and Solana Devnet with default public RPCs. Turning off removes them.
+        </Text>
+
         <Text fontSize="md" fontWeight="bold">
           Enable Masking
         </Text>

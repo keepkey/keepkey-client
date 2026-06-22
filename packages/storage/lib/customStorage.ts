@@ -625,6 +625,29 @@ const createCustomEvmNetworksStorage = (): CustomEvmNetworksStorage => {
 
 export const customEvmNetworksStorage = createCustomEvmNetworksStorage();
 
+// ---- Testnet visibility ----
+type TestnetSettingsStorage = BaseStorage<{ showTestnets: boolean }> & {
+  getShowTestnets: () => Promise<boolean>;
+  setShowTestnets: (value: boolean) => Promise<void>;
+};
+
+const createTestnetSettingsStorage = (): TestnetSettingsStorage => {
+  const storage = createStorage<{ showTestnets: boolean }>(
+    'keepkey-testnet-settings',
+    { showTestnets: false },
+    { storageType: StorageType.Local, liveUpdate: true },
+  );
+  return {
+    ...storage,
+    getShowTestnets: async () => (await storage.get())?.showTestnets ?? false,
+    setShowTestnets: async (value: boolean) => {
+      await storage.set(() => ({ showTestnets: value }));
+    },
+  };
+};
+
+export const testnetSettingsStorage = createTestnetSettingsStorage();
+
 // Utility function to move an event between storages
 const moveEvent = async (
   eventId: string,
