@@ -9,7 +9,8 @@ import packageJson from '../../package.json';
 import * as wallet from './wallet';
 import { deriveUtxoAddress } from './utxoDerive';
 import { resetSolanaState, prefetchSolanaAccounts, deriveSolanaAccount } from './chains/solanaHandler';
-import { handleSwapMessage } from './swapHandler';
+import { handleSwapMessage, resolveAddress } from './swapHandler';
+import { startSwapEventStream, stopSwapEventStream } from './swapEventStream';
 import { resetTonState, prefetchTonAddress } from './chains/tonHandler';
 import { resetTronState, prefetchTronPubkey } from './chains/tronHandler';
 import { handleWalletRequest } from './methods';
@@ -2034,6 +2035,37 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         case 'SWAP_REQUEST': {
           // Native side-panel swap → vault headless swap REST (see swapHandler.ts).
           sendResponse(await handleSwapMessage(message, cachedBalances));
+          break;
+        }
+
+        case 'SWAP_WATCH': {
+          // Accelerator: open Pioneer's SSE feed on the swap's from/to addresses.
+          // A `tx:incoming` on the destination nudges the side panel to refresh
+          // immediately. The vault tracker poll stays the source of truth.
+          try {
+            const from = resolveAddress(message.fromCaip, cachedBalances);
+            const to = resolveAddress(message.toCaip, cachedBalances);
+            const entries = [
+              to ? { address: to, networkId: String(message.toCaip).split('/')[0] } : null,
+              from ? { address: from, networkId: String(message.fromCaip).split('/')[0] } : null,
+            ].filter(Boolean) as { address: string; networkId: string }[];
+            startSwapEventStream(entries, event => {
+              try {
+                chrome.runtime.sendMessage({ type: 'SWAP_EVENT', txid: message.txid, event });
+              } catch {
+                /* no listener (panel closed) — harmless */
+              }
+            });
+            sendResponse({ ok: true, watching: entries.length });
+          } catch (error: any) {
+            sendResponse({ ok: false, error: error?.message || String(error) });
+          }
+          break;
+        }
+
+        case 'SWAP_UNWATCH': {
+          stopSwapEventStream();
+          sendResponse({ ok: true });
           break;
         }
 

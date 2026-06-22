@@ -4,13 +4,21 @@ import React, { useMemo, useState } from 'react';
 import type { SwapTheme } from './theme';
 import type { UiAsset } from './types';
 import { Icon, I } from './icons';
-import { TokenGlyph } from './ui';
+import { TokenGlyph, fmtUsd, fmtCrypto } from './ui';
+
+export interface HeldBalance {
+  amount: number;
+  usd: number;
+}
 
 export function AssetPicker({
   T,
   assets,
   excludeCaip,
   title,
+  side,
+  balanceByCaip,
+  balancesLoading,
   onSelect,
   onClose,
 }: {
@@ -18,13 +26,28 @@ export function AssetPicker({
   assets: UiAsset[];
   excludeCaip?: string;
   title: string;
+  // 'from' shows only held assets (you can't swap what you don't own); 'to'
+  // shows the full swappable universe. Mirrors vault's FromPicker/ToPicker.
+  side: 'from' | 'to';
+  balanceByCaip?: Map<string, HeldBalance>;
+  balancesLoading?: boolean;
   onSelect: (a: UiAsset) => void;
   onClose: () => void;
 }) {
   const [q, setQ] = useState('');
+
+  // FROM side: restrict to held assets, ranked by USD value descending. TO side:
+  // the full list passed in. (vault's swap-discovery FromPicker rule.)
+  const source = useMemo(() => {
+    if (side !== 'from' || !balanceByCaip) return assets;
+    return assets
+      .filter(a => a.caip && (balanceByCaip.get(a.caip)?.amount ?? 0) > 0)
+      .sort((a, b) => (balanceByCaip.get(b.caip!)?.usd ?? 0) - (balanceByCaip.get(a.caip!)?.usd ?? 0));
+  }, [assets, side, balanceByCaip]);
+
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return assets.filter(a => {
+    return source.filter(a => {
       if (excludeCaip && a.caip === excludeCaip) return false;
       if (!needle) return true;
       return (
@@ -33,7 +56,9 @@ export function AssetPicker({
         a.chainId.toLowerCase().includes(needle)
       );
     });
-  }, [assets, q, excludeCaip]);
+  }, [source, q, excludeCaip]);
+
+  const loadingHeld = side === 'from' && balancesLoading && source.length === 0 && !q.trim();
 
   return (
     <div
@@ -96,49 +121,73 @@ export function AssetPicker({
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 12px' }}>
-        {filtered.length === 0 && (
-          <div style={{ textAlign: 'center', color: T.faint, fontSize: 13, padding: '24px 0' }}>No assets found</div>
-        )}
-        {filtered.map(a => (
-          <button
-            key={a.caip || a.asset}
-            onClick={() => onSelect(a)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              width: '100%',
-              padding: '10px 10px',
-              borderRadius: 12,
-              border: 'none',
-              background: 'transparent',
-              color: T.text,
-              cursor: 'pointer',
-              textAlign: 'left',
-            }}
-            onMouseEnter={e => (e.currentTarget.style.background = T.surface)}
-            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-            <TokenGlyph asset={a} size={34} />
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>{a.symbol}</div>
-              <div
-                style={{
-                  fontSize: 11,
-                  color: T.faint,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}>
-                {a.name}
+        {loadingHeld ? (
+          <div style={{ textAlign: 'center', color: T.faint, fontSize: 13, padding: '24px 0' }}>
+            Checking your KeepKey balances…
+          </div>
+        ) : filtered.length === 0 ? (
+          <div style={{ textAlign: 'center', color: T.faint, fontSize: 13, padding: '24px 0' }}>
+            {side === 'from'
+              ? q.trim()
+                ? 'No held assets match'
+                : 'No assets to swap — your KeepKey is empty'
+              : 'No assets found'}
+          </div>
+        ) : null}
+        {filtered.map(a => {
+          const bal = side === 'from' && a.caip ? balanceByCaip?.get(a.caip) : undefined;
+          return (
+            <button
+              key={a.caip || a.asset}
+              onClick={() => onSelect(a)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                width: '100%',
+                padding: '10px 10px',
+                borderRadius: 12,
+                border: 'none',
+                background: 'transparent',
+                color: T.text,
+                cursor: 'pointer',
+                textAlign: 'left',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = T.surface)}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+              <TokenGlyph asset={a} size={34} />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>{a.symbol}</div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: T.faint,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}>
+                  {a.name}
+                </div>
               </div>
-            </div>
-            <div
-              className="mono"
-              style={{ fontSize: 10, color: T.faint, textTransform: 'uppercase', letterSpacing: '.06em' }}>
-              {a.chainId}
-            </div>
-          </button>
-        ))}
+              {bal ? (
+                <div style={{ textAlign: 'right' }}>
+                  <div className="mono" style={{ fontSize: 13, fontWeight: 600, color: T.text }}>
+                    {fmtCrypto(bal.amount)}
+                  </div>
+                  <div className="mono" style={{ fontSize: 11, color: T.faint }}>
+                    {fmtUsd(bal.usd)}
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className="mono"
+                  style={{ fontSize: 10, color: T.faint, textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                  {a.chainId}
+                </div>
+              )}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

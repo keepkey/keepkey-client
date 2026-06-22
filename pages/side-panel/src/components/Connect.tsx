@@ -6,6 +6,8 @@ interface ConnectProps {
   setIsConnecting: (isConnecting: boolean) => void;
 }
 
+const KEEPKEY_LAUNCH_URL = 'https://keepkey.com/launch';
+
 const Connect: React.FC<ConnectProps> = ({ setIsConnecting }) => {
   const [isConnecting, setLocalIsConnecting] = useState(false);
 
@@ -25,8 +27,17 @@ const Connect: React.FC<ConnectProps> = ({ setIsConnecting }) => {
     return () => clearInterval(interval);
   }, []);
 
+  const openBrowserTab = (url: string) => {
+    if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
+      chrome.tabs.create({ url });
+      return;
+    }
+
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   const openKeepKeyLink = () => {
-    window.open('https://keepkey.com', '_blank');
+    openBrowserTab(KEEPKEY_LAUNCH_URL);
   };
 
   const connectKeepkey = () => {
@@ -52,14 +63,7 @@ const Connect: React.FC<ConnectProps> = ({ setIsConnecting }) => {
 
   const launchKeepKey = () => {
     try {
-      console.log('window: ', window);
-      console.log('window.location: ', window.location);
-      if (window) {
-        setTimeout(() => {
-          window.location.assign('keepkey://launch');
-          window.open('https://keepkey.com/get-started', '_blank');
-        }, 100); // Adding a slight delay before launching the URL
-      }
+      openBrowserTab(KEEPKEY_LAUNCH_URL);
     } catch (error) {
       console.error('Failed to launch KeepKey:', error);
     }

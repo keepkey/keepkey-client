@@ -113,6 +113,17 @@ export interface SwapHistoryRecord {
   receivedOutput?: string;
   completedAt?: number;
   refundReason?: string;
+  // Extra fields the vault history list (GET /api/v1/swaps) returns for display.
+  fromSymbol?: string;
+  toSymbol?: string;
+  fromCaip?: string;
+  toCaip?: string;
+  fromAmount?: string;
+  quotedOutput?: string;
+  swapper?: string;
+  integration?: string;
+  createdAt?: number;
+  updatedAt?: number;
 }
 
 /** UI-side asset shape derived from a SwapAsset (adds a glyph color fallback). */

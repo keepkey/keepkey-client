@@ -17,6 +17,7 @@
  * 404/503 (not wired) and 401 (re-pair) instead of crashing. No mocking.
  */
 import * as wallet from './wallet';
+import { keepKeyApiKeyStorage } from '@extension/storage';
 
 const VAULT_URL = 'http://localhost:1646';
 
@@ -27,18 +28,26 @@ export interface SwapResponse {
   error?: string;
 }
 
-function getApiKey(): string | null {
+// Resolve the Bearer key the same way wallet.init does: prefer the live SDK
+// client, fall back to the persisted key. The persisted key survives across
+// service-worker restarts where the in-memory SDK may not be ready yet, so a
+// paired vault no longer looks "not connected" just because of init timing.
+async function getApiKey(): Promise<string | null> {
   try {
-    const sdk = wallet.getSdk?.();
-    const key = sdk?.getClient?.()?.getApiKey?.();
-    return key || null;
+    const key = wallet.getSdk?.()?.getClient?.()?.getApiKey?.();
+    if (key) return key;
+  } catch {
+    /* SDK not initialized — fall through to the stored key */
+  }
+  try {
+    return (await keepKeyApiKeyStorage.getApiKey()) || null;
   } catch {
     return null;
   }
 }
 
 async function vaultFetch(path: string, init: RequestInit, timeoutMs = 30_000): Promise<SwapResponse> {
-  const apiKey = getApiKey();
+  const apiKey = await getApiKey();
   if (!apiKey) {
     return { ok: false, status: 0, error: 'Vault not connected — pair your KeepKey first.' };
   }
@@ -76,20 +85,49 @@ async function vaultFetch(path: string, init: RequestInit, timeoutMs = 30_000): 
 }
 
 /**
+ * Resolve a usable address for a CAIP-19 asset from device-owned data.
+ * 1. exact balance row (a token's CAIP carries its own holding address);
+ * 2. first loaded pubkey for the asset's chain (CAIP-2 prefix).
+ * Returns undefined when the wallet has nothing for that chain.
+ */
+export function resolveAddress(caip: string | undefined, cachedBalances: any[]): string | undefined {
+  if (!caip) return undefined;
+  const row = cachedBalances.find((b: any) => b?.caip === caip && b?.address);
+  if (row?.address) return row.address;
+  const networkId = caip.split('/')[0];
+  return wallet.getAddressForNetwork(networkId);
+}
+
+/**
  * Single entry point dispatched from the background message router.
  * message = { type:'SWAP_REQUEST', action:'assets'|'quote'|'execute'|'status', ... }
  */
-export async function handleSwapMessage(message: any, _cachedBalances: any[]): Promise<SwapResponse> {
+export async function handleSwapMessage(message: any, cachedBalances: any[]): Promise<SwapResponse> {
   switch (message?.action) {
     case 'assets':
       return vaultFetch('/api/v2/swap/assets', { method: 'GET' });
 
     case 'quote': {
       const p = message.params || {};
-      // Addresses are derived vault-side from the connected device (it owns the keys
-      // + every chain's derivation path). The BEX can't reliably resolve a receive
-      // address for a chain the user doesn't already hold, so we omit them and let
-      // vault fill in — only forwarded if a caller explicitly set one (custom dest).
+      // vault's /quote dereferences fromAddress/toAddress directly, so the BEX
+      // must supply them. We hold device-derived addresses already: prefer the
+      // exact balance row (covers tokens), then the first pubkey for the chain.
+      const fromAddress = p.fromAddress || resolveAddress(p.fromCaip, cachedBalances);
+      const toAddress = p.toAddress || resolveAddress(p.toCaip, cachedBalances);
+      if (!fromAddress) {
+        return {
+          ok: false,
+          status: 0,
+          error: `No address available for ${p.fromCaip} — open that chain in the wallet first.`,
+        };
+      }
+      if (!toAddress) {
+        return {
+          ok: false,
+          status: 0,
+          error: `No receive address for ${p.toCaip} — add that chain to your wallet first.`,
+        };
+      }
       return vaultFetch('/api/v2/swap/quote', {
         method: 'POST',
         body: JSON.stringify({
@@ -99,8 +137,8 @@ export async function handleSwapMessage(message: any, _cachedBalances: any[]): P
           slippageBps: p.slippageBps,
           isMax: p.isMax,
           feeLevel: p.feeLevel,
-          ...(p.fromAddress ? { fromAddress: p.fromAddress } : {}),
-          ...(p.toAddress ? { toAddress: p.toAddress } : {}),
+          fromAddress,
+          toAddress,
         }),
       });
     }
@@ -115,6 +153,18 @@ export async function handleSwapMessage(message: any, _cachedBalances: any[]): P
 
     case 'status':
       return vaultFetch(`/api/v1/swaps/${encodeURIComponent(message.txid)}`, { method: 'GET' });
+
+    case 'history': {
+      // Swap history from vault's tracker DB (per device+wallet scope).
+      // Optional filters: status, limit, offset. Returns { entries, count }.
+      const p = message.params || {};
+      const qs = new URLSearchParams();
+      if (p.status) qs.set('status', String(p.status));
+      if (p.limit != null) qs.set('limit', String(p.limit));
+      if (p.offset != null) qs.set('offset', String(p.offset));
+      const q = qs.toString();
+      return vaultFetch(`/api/v1/swaps${q ? `?${q}` : ''}`, { method: 'GET' });
+    }
 
     default:
       return { ok: false, status: 0, error: `Unknown swap action: ${message?.action}` };

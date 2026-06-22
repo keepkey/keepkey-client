@@ -17,7 +17,7 @@ import {
   TabPanel,
   Badge,
 } from '@chakra-ui/react';
-import { ArrowUpIcon, ArrowDownIcon, CopyIcon, CheckIcon, ExternalLinkIcon } from '@chakra-ui/icons';
+import { ArrowUpIcon, ArrowDownIcon, CopyIcon, CheckIcon, ExternalLinkIcon, RepeatIcon } from '@chakra-ui/icons';
 import { getExplorerAddressUrl, getExplorerTxUrl } from '@extension/shared';
 import { Tokens } from './Tokens';
 import { requestStorage } from '@extension/storage';
@@ -28,9 +28,10 @@ interface AssetDetailProps {
   balances: any[];
   onSend: () => void;
   onReceive: () => void;
+  onSwap?: () => void;
 }
 
-const AssetDetail = ({ asset, balances, onSend, onReceive }: AssetDetailProps) => {
+const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetailProps) => {
   const [address, setAddress] = useState<string>('');
   const [hasCopied, setHasCopied] = useState(false);
   const [loadingAddress, setLoadingAddress] = useState(false);
@@ -284,6 +285,20 @@ const AssetDetail = ({ asset, balances, onSend, onReceive }: AssetDetailProps) =
           onClick={onReceive}>
           Receive
         </Button>
+        {onSwap && (
+          <Button
+            leftIcon={<RepeatIcon boxSize={3} />}
+            colorScheme="teal"
+            variant="solid"
+            size="sm"
+            flex={1}
+            fontSize="xs"
+            fontWeight="semibold"
+            borderRadius="md"
+            onClick={onSwap}>
+            Swap
+          </Button>
+        )}
       </HStack>
 
       {/* Tab Bar — Tokens / Activity. flex={2} vs the top spacer's flex={1}

@@ -41,4 +41,5 @@ export const I = {
   shield: 'M12 3l8 3v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6l8-3z',
   send: 'M4 4l16 8-16 8 4-8-4-8z',
   recv: 'M20 20L4 12l16-8-4 8 4 8z',
+  clock: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M12 7v5l3 2',
 } as const;

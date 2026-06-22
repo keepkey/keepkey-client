@@ -19,6 +19,27 @@ const PROG: Record<SwapTrackingStatus, number> = {
   refunded: 0.5,
 };
 
+// Human-readable status line per tracking phase.
+const STATUS_LABEL: Record<SwapTrackingStatus, string> = {
+  signing: 'Signing on device…',
+  pending: 'Broadcasting deposit…',
+  confirming: 'Confirming deposit…',
+  output_detected: 'Output detected on destination…',
+  output_confirming: 'Confirming output…',
+  output_confirmed: 'Output confirmed',
+  completed: 'Funds have arrived.',
+  failed: 'The swap failed.',
+  refunded: 'The swap was refunded.',
+};
+
+function agoLabel(checkedAt: number | null): string {
+  if (!checkedAt) return 'not checked yet';
+  const s = Math.max(0, Math.round((Date.now() - checkedAt) / 1000));
+  if (s < 5) return 'just now';
+  if (s < 60) return `${s}s ago`;
+  return `${Math.floor(s / 60)}m ago`;
+}
+
 export function SwapProgress({
   T,
   from,
@@ -29,6 +50,10 @@ export function SwapProgress({
   txid,
   status,
   estimatedTime,
+  checking,
+  checkedAt,
+  live,
+  onRefresh,
   onNewSwap,
   onClose,
 }: {
@@ -41,6 +66,10 @@ export function SwapProgress({
   txid: string;
   status: SwapHistoryRecord | null;
   estimatedTime?: number;
+  checking?: boolean;
+  checkedAt?: number | null;
+  live?: boolean;
+  onRefresh?: () => void;
   onNewSwap: () => void;
   onClose: () => void;
 }) {
@@ -72,7 +101,9 @@ export function SwapProgress({
     ? status?.refundReason || 'The swap did not complete.'
     : done
       ? 'Funds have arrived.'
-      : 'Waiting for confirmations — not complete yet';
+      : st
+        ? STATUS_LABEL[st]
+        : 'Submitted — waiting for the tracker to pick it up…';
   const subColor = failed ? T.bad : done ? T.good : T.warn;
 
   return (
@@ -108,6 +139,58 @@ export function SwapProgress({
           {sub}
         </div>
       </div>
+
+      {/* Live status / manual refresh */}
+      {!done && !failed && onRefresh && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: '8px 10px 8px 12px',
+            borderRadius: 10,
+            background: T.surface,
+            border: `1px solid ${T.line}`,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}>
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: '50%',
+              background: checking || live ? T.accent : T.good,
+              flexShrink: 0,
+              animation: checking || live ? 'kk-pulse 1.2s infinite' : undefined,
+            }}
+          />
+          <span style={{ fontSize: 11, color: T.faint, flex: 1, minWidth: 0 }}>
+            {checking ? 'Checking status…' : `${live ? 'Live · ' : ''}Last checked ${agoLabel(checkedAt ?? null)}`}
+          </span>
+          <button
+            onClick={onRefresh}
+            disabled={checking}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '5px 10px',
+              borderRadius: 8,
+              border: `1px solid ${T.lineHi}`,
+              background: 'transparent',
+              color: checking ? T.faint : T.text,
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: checking ? 'default' : 'pointer',
+            }}>
+            <Icon
+              d={I.refresh}
+              size={12}
+              style={{ animation: checking ? 'kk-spin 0.9s linear infinite' : undefined }}
+            />
+            Refresh
+          </button>
+        </div>
+      )}
 
       <div
         style={{

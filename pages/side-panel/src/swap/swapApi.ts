@@ -50,3 +50,18 @@ export async function fetchSwapStatus(txid: string): Promise<SwapHistoryRecord |
   if (!r.ok) return null; // 404 until the record is written / passphrase session
   return r.data as SwapHistoryRecord;
 }
+
+export interface SwapHistoryQuery {
+  status?: string;
+  limit?: number;
+  offset?: number;
+}
+
+/** Swap history from the vault tracker DB. Empty list when unavailable
+ *  (endpoint missing / passphrase wallet / no swaps yet) — never throws. */
+export async function fetchSwapHistory(params: SwapHistoryQuery = {}): Promise<SwapHistoryRecord[]> {
+  const r = await send('history', { params });
+  if (!r.ok) return [];
+  const data = r.data as any;
+  return (data?.entries as SwapHistoryRecord[]) || [];
+}

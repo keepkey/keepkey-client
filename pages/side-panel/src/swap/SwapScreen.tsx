@@ -21,6 +21,7 @@ export function SwapScreen({
   onFlip,
   onBack,
   onReview,
+  onHistory,
 }: {
   T: SwapTheme;
   from: UiAsset;
@@ -36,6 +37,7 @@ export function SwapScreen({
   onFlip: () => void;
   onBack: () => void;
   onReview: () => void;
+  onHistory?: () => void;
 }) {
   const [showRoute, setShowRoute] = useState(false);
   const provider = quote?.swapper || quote?.integration;
@@ -57,6 +59,11 @@ export function SwapScreen({
           <Icon d={I.left} />
         </IconBtn>
         <div style={{ flex: 1, fontSize: 16, fontWeight: 600 }}>Swap</div>
+        {onHistory && (
+          <IconBtn T={T} onClick={onHistory} title="Swap history">
+            <Icon d={I.clock} />
+          </IconBtn>
+        )}
         {provider && (
           <div
             style={{
