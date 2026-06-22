@@ -35,9 +35,11 @@ import {
   ethAccountsStorage,
   accountsByNetworkStorage,
   customEvmNetworksStorage,
+  testnetSettingsStorage,
 } from '@extension/storage';
-import { getChainInfo, makeStaticProvider } from './chains/registry';
+import { getChainInfo } from './chains/registry';
 import { withRpcFailoverByNetworkId } from './chains/rpcFailover';
+import { EVM_TESTNETS, SOLANA_DEVNET } from './testnetPresets';
 import { formatUserError } from './utils';
 import { filterSpamTokens } from './spamFilter';
 
@@ -507,11 +509,11 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
             if (!chainData?.providerUrl) continue;
 
             try {
-              const rpcProvider = makeStaticProvider(chainData.providerUrl, networkId);
-              const rawBal = await Promise.race([
-                rpcProvider.getBalance(evmAddress),
-                new Promise<bigint>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
-              ]);
+              // Use the failover stack so every URL in providers[] is
+              // tried, not just providerUrl — testnets ship multiple RPCs.
+              const rawBal = await withRpcFailoverByNetworkId(networkId, p => p.getBalance(evmAddress), {
+                timeoutMs: 5000,
+              });
               const balStr = (Number(rawBal) / 1e18).toString();
               const caip = chainData.caip || `${networkId}/slip44:60`;
               balances.push({
@@ -529,6 +531,42 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
               console.log(`[fetchBalances] RPC balance for ${chainData.name}: ${balStr}`);
             } catch (e: any) {
               console.warn(`[fetchBalances] RPC balance failed for ${networkId}:`, e.message);
+            }
+          }
+
+          // Solana devnet: Pioneer only indexes mainnet, so fetch the
+          // devnet native balance directly. Same address works on every
+          // cluster. Best-effort — failure just leaves it absent.
+          const savedChainsSet = new Set(savedChains || []);
+          if (savedChainsSet.has(SOLANA_DEVNET.networkId) && !coveredNetworks.has(SOLANA_DEVNET.networkId)) {
+            const solAddr = allPubkeys.find((pk: any) =>
+              (pk.networks || []).some((n: string) => n.startsWith('solana:')),
+            )?.address;
+            if (solAddr) {
+              try {
+                const resp = await fetch(SOLANA_DEVNET.rpcs[0], {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getBalance', params: [solAddr] }),
+                  signal: AbortSignal.timeout(5000),
+                });
+                const json = await resp.json();
+                const lamports = json?.result?.value ?? 0;
+                balances.push({
+                  networkId: SOLANA_DEVNET.networkId,
+                  caip: SOLANA_DEVNET.caip,
+                  symbol: SOLANA_DEVNET.symbol,
+                  name: SOLANA_DEVNET.name,
+                  balance: (lamports / 1e9).toString(),
+                  valueUsd: '0',
+                  priceUsd: '0',
+                  isNative: true,
+                  address: solAddr,
+                });
+                console.log(`[fetchBalances] Solana devnet balance: ${lamports / 1e9}`);
+              } catch (e: any) {
+                console.warn('[fetchBalances] Solana devnet balance failed:', e.message);
+              }
             }
           }
         }
@@ -1551,6 +1589,95 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           } catch (error) {
             console.error('Error removing custom EVM network:', error);
             sendResponse({ error: 'Failed to remove custom EVM network' });
+          }
+          break;
+        }
+
+        case 'GET_TESTNETS_ENABLED': {
+          try {
+            const enabled = await testnetSettingsStorage.getShowTestnets();
+            sendResponse({ enabled });
+          } catch (error) {
+            sendResponse({ enabled: false });
+          }
+          break;
+        }
+
+        case 'SET_TESTNETS_ENABLED': {
+          const enabled = !!message.enabled;
+          try {
+            await testnetSettingsStorage.setShowTestnets(enabled);
+
+            if (enabled) {
+              // EVM testnets: register exactly like a user-added custom
+              // network so the header dropdown + balance enrichment +
+              // rpcFailover all pick them up. providers[] carries every
+              // public RPC so failover has fallbacks.
+              for (const t of EVM_TESTNETS) {
+                await customEvmNetworksStorage.addNetwork({
+                  networkId: t.networkId,
+                  chainId: t.chainId,
+                  name: t.name,
+                  rpc: t.rpcs[0],
+                  symbol: t.symbol,
+                  explorerUrl: t.explorerUrl,
+                });
+                await blockchainDataStorage.addBlockchainData(t.networkId, {
+                  chainId: '0x' + t.chainId.toString(16),
+                  caip: `${t.networkId}/slip44:60`,
+                  name: t.name,
+                  symbol: t.symbol,
+                  explorer: t.explorerUrl,
+                  explorerAddressLink: `${t.explorerUrl}/address/`,
+                  explorerTxLink: `${t.explorerUrl}/tx/`,
+                  blockExplorerUrls: [t.explorerUrl],
+                  providerUrl: t.rpcs[0],
+                  providers: t.rpcs,
+                  nativeCurrency: { name: t.symbol, symbol: t.symbol, decimals: 18 },
+                  type: 'evm',
+                  isTestnet: true,
+                } as any);
+                await blockchainStorage.addBlockchain(t.networkId);
+              }
+              // Solana devnet: register in the chain storages. RPC routing
+              // is handled by solanaHandler when this network is selected.
+              await blockchainDataStorage.addBlockchainData(SOLANA_DEVNET.networkId, {
+                caip: SOLANA_DEVNET.caip,
+                name: SOLANA_DEVNET.name,
+                symbol: SOLANA_DEVNET.symbol,
+                explorer: SOLANA_DEVNET.explorerUrl,
+                providerUrl: SOLANA_DEVNET.rpcs[0],
+                providers: SOLANA_DEVNET.rpcs,
+                nativeCurrency: { name: SOLANA_DEVNET.symbol, symbol: SOLANA_DEVNET.symbol, decimals: 9 },
+                type: 'solana',
+                isTestnet: true,
+              } as any);
+              await blockchainStorage.addBlockchain(SOLANA_DEVNET.networkId);
+            } else {
+              const ids = [...EVM_TESTNETS.map(t => t.networkId), SOLANA_DEVNET.networkId];
+              for (const id of ids) {
+                await customEvmNetworksStorage.removeNetwork(id).catch(() => {});
+                await blockchainStorage.removeBlockchain(id);
+                await blockchainDataStorage.set((prev: any) => {
+                  if (!prev || !(id in prev)) return prev || {};
+                  const next = { ...prev };
+                  delete next[id];
+                  return next;
+                });
+                // Drop asset context if it points at a removed testnet.
+                const currentCtx = await assetContextStorage.get().catch(() => null);
+                if ((currentCtx as any)?.networkId === id) {
+                  await assetContextStorage.clearContext().catch(() => {});
+                  chrome.runtime.sendMessage({ type: 'ASSET_CONTEXT_CLEARED' }).catch(() => {});
+                }
+              }
+            }
+
+            const networks = await customEvmNetworksStorage.getNetworks();
+            sendResponse({ success: true, enabled, networks });
+          } catch (error) {
+            console.error('Error toggling testnets:', error);
+            sendResponse({ error: 'Failed to toggle testnets' });
           }
           break;
         }

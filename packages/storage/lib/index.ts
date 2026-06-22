@@ -13,6 +13,7 @@ import {
   ethAccountsStorage,
   accountsByNetworkStorage,
   customEvmNetworksStorage,
+  testnetSettingsStorage,
 } from './customStorage';
 import { chainIdStorage } from './providerStorage';
 import { exampleThemeStorage, exampleSidebarStorage } from './exampleThemeStorage';
@@ -44,6 +45,7 @@ export {
   ethAccountsStorage,
   accountsByNetworkStorage,
   customEvmNetworksStorage,
+  testnetSettingsStorage,
 };
 
 export type { BaseStorage };
