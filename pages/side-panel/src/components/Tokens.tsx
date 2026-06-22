@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { VStack, HStack, Box, Text, Spinner, Button, Flex, Badge, IconButton } from '@chakra-ui/react';
-import { FaCoins, FaSync, FaPlus, FaEyeSlash } from 'react-icons/fa';
+import { FaCoins, FaSync, FaPlus, FaEyeSlash, FaEye } from 'react-icons/fa';
 import { customTokensStorageApi, type CustomToken } from '@extension/storage';
 import { CustomTokenDialog } from './CustomTokenDialog';
 import { AssetIcon } from './AssetIcon';
@@ -20,15 +20,21 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
   // True when the background is discovering tokens (natives present, no tokens
   // yet) — lets us show "Discovering…" instead of a premature "No Tokens Found".
   const [discovering, setDiscovering] = useState(false);
+  const [hiddenTokens, setHiddenTokens] = useState<any[]>([]);
+  const [showHidden, setShowHidden] = useState(false);
 
   useEffect(() => {
     fetchTokens();
+    fetchHidden();
     loadCustomTokens();
     // Refresh token list when background pushes a balance update — otherwise
     // a user viewing the asset detail during a cold-start Solana refetch would
     // see stale "No tokens" after the background lands SPL tokens.
     const listener = (message: any) => {
-      if (message?.type === 'BALANCES_UPDATED') fetchTokens();
+      if (message?.type === 'BALANCES_UPDATED') {
+        fetchTokens();
+        fetchHidden();
+      }
     };
     chrome.runtime.onMessage.addListener(listener);
     return () => chrome.runtime.onMessage.removeListener(listener);
@@ -167,6 +173,30 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
       if (chrome.runtime.lastError) {
         console.error('Error hiding token:', chrome.runtime.lastError.message);
       }
+    });
+  };
+
+  // Recover a hidden/suppressed token: persist a 'visible' override (tier 0,
+  // absolute precedence) so it returns to the inline list and stays.
+  const handleUnhideToken = (e: React.MouseEvent, token: any) => {
+    e.stopPropagation();
+    if (!token?.caip) return;
+    setHiddenTokens(prev => prev.filter(t => t.caip !== token.caip));
+    chrome.runtime.sendMessage({ type: 'SET_TOKEN_VISIBILITY', caip: token.caip, status: 'visible' }, () => {
+      if (chrome.runtime.lastError) {
+        console.error('Error un-hiding token:', chrome.runtime.lastError.message);
+      }
+    });
+  };
+
+  // Tokens suppressed by default (the 'Mortal' fabricated-value class) or hidden
+  // by the user — for the recoverable "Hidden" section.
+  const fetchHidden = () => {
+    const effectiveNetworkId = networkId || asset?.networkId;
+    chrome.runtime.sendMessage({ type: 'GET_HIDDEN_TOKENS', networkId: effectiveNetworkId }, response => {
+      if (chrome.runtime.lastError) return;
+      const list = (response?.hidden || []).filter((b: any) => parseFloat(b.balance || '0') > 0);
+      setHiddenTokens(list);
     });
   };
 
@@ -473,6 +503,83 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
             )}
           </HStack>
         </VStack>
+      )}
+
+      {/* Hidden / suppressed tokens — recoverable */}
+      {hiddenTokens.length > 0 && (
+        <Box mt={2}>
+          <Flex
+            align="center"
+            gap={1}
+            cursor="pointer"
+            color="kk.faint"
+            _hover={{ color: 'kk.dim' }}
+            onClick={() => setShowHidden(v => !v)}>
+            <FaEyeSlash size={9} />
+            <Text fontSize="xs" fontWeight="semibold">
+              Hidden ({hiddenTokens.length})
+            </Text>
+            <Text fontSize="2xs">{showHidden ? '▲' : '▼'}</Text>
+          </Flex>
+          {showHidden && (
+            <VStack align="stretch" gap={1} mt={2}>
+              {hiddenTokens.map((token: any, index: number) => {
+                const tokenValueUsd = parseFloat(token.valueUsd || 0);
+                const tokenBalance = parseFloat(token.balance || 0);
+                return (
+                  <Box
+                    key={`hidden-${token.caip}-${index}`}
+                    role="group"
+                    px={2}
+                    py={1.5}
+                    bg="kk.surface"
+                    borderRadius="md"
+                    borderWidth="1px"
+                    borderColor="kk.line"
+                    opacity={0.55}
+                    _hover={{ opacity: 1, bg: 'kk.surfaceHi' }}
+                    transition="opacity 0.15s">
+                    <Flex justify="space-between" align="center">
+                      <HStack gap={2}>
+                        <AssetIcon src={token.icon} symbol={token.symbol} size={28} />
+                        <VStack align="flex-start" gap={0} spacing={0}>
+                          <Text fontSize="xs" fontWeight="semibold" color="kk.text" lineHeight="1.3">
+                            {token.symbol || 'Unknown'}
+                          </Text>
+                          <Text fontSize="2xs" color="kk.faint" lineHeight="1.3" noOfLines={1}>
+                            {token._hiddenReason || token.name || 'Hidden'}
+                          </Text>
+                        </VStack>
+                      </HStack>
+                      <HStack gap={1} align="center">
+                        <VStack align="flex-end" gap={0} spacing={0}>
+                          <Text fontSize="xs" color="kk.dim" fontWeight="medium" lineHeight="1.3">
+                            ${formatUsd(tokenValueUsd)}
+                          </Text>
+                          <Text fontSize="2xs" color="kk.faint" lineHeight="1.3">
+                            {tokenBalance.toFixed(6)} {token.symbol}
+                          </Text>
+                        </VStack>
+                        <IconButton
+                          aria-label="Show token"
+                          title="Un-hide this token"
+                          icon={<FaEye size={11} />}
+                          size="xs"
+                          variant="ghost"
+                          minW="auto"
+                          h="22px"
+                          color="kk.faint"
+                          _hover={{ color: 'kk.accent', bg: 'whiteAlpha.100' }}
+                          onClick={e => handleUnhideToken(e, token)}
+                        />
+                      </HStack>
+                    </Flex>
+                  </Box>
+                );
+              })}
+            </VStack>
+          )}
+        </Box>
       )}
 
       {/* Custom Token Dialog */}

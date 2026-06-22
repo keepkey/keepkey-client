@@ -31,6 +31,7 @@ const Balances = ({ onSelectAsset, showAddBlockchain, setShowAddBlockchain }: Ba
   const [balances, setBalances] = useState<any[]>([]);
   const [assets, setAssets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const formatBalance = (balance: string) => {
     const numericBalance = parseFloat(balance);
@@ -52,6 +53,7 @@ const Balances = ({ onSelectAsset, showAddBlockchain, setShowAddBlockchain }: Ba
     const refreshBalances = () => {
       chrome.runtime.sendMessage({ type: 'GET_APP_BALANCES' }, response => {
         if (response?.balances) setBalances(response.balances);
+        setFetchError(response?.error ?? null);
         setLoading(false);
       });
     };
@@ -88,6 +90,17 @@ const Balances = ({ onSelectAsset, showAddBlockchain, setShowAddBlockchain }: Ba
         .reduce((s, bal) => s + parseFloat(bal.valueUsd || '0'), 0);
       return valueB - valueA;
     });
+
+  // Force-refresh after a failed load. REFRESH_ALL_BALANCES bypasses the cache.
+  const retryFetch = () => {
+    setLoading(true);
+    setFetchError(null);
+    chrome.runtime.sendMessage({ type: 'REFRESH_ALL_BALANCES' }, response => {
+      if (response?.balances) setBalances(response.balances);
+      setFetchError(response?.error ?? null);
+      setLoading(false);
+    });
+  };
 
   if (showAddBlockchain) {
     return <AssetSelect setShowAssetSelect={setShowAddBlockchain} />;
@@ -307,27 +320,54 @@ const Balances = ({ onSelectAsset, showAddBlockchain, setShowAddBlockchain }: Ba
     <Flex flex="1" overflowY="auto" width="100%" direction="column">
       <Stack width="100%">
         {sortedAssets.length === 0 ? (
-          <Flex direction="column" justifyContent="center" alignItems="center" gap={4} width="100%" minH="30vh">
-            <Text color="kk.faint" fontSize="sm">
-              No assets yet — receive funds to get started
-            </Text>
-            <Flex
-              align="center"
-              justify="center"
-              gap={1.5}
-              px={4}
-              py={2}
-              borderRadius="12px"
-              border="1px dashed"
-              borderColor="kk.line"
-              _hover={{ borderColor: 'kk.lineHi', cursor: 'pointer' }}
-              onClick={() => setShowAddBlockchain(true)}
-              transition="border-color 0.15s">
-              <Text color="kk.faint" fontSize="xs">
-                + Add blockchain
+          fetchError ? (
+            <Flex direction="column" justifyContent="center" alignItems="center" gap={3} width="100%" minH="30vh">
+              <Text color="kk.text" fontSize="sm" fontWeight="medium">
+                Couldn’t load balances
               </Text>
+              <Text color="kk.faint" fontSize="xs" textAlign="center" maxW="240px">
+                {fetchError}
+              </Text>
+              <Flex
+                align="center"
+                justify="center"
+                gap={1.5}
+                px={5}
+                py={2}
+                borderRadius="12px"
+                border="1px solid"
+                borderColor="kk.lineHi"
+                _hover={{ bg: 'kk.surfaceHi', cursor: 'pointer' }}
+                onClick={retryFetch}
+                transition="background 0.15s">
+                <Text color="kk.text" fontSize="xs">
+                  Retry
+                </Text>
+              </Flex>
             </Flex>
-          </Flex>
+          ) : (
+            <Flex direction="column" justifyContent="center" alignItems="center" gap={4} width="100%" minH="30vh">
+              <Text color="kk.faint" fontSize="sm">
+                No assets yet — receive funds to get started
+              </Text>
+              <Flex
+                align="center"
+                justify="center"
+                gap={1.5}
+                px={4}
+                py={2}
+                borderRadius="12px"
+                border="1px dashed"
+                borderColor="kk.line"
+                _hover={{ borderColor: 'kk.lineHi', cursor: 'pointer' }}
+                onClick={() => setShowAddBlockchain(true)}
+                transition="border-color 0.15s">
+                <Text color="kk.faint" fontSize="xs">
+                  + Add blockchain
+                </Text>
+              </Flex>
+            </Flex>
+          )
         ) : (
           <>
             {sortedAssets.map((asset: any, index: number) => {
