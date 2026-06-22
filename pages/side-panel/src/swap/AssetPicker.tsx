@@ -1,6 +1,6 @@
 // Asset chooser opened by the from/to TokenButtons. Replaces the design mock's
 // cycle() with a real searchable list from vault's /api/v2/swap/assets.
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
 import type { SwapTheme } from './theme';
 import type { UiAsset } from './types';
 import { Icon, I } from './icons';
@@ -35,6 +35,11 @@ export function AssetPicker({
   onClose: () => void;
 }) {
   const [q, setQ] = useState('');
+  // Focus the search on open via a ref rather than autoFocus (jsx-a11y).
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    searchRef.current?.focus();
+  }, []);
 
   // FROM side: restrict to held assets, ranked by USD value descending. TO side:
   // the full list passed in. (vault's swap-discovery FromPicker rule.)
@@ -103,10 +108,10 @@ export function AssetPicker({
           }}>
           <Icon d={I.search} size={15} style={{ color: T.faint }} />
           <input
+            ref={searchRef}
             value={q}
             onChange={e => setQ(e.target.value)}
             placeholder="Search asset or chain"
-            autoFocus
             style={{
               flex: 1,
               background: 'transparent',

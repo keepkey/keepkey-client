@@ -1679,14 +1679,17 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             if (cachedBalances.length > 0) {
               // Backstop for the "empty tokens until manual Refresh" bug: a
               // non-empty cache that holds only natives (no token rows) means
-              // token discovery hasn't run for this worker yet. Kick a one-time
-              // force-refresh (discovers ERC-20/SPL/TRC-20); BALANCES_UPDATED
-              // repaints open surfaces. Guarded so we don't re-poll Pioneer once
-              // discovery has actually run or one is already in flight.
-              const needsDiscovery =
-                !tokenDiscoveryDone && !balancesFetchInProgress && !cachedBalances.some((b: any) => b.token === true);
-              sendResponse({ balances: cachedBalances, discovering: needsDiscovery });
-              if (needsDiscovery) {
+              // token discovery hasn't run for this worker yet.
+              //
+              // `discovering` reports that a discovery is warranted REGARDLESS of
+              // whether one is already in flight — so a page opened during the
+              // cold-start / post-prefetch force refresh shows "Discovering…"
+              // instead of a premature "No Tokens Found". We only START a new
+              // force-refresh when one isn't already running, and stop entirely
+              // once a discovery has committed (tokenDiscoveryDone).
+              const discovering = !tokenDiscoveryDone && !cachedBalances.some((b: any) => b.token === true);
+              sendResponse({ balances: cachedBalances, discovering });
+              if (discovering && !balancesFetchInProgress) {
                 fetchBalancesFromPioneer(true).catch(e => console.warn(tag, 'auto token-discovery failed:', e));
               }
             } else if (wallet.isInitialized()) {

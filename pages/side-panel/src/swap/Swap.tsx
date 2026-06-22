@@ -154,18 +154,23 @@ export function Swap({ onClose, initialFromCaip }: { onClose: () => void; initia
     for (const b of balances) {
       const amt = parseFloat(b?.balance ?? b?.amount ?? '0');
       const usd = parseFloat(b?.valueUsd ?? b?.balanceUsd ?? '0');
-      if (b?.caip) accumulate(byCaip, b.caip, amt, usd);
+      // Normalize CAIP keys (EVM token contracts arrive checksummed or
+      // lowercased depending on source) so a token asset matches its balance.
+      if (b?.caip) accumulate(byCaip, b.caip.toLowerCase(), amt, usd);
       // Native rows (isNative true, or a row with a networkId but no caip) key by chain.
       const net: string = b?.networkId || (b?.caip ? String(b.caip).split('/')[0] : '');
-      if (net && (b?.isNative ?? !b?.caip)) accumulate(nativeByNet, net, amt, usd);
+      if (net && (b?.isNative ?? !b?.caip)) accumulate(nativeByNet, net.toLowerCase(), amt, usd);
     }
     const out = new Map<string, { amount: number; usd: number }>();
     for (const a of assets) {
       if (!a.caip) continue;
-      let bal = byCaip.get(a.caip);
+      let bal = byCaip.get(a.caip.toLowerCase());
       if (!bal) {
-        const isNative = a.caip.includes('/slip44:') || a.caip.includes('/native:') || !a.contractAddress;
-        if (isNative) bal = nativeByNet.get(a.caip.split('/')[0]);
+        // Native iff the CAIP is a native asset path — NOT merely "has no
+        // contractAddress field" (token assets may omit it), which would let a
+        // token wrongly inherit its chain's native balance and look swappable.
+        const isNative = a.caip.includes('/slip44:') || a.caip.includes('/native:');
+        if (isNative) bal = nativeByNet.get(a.caip.split('/')[0].toLowerCase());
       }
       if (bal && bal.amount > 0) out.set(a.caip, bal);
     }

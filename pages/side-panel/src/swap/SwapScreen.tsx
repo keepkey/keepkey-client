@@ -125,21 +125,32 @@ export function SwapScreen({
           {fromBalance !== undefined && (
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
               <div style={{ display: 'flex', gap: 6 }}>
-                {['50%', 'Max'].map(p => (
-                  <span
-                    key={p}
-                    onClick={() => onAmount((fromBalance * (p === 'Max' ? 1 : 0.5)).toFixed(6))}
-                    style={{
-                      padding: '2px 8px',
-                      borderRadius: 999,
-                      background: T.chip,
-                      color: T.dim,
-                      cursor: 'pointer',
-                      fontSize: 12,
-                    }}>
-                    {p}
-                  </span>
-                ))}
+                {['50%', 'Max'].map(p => {
+                  const apply = () => onAmount((fromBalance * (p === 'Max' ? 1 : 0.5)).toFixed(6));
+                  return (
+                    <span
+                      key={p}
+                      onClick={apply}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          apply();
+                        }
+                      }}
+                      style={{
+                        padding: '2px 8px',
+                        borderRadius: 999,
+                        background: T.chip,
+                        color: T.dim,
+                        cursor: 'pointer',
+                        fontSize: 12,
+                      }}>
+                      {p}
+                    </span>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -209,6 +220,14 @@ export function SwapScreen({
       ) : quote ? (
         <div
           onClick={() => setShowRoute(!showRoute)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setShowRoute(!showRoute);
+            }
+          }}
           style={{
             marginTop: 10,
             padding: '12px 14px',

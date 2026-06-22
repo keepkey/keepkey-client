@@ -2,7 +2,7 @@
 // and degrades to a deterministic colored monogram on empty/invalid/404 — so a
 // missing icon reads as an intentional branded glyph, never a gray circle.
 // Generalizes the swap UI's TokenGlyph for the Chakra side of the app.
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { colorForSymbol } from '../styles/assetColor';
 
 /** Normalize an icon source: drop empties and non-http values; some providers
@@ -32,6 +32,10 @@ export function AssetIcon({
 }) {
   const [failed, setFailed] = useState(false);
   const url = normalizeIconUrl(src);
+  // Reset the broken-image flag when the source changes, so a reused instance
+  // (same slot, different asset) doesn't stay stuck on the monogram after one
+  // bad URL.
+  useEffect(() => setFailed(false), [url]);
 
   if (url && !failed) {
     return (

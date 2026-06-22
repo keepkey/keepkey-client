@@ -1,7 +1,7 @@
 // Shared swap UI primitives — ported from the BEX design, taking the `T` theme
 // as a prop exactly like the design. TokenGlyph additionally renders a real icon
 // URL when the asset has one (the design mock had only colored glyphs).
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import type { SwapTheme } from './theme';
 import { Icon, I } from './icons';
 import type { UiAsset } from './types';
@@ -16,11 +16,16 @@ export const fmtCrypto = (n: number) => {
 };
 
 export function TokenGlyph({ asset, size = 36 }: { asset: Pick<UiAsset, 'symbol' | 'icon' | 'color'>; size?: number }) {
-  if (asset.icon) {
+  const [failed, setFailed] = useState(false);
+  // Reset on icon change so a reused glyph doesn't stay stuck on the monogram.
+  useEffect(() => setFailed(false), [asset.icon]);
+
+  if (asset.icon && !failed) {
     return (
       <img
         src={asset.icon}
         alt={asset.symbol}
+        onError={() => setFailed(true)}
         style={{
           width: size,
           height: size,
