@@ -259,18 +259,12 @@ export function detectSpamToken(
     }
   }
 
-  // ── Tier 5.5: Non-allowlisted token reporting a fabricated value ──
-  // Benign symbol + a non-trivial USD value, not allowlisted and not a
-  // user-added custom token = the 'Mortal' lure. Suppressed by DEFAULT but
-  // recoverable (routed to the Hidden bucket, never hard-dropped).
-  const caipLc = (token.caip || '').toLowerCase();
-  if (!opts?.isCustom && !KNOWN_LEGIT_SYMBOLS.has(sym) && !TRUSTED_CAIPS.has(caipLc) && usd >= SUSPICIOUS_VALUE_FLOOR) {
-    return {
-      isSpam: true,
-      level: 'suppressed',
-      reason: `Unverified token reporting $${usd.toFixed(2)} — hidden by default (recoverable)`,
-    };
-  }
+  // NOTE: there is deliberately NO value-floor auto-suppression. A high USD value
+  // is not evidence of fabrication, and we have no server-side trust signal to
+  // tell a fabricated-value scam from a legit unlisted token — auto-hiding
+  // non-allowlisted tokens would underreport real holdings. The 'Mortal' class is
+  // handled by the per-token user Hide + recoverable Hidden section (a one-click,
+  // durable override) instead.
 
   // ── Tier 6: Low value → POSSIBLE spam ────────────────────────────
   // Price-aware: a not-yet-priced legit token (priceUsd 0) is not "low value".

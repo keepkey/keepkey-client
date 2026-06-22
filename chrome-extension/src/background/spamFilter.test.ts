@@ -145,7 +145,7 @@ describe('filterSpamTokens', () => {
     expect(out).toHaveLength(1);
   });
 
-  it('suppresses a benign-symbol fabricated-value token by default (the "Mortal" case), recoverably', () => {
+  it('shows a high-value benign-symbol token by default; a "hidden" override moves it to the recoverable Hidden bucket', () => {
     const mortal: TokenBalanceEntry = {
       symbol: 'MORTAL',
       name: 'Mortal',
@@ -154,16 +154,17 @@ describe('filterSpamTokens', () => {
       balance: '1',
       caip: 'eip155:1/erc20:0xDEAD',
     };
-    // Default: detected 'suppressed' and routed to the recoverable Hidden bucket.
-    expect(detectSpamToken(mortal)).toMatchObject({ isSpam: true, level: 'suppressed' });
-    const def = partitionSpamTokens([mortal]);
-    expect(def.visible).toHaveLength(0);
-    expect(def.hidden.map(t => t.caip)).toContain(mortal.caip);
-    // A 'visible' override un-hides it permanently.
+    // No value-floor auto-suppression — visible by default (legit funds never auto-vanish).
+    expect(detectSpamToken(mortal).isSpam).toBe(false);
+    expect(partitionSpamTokens([mortal]).visible.map(t => t.caip)).toContain(mortal.caip);
+    // A 'hidden' override (one-click Hide) routes it to the recoverable Hidden bucket.
+    const hidden = new Map([['eip155:1/erc20:0xdead', 'hidden' as const]]);
+    const p = partitionSpamTokens([mortal], hidden);
+    expect(p.visible).toHaveLength(0);
+    expect(p.hidden.map(t => t.caip)).toContain(mortal.caip);
+    // A 'visible' override (un-hide) brings it back, durably.
     const shown = new Map([['eip155:1/erc20:0xdead', 'visible' as const]]);
     expect(partitionSpamTokens([mortal], shown).visible.map(t => t.caip)).toContain(mortal.caip);
-    // A user-added custom token of the same shape is NOT suppressed.
-    expect(partitionSpamTokens([mortal], undefined, () => true).visible.map(t => t.caip)).toContain(mortal.caip);
   });
 
   it('keeps a not-yet-priced legit token (price-aware tiers do not fire at price 0)', () => {
@@ -179,19 +180,23 @@ describe('filterSpamTokens', () => {
     expect(partitionSpamTokens([newtkn]).visible.map(t => t.caip)).toContain(newtkn.caip);
   });
 
-  it('hard-drops confirmed phishing but routes suppressed into the Hidden bucket', () => {
+  it('hard-drops confirmed phishing; a legit high-value token stays visible unless user-hidden', () => {
     const phishing: TokenBalanceEntry = { symbol: 'X', name: 'claim at evil.io', valueUsd: '0', caip: 'a' };
-    const mortal: TokenBalanceEntry = {
-      symbol: 'MORTAL',
-      name: 'Mortal',
+    const legit: TokenBalanceEntry = {
+      symbol: 'GMX',
+      name: 'GMX',
       valueUsd: '5000',
-      priceUsd: '5000',
-      balance: '1',
+      priceUsd: '50',
+      balance: '100',
       caip: 'b',
     };
-    const { visible, hidden } = partitionSpamTokens([phishing, mortal]);
-    expect(visible).toHaveLength(0);
-    expect(hidden.map(t => t.caip)).toEqual(['b']); // mortal hidden; phishing hard-dropped
+    // Phishing dropped; the legit unlisted high-value token stays visible (NOT auto-hidden).
+    expect(partitionSpamTokens([phishing, legit]).visible.map(t => t.caip)).toEqual(['b']);
+    // Only an explicit user 'hidden' override moves the legit token to the Hidden bucket.
+    const overrides = new Map([['b', 'hidden' as const]]);
+    const p = partitionSpamTokens([phishing, legit], overrides);
+    expect(p.visible).toHaveLength(0);
+    expect(p.hidden.map(t => t.caip)).toEqual(['b']);
   });
 
   it('keeps a native row visible even with $0 value', () => {

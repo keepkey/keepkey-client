@@ -426,6 +426,26 @@ async function getCustomTokenCaipSet(): Promise<Set<string>> {
   }
 }
 
+// Re-apply the durable per-token visibility overrides to the in-memory cache
+// WITHOUT a network refetch, by re-partitioning the combined visible+hidden set.
+// So a hide/un-hide is reflected and persisted immediately and survives a failed
+// refetch or MV3 worker restart (the override map is the source of truth, not the
+// last persisted partition).
+async function reconcileVisibility(): Promise<void> {
+  const overrides = await getTokenVisibilityMap();
+  const customCaips = await getCustomTokenCaipSet();
+  const combined = [...cachedBalances, ...hiddenBalances];
+  const { visible, hidden } = partitionSpamTokens(
+    combined,
+    overrides,
+    b => !!b.caip && customCaips.has(String(b.caip).toLowerCase()),
+  );
+  cachedBalances = visible;
+  hiddenBalances = hidden;
+  persistPortfolio(cachedBalances);
+  pushBalancesUpdated();
+}
+
 // All EVM CAPIPs (deduplicated) — used to fan out EVM wildcard addresses
 const EVM_CAIPS = [...new Set(Object.values(shortListSymbolToCaip).filter(caip => caip.startsWith('eip155:')))];
 
@@ -1171,7 +1191,15 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
 
         case 'CLEAR_CACHE': {
           cachedBalances = [];
+          hiddenBalances = [];
           balancesFetchInProgress = null;
+          lastFetchError = null;
+          cacheFromHydrate = false;
+          hydratedFingerprint = null;
+          tokenDiscoveryDone = false;
+          // Also drop the persisted portfolio so a worker restart can't re-hydrate
+          // the stale set we just cleared.
+          chrome.storage.local.remove(PORTFOLIO_CACHE_KEY).catch(() => {});
           sendResponse({ success: true });
           break;
         }
@@ -2031,9 +2059,8 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         }
 
         case 'SET_TOKEN_VISIBILITY': {
-          // Wire the per-token user override (spamFilter tier-0). Lets a user
-          // permanently hide a scam token (e.g. a fabricated-value 'Mortal' that
-          // passes the value heuristics) or re-show a false positive.
+          // Per-token user override (spamFilter tier-0): permanently hide a scam
+          // token (e.g. a fabricated-value 'Mortal') or re-show a false positive.
           try {
             const { caip, status } = message as { caip?: string; status?: 'visible' | 'hidden' };
             if (!caip || (status !== 'visible' && status !== 'hidden')) {
@@ -2041,15 +2068,12 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               break;
             }
             await setTokenVisibility(caip, status);
-            // Optimistically drop a just-hidden token from the cache so it
-            // disappears immediately everywhere; re-show relies on the refetch.
-            if (status === 'hidden') {
-              cachedBalances = cachedBalances.filter((b: any) => (b.caip?.toLowerCase() || '') !== caip.toLowerCase());
-              pushBalancesUpdated();
-            }
+            // Apply the override to the in-memory set DETERMINISTICALLY (no network):
+            // re-partition + persist + push, so the change is durable immediately
+            // and survives a failed refetch / worker restart.
+            await reconcileVisibility();
             sendResponse({ success: true });
-            // Rebuild from source so the override is reflected consistently
-            // (and brings a re-shown token back). BALANCES_UPDATED repaints.
+            // Freshness only — the override is already applied + persisted above.
             fetchBalancesFromPioneer(true).catch(e => console.warn(tag, 'visibility refresh failed:', e));
           } catch (error: any) {
             console.error(tag, 'SET_TOKEN_VISIBILITY error:', error);
