@@ -37,9 +37,6 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
   const [loadingAddress, setLoadingAddress] = useState(false);
   const [events, setEvents] = useState<any[]>([]);
   const [eventsLoading, setEventsLoading] = useState(true);
-  const [liveBalance, setLiveBalance] = useState<number | null>(null);
-  const [liveUsdValue, setLiveUsdValue] = useState<number | null>(null);
-  const [livePriceUsd, setLivePriceUsd] = useState<number | null>(null);
   const toast = useToast();
 
   const isEvm = asset.networkId?.startsWith('eip155:');
@@ -56,21 +53,19 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
   const cachedUsdValue = chainBalances.reduce((sum, b) => sum + parseFloat(b.valueUsd || '0'), 0);
   const cachedPriceUsd = nativeBalances[0] ? parseFloat(nativeBalances[0].priceUsd || '0') : 0;
 
-  // Use live data when available (EVM), fallback to cached
-  const totalBalance = liveBalance !== null ? liveBalance : cachedBalance;
-  const totalUsdValue = liveUsdValue !== null ? liveUsdValue : cachedUsdValue;
-  const priceUsd = livePriceUsd !== null ? livePriceUsd : cachedPriceUsd;
+  // Render from the cached aggregate (sum across accounts) so the detail page
+  // matches the dashboard exactly. GET_EVM_BALANCE still fires below to refresh
+  // the cache (per-account write-back + BALANCES_UPDATED); SidePanel passes the
+  // refreshed balances back down, so this stays fresh AND consistent.
+  const totalBalance = cachedBalance;
+  const totalUsdValue = cachedUsdValue;
+  const priceUsd = cachedPriceUsd;
 
   // Build icon URL
   const iconUrl = asset.icon || `https://api.keepkey.info/coins/${btoa(asset.caip || '').replace(/=+$/, '')}.png`;
 
   // Fetch address and live balance when asset changes
   useEffect(() => {
-    // Reset live balance on asset change
-    setLiveBalance(null);
-    setLiveUsdValue(null);
-    setLivePriceUsd(null);
-
     // UTXO chains: pubkey-list rows have empty .address and Pioneer's
     // /portfolio response stuffs the xpub into b.address (line ~439 in
     // background/index.ts), so falling back to asset.pubkeys[0].address
@@ -103,26 +98,25 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
     } else if (asset.networkId) {
       setLoadingAddress(true);
       chrome.runtime.sendMessage({ type: 'GET_PUBKEYS_FOR_NETWORK', networkId: asset.networkId }, response => {
-        if (response?.pubkeys?.[0]) {
-          setAddress(response.pubkeys[0].address || response.pubkeys[0].master || '');
-        }
+        const resolved = response?.pubkeys?.[0]?.address || response?.pubkeys?.[0]?.master || '';
+        if (resolved) setAddress(resolved);
         setLoadingAddress(false);
+        // EVM: refresh the cache for the resolved account so detail + dashboard
+        // stay fresh even when the address was resolved asynchronously here.
+        if (isEvm && resolved) {
+          chrome.runtime.sendMessage({ type: 'GET_EVM_BALANCE', networkId: asset.networkId, address: resolved });
+        }
       });
       return;
     }
 
-    // For EVM chains, fetch fresh balance for the selected account address via RPC
+    // For EVM chains, fire a fresh RPC balance for this account. We don't read
+    // the response — the background writes the live value back into the cached
+    // row (keyed by address) and pushes BALANCES_UPDATED, so SidePanel re-sends
+    // refreshed `balances` down and this page (which renders from the cached
+    // aggregate) updates in lockstep with the dashboard.
     if (isEvm && accountAddress) {
-      chrome.runtime.sendMessage(
-        { type: 'GET_EVM_BALANCE', networkId: asset.networkId, address: accountAddress },
-        response => {
-          if (response && !response.error) {
-            setLiveBalance(parseFloat(response.balance || '0'));
-            setLiveUsdValue(parseFloat(response.valueUsd || '0'));
-            setLivePriceUsd(parseFloat(response.priceUsd || '0'));
-          }
-        },
-      );
+      chrome.runtime.sendMessage({ type: 'GET_EVM_BALANCE', networkId: asset.networkId, address: accountAddress });
     }
   }, [asset.networkId, asset.address, asset.pubkeys?.[0]?.address, asset.note, asset.script_type, isEvm, isUtxo]);
 
