@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { VStack, HStack, Box, Text, Image, Spinner, Button, Flex, Badge } from '@chakra-ui/react';
-import { FaCoins, FaSync, FaPlus } from 'react-icons/fa';
+import { VStack, HStack, Box, Text, Image, Spinner, Button, Flex, Badge, IconButton } from '@chakra-ui/react';
+import { FaCoins, FaSync, FaPlus, FaEyeSlash } from 'react-icons/fa';
 import { customTokensStorageApi, type CustomToken } from '@extension/storage';
 import { CustomTokenDialog } from './CustomTokenDialog';
 
@@ -83,6 +83,9 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
   const [isCustomTokenDialogOpen, setIsCustomTokenDialogOpen] = useState(false);
   const [customTokens, setCustomTokens] = useState<CustomToken[]>([]);
   const [loadingTokenId, setLoadingTokenId] = useState<string | null>(null);
+  // True when the background is discovering tokens (natives present, no tokens
+  // yet) — lets us show "Discovering…" instead of a premature "No Tokens Found".
+  const [discovering, setDiscovering] = useState(false);
 
   useEffect(() => {
     fetchTokens();
@@ -142,6 +145,9 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
           });
 
           setTokens(networkTokens);
+          // Background signals it kicked token discovery for a natives-only
+          // cache — show the discovering state rather than a premature empty.
+          setDiscovering(Boolean(response.discovering) && networkTokens.length === 0);
         }
         setLoading(false);
       });
@@ -214,6 +220,20 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
         setTimeout(() => setLoadingTokenId(null), 2000);
       },
     );
+  };
+
+  // Permanently hide a token (e.g. a scam 'Mortal' with a fabricated USD value
+  // that slips past the spam heuristics). Persists a tier-0 user override in the
+  // background; the row vanishes immediately and stays gone across reloads.
+  const handleHideToken = (e: React.MouseEvent, token: any) => {
+    e.stopPropagation();
+    if (!token?.caip) return;
+    setTokens(prev => prev.filter(t => t.caip !== token.caip));
+    chrome.runtime.sendMessage({ type: 'SET_TOKEN_VISIBILITY', caip: token.caip, status: 'hidden' }, () => {
+      if (chrome.runtime.lastError) {
+        console.error('Error hiding token:', chrome.runtime.lastError.message);
+      }
+    });
   };
 
   const formatUsd = (value: number | null | undefined) => {
@@ -405,6 +425,7 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
               return (
                 <Box
                   key={`${token.caip}-${index}`}
+                  role="group"
                   px={2}
                   py={1.5}
                   bg="rgba(255, 255, 255, 0.03)"
@@ -447,20 +468,44 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
                       </VStack>
                     </HStack>
 
-                    <VStack align="flex-end" gap={0} spacing={0}>
-                      <Text fontSize="xs" color="green.400" fontWeight="medium" lineHeight="1.3">
-                        ${formatUsd(tokenValueUsd)}
-                      </Text>
-                      <Text fontSize="2xs" color="whiteAlpha.400" lineHeight="1.3">
-                        {tokenBalance.toFixed(6)} {token.symbol}
-                      </Text>
-                    </VStack>
+                    <HStack gap={1} align="center">
+                      <VStack align="flex-end" gap={0} spacing={0}>
+                        <Text fontSize="xs" color="green.400" fontWeight="medium" lineHeight="1.3">
+                          ${formatUsd(tokenValueUsd)}
+                        </Text>
+                        <Text fontSize="2xs" color="whiteAlpha.400" lineHeight="1.3">
+                          {tokenBalance.toFixed(6)} {token.symbol}
+                        </Text>
+                      </VStack>
+                      <IconButton
+                        aria-label="Hide token"
+                        title="Hide this token"
+                        icon={<FaEyeSlash size={11} />}
+                        size="xs"
+                        variant="ghost"
+                        minW="auto"
+                        h="22px"
+                        color="whiteAlpha.400"
+                        opacity={0}
+                        _groupHover={{ opacity: 1 }}
+                        _hover={{ color: 'whiteAlpha.900', bg: 'whiteAlpha.100' }}
+                        onClick={e => handleHideToken(e, token)}
+                      />
+                    </HStack>
                   </Flex>
                 </Box>
               );
             })}
           </VStack>
         </Box>
+      ) : discovering ? (
+        /* Discovering State — background is fetching this network's tokens */
+        <Flex justify="center" align="center" direction="column" gap={3} py={8}>
+          <Spinner size="md" color="kk.accent" />
+          <Text color="whiteAlpha.700" fontSize="sm">
+            Discovering tokens…
+          </Text>
+        </Flex>
       ) : (
         /* Empty State */
         <VStack align="center" gap={4} py={8}>

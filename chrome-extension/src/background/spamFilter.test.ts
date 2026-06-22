@@ -138,4 +138,24 @@ describe('filterSpamTokens', () => {
     const out = filterSpamTokens([phishing], overrides);
     expect(out).toHaveLength(1);
   });
+
+  it('a "hidden" override kills a token that passes every heuristic (the "Mortal" case)', () => {
+    // A scam token with a benign symbol and a fabricated >=$1 value passes all
+    // heuristic tiers and lands "clean" — only a user override removes it.
+    const mortal: TokenBalanceEntry = {
+      symbol: 'MORTAL',
+      name: 'Mortal',
+      valueUsd: '5',
+      priceUsd: '5',
+      balance: '1',
+      caip: 'eip155:1/erc20:0xDEAD',
+    };
+    // No override → survives (proves the heuristics alone don't catch it).
+    expect(filterSpamTokens([mortal]).map(t => t.caip)).toContain(mortal.caip);
+    // Hidden override → dropped (the kill switch).
+    const hidden = new Map([['eip155:1/erc20:0xdead', 'hidden' as const]]);
+    expect(filterSpamTokens([mortal], hidden)).toHaveLength(0);
+    // Override removed → reappears.
+    expect(filterSpamTokens([mortal], new Map()).map(t => t.caip)).toContain(mortal.caip);
+  });
 });

@@ -41,7 +41,7 @@ import {
 import { getChainInfo, makeStaticProvider } from './chains/registry';
 import { withRpcFailoverByNetworkId } from './chains/rpcFailover';
 import { formatUserError } from './utils';
-import { filterSpamTokens } from './spamFilter';
+import { filterSpamTokens, getTokenVisibilityMap, setTokenVisibility } from './spamFilter';
 
 const TAG = ' | background/index.js | ';
 console.log('Background script loaded');
@@ -278,6 +278,10 @@ let ADDRESS = '';
 // ---- Balance fetching via Pioneer API ----
 let cachedBalances: any[] = [];
 let balancesFetchInProgress: Promise<any[]> | null = null;
+// Set once a forced (discovery) fetch commits. Guards the GET_APP_BALANCES
+// auto-discovery backstop so we don't re-poll Pioneer when a wallet genuinely
+// holds no tokens.
+let tokenDiscoveryDone = false;
 // Monotonic sequence so an earlier, slower fetch can't clobber a later fetch's
 // result when they overlap. Bumped each time a new fetch actually starts work
 // (not for calls that return the in-flight dedup promise).
@@ -539,7 +543,12 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
       }
 
       const preFilterCount = balances.length;
-      balances = filterSpamTokens(balances);
+      // Honor per-token user overrides (spamFilter tier-0): a 'hidden' token is
+      // dropped, a 'visible' one is force-kept. Without this map the override
+      // layer is dead code and scam tokens with a fabricated >=$1 value (e.g.
+      // 'Mortal') have no kill switch.
+      const visibilityOverrides = await getTokenVisibilityMap();
+      balances = filterSpamTokens(balances, visibilityOverrides);
       if (balances.length !== preFilterCount) {
         console.log(
           `[fetchBalances] Spam filter dropped ${preFilterCount - balances.length}/${preFilterCount} token entries`,
@@ -565,6 +574,9 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
       const snapshotStale = currentPubkeyCount > allPubkeys.length;
       if (myFetchId === latestFetchId && !snapshotStale) {
         cachedBalances = balances;
+        // A forced fetch performs token discovery (ERC-20/SPL/TRC-20); record
+        // that so the GET_APP_BALANCES backstop stops re-triggering.
+        if (forceRefresh) tokenDiscoveryDone = true;
         // Native-row summary keyed by networkId — makes it easy to spot
         // a chain that got dropped silently between fetches. One line
         // per fetch commit; if a balance looks missing on the dashboard,
@@ -1665,9 +1677,22 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         case 'GET_APP_BALANCES': {
           try {
             if (cachedBalances.length > 0) {
-              sendResponse({ balances: cachedBalances });
+              // Backstop for the "empty tokens until manual Refresh" bug: a
+              // non-empty cache that holds only natives (no token rows) means
+              // token discovery hasn't run for this worker yet. Kick a one-time
+              // force-refresh (discovers ERC-20/SPL/TRC-20); BALANCES_UPDATED
+              // repaints open surfaces. Guarded so we don't re-poll Pioneer once
+              // discovery has actually run or one is already in flight.
+              const needsDiscovery =
+                !tokenDiscoveryDone && !balancesFetchInProgress && !cachedBalances.some((b: any) => b.token === true);
+              sendResponse({ balances: cachedBalances, discovering: needsDiscovery });
+              if (needsDiscovery) {
+                fetchBalancesFromPioneer(true).catch(e => console.warn(tag, 'auto token-discovery failed:', e));
+              }
             } else if (wallet.isInitialized()) {
-              const balances = await fetchBalancesFromPioneer();
+              // Empty cache (fresh worker): force-refresh so the first read
+              // discovers tokens too, not just native balances.
+              const balances = await fetchBalancesFromPioneer(true);
               sendResponse({ balances });
             } else {
               sendResponse({ balances: [] });
@@ -1690,6 +1715,34 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           } catch (error: any) {
             console.error(tag, 'REFRESH_ALL_BALANCES error:', error);
             sendResponse({ balances: cachedBalances, error: error.message });
+          }
+          break;
+        }
+
+        case 'SET_TOKEN_VISIBILITY': {
+          // Wire the per-token user override (spamFilter tier-0). Lets a user
+          // permanently hide a scam token (e.g. a fabricated-value 'Mortal' that
+          // passes the value heuristics) or re-show a false positive.
+          try {
+            const { caip, status } = message as { caip?: string; status?: 'visible' | 'hidden' };
+            if (!caip || (status !== 'visible' && status !== 'hidden')) {
+              sendResponse({ success: false, error: 'caip and status (visible|hidden) required' });
+              break;
+            }
+            await setTokenVisibility(caip, status);
+            // Optimistically drop a just-hidden token from the cache so it
+            // disappears immediately everywhere; re-show relies on the refetch.
+            if (status === 'hidden') {
+              cachedBalances = cachedBalances.filter((b: any) => (b.caip?.toLowerCase() || '') !== caip.toLowerCase());
+              pushBalancesUpdated();
+            }
+            sendResponse({ success: true });
+            // Rebuild from source so the override is reflected consistently
+            // (and brings a re-shown token back). BALANCES_UPDATED repaints.
+            fetchBalancesFromPioneer(true).catch(e => console.warn(tag, 'visibility refresh failed:', e));
+          } catch (error: any) {
+            console.error(tag, 'SET_TOKEN_VISIBILITY error:', error);
+            sendResponse({ success: false, error: error.message });
           }
           break;
         }
