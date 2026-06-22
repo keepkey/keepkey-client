@@ -13,6 +13,7 @@ import { SwapHistory } from './SwapHistory';
 import { SwapProgress } from './SwapProgress';
 import { AssetPicker } from './AssetPicker';
 import { PrimaryBtn } from './ui';
+import { SpinningDevice } from '../components/SpinningDevice';
 import { Icon, I } from './icons';
 
 const toUi = (a: SwapAsset): UiAsset => ({ ...a, color: colorForSymbol(a.symbol) });
@@ -501,7 +502,7 @@ export function Swap({ onClose, initialFromCaip }: { onClose: () => void; initia
           }}>
           {balancesLoading ? (
             <>
-              <Spinner color="kk.accent" />
+              <SpinningDevice scale={0.34} durationSeconds={11} label="SYNCING" />
               <div style={{ fontSize: 13, color: T.faint }}>Checking your KeepKey balances…</div>
             </>
           ) : (
@@ -547,7 +548,7 @@ export function Swap({ onClose, initialFromCaip }: { onClose: () => void; initia
             padding: 24,
             textAlign: 'center',
           }}>
-          <Spinner color="kk.accent" />
+          <SpinningDevice scale={0.42} durationSeconds={9} label="CONFIRM" />
           <div style={{ fontSize: 14, color: T.text }}>Confirm on your KeepKey</div>
           <div style={{ fontSize: 12, color: T.faint }}>
             Review the swap details on the device and press the button to sign.
