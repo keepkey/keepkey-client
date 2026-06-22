@@ -106,9 +106,9 @@ const History: React.FC<HistoryProps> = ({ transactionContext }) => {
   };
 
   const getStatusColor = (event: any) => {
-    if (!event.txid) return 'red.500'; // Missing txid, mark red
-    if (event.blockHeight) return 'green.500'; // Confirmed, mark green
-    return 'gray.500'; // Default status color
+    if (!event.txid) return 'kk.bad'; // Missing txid, mark red
+    if (event.blockHeight) return 'kk.good'; // Confirmed, mark green
+    return 'kk.faint'; // Default status color
   };
 
   const handleDelete = async (id: string) => {
@@ -143,21 +143,6 @@ const History: React.FC<HistoryProps> = ({ transactionContext }) => {
         <Text fontSize="md" fontWeight="bold">
           Total Transactions: {filteredEvents.length}
         </Text>
-
-        {/* Network Selection Dropdown */}
-        {/*<Select*/}
-        {/*    placeholder="Select network"*/}
-        {/*    size="sm"*/}
-        {/*    width="200px"*/}
-        {/*    value={selectedNetwork}*/}
-        {/*    onChange={e => setSelectedNetwork(e.target.value)}*/}
-        {/*>*/}
-        {/*  {assets.map((asset: any) => (*/}
-        {/*      <option key={asset.networkId} value={asset.networkId}>*/}
-        {/*        {asset.networkId}*/}
-        {/*      </option>*/}
-        {/*  ))}*/}
-        {/*</Select>*/}
       </Flex>
 
       <Flex justifyContent="space-between" alignItems="center" mb={4}>
@@ -189,10 +174,10 @@ const History: React.FC<HistoryProps> = ({ transactionContext }) => {
                 transition={{ duration: 0.2 }}
                 mb={4}>
                 <AccordionItem borderRadius="md" border="1px solid" borderColor={getStatusColor(event)} boxShadow="md">
-                  <AccordionButton _expanded={{ bg: getStatusColor(event), color: 'white' }} borderRadius="md" p={4}>
+                  <AccordionButton _expanded={{ bg: getStatusColor(event), color: 'kk.text' }} borderRadius="md" p={4}>
                     <Flex justifyContent="space-between" flex="1" alignItems="center">
                       {/* Status Badge */}
-                      <Badge colorScheme={event.blockHeight ? 'green' : 'yellow'}>
+                      <Badge bg="kk.surfaceHi" color={event.blockHeight ? 'kk.good' : 'kk.warn'}>
                         {event.blockHeight ? 'Confirmed' : 'Pending'}
                       </Badge>
 
@@ -206,7 +191,7 @@ const History: React.FC<HistoryProps> = ({ transactionContext }) => {
 
                       {/* Spinner for pending transactions */}
                       {!event.blockHeight && (
-                        <Spinner thickness="2px" speed="0.65s" emptyColor="gray.200" color="blue.500" size="sm" />
+                        <Spinner thickness="2px" speed="0.65s" emptyColor="gray.200" color="kk.accent" size="sm" />
                       )}
 
                       <AccordionIcon />
@@ -239,9 +224,13 @@ const History: React.FC<HistoryProps> = ({ transactionContext }) => {
                       <Text>
                         <strong>Status:</strong>{' '}
                         {event.blockHeight ? (
-                          <Badge colorScheme="green">Confirmed</Badge>
+                          <Badge bg="kk.surfaceHi" color="kk.good">
+                            Confirmed
+                          </Badge>
                         ) : (
-                          <Badge colorScheme="yellow">Pending</Badge>
+                          <Badge bg="kk.surfaceHi" color="kk.warn">
+                            Pending
+                          </Badge>
                         )}
                       </Text>
                       <Text>
@@ -251,13 +240,13 @@ const History: React.FC<HistoryProps> = ({ transactionContext }) => {
 
                     {/* Action Buttons */}
                     <Flex mt={4} justifyContent="space-around">
-                      <Button colorScheme="blue" onClick={() => console.log('Open transaction')} size="sm">
+                      <Button onClick={() => console.log('Open transaction')} size="sm">
                         Open
                       </Button>
-                      <Button colorScheme="green" onClick={() => console.log('Broadcast transaction')} size="sm">
+                      <Button variant="ghost" onClick={() => console.log('Broadcast transaction')} size="sm">
                         Broadcast
                       </Button>
-                      <Button colorScheme="teal" onClick={() => window.open(event.siteUrl, '_blank')} size="sm">
+                      <Button variant="ghost" onClick={() => window.open(event.siteUrl, '_blank')} size="sm">
                         External
                       </Button>
                       <Tooltip label="View Raw JSON" aria-label="View Raw JSON">
@@ -275,7 +264,7 @@ const History: React.FC<HistoryProps> = ({ transactionContext }) => {
                       <Box
                         mt={4}
                         p={4}
-                        bg="black"
+                        bg="kk.surfaceHi"
                         borderRadius="md"
                         overflow="auto"
                         maxHeight="200px"
@@ -290,7 +279,8 @@ const History: React.FC<HistoryProps> = ({ transactionContext }) => {
                       <IconButton
                         aria-label="Delete transaction"
                         icon={<DeleteIcon />}
-                        colorScheme="red"
+                        variant="ghost"
+                        color="kk.bad"
                         size="sm"
                         onClick={() => handleDelete(event.id)}
                       />

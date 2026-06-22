@@ -195,20 +195,20 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
       <VStack spacing={1} align="center" pt={3} pb={2} px={2} flexShrink={0}>
         <HStack spacing={2} align="center">
           <AssetIcon src={iconUrl} symbol={asset.symbol} size={32} />
-          <Text fontSize="sm" fontWeight="medium" color="whiteAlpha.600">
+          <Text fontSize="sm" fontWeight="medium" color="kk.dim">
             {asset.name || asset.symbol}
           </Text>
           {asset.networkId === 'tron:27Lqcw' && <TronLinkBadge />}
         </HStack>
-        <Text fontSize="xl" fontWeight="bold" color="white" lineHeight="1.2">
+        <Text fontSize="xl" fontWeight="bold" color="kk.text" lineHeight="1.2">
           {formatUsd(totalUsdValue)}
         </Text>
         <HStack spacing={1}>
-          <Text fontSize="xs" color="whiteAlpha.600">
+          <Text fontSize="xs" color="kk.dim">
             {totalBalance.toFixed(4)} {asset.symbol}
           </Text>
           {priceUsd > 0 && (
-            <Text fontSize="xs" color="whiteAlpha.400">
+            <Text fontSize="xs" color="kk.faint">
               @ {formatUsd(priceUsd)}
             </Text>
           )}
@@ -223,7 +223,7 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
           </Flex>
         ) : address ? (
           <Flex
-            bg="whiteAlpha.50"
+            bg="kk.surface"
             borderRadius="md"
             px={2}
             py={1}
@@ -232,7 +232,7 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
             maxW="100%"
             justify="center"
             mx="auto">
-            <Text fontFamily="mono" fontSize="xs" color="whiteAlpha.500" isTruncated>
+            <Text fontFamily="mono" fontSize="xs" color="kk.dim" isTruncated>
               {formatAddr(address)}
             </Text>
             <IconButton
@@ -242,7 +242,7 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
               variant="ghost"
               minW="20px"
               h="20px"
-              colorScheme={hasCopied ? 'green' : 'gray'}
+              color={hasCopied ? 'kk.good' : 'kk.dim'}
               onClick={handleCopy}
             />
             <IconButton
@@ -252,7 +252,7 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
               variant="ghost"
               minW="20px"
               h="20px"
-              colorScheme="blue"
+              color="kk.accent"
               onClick={handleOpenExplorer}
             />
           </Flex>
@@ -263,7 +263,6 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
       <HStack spacing={2} w="100%" px={2} pb={2} flexShrink={0}>
         <Button
           leftIcon={<ArrowUpIcon boxSize={3} />}
-          colorScheme="orange"
           variant="solid"
           size="sm"
           flex={1}
@@ -275,8 +274,7 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
         </Button>
         <Button
           leftIcon={<ArrowDownIcon boxSize={3} />}
-          colorScheme="green"
-          variant="solid"
+          variant="ghost"
           size="sm"
           flex={1}
           fontSize="xs"
@@ -288,8 +286,7 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
         {onSwap && (
           <Button
             leftIcon={<RepeatIcon boxSize={3} />}
-            colorScheme="teal"
-            variant="solid"
+            variant="ghost"
             size="sm"
             flex={1}
             fontSize="xs"
@@ -304,12 +301,12 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
       {/* Tab Bar — Tokens / Activity. flex={2} vs the top spacer's flex={1}
           biases the hero block higher (≈ upper third) instead of dead-center. */}
       <Box flex={2} minH={0} px={2}>
-        <Tabs variant="soft-rounded" colorScheme="blue" size="sm" display="flex" flexDirection="column" h="100%">
+        <Tabs variant="soft-rounded" size="sm" display="flex" flexDirection="column" h="100%">
           <TabList mb={1} gap={1} flexShrink={0}>
             {!isUtxoNetwork && (
               <Tab
-                color="whiteAlpha.500"
-                _selected={{ color: 'white', bg: 'whiteAlpha.150' }}
+                color="kk.dim"
+                _selected={{ color: 'kk.text', bg: 'kk.surfaceHi' }}
                 fontSize="xs"
                 fontWeight="medium"
                 py={1}
@@ -319,8 +316,8 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
               </Tab>
             )}
             <Tab
-              color="whiteAlpha.500"
-              _selected={{ color: 'white', bg: 'whiteAlpha.150' }}
+              color="kk.dim"
+              _selected={{ color: 'kk.text', bg: 'kk.surfaceHi' }}
               fontSize="xs"
               fontWeight="medium"
               py={1}
@@ -328,7 +325,7 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
               borderRadius="md">
               Activity
               {events.length > 0 && (
-                <Badge ml={1} colorScheme="blue" fontSize="0.5rem" borderRadius="full" px={1}>
+                <Badge ml={1} bg="kk.surfaceHi" color="kk.dim" fontSize="0.5rem" borderRadius="full" px={1}>
                   {events.length}
                 </Badge>
               )}
@@ -348,7 +345,7 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
             <TabPanel p={0}>
               {eventsLoading ? (
                 <Flex justify="center" py={6}>
-                  <Spinner size="md" color="blue.400" />
+                  <Spinner size="md" color="kk.accent" />
                 </Flex>
               ) : events.length > 0 ? (
                 <VStack align="stretch" spacing={2}>
@@ -360,16 +357,16 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
                     return (
                       <Flex
                         key={event.id}
-                        bg="whiteAlpha.50"
+                        bg="kk.surface"
                         borderRadius="lg"
                         px={3}
                         py={2}
                         align="center"
                         cursor={explorerUrl ? 'pointer' : 'default'}
-                        _hover={explorerUrl ? { bg: 'whiteAlpha.100' } : {}}
+                        _hover={explorerUrl ? { bg: 'kk.surfaceHi' } : {}}
                         onClick={() => explorerUrl && window.open(explorerUrl, '_blank')}
                         border="1px solid"
-                        borderColor="whiteAlpha.100">
+                        borderColor="kk.line">
                         <Box
                           w="32px"
                           h="32px"
@@ -381,42 +378,43 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
                           mr={3}
                           flexShrink={0}>
                           {isSend ? (
-                            <ArrowUpIcon boxSize={3} color="red.300" />
+                            <ArrowUpIcon boxSize={3} color="kk.bad" />
                           ) : (
-                            <ArrowDownIcon boxSize={3} color="green.300" />
+                            <ArrowDownIcon boxSize={3} color="kk.good" />
                           )}
                         </Box>
                         <Box flex={1} minW={0}>
                           <Flex align="center" gap={2}>
-                            <Text fontSize="sm" fontWeight="medium" color="white">
+                            <Text fontSize="sm" fontWeight="medium" color="kk.text">
                               {isSend ? 'Sent' : 'Transaction'}
                             </Text>
                             <Badge
                               fontSize="0.5rem"
-                              colorScheme={event.blockHeight ? 'green' : 'yellow'}
+                              bg={event.blockHeight ? 'kk.good' : 'kk.warn'}
+                              color="kk.bg2"
                               variant="subtle">
                               {event.blockHeight ? 'Confirmed' : 'Pending'}
                             </Badge>
                           </Flex>
-                          <Text fontSize="xs" color="whiteAlpha.500">
+                          <Text fontSize="xs" color="kk.dim">
                             {event.timestamp ? formatDistanceToNow(new Date(event.timestamp)) + ' ago' : 'Unknown'}
                           </Text>
                         </Box>
-                        {explorerUrl && <ExternalLinkIcon boxSize={3} color="whiteAlpha.400" flexShrink={0} />}
+                        {explorerUrl && <ExternalLinkIcon boxSize={3} color="kk.faint" flexShrink={0} />}
                       </Flex>
                     );
                   })}
                 </VStack>
               ) : (
                 <VStack align="center" py={6} spacing={2}>
-                  <Text fontSize="sm" color="whiteAlpha.500">
+                  <Text fontSize="sm" color="kk.dim">
                     No recent activity
                   </Text>
                   {address && (
                     <Button
                       size="xs"
                       variant="ghost"
-                      colorScheme="blue"
+                      color="kk.accent"
                       rightIcon={<ExternalLinkIcon />}
                       onClick={handleOpenExplorer}>
                       View on Explorer

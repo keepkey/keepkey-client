@@ -62,15 +62,15 @@ const AccountDropdown: React.FC<AccountDropdownProps> = ({
         px={2}
         h="32px"
         borderRadius="md"
-        bg="whiteAlpha.50"
-        _hover={hasMultiple ? { bg: 'whiteAlpha.150' } : {}}
+        bg="kk.surface"
+        _hover={hasMultiple ? { bg: 'kk.surfaceHi' } : {}}
         transition="background 0.15s"
         minW={0}
         title={selected?.address || ''}>
         <Text
           fontSize="xs"
           fontWeight={hasMultiple ? 'semibold' : 500}
-          color="white"
+          color="kk.text"
           isTruncated
           maxW="100px"
           className={hasMultiple ? undefined : 'mono'}>
@@ -90,9 +90,7 @@ const AccountDropdown: React.FC<AccountDropdownProps> = ({
             ml={1}
           />
         )}
-        {hasMultiple && (
-          <Icon as={isExpanded ? ChevronUpIcon : ChevronDownIcon} boxSize={3} ml={1} color="whiteAlpha.700" />
-        )}
+        {hasMultiple && <Icon as={isExpanded ? ChevronUpIcon : ChevronDownIcon} boxSize={3} ml={1} color="kk.dim" />}
       </Flex>
 
       {/* Dropdown panel — conditionally rendered (no Collapse wrapper: an
@@ -107,8 +105,8 @@ const AccountDropdown: React.FC<AccountDropdownProps> = ({
           zIndex={10}
           borderRadius="md"
           border="1px solid"
-          borderColor="whiteAlpha.200"
-          bg="gray.800"
+          borderColor="kk.lineHi"
+          bg="kk.surface"
           maxH="calc(100vh - 84px)"
           minW="180px"
           overflowY="auto"
@@ -124,28 +122,28 @@ const AccountDropdown: React.FC<AccountDropdownProps> = ({
               px={3}
               py={2}
               cursor="pointer"
-              bg={selectedAccountKey === account.key ? 'whiteAlpha.150' : 'transparent'}
-              _hover={{ bg: 'whiteAlpha.100' }}
+              bg={selectedAccountKey === account.key ? 'kk.surfaceHi' : 'transparent'}
+              _hover={{ bg: 'kk.surfaceHi' }}
               transition="background 0.1s"
               onClick={() => handleSelect(account)}
               borderBottom="1px solid"
-              borderColor="whiteAlpha.50">
+              borderColor="kk.line">
               <Box flex={1} minW={0}>
                 <Flex alignItems="center" gap={1}>
-                  <Text fontSize="xs" color="white" isTruncated>
+                  <Text fontSize="xs" color="kk.text" isTruncated>
                     {account.label}
                   </Text>
                   {account.isDefault && (
-                    <Badge fontSize="0.5rem" colorScheme="green" variant="subtle" px={1}>
+                    <Badge fontSize="0.5rem" bg="kk.surfaceHi" color="kk.dim" variant="subtle" px={1}>
                       Default
                     </Badge>
                   )}
                 </Flex>
-                <Text fontSize="xs" fontFamily="mono" color="whiteAlpha.600" isTruncated>
+                <Text fontSize="xs" fontFamily="mono" color="kk.dim" isTruncated>
                   {formatAddress(account.address)}
                 </Text>
                 {account.path && (
-                  <Text fontSize="0.6rem" fontFamily="mono" color="whiteAlpha.400" isTruncated>
+                  <Text fontSize="0.6rem" fontFamily="mono" color="kk.faint" isTruncated>
                     {account.path}
                   </Text>
                 )}
@@ -192,13 +190,13 @@ const AccountDropdown: React.FC<AccountDropdownProps> = ({
               px={3}
               py={2}
               cursor="pointer"
-              _hover={{ bg: 'whiteAlpha.100' }}
+              _hover={{ bg: 'kk.surfaceHi' }}
               borderTop="1px solid"
-              borderColor="whiteAlpha.100">
+              borderColor="kk.line">
               <Button
                 size="xs"
                 variant="ghost"
-                colorScheme="blue"
+                color="kk.accent"
                 leftIcon={<AddIcon boxSize={2} />}
                 fontSize="xs"
                 isLoading={isAddingAccount}
