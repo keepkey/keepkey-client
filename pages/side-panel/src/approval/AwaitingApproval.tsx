@@ -1,11 +1,19 @@
 import React from 'react';
-import { Flex, Card, CardBody, Image, Heading, Button, CloseButton } from '@chakra-ui/react';
-import holdAndReleaseIcon from '../assets/svg/hold-and-release.svg';
+import { Flex, Card, CardBody, Heading, Button, CloseButton } from '@chakra-ui/react';
+import { SpinningDevice } from '../components/SpinningDevice';
 
 const AwaitingApproval = ({ onCancel }: { onCancel: () => void }) => {
   return (
     <Flex justify="center" align="center" height="100vh">
-      <Card width="400px" boxShadow="lg" borderRadius="lg" overflow="hidden" position="relative">
+      <Card
+        width="400px"
+        bg="kk.surface"
+        borderColor="kk.line"
+        borderWidth="1px"
+        boxShadow="lg"
+        borderRadius="lg"
+        overflow="hidden"
+        position="relative">
         {/* Close button in the top-right corner */}
         <CloseButton position="absolute" top="8px" right="8px" onClick={onCancel} />
 
@@ -14,7 +22,7 @@ const AwaitingApproval = ({ onCancel }: { onCancel: () => void }) => {
             <Heading as="h2" size="md" mb={4} textAlign="center">
               Device Signing Request
             </Heading>
-            <Image src={holdAndReleaseIcon} alt="KeepKey - Approve on device" boxSize="150px" mb={4} />
+            <SpinningDevice scale={0.46} durationSeconds={9} label="APPROVE" style={{ marginBottom: 16 }} />
             <Heading as="h3" size="md" mb={4} textAlign="center">
               Please approve the transaction on your KeepKey
             </Heading>
@@ -22,7 +30,7 @@ const AwaitingApproval = ({ onCancel }: { onCancel: () => void }) => {
             or....
             <br />
             <br />
-            <Button colorScheme="yellow" onClick={onCancel}>
+            <Button variant="ghost" onClick={onCancel}>
               Abort Signing
             </Button>
           </Flex>

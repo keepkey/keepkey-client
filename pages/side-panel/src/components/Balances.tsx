@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Flex, Box, Text, Card, Stack, HStack, Skeleton, SkeletonCircle } from '@chakra-ui/react';
 import { AssetIcon } from './AssetIcon';
+import { SpinningDevice } from './SpinningDevice';
 import AssetSelect from './AssetSelect';
 import { COIN_MAP_LONG, NetworkIdToChain } from '@extension/shared';
 
@@ -161,28 +162,6 @@ const Balances = ({ onSelectAsset, showAddBlockchain, setShowAddBlockchain }: Ba
             0%, 100% { opacity: 0.035; transform: scale(1); }
             50% { opacity: 0.07; transform: scale(1.02); }
           }
-          @keyframes kk-spin-cw {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-          @keyframes kk-spin-ccw {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(-360deg); }
-          }
-          @keyframes kk-glow {
-            0%, 100% {
-              box-shadow: 0 0 18px 2px rgba(56, 178, 172, 0.25), 0 0 36px 6px rgba(56, 178, 172, 0.10);
-              transform: scale(1);
-            }
-            50% {
-              box-shadow: 0 0 28px 4px rgba(56, 178, 172, 0.45), 0 0 52px 10px rgba(56, 178, 172, 0.18);
-              transform: scale(1.08);
-            }
-          }
-          @keyframes kk-dot-pulse {
-            0%, 100% { opacity: 0.4; transform: scale(0.85); }
-            50% { opacity: 1; transform: scale(1.15); }
-          }
           @keyframes kk-text-fade {
             0%, 100% { opacity: 0.45; letter-spacing: 0.25em; }
             50% { opacity: 0.85; letter-spacing: 0.35em; }
@@ -210,68 +189,7 @@ const Balances = ({ onSelectAsset, showAddBlockchain, setShowAddBlockchain }: Ba
 
         {/* Hero spinner above the skeletons */}
         <Flex direction="column" align="center" gap={3} pt={2} pb={5} position="relative" zIndex={2}>
-          <Box position="relative" width="88px" height="88px">
-            {/* Soft pulsing glow */}
-            <Box
-              position="absolute"
-              top="50%"
-              left="50%"
-              width="56px"
-              height="56px"
-              borderRadius="full"
-              transform="translate(-50%, -50%)"
-              bg="rgba(210, 153, 41, 0.15)"
-              sx={{ animation: 'kk-glow 2.4s ease-in-out infinite' }}
-            />
-            {/* Outer ring — clockwise, gold */}
-            <Box
-              position="absolute"
-              inset={0}
-              borderRadius="full"
-              border="3px solid transparent"
-              borderTopColor="kk.accent"
-              borderRightColor="keepKeyGold.300"
-              sx={{ animation: 'kk-spin-cw 1.4s cubic-bezier(0.5, 0, 0.5, 1) infinite' }}
-            />
-            {/* Middle ring — counter-clockwise, paler */}
-            <Box
-              position="absolute"
-              top="10px"
-              left="10px"
-              right="10px"
-              bottom="10px"
-              borderRadius="full"
-              border="2px solid transparent"
-              borderBottomColor="keepKeyGold.200"
-              borderLeftColor="whiteAlpha.400"
-              sx={{ animation: 'kk-spin-ccw 2.1s cubic-bezier(0.4, 0, 0.6, 1) infinite' }}
-            />
-            {/* Inner ring — clockwise, thin */}
-            <Box
-              position="absolute"
-              top="22px"
-              left="22px"
-              right="22px"
-              bottom="22px"
-              borderRadius="full"
-              border="1.5px solid transparent"
-              borderTopColor="whiteAlpha.600"
-              sx={{ animation: 'kk-spin-cw 0.9s linear infinite' }}
-            />
-            {/* Breathing center dot */}
-            <Box
-              position="absolute"
-              top="50%"
-              left="50%"
-              width="10px"
-              height="10px"
-              borderRadius="full"
-              transform="translate(-50%, -50%)"
-              bg="kk.accent"
-              boxShadow="0 0 10px 2px rgba(210, 153, 41, 0.6)"
-              sx={{ animation: 'kk-dot-pulse 1.2s ease-in-out infinite' }}
-            />
-          </Box>
+          <SpinningDevice scale={0.36} durationSeconds={11} label="FETCHING" />
           <Text
             color="whiteAlpha.700"
             fontSize="xs"
