@@ -38,12 +38,13 @@ import {
   accountsByNetworkStorage,
   customEvmNetworksStorage,
   testnetSettingsStorage,
+  customTokensStorageApi,
 } from '@extension/storage';
 import { getChainInfo } from './chains/registry';
 import { withRpcFailoverByNetworkId } from './chains/rpcFailover';
 import { EVM_TESTNETS, SOLANA_DEVNET } from './testnetPresets';
 import { formatUserError } from './utils';
-import { filterSpamTokens, getTokenVisibilityMap, setTokenVisibility } from './spamFilter';
+import { partitionSpamTokens, getTokenVisibilityMap, setTokenVisibility } from './spamFilter';
 
 const TAG = ' | background/index.js | ';
 console.log('Background script loaded');
@@ -300,6 +301,14 @@ const PORTFOLIO_CACHE_KEY = 'keepkey-portfolio-cache';
 let portfolioUpdatedAt = 0;
 let cacheFromHydrate = false;
 let hydratedFingerprint: string | null = null;
+// Records the most recent real fetch failure (cleared on success). Surfaced
+// additively on GET_APP_BALANCES so the UI can show "couldn't load — retry"
+// instead of "no assets".
+let lastFetchError: string | null = null;
+// Tokens suppressed by default (the 'Mortal' fabricated-value class) or user-
+// hidden. Kept OUT of cachedBalances so dashboard totals never include scam
+// value; surfaced via GET_HIDDEN_TOKENS for the recoverable "Hidden" section.
+let hiddenBalances: any[] = [];
 
 function walletFingerprint(): string {
   const pks = wallet.getPubkeys();
@@ -343,6 +352,55 @@ function pushBalancesUpdated() {
   chrome.runtime.sendMessage({ type: 'BALANCES_UPDATED' }).catch(() => {
     // No popup/sidebar listening — ignore.
   });
+}
+
+// Borrow USD prices already present in a fetched balances array to fill held
+// natives Pioneer returned at $0 (custom-RPC chains, some L2s). No network calls
+// — display-only (never touches balance/caip/address). L2 gas tokens ARE ETH, so
+// an unpriced EVM ETH native borrows the mainnet ETH price (same as
+// GET_EVM_BALANCE). Anything still unpriced is flagged priceUnavailable so the UI
+// can render '—' instead of a misleading $0.
+function backfillNativePrices(balances: any[]): void {
+  const priceByCaip = new Map<string, string>();
+  for (const b of balances) {
+    if (b.caip && parseFloat(b.priceUsd || '0') > 0) priceByCaip.set(b.caip, b.priceUsd);
+  }
+  const ethPrice = balances.find(
+    (b: any) => b.networkId === 'eip155:1' && b.isNative && parseFloat(b.priceUsd || '0') > 0,
+  )?.priceUsd;
+  for (const b of balances) {
+    if (!b.isNative) continue;
+    if (parseFloat(b.balance || '0') <= 0) continue;
+    if (parseFloat(b.priceUsd || '0') > 0) continue;
+    const sym = String(b.symbol || '').toUpperCase();
+    let price = b.caip ? priceByCaip.get(b.caip) : undefined;
+    if (!price && b.networkId?.startsWith('eip155:') && sym === 'ETH') price = ethPrice;
+    if (price) {
+      b.priceUsd = price;
+      b.valueUsd = (parseFloat(b.balance) * parseFloat(price)).toString();
+    } else {
+      b.priceUnavailable = true;
+    }
+  }
+}
+
+// Lowercased CAIPs of all user-added custom tokens — used to exempt deliberately
+// added tokens from default spam suppression.
+async function getCustomTokenCaipSet(): Promise<Set<string>> {
+  try {
+    const all = await customTokensStorageApi.getAll();
+    const set = new Set<string>();
+    for (const byUser of Object.values(all || {})) {
+      for (const tokens of Object.values(byUser || {})) {
+        for (const t of tokens || []) {
+          if (t?.caip) set.add(String(t.caip).toLowerCase());
+        }
+      }
+    }
+    return set;
+  } catch {
+    return new Set<string>();
+  }
 }
 
 // All EVM CAPIPs (deduplicated) — used to fan out EVM wildcard addresses
@@ -487,9 +545,11 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
             else natives.push(entry);
           }
           console.log(`[fetchBalances] portfolio: ${natives.length} natives, ${tokens.length} tokens`);
+          lastFetchError = null; // a parsed response (even empty) is a success, not an error
           return { balances: natives, tokens };
         } catch (e: any) {
           console.warn('[fetchBalances] portfolio error:', e.message);
+          lastFetchError = e?.message || 'portfolio fetch failed';
           return { balances: [] as any[], tokens: [] as any[] };
         }
       };
@@ -630,17 +690,28 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
         console.warn('[fetchBalances] Custom chain enrichment error:', e.message);
       }
 
+      // Backfill USD prices for held natives Pioneer returned at $0, reusing
+      // prices already in this response (no network call). After custom-chain
+      // enrichment so RPC-derived natives are included.
+      backfillNativePrices(balances);
+
       const preFilterCount = balances.length;
-      // Honor per-token user overrides (spamFilter tier-0): a 'hidden' token is
-      // dropped, a 'visible' one is force-kept. Without this map the override
-      // layer is dead code and scam tokens with a fabricated >=$1 value (e.g.
-      // 'Mortal') have no kill switch.
+      // Spam handling at the single chokepoint: honor per-token user overrides
+      // (tier 0), HARD-DROP confirmed phishing, and route 'Mortal'-class
+      // fabricated-value tokens into a recoverable Hidden bucket (kept OUT of the
+      // cache/totals; surfaced via GET_HIDDEN_TOKENS). User-added custom tokens
+      // are exempt from default suppression.
       const visibilityOverrides = await getTokenVisibilityMap();
-      balances = filterSpamTokens(balances, visibilityOverrides);
-      if (balances.length !== preFilterCount) {
-        console.log(
-          `[fetchBalances] Spam filter dropped ${preFilterCount - balances.length}/${preFilterCount} token entries`,
-        );
+      const customCaips = await getCustomTokenCaipSet();
+      const { visible, hidden } = partitionSpamTokens(
+        balances,
+        visibilityOverrides,
+        b => !!b.caip && customCaips.has(String(b.caip).toLowerCase()),
+      );
+      balances = visible;
+      hiddenBalances = hidden;
+      if (hidden.length > 0) {
+        console.log(`[fetchBalances] Spam: ${visible.length} visible, ${hidden.length} hidden of ${preFilterCount}`);
       }
 
       console.log(
@@ -665,6 +736,7 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
         // This commit is authoritative for the connected wallet — supersede any
         // hydrated last-good cache and persist the fresh set for next worker start.
         cacheFromHydrate = false;
+        lastFetchError = null;
         persistPortfolio(balances);
         // A forced fetch performs token discovery (ERC-20/SPL/TRC-20); record
         // that so the GET_APP_BALANCES backstop stops re-triggering.
@@ -692,6 +764,7 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
       return balances;
     } catch (e: any) {
       console.error('[fetchBalances] Error:', e.message || e);
+      lastFetchError = e?.message || 'balance fetch failed';
       return cachedBalances;
     } finally {
       // Only clear the in-flight ref if WE are still the active fetch — a newer
@@ -1868,8 +1941,10 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               walletFingerprint() !== hydratedFingerprint
             ) {
               cachedBalances = [];
+              hiddenBalances = [];
               cacheFromHydrate = false;
               hydratedFingerprint = null;
+              lastFetchError = null;
             }
             if (cachedBalances.length > 0) {
               // Backstop for the "empty tokens until manual Refresh" bug: a
@@ -1883,7 +1958,12 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               // force-refresh when one isn't already running, and stop entirely
               // once a discovery has committed (tokenDiscoveryDone).
               const discovering = !tokenDiscoveryDone && !cachedBalances.some((b: any) => b.token === true);
-              sendResponse({ balances: cachedBalances, discovering, updatedAt: portfolioUpdatedAt });
+              sendResponse({
+                balances: cachedBalances,
+                discovering,
+                updatedAt: portfolioUpdatedAt,
+                error: lastFetchError || undefined,
+              });
               if (discovering && !balancesFetchInProgress) {
                 fetchBalancesFromPioneer(true).catch(e => console.warn(tag, 'auto token-discovery failed:', e));
               }
@@ -1891,7 +1971,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               // Empty cache (fresh worker): force-refresh so the first read
               // discovers tokens too, not just native balances.
               const balances = await fetchBalancesFromPioneer(true);
-              sendResponse({ balances });
+              sendResponse({ balances, error: balances.length === 0 ? lastFetchError || undefined : undefined });
             } else {
               sendResponse({ balances: [] });
             }
@@ -1909,11 +1989,20 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               break;
             }
             const balances = await fetchBalancesFromPioneer(true);
-            sendResponse({ balances });
+            sendResponse({ balances, error: balances.length === 0 ? lastFetchError || undefined : undefined });
           } catch (error: any) {
             console.error(tag, 'REFRESH_ALL_BALANCES error:', error);
             sendResponse({ balances: cachedBalances, error: error.message });
           }
+          break;
+        }
+
+        case 'GET_HIDDEN_TOKENS': {
+          // Tokens suppressed by default or user-hidden — for the recoverable
+          // "Hidden" section in Tokens.tsx. Optional networkId filter.
+          const netFilter = message?.networkId;
+          const rows = netFilter ? hiddenBalances.filter((b: any) => b.networkId === netFilter) : hiddenBalances;
+          sendResponse({ hidden: rows });
           break;
         }
 
@@ -1987,6 +2076,27 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             }
             const priceUsd = parseFloat(nativeCached?.priceUsd || '0');
             const valueUsd = (parseFloat(balStr) * priceUsd).toString();
+
+            // Reconcile: write the fresh live balance back into the matching
+            // cached native row keyed by BOTH networkId AND address. Native rows
+            // are per-account, so matching on address never clobbers another
+            // account's row; the dashboard's per-network SUM stays correct and now
+            // reflects the fresh value. Skip when no row matches (don't synthesize
+            // a row the portfolio fan-out didn't produce — would double-count).
+            const liveRow = cachedBalances.find(
+              (b: any) =>
+                b.isNative &&
+                b.networkId === evmNetworkId &&
+                String(b.address || '').toLowerCase() === evmAddress.toLowerCase(),
+            );
+            if (liveRow) {
+              liveRow.balance = balStr;
+              liveRow.priceUsd = priceUsd.toString();
+              liveRow.valueUsd = valueUsd;
+              delete liveRow.priceUnavailable;
+              persistPortfolio(cachedBalances);
+              pushBalancesUpdated();
+            }
 
             sendResponse({
               balance: balStr,
