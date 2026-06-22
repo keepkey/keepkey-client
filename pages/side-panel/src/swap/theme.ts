@@ -1,6 +1,8 @@
-// Ported verbatim from the BEX design (_design-bex/KeepKey Extension.html).
-// Self-contained inline-style theme so the swap screens match the design
-// exactly, independent of the side panel's Chakra (gold) theme.
+// Inline-style theme for the swap screens (the design uses raw inline styles, not
+// Chakra). Every value derives from the shared design tokens (styles/tokens.ts) so
+// the swap UI stays byte-identical to the side panel's Chakra theme — including the
+// canonical KeepKey gold accent. (Originally a standalone lime-accent port.)
+import { tokens } from '../styles/tokens';
 
 export interface SwapTheme {
   bg: string;
@@ -22,30 +24,25 @@ export interface SwapTheme {
   chip: string;
 }
 
-const TWEAKS = { accentHue: 84, accentChroma: 0.11, accentLight: 0.62 };
-
-export const makeTheme = (t = TWEAKS): SwapTheme => {
-  const h = t.accentHue;
-  return {
-    bg: '#0b0d10',
-    bg2: '#111418',
-    surface: '#161a1f',
-    surfaceHi: '#1c2127',
-    line: 'rgba(255,255,255,0.06)',
-    lineHi: 'rgba(255,255,255,0.10)',
-    text: '#e6e9ef',
-    dim: 'rgba(230,233,239,0.62)',
-    faint: 'rgba(230,233,239,0.38)',
-    accent: `oklch(${t.accentLight} ${t.accentChroma} ${h})`,
-    accentDim: `oklch(${t.accentLight} ${t.accentChroma} ${h} / 0.16)`,
-    accentEdge: `oklch(${t.accentLight} ${t.accentChroma} ${h} / 0.36)`,
-    accentDeep: `oklch(0.32 ${Math.max(0.06, t.accentChroma * 0.7)} ${h})`,
-    good: 'oklch(0.76 0.14 148)',
-    warn: 'oklch(0.80 0.13 78)',
-    bad: 'oklch(0.70 0.16 25)',
-    chip: 'rgba(255,255,255,0.05)',
-  };
-};
+export const makeTheme = (): SwapTheme => ({
+  bg: tokens.bg,
+  bg2: tokens.bg2,
+  surface: tokens.surface,
+  surfaceHi: tokens.surfaceHi,
+  line: tokens.line,
+  lineHi: tokens.lineHi,
+  text: tokens.text,
+  dim: tokens.dim,
+  faint: tokens.faint,
+  accent: tokens.accent,
+  accentDim: tokens.accentDim,
+  accentEdge: tokens.accentEdge,
+  accentDeep: tokens.accentDeep,
+  good: tokens.good,
+  warn: tokens.warn,
+  bad: tokens.bad,
+  chip: tokens.chip,
+});
 
 export const T: SwapTheme = makeTheme();
 
