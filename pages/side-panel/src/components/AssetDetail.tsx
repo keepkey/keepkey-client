@@ -6,7 +6,6 @@ import {
   Flex,
   Text,
   Button,
-  Avatar,
   useToast,
   IconButton,
   Spinner,
@@ -18,6 +17,7 @@ import {
   Badge,
 } from '@chakra-ui/react';
 import { ArrowUpIcon, ArrowDownIcon, CopyIcon, CheckIcon, ExternalLinkIcon, RepeatIcon } from '@chakra-ui/icons';
+import { AssetIcon } from './AssetIcon';
 import { getExplorerAddressUrl, getExplorerTxUrl } from '@extension/shared';
 import { Tokens } from './Tokens';
 import { requestStorage } from '@extension/storage';
@@ -194,7 +194,7 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
       {/* Balance Hero */}
       <VStack spacing={1} align="center" pt={3} pb={2} px={2} flexShrink={0}>
         <HStack spacing={2} align="center">
-          <Avatar src={iconUrl} size="sm" />
+          <AssetIcon src={iconUrl} symbol={asset.symbol} size={32} />
           <Text fontSize="sm" fontWeight="medium" color="whiteAlpha.600">
             {asset.name || asset.symbol}
           </Text>

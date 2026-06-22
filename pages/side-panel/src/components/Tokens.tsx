@@ -1,80 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { VStack, HStack, Box, Text, Image, Spinner, Button, Flex, Badge, IconButton } from '@chakra-ui/react';
+import { VStack, HStack, Box, Text, Spinner, Button, Flex, Badge, IconButton } from '@chakra-ui/react';
 import { FaCoins, FaSync, FaPlus, FaEyeSlash } from 'react-icons/fa';
 import { customTokensStorageApi, type CustomToken } from '@extension/storage';
 import { CustomTokenDialog } from './CustomTokenDialog';
+import { AssetIcon } from './AssetIcon';
 
 interface TokensProps {
   asset: any;
   networkId?: string;
 }
-
-// Icon component with fallback for broken/empty images
-const IconWithFallback = ({ src, alt, boxSize }: { src: string | null; alt: string; boxSize: string }) => {
-  const [error, setError] = useState(false);
-
-  const cleanUrl = React.useMemo(() => {
-    if (!src || src.trim() === '') {
-      return null;
-    }
-
-    if (src.includes(',')) {
-      const urls = src
-        .split(',')
-        .map(u => u.trim())
-        .filter(u => u.startsWith('http://') || u.startsWith('https://'));
-      return urls[0] || null;
-    }
-
-    if (!src.startsWith('http://') && !src.startsWith('https://')) {
-      return null;
-    }
-
-    return src;
-  }, [src]);
-
-  if (!cleanUrl || error) {
-    return (
-      <Box
-        boxSize={boxSize}
-        display="flex"
-        alignItems="center"
-        justifyContent="center"
-        fontSize="lg"
-        color="whiteAlpha.500"
-        bg="rgba(255, 255, 255, 0.08)"
-        borderRadius="md"
-        border="1px solid"
-        borderColor="whiteAlpha.200">
-        <FaCoins />
-      </Box>
-    );
-  }
-
-  return (
-    <Box
-      boxSize={boxSize}
-      display="flex"
-      alignItems="center"
-      justifyContent="center"
-      bg="rgba(255, 255, 255, 0.08)"
-      borderRadius="md"
-      p="3px"
-      position="relative"
-      border="1px solid"
-      borderColor="whiteAlpha.200">
-      <Image
-        src={cleanUrl}
-        alt={alt}
-        boxSize="100%"
-        objectFit="contain"
-        onError={() => {
-          setError(true);
-        }}
-      />
-    </Box>
-  );
-};
 
 export const Tokens = ({ asset, networkId }: TokensProps) => {
   const [tokens, setTokens] = useState<any[]>([]);
@@ -456,7 +390,7 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
                           <Spinner size="xs" color="blue.400" />
                         </Flex>
                       ) : (
-                        <IconWithFallback src={token.icon} alt={token.name || token.symbol} boxSize="28px" />
+                        <AssetIcon src={token.icon} symbol={token.symbol} size={28} />
                       )}
                       <VStack align="flex-start" gap={0} spacing={0}>
                         <Text fontSize="xs" fontWeight="semibold" color="whiteAlpha.900" lineHeight="1.3">

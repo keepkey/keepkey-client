@@ -57,10 +57,6 @@ export const SWAP_KEYFRAMES = `
   @keyframes kk-rise { from { opacity:0; transform: translateY(6px); } to { opacity:1; transform:none; } }
 `;
 
-/** Deterministic glyph color for assets that don't carry one (design uses colored glyphs). */
-const PALETTE = ['#f7931a', '#8a92b2', '#9945ff', '#23dcc8', '#2775ca', '#6f7390', '#c2a633', '#e84142', '#16c784'];
-export const colorForSymbol = (sym: string): string => {
-  let h = 0;
-  for (let i = 0; i < sym.length; i++) h = (h * 31 + sym.charCodeAt(i)) >>> 0;
-  return PALETTE[h % PALETTE.length];
-};
+/** Deterministic glyph color — moved to the shared design layer so AssetIcon and
+ *  the swap TokenGlyph share one palette. Re-exported here for swap callers. */
+export { colorForSymbol } from '../styles/assetColor';

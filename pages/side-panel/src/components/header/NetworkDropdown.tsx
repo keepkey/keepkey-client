@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { Flex, Text, Box, Avatar, Icon, IconButton, Badge, useOutsideClick } from '@chakra-ui/react';
+import { Flex, Text, Box, Icon, IconButton, Badge, useOutsideClick } from '@chakra-ui/react';
+import { AssetIcon } from '../AssetIcon';
 import {
   ChevronDownIcon,
   ChevronUpIcon,
@@ -81,7 +82,7 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
       onClick={() => handleSelect(net)}
       borderBottom="1px solid"
       borderColor="whiteAlpha.50">
-      <Avatar size="xs" src={net.icon} name={net.name} mr={2} />
+      <AssetIcon src={net.icon} symbol={net.name} size={24} style={{ marginRight: 8 }} />
       <Flex alignItems="center" gap={1} flex={1} minW={0}>
         <Text fontSize="xs" color="white" isTruncated>
           {net.name}
@@ -123,7 +124,7 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
         _hover={{ bg: 'whiteAlpha.200' }}
         transition="background 0.15s"
         minW={0}>
-        {selected?.icon && <Avatar size="2xs" src={selected.icon} name={selected.name} mr={1.5} />}
+        {selected && <AssetIcon src={selected.icon} symbol={selected.name} size={16} style={{ marginRight: 6 }} />}
         <Text fontSize="xs" fontWeight="semibold" color="white" isTruncated maxW="72px">
           {triggerLabel}
         </Text>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Flex, Avatar, Box, Text, Card, Stack, HStack, Skeleton, SkeletonCircle } from '@chakra-ui/react';
+import { Flex, Box, Text, Card, Stack, HStack, Skeleton, SkeletonCircle } from '@chakra-ui/react';
+import { AssetIcon } from './AssetIcon';
 import AssetSelect from './AssetSelect';
 import { COIN_MAP_LONG, NetworkIdToChain } from '@extension/shared';
 
@@ -334,7 +335,7 @@ const Balances = ({ onSelectAsset, showAddBlockchain, setShowAddBlockchain }: Ba
                   onClick={() => onSelectAsset(asset)}
                   transition="background 0.15s">
                   <Flex align="center" width="100%" gap={3}>
-                    <Avatar src={asset.icon} size="sm" />
+                    <AssetIcon src={asset.icon} symbol={asset.symbol} size={32} />
                     <Box flex="1" minWidth="0">
                       <Flex align="center" gap={2}>
                         <Text fontWeight={600} fontSize="sm" isTruncated color="kk.text">
