@@ -231,7 +231,7 @@ async function checkKeepKey() {
       } else if (!wallet.isInitialized() && mayProbe) {
         // First-run case: init failed earlier (no device, no cache) — retry.
         lastDeviceProbeAt = now;
-        onStart();
+        ensureStarted();
       } else if (wallet.isInitialized() && wallet.isDeviceConnected()) {
         // Steady state: vault-up, device-connected. Periodically re-probe
         // features to verify the same physical device is still paired. A
@@ -1082,8 +1082,24 @@ const onStart = async function () {
   }
 };
 
+// Single-flight wrapper around onStart(). A dApp typically fires several RPCs
+// the instant it connects (eth_requestAccounts + eth_chainId + eth_accounts),
+// and the side panel's ON_START plus the 5s health-poll retry can overlap them.
+// wallet.init() is already single-flight, but the account-loading / migration /
+// ADDRESS-resolution tail of onStart is not — without this each caller would run
+// a full onStart (redundant account reloads, parallel device xpub batches).
+// Collapse concurrent callers into one run.
+let onStartInFlight: Promise<void> | null = null;
+function ensureStarted(): Promise<void> {
+  if (onStartInFlight) return onStartInFlight;
+  onStartInFlight = onStart().finally(() => {
+    onStartInFlight = null;
+  });
+  return onStartInFlight;
+}
+
 setTimeout(() => {
-  onStart();
+  ensureStarted();
 }, 5000);
 
 chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: any) => {
@@ -1093,6 +1109,19 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
     try {
       switch (message.type) {
         case 'WALLET_REQUEST': {
+          // MV3 evicts the service worker after ~30s idle, wiping all in-memory
+          // wallet state. A dApp's first RPC (typically eth_requestAccounts)
+          // wakes the worker, but boot init runs on a 5s timer and the retry-
+          // aware vault probe can take several seconds more — so throwing here
+          // rejected any request that landed in that window ("Wallet not
+          // initialized"). Init on demand and wait for it instead of rejecting
+          // the dApp; ensureStarted() single-flights so a burst of connect-time
+          // RPCs shares one init. Only throw if the wallet is genuinely
+          // uninitialized (no device and no cached pubkeys) after init runs.
+          if (!wallet.isInitialized()) {
+            console.warn(tag, 'WALLET_REQUEST before wallet ready — initializing on demand');
+            await ensureStarted();
+          }
           if (!wallet.isInitialized()) throw Error('Wallet not initialized');
           const { requestInfo } = message;
           const { method, params, chain } = requestInfo;
@@ -1182,7 +1211,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         }
 
         case 'ON_START': {
-          onStart();
+          ensureStarted();
           setTimeout(() => {
             sendResponse({ state: KEEPKEY_STATE });
           }, 15000);
