@@ -5,6 +5,13 @@ import { customTokensStorageApi, type CustomToken } from '@extension/storage';
 import { CustomTokenDialog } from './CustomTokenDialog';
 import { AssetIcon } from './AssetIcon';
 
+// Networks we've already auto-kicked a token discovery for this side-panel
+// session. Module-scoped (not per-component) on purpose: the asset Drawer
+// unmounts Tokens on close, so a useRef would reset and re-fire a heavy
+// /portfolio force-refresh on every reopen of a token-less chain. Persisting
+// here means we force discovery at most once per network per page session.
+const autoDiscoveredNetworks = new Set<string>();
+
 interface TokensProps {
   asset: any;
   networkId?: string;
@@ -85,9 +92,39 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
           });
 
           setTokens(networkTokens);
-          // Background signals it kicked token discovery for a natives-only
-          // cache — show the discovering state rather than a premature empty.
-          setDiscovering(Boolean(response.discovering) && networkTokens.length === 0);
+
+          // The background's `discovering` flag is global — any cached token on
+          // ANY chain (or an already-completed forced discovery) clears it. So a
+          // network the user opens for the first time can hold zero cached token
+          // rows yet report discovering=false, stranding them on "No Tokens
+          // Found" until they press Discover. Auto-kick ONE forced portfolio
+          // round-trip per network so tokens load on page open; the commit
+          // pushes BALANCES_UPDATED which repaints us, and the module-level set
+          // stops a re-trigger loop when the chain genuinely has none.
+          const bgDiscovering = Boolean(response.discovering) && networkTokens.length === 0;
+          if (
+            networkTokens.length === 0 &&
+            !bgDiscovering &&
+            effectiveNetworkId &&
+            !autoDiscoveredNetworks.has(effectiveNetworkId)
+          ) {
+            autoDiscoveredNetworks.add(effectiveNetworkId);
+            setDiscovering(true);
+            chrome.runtime.sendMessage({ type: 'REFRESH_ALL_BALANCES' }, (refreshResp: any) => {
+              // Resolve the spinner terminally. A committed discovery repaints us
+              // via the BALANCES_UPDATED listener (which clears `discovering` and
+              // shows whatever tokens landed). But the background's early-return
+              // and error paths — no pubkeys yet, wallet not initialized, Pioneer
+              // 5xx — reply WITHOUT broadcasting, so without this the user would
+              // hang on "Discovering…" forever. Drop back to the empty/error state
+              // unless tokens actually came back.
+              if (chrome.runtime.lastError || refreshResp?.error || !refreshResp?.balances?.length) {
+                setDiscovering(false);
+              }
+            });
+          } else {
+            setDiscovering(bgDiscovering);
+          }
         }
         setLoading(false);
       });

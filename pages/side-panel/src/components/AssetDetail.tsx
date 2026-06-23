@@ -18,6 +18,8 @@ import {
 } from '@chakra-ui/react';
 import { ArrowUpIcon, ArrowDownIcon, CopyIcon, CheckIcon, ExternalLinkIcon, RepeatIcon } from '@chakra-ui/icons';
 import { AssetIcon } from './AssetIcon';
+import { SpinningDevice } from './SpinningDevice';
+import { KNOWN_EVM_CHAINS, EVM_NATIVE_GAS } from './header/headerConstants';
 import { getExplorerAddressUrl, getExplorerTxUrl } from '@extension/shared';
 import { Tokens } from './Tokens';
 import { requestStorage } from '@extension/storage';
@@ -63,6 +65,26 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
 
   // Build icon URL
   const iconUrl = asset.icon || `https://api.keepkey.info/coins/${btoa(asset.caip || '').replace(/=+$/, '')}.png`;
+
+  // EVM native-asset labeling. The dashboard rows carry the chain's short symbol
+  // as the "asset" (Base→BASE, Arbitrum→ARB, Optimism→OP), but those chains pay
+  // gas in ETH — so the page should read "Ethereum / ETH on Base". Only relabel
+  // the *native* row (never an ERC-20): a token like USDC keeps its own name.
+  const chainMeta = isEvm ? KNOWN_EVM_CHAINS[asset.networkId as keyof typeof KNOWN_EVM_CHAINS] : undefined;
+  // Only the native row gets gas-asset relabeling. The symbol-match fallback
+  // (for native rows that arrive without isNative set) must exclude ERC-20s —
+  // otherwise the ARB/OP/MATIC *governance tokens*, whose tickers equal their
+  // chain's dropdown symbol, get mislabeled as "Ethereum / ETH on Arbitrum".
+  // Token rows reliably carry token:true through SET_ASSET_CONTEXT.
+  const isNativeRow = asset.isNative === true || (!asset.token && !!chainMeta && asset.symbol === chainMeta.symbol);
+  const gasAsset = isEvm && isNativeRow ? EVM_NATIVE_GAS[asset.networkId as keyof typeof EVM_NATIVE_GAS] : undefined;
+  const displaySymbol = gasAsset?.symbol ?? asset.symbol;
+  const displayName = gasAsset?.name ?? asset.name ?? asset.symbol;
+  const networkName = chainMeta?.name ?? asset.name;
+  // "on <network>" only when the gas asset differs from its host chain (ETH on
+  // Base) — not for a chain's own namesake token (ETH on Ethereum, AVAX on
+  // Avalanche).
+  const showNetworkBadge = !!gasAsset && !!networkName && gasAsset.name !== networkName;
 
   // Fetch address and live balance when asset changes
   useEffect(() => {
@@ -179,27 +201,41 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
 
   return (
     <Flex direction="column" h="100%" minH={0}>
-      {/* Top spacer — pushes hero/address/buttons up off the top edge.
-          Smaller than the tabs flex grow below (1 : 2) so the hero sits at
-          roughly the upper third rather than dead-center; visually the
-          balance + Send/Receive block reads as the focal point. */}
-      <Box flex={1} minH={0} flexShrink={1} />
-
-      {/* Balance Hero */}
-      <VStack spacing={1} align="center" pt={3} pb={2} px={2} flexShrink={0}>
-        <HStack spacing={2} align="center">
-          <AssetIcon src={iconUrl} symbol={asset.symbol} size={32} />
-          <Text fontSize="sm" fontWeight="medium" color="kk.dim">
-            {asset.name || asset.symbol}
-          </Text>
-          {asset.networkId === 'tron:27Lqcw' && <TronLinkBadge />}
-        </HStack>
-        <Text fontSize="xl" fontWeight="bold" color="kk.text" lineHeight="1.2">
+      {/* Spinning KeepKey hero — the device's OLED carries the asset + balance,
+          so the top of the page reads as the focal point instead of dead space.
+          Device sits at the top; the tab list below (flex grow) takes the rest,
+          so there's no empty band above or below. */}
+      <VStack spacing={1} align="center" pt={3} pb={1} px={2} flexShrink={0}>
+        <SpinningDevice
+          scale={0.42}
+          durationSeconds={14}
+          screen={
+            <Flex direction="column" align="center" justify="center" w="100%" gap="2px" lineHeight="1">
+              <Flex align="center" gap="5px">
+                <AssetIcon src={iconUrl} symbol={displaySymbol} size={15} />
+                <Text fontSize="11px" fontWeight={600} letterSpacing="0.08em" color="#e8e6dc">
+                  {displaySymbol}
+                </Text>
+              </Flex>
+              <Text fontFamily="ui-monospace, Menlo, monospace" fontSize="15px" fontWeight={700} color="#f3f1e7">
+                <DustAmount value={totalBalance} />
+              </Text>
+            </Flex>
+          }
+        />
+        <Text fontSize="2xl" fontWeight="bold" color="kk.text" lineHeight="1.1">
           {formatUsd(totalUsdValue)}
         </Text>
+        <HStack spacing={2} align="center">
+          <Text fontSize="sm" fontWeight="medium" color="kk.dim">
+            {displayName}
+          </Text>
+          {showNetworkBadge && <NetworkBadge name={networkName!} />}
+          {asset.networkId === 'tron:27Lqcw' && <TronLinkBadge />}
+        </HStack>
         <HStack spacing={1}>
-          <Text fontSize="xs" color="kk.dim">
-            {totalBalance.toFixed(4)} {asset.symbol}
+          <Text fontSize="xs" color="kk.faint">
+            <DustAmount value={totalBalance} /> {displaySymbol}
           </Text>
           {priceUsd > 0 && (
             <Text fontSize="xs" color="kk.faint">
@@ -292,9 +328,9 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
         )}
       </HStack>
 
-      {/* Tab Bar — Tokens / Activity. flex={2} vs the top spacer's flex={1}
-          biases the hero block higher (≈ upper third) instead of dead-center. */}
-      <Box flex={2} minH={0} px={2}>
+      {/* Tab Bar — Tokens / Activity. flex grows to fill everything below the
+          hero so the list reaches the bottom edge (no trailing empty band). */}
+      <Box flex={1} minH={0} px={2}>
         <Tabs variant="soft-rounded" size="sm" display="flex" flexDirection="column" h="100%">
           <TabList mb={1} gap={1} flexShrink={0}>
             {!isUtxoNetwork && (
@@ -423,6 +459,50 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
     </Flex>
   );
 };
+
+// Renders a crypto amount with up to 8 decimals of precision. The integer and
+// first 4 decimals read at full size; decimals 5–8 ("dust") render smaller and
+// dimmer, so a headline balance stays scannable while sub-0.0001 precision is
+// still legible at a glance. Trailing-zero dust is trimmed (0.5 → "0.5000", not
+// "0.50000000"). Meant to sit inside a <Text>: the spans inherit its font and
+// color; only the dust shrinks and fades.
+const DustAmount = ({ value }: { value: number }) => {
+  const [intPart, frac = ''] = (Number.isFinite(value) ? value : 0).toFixed(8).split('.');
+  const head = frac.slice(0, 4);
+  const dust = frac.slice(4).replace(/0+$/, '');
+  return (
+    <>
+      {intPart}.{head}
+      {dust && (
+        <Box as="span" fontSize="0.7em" opacity={0.5}>
+          {dust}
+        </Box>
+      )}
+    </>
+  );
+};
+
+// Network badge shown next to a native asset whose gas token differs from its
+// host chain (e.g. "Ethereum  ◦on Base"). The glyph is AssetIcon's deterministic
+// monogram keyed on the network name, so it reads as an intentional branded mark
+// rather than a generic dot.
+const NetworkBadge = ({ name }: { name: string }) => (
+  <Flex
+    align="center"
+    gap={1}
+    pl="3px"
+    pr={2}
+    py="2px"
+    borderRadius="full"
+    bg="kk.surface"
+    border="1px solid"
+    borderColor="kk.line">
+    <AssetIcon symbol={name} size={12} />
+    <Text fontSize="9px" color="kk.dim" fontWeight={600} letterSpacing="0.04em">
+      on {name}
+    </Text>
+  </Flex>
+);
 
 // Passive indicator shown next to the asset name on the Tron asset page —
 // tells the user Tron dApps use the TronLink protocol (which KeepKey

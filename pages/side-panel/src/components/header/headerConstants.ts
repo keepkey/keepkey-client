@@ -11,6 +11,36 @@ export const KNOWN_EVM_CHAINS: Record<string, { name: string; symbol: string }> 
   'eip155:324': { name: 'zkSync Era', symbol: 'ZKSYNC' },
 };
 
+// The native *gas* asset per EVM chain — distinct from the chain's own short
+// symbol above (which labels the network in the header dropdown). Base,
+// Arbitrum, Optimism and zkSync all pay gas in ETH, so an asset page must read
+// "Ethereum / ETH on Base" — never "Base / BASE" (BASE/ARB/OP are chain labels
+// or governance tokens, not the gas token the balance is actually denominated
+// in). Chains whose gas token IS their namesake (ETH/AVAX/POL) get no "on X"
+// qualifier. Custom networks fall back to their own row symbol.
+export const EVM_NATIVE_GAS: Record<string, { name: string; symbol: string }> = {
+  'eip155:1': { name: 'Ethereum', symbol: 'ETH' },
+  'eip155:42161': { name: 'Ethereum', symbol: 'ETH' },
+  'eip155:43114': { name: 'Avalanche', symbol: 'AVAX' },
+  'eip155:56': { name: 'BNB', symbol: 'BNB' },
+  'eip155:8453': { name: 'Ethereum', symbol: 'ETH' },
+  'eip155:10': { name: 'Ethereum', symbol: 'ETH' },
+  'eip155:137': { name: 'Polygon', symbol: 'POL' },
+  'eip155:324': { name: 'Ethereum', symbol: 'ETH' },
+};
+
+// Resolve a short human network name from a networkId OR a caip (the
+// `/slip44:…` asset suffix is stripped). EVM → KNOWN_EVM_CHAINS, everything
+// else → NETWORK_DISPLAY_NAMES. Returns '' when unknown so callers can fall
+// back (e.g. to a title-cased chainId). Used to tell same-symbol assets on
+// different chains apart — "ETH on Base" vs "ETH on Ethereum".
+export function getNetworkName(networkIdOrCaip?: string): string {
+  if (!networkIdOrCaip) return '';
+  const networkId = networkIdOrCaip.split('/')[0];
+  if (networkId.startsWith('eip155:')) return KNOWN_EVM_CHAINS[networkId]?.name || '';
+  return NETWORK_DISPLAY_NAMES[networkId] || '';
+}
+
 export const NETWORK_DISPLAY_NAMES: Record<string, string> = {
   'bip122:000000000019d6689c085ae165831e93': 'Bitcoin',
   'bip122:000000000000000000651ef99cb9fcbe': 'Bitcoin Cash',

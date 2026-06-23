@@ -28,6 +28,7 @@ import { requestStorage } from '@extension/storage';
 import Connect from './components/Connect';
 import Loading from './components/Loading';
 import Balances from './components/Balances';
+import { SpinningDevice } from './components/SpinningDevice';
 import History from './components/History';
 import Settings from './components/Settings';
 import { Transfer } from './components/Transfer';
@@ -322,8 +323,8 @@ const SidePanel = () => {
       default:
         return (
           <Flex direction="column" justifyContent="center" alignItems="center" height="100%" minH="300px">
-            <Box mb={4} borderRadius="2xl" overflow="hidden" boxShadow="0 0 40px rgba(0, 200, 150, 0.15)">
-              <img src="/kk.gif" alt="KeepKey" style={{ maxWidth: '160px', borderRadius: '16px' }} />
+            <Box mb={4}>
+              <SpinningDevice scale={0.46} durationSeconds={10} label="KEEPKEY" />
             </Box>
             <Text fontSize="xl" fontWeight="bold" textAlign="center" mb={1} color="white">
               Welcome to KeepKey

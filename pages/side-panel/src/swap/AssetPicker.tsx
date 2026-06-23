@@ -4,7 +4,7 @@ import React, { useMemo, useState, useRef, useEffect } from 'react';
 import type { SwapTheme } from './theme';
 import type { UiAsset } from './types';
 import { Icon, I } from './icons';
-import { TokenGlyph, fmtUsd, fmtCrypto } from './ui';
+import { TokenGlyph, fmtUsd, fmtCrypto, assetSubLabel } from './ui';
 
 export interface HeldBalance {
   amount: number;
@@ -171,7 +171,7 @@ export function AssetPicker({
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
                   }}>
-                  {a.name}
+                  {assetSubLabel(a)}
                 </div>
               </div>
               {bal ? (
