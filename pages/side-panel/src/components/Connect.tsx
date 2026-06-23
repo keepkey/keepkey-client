@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Image, Button, Card, Stack, Text, Box, Spinner } from '@chakra-ui/react';
+import { Button, Card, Stack, Text, Box, Spinner } from '@chakra-ui/react';
+import { SpinningDevice } from './SpinningDevice';
 
 interface ConnectProps {
   setIsConnecting: (isConnecting: boolean) => void;
@@ -83,7 +84,11 @@ const Connect: React.FC<ConnectProps> = ({ setIsConnecting }) => {
         boxShadow="lg"
         borderWidth="1px"
         borderColor="kk.line">
-        <Image src={'https://i.ibb.co/jR8WcJM/kk.gif'} alt="KeepKey" />
+        {/* Spins slowly with a dim OLED — reads as a powered-but-unreachable
+            device while we poll localhost:1646 for the vault to come up. */}
+        <Box mb={2}>
+          <SpinningDevice scale={0.4} durationSeconds={16} label="OFFLINE" />
+        </Box>
         <Text fontSize="lg" fontWeight="bold" mb={2} color="kk.text">
           KeepKey Vault Required
         </Text>

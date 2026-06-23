@@ -5,6 +5,25 @@ import React, { useState, useEffect } from 'react';
 import type { SwapTheme } from './theme';
 import { Icon, I } from './icons';
 import type { UiAsset } from './types';
+import { getNetworkName } from '../components/header/headerConstants';
+
+const capitalize = (s?: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
+
+/** Short network label for a swap asset — "Base", "Ethereum", "Bitcoin". The
+ *  swap UI shows only a symbol, so ETH-on-Base and ETH-on-Ethereum look
+ *  identical; this is what tells them apart. Derives from the caip, falling
+ *  back to the asset's internal chainId. */
+export function networkLabelFor(asset: { caip?: string; chainId?: string }): string {
+  return getNetworkName(asset.caip) || capitalize(asset.chainId);
+}
+
+/** "{name} · {network}" for list rows, collapsing to one when they'd repeat
+ *  (e.g. native ETH whose name and network are both "Ethereum"). */
+export function assetSubLabel(asset: { name?: string; caip?: string; chainId?: string }): string {
+  const net = networkLabelFor(asset);
+  if (asset.name && net && asset.name !== net) return `${asset.name} · ${net}`;
+  return net || asset.name || '';
+}
 
 export const fmtUsd = (n: number, show = true) =>
   show ? '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '••••••';
@@ -139,6 +158,7 @@ export function PrimaryBtn({
 }
 
 export function TokenButton({ T, asset, onClick }: { T: SwapTheme; asset: UiAsset; onClick?: () => void }) {
+  const network = networkLabelFor(asset);
   return (
     <button
       onClick={onClick}
@@ -146,7 +166,7 @@ export function TokenButton({ T, asset, onClick }: { T: SwapTheme; asset: UiAsse
         display: 'flex',
         alignItems: 'center',
         gap: 8,
-        padding: '6px 10px 6px 6px',
+        padding: '5px 10px 5px 6px',
         borderRadius: 999,
         border: `1px solid ${T.line}`,
         background: T.surfaceHi,
@@ -154,7 +174,11 @@ export function TokenButton({ T, asset, onClick }: { T: SwapTheme; asset: UiAsse
         cursor: 'pointer',
       }}>
       <TokenGlyph asset={asset} size={26} />
-      <span style={{ fontWeight: 600, fontSize: 14 }}>{asset.symbol}</span>
+      {/* Symbol over the network name so ETH-on-Base ≠ ETH-on-Ethereum at a glance */}
+      <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1.05 }}>
+        <span style={{ fontWeight: 600, fontSize: 14 }}>{asset.symbol}</span>
+        {network && <span style={{ fontSize: 10, fontWeight: 500, color: T.faint }}>{network}</span>}
+      </span>
       <Icon d={I.chev} size={14} style={{ color: T.faint, transform: 'rotate(90deg)' }} />
     </button>
   );

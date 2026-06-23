@@ -5,7 +5,7 @@ import React, { useEffect, useState } from 'react';
 import type { SwapTheme } from './theme';
 import type { UiAsset, SwapHistoryRecord, SwapTrackingStatus } from './types';
 import { Icon, I } from './icons';
-import { PrimaryBtn, TokenGlyph, SwapEmblem, SwapTimeline } from './ui';
+import { PrimaryBtn, TokenGlyph, SwapEmblem, SwapTimeline, networkLabelFor } from './ui';
 
 const PROG: Record<SwapTrackingStatus, number> = {
   signing: 0.04,
@@ -248,6 +248,7 @@ export function SwapProgress({
             <div className="mono" style={{ fontSize: 13, fontWeight: 600 }}>
               {fromAmount} {from.symbol}
             </div>
+            <div style={{ fontSize: 10, color: T.faint }}>{networkLabelFor(from)}</div>
           </div>
         </div>
         <Icon d={I.chev} size={16} style={{ color: T.accent, flexShrink: 0 }} />
@@ -259,6 +260,7 @@ export function SwapProgress({
                 : `~${outNum < 1 ? outNum.toFixed(8) : outNum.toFixed(4)}`}{' '}
               {to.symbol}
             </div>
+            <div style={{ fontSize: 10, color: T.faint }}>{networkLabelFor(to)}</div>
           </div>
           <TokenGlyph asset={to} size={36} />
         </div>

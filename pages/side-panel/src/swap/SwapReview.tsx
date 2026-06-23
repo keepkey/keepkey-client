@@ -6,7 +6,7 @@ import React from 'react';
 import type { SwapTheme } from './theme';
 import type { UiAsset, SwapQuote } from './types';
 import { Icon, I } from './icons';
-import { IconBtn, PrimaryBtn, TokenGlyph, fmtCrypto } from './ui';
+import { IconBtn, PrimaryBtn, TokenGlyph, fmtCrypto, networkLabelFor } from './ui';
 
 export function SwapReview({
   T,
@@ -94,6 +94,7 @@ export function SwapReview({
                 {amount} {from.symbol}
               </span>
             </div>
+            <div style={{ fontSize: 10, color: T.faint, marginTop: 2 }}>{networkLabelFor(from)}</div>
           </div>
           <Icon d={I.chev} size={16} style={{ color: T.faint, flexShrink: 0 }} />
           <div style={{ textAlign: 'right', minWidth: 0 }}>
@@ -104,6 +105,7 @@ export function SwapReview({
               </span>
               <TokenGlyph asset={to} size={22} />
             </div>
+            <div style={{ fontSize: 10, color: T.faint, marginTop: 2 }}>{networkLabelFor(to)}</div>
           </div>
         </div>
       </div>
