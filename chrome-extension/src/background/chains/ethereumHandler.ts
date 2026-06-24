@@ -507,6 +507,9 @@ const handleWalletSwitchEthereumChain = async (params: any, KEEPKEY_WALLET: any,
         caip: pioneerChain.caip,
         networkId,
         name: pioneerChain.name,
+        // Carry the explorer tx-link prefix so post-switch sends deep-link
+        // the txid on TxidPage instead of showing a bare hash.
+        explorerTxLink: pioneerChain.explorerTxLink,
         providerUrl: pioneerChain.rpc,
         providers: pioneerChain.rpcs,
       },
