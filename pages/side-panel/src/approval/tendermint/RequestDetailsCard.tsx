@@ -42,7 +42,7 @@ export default function RequestDetailsCard({ transaction }: any) {
         {/* Display the Avatar for the asset */}
         {assetContext && (
           <Flex justify="center" mb={4}>
-            <Avatar size="md" src={assetContext?.assets?.icon} alt="Asset Icon" />
+            <Avatar size="md" src={assetContext?.assets?.icon} />
           </Flex>
         )}
         <Box mb={2}>
@@ -107,7 +107,7 @@ export default function RequestDetailsCard({ transaction }: any) {
                   <Badge>Amount:</Badge>
                 </Td>
                 <Td>
-                  {message.amount?.map((amt, index) => (
+                  {message.amount?.map((amt: any, index: number) => (
                     <span key={index}>
                       {(amt.amount / 100000000).toLocaleString('en', {
                         minimumFractionDigits: 2,

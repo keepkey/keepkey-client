@@ -46,7 +46,7 @@ export default function RequestDetailsCard({ transaction }: any) {
       {/* Asset Icon */}
       {assetContext && (
         <Flex justify="center">
-          <Avatar size="lg" src={assetContext?.assets?.icon} alt="Asset Icon" />
+          <Avatar size="lg" src={assetContext?.assets?.icon} />
         </Flex>
       )}
 

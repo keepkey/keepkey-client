@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Button, Flex, Switch, Text, Avatar, useToast, Badge } from '@chakra-ui/react';
+import { Box, Button, Flex, Switch, Text, useToast, Badge } from '@chakra-ui/react';
+import { AssetIcon } from './AssetIcon';
 import {
   availableChainsByWallet,
   ChainToNetworkId,
@@ -297,7 +298,7 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
    * Handles the continuation action, such as closing the modal.
    */
   const handleContinue = async () => {
-    await loadEnabledChains(); // Reload enabled chains from storage
+    await onStart(); // Reload enabled chains from storage
     setShowAssetSelect(false); // Close the modal or asset selection view
     toast({
       title: 'Selection Updated',
@@ -321,7 +322,7 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
       borderBottomWidth="1px"
       borderColor="gray.200">
       <Flex alignItems="center">
-        <Avatar size="sm" src={chain.image} mr={4} />
+        <AssetIcon src={chain.image} symbol={chain.name} size={32} style={{ marginRight: 16 }} />
         <Text fontWeight="bold">{chain.name}</Text>
       </Flex>
       <Flex alignItems="center">

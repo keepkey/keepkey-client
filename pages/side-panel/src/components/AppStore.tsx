@@ -14,7 +14,7 @@ interface AppStoreProps {
   networkId: string;
 }
 
-async function getLookedUpDapps(networkId: string): Promise<unknown> {
+async function getLookedUpDapps(networkId: string): Promise<any[]> {
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage({ type: 'GET_DAPPS_BY_NETWORKID', networkId }, response => {
       if (chrome.runtime.lastError) {
@@ -40,7 +40,7 @@ async function getLookedUpDapps(networkId: string): Promise<unknown> {
 
 async function getStoredDapps(networkId: string): Promise<Dapp[]> {
   const allDapps = await dappStorage.getDapps();
-  return allDapps.filter(dapp => dapp.networks.includes(networkId));
+  return (allDapps || []).filter(dapp => dapp.networks.includes(networkId));
 }
 
 export const AppStore: React.FC<AppStoreProps> = ({ networkId }) => {

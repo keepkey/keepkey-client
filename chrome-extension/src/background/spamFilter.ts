@@ -125,8 +125,25 @@ const KNOWN_LEGIT_SYMBOLS = new Set([
   'FOX',
 ]);
 
-export type SpamLevel = 'confirmed' | 'possible' | null;
+export type SpamLevel = 'confirmed' | 'suppressed' | 'possible' | null;
 export type TokenVisibilityStatus = 'visible' | 'hidden';
+
+/** Curated trusted token CAIPs (lowercased) — exempt from default suppression.
+ *  Native assets are already exempt. Seed with blue-chip contracts; extend over time. */
+export const TRUSTED_CAIPS = new Set<string>([
+  'eip155:1/erc20:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', // USDC
+  'eip155:1/erc20:0xdac17f958d2ee523a2206206994597c13d831ec7', // USDT
+  'eip155:1/erc20:0x6b175474e89094c44da98b954eedeac495271d0f', // DAI
+  'eip155:1/erc20:0x2260fac5e5542a773aa44fbcfedf7c193bc2c599', // WBTC
+  'eip155:1/erc20:0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2', // WETH
+]);
+
+/** A non-allowlisted token reporting at least this USD value is treated as a
+ *  fabricated-value lure ('Mortal' class) and suppressed by default (recoverable).
+ *  Set HIGH on purpose: only egregiously-large fabricated values are auto-hidden,
+ *  so legit mid-cap holdings stay visible (and counted in the total). Smaller
+ *  scams are still hideable per-row. Tune as the trusted allowlist grows. */
+export const SUSPICIOUS_VALUE_FLOOR = 1000;
 
 export interface SpamResult {
   isSpam: boolean;
@@ -163,7 +180,11 @@ const MAX_SYMBOL_LENGTH = 11;
 /**
  * Detect whether a token is spam.
  */
-export function detectSpamToken(token: TokenBalanceEntry, userOverride?: TokenVisibilityStatus | null): SpamResult {
+export function detectSpamToken(
+  token: TokenBalanceEntry,
+  userOverride?: TokenVisibilityStatus | null,
+  opts?: { isCustom?: boolean },
+): SpamResult {
   // ── Tier 0: User override — absolute precedence ──────────────────
   if (userOverride === 'visible') {
     return { isSpam: false, level: null, reason: 'User marked as safe' };
@@ -173,6 +194,7 @@ export function detectSpamToken(token: TokenBalanceEntry, userOverride?: TokenVi
   }
 
   const usd = parseFloat(token.valueUsd || '0');
+  const price = parseFloat(token.priceUsd || '0');
   const sym = (token.symbol || '').toUpperCase();
   const name = token.name || '';
 
@@ -204,7 +226,9 @@ export function detectSpamToken(token: TokenBalanceEntry, userOverride?: TokenVi
   }
 
   // ── Tier 4: Fake stablecoin (symbol matches but value way off) ───
-  if (KNOWN_STABLECOINS.includes(sym) && usd < 0.5) {
+  // Price-aware: only when the row carries a real price — a not-yet-priced
+  // legit stablecoin (priceUsd 0) must not be flagged.
+  if (price > 0 && KNOWN_STABLECOINS.includes(sym) && usd < 0.5) {
     return {
       isSpam: true,
       level: 'confirmed',
@@ -235,8 +259,16 @@ export function detectSpamToken(token: TokenBalanceEntry, userOverride?: TokenVi
     }
   }
 
+  // NOTE: there is deliberately NO value-floor auto-suppression. A high USD value
+  // is not evidence of fabrication, and we have no server-side trust signal to
+  // tell a fabricated-value scam from a legit unlisted token — auto-hiding
+  // non-allowlisted tokens would underreport real holdings. The 'Mortal' class is
+  // handled by the per-token user Hide + recoverable Hidden section (a one-click,
+  // durable override) instead.
+
   // ── Tier 6: Low value → POSSIBLE spam ────────────────────────────
-  if (usd < 1) {
+  // Price-aware: a not-yet-priced legit token (priceUsd 0) is not "low value".
+  if (price > 0 && usd < 1) {
     return {
       isSpam: true,
       level: 'possible',
@@ -262,17 +294,67 @@ export function detectSpamToken(token: TokenBalanceEntry, userOverride?: TokenVi
  *
  * Native chain balances are always kept regardless of classification.
  */
+export interface PartitionedBalances {
+  visible: TokenBalanceEntry[];
+  hidden: TokenBalanceEntry[];
+}
+
+/**
+ * Partition balances into inline-visible vs a recoverable "Hidden" bucket:
+ *  - Native rows: always visible.
+ *  - User 'visible' override: always visible (tier 0).
+ *  - User 'hidden' override: Hidden bucket (recoverable).
+ *  - Heuristic 'confirmed' (URL/keyword/suspicious-symbol/fake-stable/dust):
+ *    HARD-DROPPED — phishing must never render, even collapsed.
+ *  - Heuristic 'suppressed' (the 'Mortal' fabricated-value class): Hidden bucket
+ *    (recoverable) — hidden by default, the user can reveal/un-hide it.
+ *  - Otherwise (clean / possible): visible.
+ * Hidden rows are tagged `_hidden` + `_hiddenReason` and kept in the cache.
+ */
+export function partitionSpamTokens(
+  balances: TokenBalanceEntry[],
+  overrides?: Map<string, TokenVisibilityStatus>,
+  isCustom?: (b: TokenBalanceEntry) => boolean,
+): PartitionedBalances {
+  const visible: TokenBalanceEntry[] = [];
+  const hidden: TokenBalanceEntry[] = [];
+  for (const b of balances) {
+    if (b.isNative) {
+      visible.push(b);
+      continue;
+    }
+    const override = overrides?.get(b.caip?.toLowerCase() || '') ?? null;
+    if (override === 'visible') {
+      visible.push(b);
+      continue;
+    }
+    if (override === 'hidden') {
+      hidden.push({ ...b, _hidden: true, _hiddenReason: 'Hidden by you' });
+      continue;
+    }
+    const result = detectSpamToken(b, null, { isCustom: isCustom?.(b) });
+    if (result.level === 'confirmed') {
+      // phishing — hard drop (not shown anywhere)
+      continue;
+    }
+    if (result.level === 'suppressed') {
+      hidden.push({ ...b, _hidden: true, _hiddenReason: result.reason });
+      continue;
+    }
+    visible.push(b);
+  }
+  return { visible, hidden };
+}
+
+/**
+ * Back-compat wrapper: returns only the visible balances. Prefer
+ * partitionSpamTokens when you need the recoverable Hidden bucket.
+ */
 export function filterSpamTokens(
   balances: TokenBalanceEntry[],
   overrides?: Map<string, TokenVisibilityStatus>,
 ): TokenBalanceEntry[] {
-  return balances.filter(b => {
-    if (b.isNative) return true;
-
-    const override = overrides?.get(b.caip?.toLowerCase() || '') ?? null;
-    const result = detectSpamToken(b, override);
-    return !(result.isSpam && result.level === 'confirmed');
-  });
+  return partitionSpamTokens(balances, overrides).visible;
 }
 
 // ── Token visibility persistence (chrome.storage.local) ────────────

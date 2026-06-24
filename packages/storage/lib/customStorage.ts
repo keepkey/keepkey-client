@@ -5,7 +5,7 @@ type Event = {
   id: string;
   type: string;
   request: any;
-  status: 'request' | 'approval' | 'completed';
+  status: 'request' | 'approval' | 'completed' | 'broadcasted';
   timestamp: string;
   unsignedTx: any;
   [key: string]: any; // Allow additional properties
@@ -25,9 +25,26 @@ type EventStorage = BaseStorage<Event[]> & {
   clearEvents: () => Promise<void>;
 };
 
-type Web3ProviderStorage = BaseStorage<string> & {
-  saveWeb3Provider: (provider: string) => Promise<void>;
-  getWeb3Provider: () => Promise<string | null>;
+// The web3 provider is persisted as a config object, not a string. Fields
+// are populated piecemeal across call sites (Pioneer discovery, custom-add,
+// failover URL rewrite), so all are optional.
+export interface Web3Provider {
+  chainId?: string;
+  networkId?: string;
+  caip?: string;
+  name?: string;
+  providerUrl?: string;
+  providers?: string[];
+  fallbacks?: string[];
+  explorer?: string;
+  explorerAddressLink?: string;
+  explorerTxLink?: string;
+  blockExplorerUrls?: string[];
+}
+
+type Web3ProviderStorage = BaseStorage<Web3Provider | null> & {
+  saveWeb3Provider: (provider: Web3Provider) => Promise<void>;
+  getWeb3Provider: () => Promise<Web3Provider | null>;
   clearWeb3Provider: () => Promise<void>;
 };
 
@@ -200,7 +217,9 @@ export const assetContextStorage = createAssetContextStorage();
 type BlockchainStorage = BaseStorage<string[]> & {
   getAllBlockchains: () => Promise<string[] | null>;
   addBlockchain: (blockchain: string) => Promise<void>;
+  addBlockchains: (blockchains: string[]) => Promise<void>;
   removeBlockchain: (blockchain: string) => Promise<void>;
+  removeBlockchains: (blockchains: string[]) => Promise<void>;
 };
 
 const createBlockchainStorage = (): BlockchainStorage => {
@@ -225,12 +244,26 @@ const createBlockchainStorage = (): BlockchainStorage => {
       }
       console.log(TAG, 'Added blockchain:', blockchain);
     },
+    addBlockchains: async (toAdd: string[]) => {
+      const blockchains = (await storage.get()) || [];
+      const merged = Array.from(new Set([...blockchains, ...toAdd]));
+      await storage.set(() => merged);
+      console.log(TAG, 'Added blockchains:', toAdd);
+    },
     removeBlockchain: async (blockchain: string) => {
       const blockchains = await storage.get();
       if (blockchains && blockchains.includes(blockchain)) {
         const updatedBlockchains = blockchains.filter(b => b !== blockchain);
         await storage.set(() => updatedBlockchains);
         console.log(TAG, 'Removed blockchain:', blockchain);
+      }
+    },
+    removeBlockchains: async (toRemove: string[]) => {
+      const blockchains = await storage.get();
+      if (blockchains && blockchains.length) {
+        const drop = new Set(toRemove);
+        await storage.set(() => blockchains.filter(b => !drop.has(b)));
+        console.log(TAG, 'Removed blockchains:', toRemove);
       }
     },
   };
@@ -241,12 +274,15 @@ export const blockchainStorage = createBlockchainStorage();
 // Blockchain Data Storage for Storing Additional Blockchain Metadata
 type BlockchainData = {
   [chainId: string]: {
-    name: string;
-    symbol: string;
-    decimals: number;
-    explorerUrl: string;
-    image: string;
-    // Add any additional properties you need here
+    name?: string;
+    symbol?: string;
+    decimals?: number;
+    explorerUrl?: string;
+    image?: string;
+    // Pioneer-discovered and custom-added chains persist a richer,
+    // heterogeneous config (caip, networkId, explorer links, nativeCurrency,
+    // providerUrl/providers, etc.). Storage is intentionally loose here.
+    [key: string]: any;
   };
 };
 
@@ -255,6 +291,7 @@ type BlockchainDataStorage = BaseStorage<BlockchainData> & {
   addBlockchainData: (chainId: string, data: BlockchainData[string]) => Promise<void>;
   getBlockchainData: (chainId: string) => Promise<BlockchainData[string] | null>;
   getBlockchainDataByArray: (chainIds: string[]) => Promise<(BlockchainData[string] | null)[]>;
+  removeBlockchainData: (chainId: string) => Promise<void>;
 };
 
 const createBlockchainDataStorage = (): BlockchainDataStorage => {
@@ -288,6 +325,14 @@ const createBlockchainDataStorage = (): BlockchainDataStorage => {
       const data = chainIds.map(chainId => blockchainData[chainId] || null);
       console.log(TAG, 'Retrieved blockchain data for chain array:', data);
       return data;
+    },
+    removeBlockchainData: async (chainId: string) => {
+      const blockchainData = await storage.get();
+      if (blockchainData && chainId in blockchainData) {
+        const { [chainId]: _removed, ...rest } = blockchainData;
+        await storage.set(() => rest);
+        console.log(TAG, 'Removed blockchain data for:', chainId);
+      }
     },
     subscribe: storage.subscribe, // Ensure subscribe is included if needed
   };
@@ -340,21 +385,21 @@ export const dappStorage = createDappStorage();
 
 // Create Web3 Provider Storage
 const createWeb3ProviderStorage = (): Web3ProviderStorage => {
-  const storage = createStorage<string>('web3-provider', '', {
+  const storage = createStorage<Web3Provider | null>('web3-provider', null, {
     storageType: StorageType.Local,
     liveUpdate: true,
   });
 
   return {
     ...storage,
-    saveWeb3Provider: async (provider: string) => {
+    saveWeb3Provider: async (provider: Web3Provider) => {
       await storage.set(() => provider);
     },
     getWeb3Provider: async () => {
       return await storage.get();
     },
     clearWeb3Provider: async () => {
-      await storage.set(() => '');
+      await storage.set(() => null);
     },
   };
 };
@@ -474,6 +519,64 @@ const createEthAccountsStorage = (): EthAccountsStorage => {
 
 export const ethAccountsStorage = createEthAccountsStorage();
 
+// ---- Per-network Accounts Storage (non-EVM multi-account) ----
+// EVM keeps its own ethAccountsStorage because one EVM account is valid across
+// every EVM chain (wildcard) — it's keyed by "family", not network. The
+// families added here (non-Bitcoin UTXO, Cosmos-family, Solana) are per-network:
+// each chain's accounts are independent, so we key the derived account indices
+// by networkId. Bitcoin is intentionally excluded — its accounts are static in
+// chainConfig.
+type AccountsByNetwork = Record<string, number[]>;
+type AccountsByNetworkStorage = BaseStorage<AccountsByNetwork> & {
+  getAccounts: (networkId: string) => Promise<number[]>;
+  addAccount: (networkId: string, index: number) => Promise<number[]>;
+  removeAccount: (networkId: string, index: number) => Promise<number[]>;
+};
+
+const createAccountsByNetworkStorage = (): AccountsByNetworkStorage => {
+  const storage = createStorage<AccountsByNetwork>(
+    'keepkey-accounts-by-network',
+    {},
+    { storageType: StorageType.Local, liveUpdate: true },
+  );
+
+  const normalize = (list: number[] | undefined): number[] =>
+    list && list.length > 0 ? Array.from(new Set(list)).sort((a, b) => a - b) : [0];
+
+  return {
+    ...storage,
+    getAccounts: async (networkId: string) => {
+      const map = (await storage.get()) || {};
+      return normalize(map[networkId]);
+    },
+    // Compute the new per-network array INSIDE the updater (from prev) so the
+    // merge and the value both derive from the same snapshot — otherwise two
+    // concurrent adds for the same network read the same stale list and the
+    // second set() clobbers the first, dropping an account.
+    addAccount: async (networkId: string, index: number) => {
+      let result: number[] = [0];
+      await storage.set(prev => {
+        const cur = normalize((prev || {})[networkId]);
+        result = cur.includes(index) ? cur : normalize([...cur, index]);
+        return { ...(prev || {}), [networkId]: result };
+      });
+      return result;
+    },
+    removeAccount: async (networkId: string, index: number) => {
+      let result: number[] = [0];
+      await storage.set(prev => {
+        const cur = normalize((prev || {})[networkId]);
+        const next = index === 0 ? cur : cur.filter(i => i !== index); // never remove account 0
+        result = next.length > 0 ? next : [0];
+        return { ...(prev || {}), [networkId]: result };
+      });
+      return result;
+    },
+  };
+};
+
+export const accountsByNetworkStorage = createAccountsByNetworkStorage();
+
 // ---- Custom EVM Networks Storage ----
 type CustomEvmNetwork = {
   networkId: string; // e.g. 'eip155:42220'
@@ -521,6 +624,29 @@ const createCustomEvmNetworksStorage = (): CustomEvmNetworksStorage => {
 };
 
 export const customEvmNetworksStorage = createCustomEvmNetworksStorage();
+
+// ---- Testnet visibility ----
+type TestnetSettingsStorage = BaseStorage<{ showTestnets: boolean }> & {
+  getShowTestnets: () => Promise<boolean>;
+  setShowTestnets: (value: boolean) => Promise<void>;
+};
+
+const createTestnetSettingsStorage = (): TestnetSettingsStorage => {
+  const storage = createStorage<{ showTestnets: boolean }>(
+    'keepkey-testnet-settings',
+    { showTestnets: false },
+    { storageType: StorageType.Local, liveUpdate: true },
+  );
+  return {
+    ...storage,
+    getShowTestnets: async () => (await storage.get())?.showTestnets ?? false,
+    setShowTestnets: async (value: boolean) => {
+      await storage.set(() => ({ showTestnets: value }));
+    },
+  };
+};
+
+export const testnetSettingsStorage = createTestnetSettingsStorage();
 
 // Utility function to move an event between storages
 const moveEvent = async (

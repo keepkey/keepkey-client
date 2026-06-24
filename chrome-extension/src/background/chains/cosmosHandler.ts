@@ -31,7 +31,7 @@ export const handleCosmosRequest = async (
       requestInfo.id = uuidv4();
       chrome.runtime.sendMessage({ action: 'TRANSACTION_CONTEXT_UPDATED', id: requestInfo.id });
 
-      const pubkeys = wallet.getPubkeys(ChainToNetworkId[Chain.Cosmos]);
+      const pubkeys = wallet.getSendPubkeys(ChainToNetworkId[Chain.Cosmos], params[0]?.accountIndex);
       if (!pubkeys || pubkeys.length === 0) throw Error('Failed to locate pubkeys for Cosmos');
 
       const sendPayload = {
@@ -85,6 +85,7 @@ export const handleCosmosRequest = async (
 
       const result = await requireApproval(networkId, requestInfo, 'cosmos', method, params[0]);
       const response = await requestStorage.getEventById(requestInfo.id);
+      if (!response) throw Error('Failed to load event for signing!');
 
       if (result.success && response.unsignedTx) {
         const sdk = wallet.getSdk();

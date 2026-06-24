@@ -26,6 +26,118 @@ const state: WalletState = {
   deviceConnected: false,
 };
 
+const VAULT_BASE_URL = 'http://localhost:1646';
+
+const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+/**
+ * Result of checking whether we can talk to the vault and whether our saved
+ * API key is still good — decided WITHOUT letting the SDK auto-pair.
+ *   - 'valid':       key works; hand it to the SDK so create() skips pairing.
+ *   - 'invalid':     vault is up and explicitly rejected the key (paired:false
+ *                    / 401 / 403), OR we have no key. The only case where a
+ *                    fresh pairing prompt is warranted.
+ *   - 'unreachable': vault down / transient blip / inconclusive. NEVER pair,
+ *                    NEVER wipe the key — run view-only and let the health poll
+ *                    re-init when the vault returns.
+ */
+type VaultAuthStatus = 'valid' | 'invalid' | 'unreachable';
+
+/**
+ * Gate the SDK's auto-pair behind our own retry-aware reachability + key check.
+ *
+ * Why this exists: KeepKeySdk.create() validates a supplied key with a single
+ * GET that returns false on ANY error (timeout, vault-busy at service-worker
+ * cold start) and then immediately pairs — surfacing a device approval prompt
+ * for what was only a transient blip. Repeated across the worker's frequent
+ * restarts, that's the "I have to approve a new key every time" churn. Here we
+ * retry, and crucially distinguish an explicit rejection (re-pair warranted)
+ * from a transient failure (retry later, key is probably fine).
+ */
+async function probeVaultAuth(apiKey?: string): Promise<VaultAuthStatus> {
+  const tag = TAG + ' | probeVaultAuth | ';
+  const RETRIES = 3;
+
+  let reachable = false;
+  for (let i = 0; i < RETRIES; i++) {
+    try {
+      const resp = await fetch(`${VAULT_BASE_URL}/api/health`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(4000),
+      });
+      if (resp.ok) {
+        reachable = true;
+        break;
+      }
+    } catch {
+      /* retry */
+    }
+    await delay(400 * (i + 1));
+  }
+  if (!reachable) {
+    console.warn(tag, 'Vault not reachable after retries — staying view-only');
+    return 'unreachable';
+  }
+
+  // Reachable but no saved key → must pair.
+  if (!apiKey) return 'invalid';
+
+  // Validate the saved key. An explicit reject means re-pair; a transient error
+  // means retry later — it must NOT escalate to a pairing prompt.
+  for (let i = 0; i < RETRIES; i++) {
+    try {
+      const resp = await fetch(`${VAULT_BASE_URL}/auth/pair`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (resp.ok) {
+        const data = await resp.json().catch(() => ({}) as any);
+        return data?.paired === true ? 'valid' : 'invalid';
+      }
+      if (resp.status === 401 || resp.status === 403) return 'invalid';
+      // 5xx / other: transient — retry
+    } catch {
+      /* network blip — retry */
+    }
+    await delay(400 * (i + 1));
+  }
+
+  // Health was OK but we never got a definitive auth verdict. Treat as
+  // unreachable (view-only + retry) rather than forcing a pairing prompt.
+  console.warn(tag, 'Key validation inconclusive — staying view-only, will retry');
+  return 'unreachable';
+}
+
+/**
+ * Populate state from the pubkey cache when the vault is unreachable, so the
+ * dashboard keeps showing last-good data instead of an error while the 5s
+ * health poll waits for the vault to return. No SDK is created — signing stays
+ * unavailable until a later init succeeds against a reachable vault.
+ */
+async function hydrateViewOnly(): Promise<void> {
+  state.deviceConnected = false;
+  if (state.paths.length === 0) state.paths = getDefaultPaths();
+  try {
+    const cached = await pubkeyStorage.loadPubkeys();
+    if (cached?.pubkeys?.length) {
+      state.pubkeys = cached.pubkeys;
+      if (cached.deviceInfo) {
+        const di = cached.deviceInfo;
+        state.deviceInfo = {
+          label: di.label,
+          model: di.model ?? 'KeepKey',
+          deviceId: di.deviceId ?? 'unknown',
+          features: di.features,
+        };
+      }
+    }
+  } catch {
+    /* ignore — nothing cached yet */
+  }
+  state.initialized = state.pubkeys.length > 0;
+}
+
 /**
  * Probe the device via getFeatures(). Updates state.deviceConnected and state.deviceInfo.
  * Returns true if the device is reachable, false otherwise.
@@ -57,7 +169,24 @@ export async function probeDevice(): Promise<boolean> {
  * View-only mode: if the device is not connected but cached pubkeys exist, init still
  * succeeds. Signing will fail later until the device is reconnected.
  */
-export async function init(): Promise<WalletState> {
+let initInFlight: Promise<WalletState> | null = null;
+
+export function init(): Promise<WalletState> {
+  // Single-flight: collapse concurrent/rapid init calls into ONE SDK creation.
+  // The boot timer, the 5s health-poll retry, and ON_START from the side panel
+  // (Connect + refresh) all call onStart()→init() and can overlap. Without this
+  // guard each caller POSTs /auth/pair and the second collides with the first's
+  // still-pending request → "A pairing request is already pending", which
+  // surfaced as an errored icon the user fixed by mashing refresh — spawning yet
+  // more pair attempts. One in-flight init serializes them.
+  if (initInFlight) return initInFlight;
+  initInFlight = doInit().finally(() => {
+    initInFlight = null;
+  });
+  return initInFlight;
+}
+
+async function doInit(): Promise<WalletState> {
   const tag = TAG + ' | init | ';
   try {
     console.log(tag, 'Initializing wallet...');
@@ -66,10 +195,38 @@ export async function init(): Promise<WalletState> {
     const savedApiKey = (await keepKeyApiKeyStorage.getApiKey()) || undefined;
     console.log(tag, 'Saved API key:', savedApiKey ? 'found' : 'none');
 
-    // Create SDK instance (pairs with vault on localhost:1646; no device needed)
+    // Decide reachability + key validity ourselves, with retries, BEFORE the SDK
+    // can auto-pair. This is what keeps a transient vault blip from turning into
+    // a device approval prompt.
+    const authStatus = await probeVaultAuth(savedApiKey);
+    if (authStatus === 'unreachable') {
+      if (state.sdk && state.initialized) {
+        console.warn(tag, 'Vault blip during re-init — keeping existing live state');
+        return state;
+      }
+      console.warn(tag, 'Vault unreachable — running view-only from cache, will retry on next poll');
+      await hydrateViewOnly();
+      return state;
+    }
+
+    // Only drop the saved key when the vault is up AND explicitly rejected it —
+    // the sole case where a fresh pairing is genuinely required.
+    let keyForSdk = savedApiKey;
+    if (authStatus === 'invalid' && savedApiKey) {
+      console.warn(tag, 'Vault rejected saved key — clearing it so we pair once');
+      keyForSdk = undefined;
+      try {
+        await keepKeyApiKeyStorage.saveApiKey('');
+      } catch {
+        /* ignore */
+      }
+    }
+
+    // Create SDK instance (pairs with vault on localhost:1646 only when keyForSdk
+    // is undefined — i.e. no key or a vault-rejected key; no device needed).
     const sdk = await KeepKeySdk.create({
-      apiKey: savedApiKey,
-      baseUrl: 'http://localhost:1646',
+      apiKey: keyForSdk,
+      baseUrl: VAULT_BASE_URL,
       serviceName: 'KeepKey Browser Extension',
       serviceImageUrl: 'https://pioneers.dev/coins/keepkey.png',
     });
@@ -89,8 +246,14 @@ export async function init(): Promise<WalletState> {
       try {
         const cached = await pubkeyStorage.loadPubkeys();
         if (cached?.deviceInfo) {
-          state.deviceInfo = cached.deviceInfo;
-          console.log(tag, 'Using cached device info:', state.deviceInfo.label);
+          const di = cached.deviceInfo;
+          state.deviceInfo = {
+            label: di.label,
+            model: di.model ?? 'KeepKey',
+            deviceId: di.deviceId ?? 'unknown',
+            features: di.features,
+          };
+          console.log(tag, 'Using cached device info:', di.label);
         }
       } catch {
         // ignore
@@ -262,13 +425,21 @@ async function fetchPubkeys(): Promise<void> {
  * stale pubkeys) is the bug we're fixing.
  */
 function isAuthError(e: unknown): boolean {
+  // Prefer the structured status (SdkError carries one) — it's unambiguous.
+  const status = (e as any)?.status;
+  if (status === 401 || status === 403) return true;
+  // Fall back to message matching, but NOT on a bare 'auth' substring: that
+  // matched "authenticating", "authorization pending", proxy/middleware noise,
+  // etc., and a false positive here WIPES the saved key and forces a re-pair.
   const msg = ((e as Error)?.message || String(e)).toLowerCase();
   return (
     msg.includes('401') ||
+    msg.includes('403') ||
     msg.includes('unauthorized') ||
-    msg.includes('auth') ||
     msg.includes('invalid api key') ||
-    msg.includes('not paired')
+    msg.includes('invalid or expired api key') ||
+    msg.includes('not paired') ||
+    msg.includes('re-pair')
   );
 }
 
@@ -288,6 +459,44 @@ export function getSdk(): any {
 export function getPubkeys(networkId?: string): any[] {
   if (!networkId) return state.pubkeys;
   return state.pubkeys.filter((pk: any) => pk.networks && pk.networks.includes(networkId));
+}
+
+// Extract the BIP44 account index from a pubkey: prefer the enriched
+// accountIndex field, else parse "account N" from the note, else 0 (account-0
+// default paths carry ad-hoc notes with no index).
+function pubkeyAccountIndex(pk: any): number {
+  if (typeof pk?.accountIndex === 'number') return pk.accountIndex;
+  const m = /account\s*(\d+)/i.exec(pk?.note || '');
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+/**
+ * Pubkeys for a network scoped to a single account index. Used to keep a send
+ * within one account so a multi-account wallet doesn't bleed inputs/UTXOs
+ * across accounts (receive-on-N but spend-from-0).
+ */
+export function getAccountPubkeys(networkId: string, accountIndex: number): any[] {
+  return getPubkeys(networkId).filter(pk => pubkeyAccountIndex(pk) === accountIndex);
+}
+
+/**
+ * Resolve the pubkey set a send/build should use.
+ *
+ * - No explicit account (dApp transfers and any caller that doesn't scope):
+ *   use the FULL network set. This preserves prior aggregate behavior —
+ *   notably Bitcoin's static accounts 0-3 — so a send never silently drops
+ *   funds the caller didn't ask to exclude.
+ * - Explicit account index: scope to it. A non-zero account that resolves to
+ *   no pubkeys returns EMPTY (not a fallback to all) so the caller's "no
+ *   pubkeys" guard fires rather than silently building/signing from account 0
+ *   — the receive-on-N / sign-from-0 hazard this feature exists to prevent.
+ *   Account 0 may broaden to the network default when its scope is empty.
+ */
+export function getSendPubkeys(networkId: string, accountIndex: unknown): any[] {
+  if (typeof accountIndex !== 'number') return getPubkeys(networkId);
+  const scoped = getAccountPubkeys(networkId, accountIndex);
+  if (scoped.length > 0) return scoped;
+  return accountIndex === 0 ? getPubkeys(networkId) : [];
 }
 
 /**

@@ -13,6 +13,7 @@ import {
   web3ProviderStorage,
   customEvmNetworksStorage,
   ethAccountsStorage,
+  testnetSettingsStorage,
 } from '@extension/storage';
 
 const TAG = ' | Settings | ';
@@ -25,6 +26,7 @@ const Settings = () => {
     enableKeplrMasking: false,
     enablePhantomMasking: false,
   });
+  const [showTestnets, setShowTestnets] = useState(false);
 
   // Fetch initial masking settings from storage
   useEffect(() => {
@@ -40,10 +42,30 @@ const Settings = () => {
         enableKeplrMasking: keplrSetting,
         enablePhantomMasking: phantomSetting,
       });
+
+      const testnetSetting = await testnetSettingsStorage.getShowTestnets();
+      setShowTestnets(testnetSetting);
     };
 
     loadSettings();
   }, []);
+
+  const toggleTestnets = async () => {
+    const newValue = !showTestnets;
+    setShowTestnets(newValue); // optimistic
+    chrome.runtime.sendMessage({ type: 'SET_TESTNETS_ENABLED', enabled: newValue }, response => {
+      if (response?.success) {
+        toast({
+          title: newValue ? 'Testnets added' : 'Testnets removed',
+          status: 'success',
+          duration: 2000,
+        });
+      } else {
+        setShowTestnets(!newValue); // revert
+        toast({ title: 'Failed to toggle testnets', description: response?.error, status: 'error', duration: 3000 });
+      }
+    });
+  };
 
   // Toggle functions
   const toggleMetaMaskMasking = async () => {
@@ -175,13 +197,13 @@ const Settings = () => {
   };
 
   // Helper function to determine if an option is coming soon
-  const isComingSoon = name => ['Xfi', 'Keplr'].includes(name);
+  const isComingSoon = (name: string) => ['Xfi', 'Keplr'].includes(name);
 
   return (
     <VStack spacing={4}>
       {/* More Docs Link - Prominent and on top */}
       <Link href="https://docs.keepkey.com" isExternal>
-        <Button variant="solid" colorScheme="teal" size="lg" w="100%" mt={4} mb={6}>
+        <Button variant="solid" size="lg" w="100%" mt={4} mb={6}>
           📖 Visit KeepKey Docs
         </Button>
       </Link>
@@ -196,6 +218,19 @@ const Settings = () => {
 
       <VStack spacing={4} align="stretch">
         <Text fontSize="md" fontWeight="bold">
+          Networks
+        </Text>
+
+        {/* Show Testnets */}
+        <HStack w="100%" justifyContent="space-between">
+          <Text>Show Testnets</Text>
+          <Switch size="md" isChecked={showTestnets} onChange={toggleTestnets} />
+        </HStack>
+        <Text fontSize="xs" color="whiteAlpha.700" mt={-2} mb={2}>
+          Adds Ethereum Sepolia, Base Sepolia, and Solana Devnet with default public RPCs. Turning off removes them.
+        </Text>
+
+        <Text fontSize="md" fontWeight="bold">
           Enable Masking
         </Text>
 
@@ -207,7 +242,7 @@ const Settings = () => {
           </HStack>
           <Switch size="md" isChecked={maskingSettings.enableMetaMaskMasking} onChange={toggleMetaMaskMasking} />
         </HStack>
-        <Text fontSize="xs" color="whiteAlpha.700" mt={-2} mb={2}>
+        <Text fontSize="xs" color="kk.dim" mt={-2} mb={2}>
           When on, KeepKey claims to be MetaMask on legacy dApps (Stripe, older sites) by mounting
           <code> window.ethereum </code>
           with <code>isMetaMask: true</code>. Modern dApps still see KeepKey via EIP-6963. Refresh any open dApp after
@@ -222,7 +257,7 @@ const Settings = () => {
           </HStack>
           <Switch size="md" isChecked={maskingSettings.enablePhantomMasking} onChange={togglePhantomMasking} />
         </HStack>
-        <Text fontSize="xs" color="whiteAlpha.700" mt={-2} mb={2}>
+        <Text fontSize="xs" color="kk.dim" mt={-2} mb={2}>
           When on, KeepKey claims to be Phantom on legacy Solana dApps by mounting
           <code> window.solana </code>
           with <code>isPhantom: true</code>. Modern dApps still see KeepKey via the Solana Wallet Standard. Only mounts
@@ -251,7 +286,7 @@ const Settings = () => {
               w="100%"
               h="100%"
               bg="rgba(0, 0, 0, 0.6)"
-              color="white"
+              color="kk.text"
               display="flex"
               alignItems="center"
               justifyContent="center"
@@ -283,7 +318,7 @@ const Settings = () => {
               w="100%"
               h="100%"
               bg="rgba(0, 0, 0, 0.6)"
-              color="white"
+              color="kk.text"
               display="flex"
               alignItems="center"
               justifyContent="center"
@@ -293,22 +328,22 @@ const Settings = () => {
           )}
         </Box>
 
-        <Text fontSize="sm" color="whiteAlpha.700">
+        <Text fontSize="sm" color="kk.dim">
           This setting may conflict with these apps if also enabled.
         </Text>
 
         {/* Force Reset Button */}
-        <Button colorScheme="red" variant="solid" w="100%" onClick={clearCustomStorages}>
+        <Button variant="solid" bg="kk.bad" color="kk.text" w="100%" onClick={clearCustomStorages}>
           Clear Storage
         </Button>
 
         {/* Force Reset Button */}
-        <Button colorScheme="red" variant="solid" w="100%" onClick={handleForceReset}>
+        <Button variant="solid" bg="kk.bad" color="kk.text" w="100%" onClick={handleForceReset}>
           Force Reset App
         </Button>
 
         {/* Announce Provider Button */}
-        <Button colorScheme="blue" variant="solid" w="100%" onClick={handleAnnounceProvider}>
+        <Button variant="solid" w="100%" onClick={handleAnnounceProvider}>
           Announce Provider
         </Button>
       </VStack>

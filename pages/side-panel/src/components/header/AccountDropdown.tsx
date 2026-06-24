@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Flex, Text, Box, Icon, Collapse, IconButton, Badge, Button, useToast } from '@chakra-ui/react';
+import React, { useState, useRef } from 'react';
+import { Flex, Text, Box, Icon, IconButton, Badge, Button, useToast, useOutsideClick } from '@chakra-ui/react';
 import { ChevronDownIcon, ChevronUpIcon, CopyIcon, CheckIcon, AddIcon, SmallCloseIcon } from '@chakra-ui/icons';
 import type { AccountItem } from './headerTypes';
 import { formatAddress } from './headerUtils';
@@ -8,11 +8,11 @@ interface AccountDropdownProps {
   accounts: AccountItem[];
   selectedAccountKey: string | null;
   onSelect: (account: AccountItem) => void;
-  /** Only shown for Ethereum (eip155:1) */
+  /** True for families that support add-account (EVM + non-Bitcoin UTXO, Cosmos, Solana) */
   canAddAccount: boolean;
   onAddAccount?: () => void;
   isAddingAccount?: boolean;
-  /** Show remove button for non-default ETH accounts */
+  /** Show remove button for non-default accounts (accountIndex > 0) */
   onRemoveAccount?: (accountIndex: number) => void;
 }
 
@@ -28,6 +28,10 @@ const AccountDropdown: React.FC<AccountDropdownProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const toast = useToast();
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Close when the user clicks anywhere outside the trigger + panel.
+  useOutsideClick({ ref: containerRef, handler: () => setIsExpanded(false) });
 
   const selected = accounts.find(a => a.key === selectedAccountKey) || accounts[0] || null;
 
@@ -47,7 +51,7 @@ const AccountDropdown: React.FC<AccountDropdownProps> = ({
   const hasMultiple = accounts.length > 1 || canAddAccount;
 
   return (
-    <Box position="relative">
+    <Box position="relative" ref={containerRef}>
       {/* Trigger — single-line to match NetworkDropdown height. Label when
           we have multiple accounts so the user can tell them apart; short
           address when we only have one (the label is redundant then). */}
@@ -58,15 +62,15 @@ const AccountDropdown: React.FC<AccountDropdownProps> = ({
         px={2}
         h="32px"
         borderRadius="md"
-        bg="whiteAlpha.50"
-        _hover={hasMultiple ? { bg: 'whiteAlpha.150' } : {}}
+        bg="kk.surface"
+        _hover={hasMultiple ? { bg: 'kk.surfaceHi' } : {}}
         transition="background 0.15s"
         minW={0}
         title={selected?.address || ''}>
         <Text
           fontSize="xs"
           fontWeight={hasMultiple ? 'semibold' : 500}
-          color="white"
+          color="kk.text"
           isTruncated
           maxW="100px"
           className={hasMultiple ? undefined : 'mono'}>
@@ -86,13 +90,13 @@ const AccountDropdown: React.FC<AccountDropdownProps> = ({
             ml={1}
           />
         )}
-        {hasMultiple && (
-          <Icon as={isExpanded ? ChevronUpIcon : ChevronDownIcon} boxSize={3} ml={1} color="whiteAlpha.700" />
-        )}
+        {hasMultiple && <Icon as={isExpanded ? ChevronUpIcon : ChevronDownIcon} boxSize={3} ml={1} color="kk.dim" />}
       </Flex>
 
-      {/* Dropdown panel */}
-      <Collapse in={isExpanded} animateOpacity>
+      {/* Dropdown panel — conditionally rendered (no Collapse wrapper: an
+          absolutely-positioned child reports zero height to Collapse, which
+          then clamps overflow and breaks the panel's own scroll). */}
+      {isExpanded && (
         <Box
           position="absolute"
           top="100%"
@@ -101,11 +105,12 @@ const AccountDropdown: React.FC<AccountDropdownProps> = ({
           zIndex={10}
           borderRadius="md"
           border="1px solid"
-          borderColor="whiteAlpha.200"
-          bg="gray.800"
-          maxH="300px"
+          borderColor="kk.lineHi"
+          bg="kk.surface"
+          maxH="calc(100vh - 84px)"
           minW="180px"
           overflowY="auto"
+          overscrollBehavior="contain"
           sx={{
             '&::-webkit-scrollbar': { width: '4px' },
             '&::-webkit-scrollbar-thumb': { bg: 'whiteAlpha.300', borderRadius: '2px' },
@@ -117,34 +122,38 @@ const AccountDropdown: React.FC<AccountDropdownProps> = ({
               px={3}
               py={2}
               cursor="pointer"
-              bg={selectedAccountKey === account.key ? 'whiteAlpha.150' : 'transparent'}
-              _hover={{ bg: 'whiteAlpha.100' }}
+              bg={selectedAccountKey === account.key ? 'kk.surfaceHi' : 'transparent'}
+              _hover={{ bg: 'kk.surfaceHi' }}
               transition="background 0.1s"
               onClick={() => handleSelect(account)}
               borderBottom="1px solid"
-              borderColor="whiteAlpha.50">
+              borderColor="kk.line">
               <Box flex={1} minW={0}>
                 <Flex alignItems="center" gap={1}>
-                  <Text fontSize="xs" color="white" isTruncated>
+                  <Text fontSize="xs" color="kk.text" isTruncated>
                     {account.label}
                   </Text>
                   {account.isDefault && (
-                    <Badge fontSize="0.5rem" colorScheme="green" variant="subtle" px={1}>
+                    <Badge fontSize="0.5rem" bg="kk.surfaceHi" color="kk.dim" variant="subtle" px={1}>
                       Default
                     </Badge>
                   )}
                 </Flex>
-                <Text fontSize="xs" fontFamily="mono" color="whiteAlpha.600" isTruncated>
+                <Text fontSize="xs" fontFamily="mono" color="kk.dim" isTruncated>
                   {formatAddress(account.address)}
                 </Text>
                 {account.path && (
-                  <Text fontSize="0.6rem" fontFamily="mono" color="whiteAlpha.400" isTruncated>
+                  <Text fontSize="0.6rem" fontFamily="mono" color="kk.faint" isTruncated>
                     {account.path}
                   </Text>
                 )}
               </Box>
-              {/* Remove button for non-default ETH accounts */}
-              {onRemoveAccount && account.accountIndex !== undefined && !account.isDefault && (
+              {/* Remove button for non-default accounts. Gate on accountIndex > 0
+                  (not just !isDefault): a UTXO chain's account 0 has multiple
+                  script-type rows, and only the first is flagged isDefault —
+                  the others still carry accountIndex 0 and must stay
+                  non-removable. */}
+              {onRemoveAccount && account.accountIndex !== undefined && account.accountIndex > 0 && (
                 <IconButton
                   icon={<SmallCloseIcon />}
                   aria-label={`Remove account ${account.accountIndex}`}
@@ -181,13 +190,13 @@ const AccountDropdown: React.FC<AccountDropdownProps> = ({
               px={3}
               py={2}
               cursor="pointer"
-              _hover={{ bg: 'whiteAlpha.100' }}
+              _hover={{ bg: 'kk.surfaceHi' }}
               borderTop="1px solid"
-              borderColor="whiteAlpha.100">
+              borderColor="kk.line">
               <Button
                 size="xs"
                 variant="ghost"
-                colorScheme="blue"
+                color="kk.accent"
                 leftIcon={<AddIcon boxSize={2} />}
                 fontSize="xs"
                 isLoading={isAddingAccount}
@@ -200,7 +209,7 @@ const AccountDropdown: React.FC<AccountDropdownProps> = ({
             </Flex>
           )}
         </Box>
-      </Collapse>
+      )}
     </Box>
   );
 };

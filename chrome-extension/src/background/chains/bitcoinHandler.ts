@@ -50,7 +50,7 @@ export const handleBitcoinRequest = async (
         id: requestInfo.id,
       });
 
-      const pubkeys = wallet.getPubkeys(ChainToNetworkId[Chain.Bitcoin]);
+      const pubkeys = wallet.getSendPubkeys(ChainToNetworkId[Chain.Bitcoin], params[0]?.accountIndex);
       console.log(tag, 'pubkeys: ', pubkeys);
       if (!pubkeys || pubkeys.length === 0) throw Error('Failed to locate pubkeys for Bitcoin');
 
@@ -114,6 +114,7 @@ export const handleBitcoinRequest = async (
       console.log(tag, 'result:', result);
 
       const response = await requestStorage.getEventById(requestInfo.id);
+      if (!response) throw Error('Failed to load event for signing!');
 
       if (result.success && response.unsignedTx) {
         // Sign using vault SDK

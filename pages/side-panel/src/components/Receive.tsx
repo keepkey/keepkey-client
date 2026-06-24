@@ -1,5 +1,4 @@
 import {
-  Avatar,
   Box,
   Button,
   Flex,
@@ -19,6 +18,7 @@ import {
 import { CopyIcon, CheckIcon, ChevronDownIcon } from '@chakra-ui/icons';
 import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
+import { AssetIcon } from './AssetIcon';
 
 interface ReceiveProps {
   onClose: () => void;
@@ -460,7 +460,7 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
                   py={5}
                   fontWeight={500}>
                   <HStack spacing={3} justify="center">
-                    <Avatar size="sm" src={assetContext?.icon} />
+                    <AssetIcon src={assetContext?.icon} symbol={assetContext?.symbol} size={32} />
                     <Text fontWeight={600}>{assetContext?.name}</Text>
                     <Badge
                       bg="whiteAlpha.100"
@@ -482,7 +482,7 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
                       bg={assetContext?.symbol === token.symbol ? 'whiteAlpha.100' : 'transparent'}
                       _hover={{ bg: 'whiteAlpha.100' }}>
                       <HStack spacing={3}>
-                        <Avatar size="sm" src={token.icon} />
+                        <AssetIcon src={token.icon} symbol={token.symbol} size={32} />
                         <VStack align="start" spacing={0}>
                           <Text fontWeight={500} color="kk.text">
                             {token.name}

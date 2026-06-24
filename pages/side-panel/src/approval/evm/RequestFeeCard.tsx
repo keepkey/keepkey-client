@@ -56,26 +56,26 @@ const requestAssetContext = () => {
 //   });
 // };
 
-const hexToDecimal = hex => {
+const hexToDecimal = (hex: any) => {
   return parseInt(hex, 16);
 };
 
-const decimalToHex = decimal => {
+const decimalToHex = (decimal: any) => {
   return '0x' + BigInt(decimal).toString(16);
 };
 
 // Mainnet gas is routinely sub-1-gwei now — integer-gwei math
 // (Math.floor / BigInt division) zeroes every option. Keep fees as
 // decimal-gwei strings for display and convert via float math.
-const weiToGwei = wei => {
+const weiToGwei = (wei: any) => {
   const gwei = Number(wei) / 1e9;
   if (gwei >= 10) return Math.round(gwei).toString();
   return parseFloat(gwei.toPrecision(3)).toString();
 };
 
-const gweiToWei = gwei => BigInt(Math.round(parseFloat(gwei) * 1e9));
+const gweiToWei = (gwei: any) => BigInt(Math.round(parseFloat(gwei) * 1e9));
 
-const RequestFeeCard = ({ transaction }) => {
+const RequestFeeCard = ({ transaction }: any) => {
   const [selectedFee, setSelectedFee] = useState('');
   const [customFee, setCustomFee] = useState('');
   const [dappProvidedFee, setDappProvidedFee] = useState(false);
@@ -91,14 +91,14 @@ const RequestFeeCard = ({ transaction }) => {
   const [loading, setLoading] = useState(true);
   const [feeError, setFeeError] = useState('');
   const [usdFee, setUsdFee] = useState('');
-  const [assetContext, setAssetContext] = useState(null);
+  const [assetContext, setAssetContext] = useState<any>(null);
 
   const gasLimit = transaction.request.gasLimit ? hexToDecimal(transaction.request.gasLimit) : 21000;
 
   useEffect(() => {
     const fetchAssetContext = async () => {
       try {
-        const context = await requestAssetContext();
+        const context: any = await requestAssetContext();
         console.log('RequestFeeCard - Full asset context:', context);
         console.log('RequestFeeCard - Assets:', context?.assets);
         console.log('RequestFeeCard - Price USD:', context?.assets?.priceUsd);
@@ -110,7 +110,7 @@ const RequestFeeCard = ({ transaction }) => {
     fetchAssetContext();
   }, []);
 
-  const calculateUsdValue = gweiFee => {
+  const calculateUsdValue = (gweiFee: any) => {
     if (!assetContext || !assetContext.priceUsd) {
       console.error('assetContext: ', assetContext);
       console.error('Missing Price Data for Native gas asset!');
@@ -127,7 +127,7 @@ const RequestFeeCard = ({ transaction }) => {
     setLoading(true);
     setFeeError('');
     try {
-      const feeData = await requestFeeData();
+      const feeData: any = await requestFeeData();
       console.log(tag, ' feeData: ', feeData);
 
       // Background responds { error } when every RPC failed — don't feed
@@ -161,7 +161,7 @@ const RequestFeeCard = ({ transaction }) => {
       setFeeWarning(false);
     } catch (e) {
       console.error('Error fetching fee data:', e);
-      setFeeError(e?.message || 'Failed to fetch fee data');
+      setFeeError((e as any)?.message || 'Failed to fetch fee data');
     } finally {
       setLoading(false);
     }
@@ -208,7 +208,7 @@ const RequestFeeCard = ({ transaction }) => {
     if (selectedFee === 'custom') {
       feeInGwei = customFee;
     } else {
-      feeInGwei = fees[selectedFee] || '';
+      feeInGwei = fees[selectedFee as keyof typeof fees] || '';
     }
 
     setDisplayFee(feeInGwei);
@@ -228,22 +228,22 @@ const RequestFeeCard = ({ transaction }) => {
     }
   }, [selectedFee, customFee, fees, assetContext]);
 
-  const handleFeeChange = value => {
+  const handleFeeChange = (value: any) => {
     setSelectedFee(value);
   };
 
-  const handleCustomFeeChange = event => {
+  const handleCustomFeeChange = (event: any) => {
     setCustomFee(event.target.value);
   };
 
   const handleSubmit = () => {
-    const feeInGwei = selectedFee === 'custom' ? customFee : fees[selectedFee];
+    const feeInGwei = selectedFee === 'custom' ? customFee : fees[selectedFee as keyof typeof fees];
     handleUpdateTransaction(feeInGwei);
   };
 
-  const handleUpdateTransaction = async feeInGwei => {
+  const handleUpdateTransaction = async (feeInGwei: any) => {
     if (!Number.isFinite(parseFloat(feeInGwei)) || parseFloat(feeInGwei) <= 0) return;
-    let selectedFeeData = {};
+    let selectedFeeData: any = {};
     if (isEIP1559) {
       const baseFeeInWei = gweiToWei(feeInGwei);
       const priorityFeeInWei = BigInt(2 * 1e9);

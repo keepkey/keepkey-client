@@ -5,7 +5,7 @@ import { NetworkIdToChain } from '@extension/shared';
 
 import type { NetworkItem, AccountItem, CustomEvmNetwork, NetworkAccountHeaderProps } from './header/headerTypes';
 import { stateNames } from './header/headerConstants';
-import { getChainFamily, buildNetworkList, buildAccountList } from './header/headerUtils';
+import { getChainFamily, buildNetworkList, buildAccountList, supportsMultiAccount } from './header/headerUtils';
 import NetworkDropdown from './header/NetworkDropdown';
 import AccountDropdown from './header/AccountDropdown';
 import AddNetworkModal from './header/AddNetworkModal';
@@ -49,7 +49,7 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
     [pubkeys, selectedNetworkId, ethAccounts],
   );
 
-  const canAddAccount = selectedNetworkId?.startsWith('eip155:') ?? false;
+  const canAddAccount = supportsMultiAccount(selectedNetworkId);
 
   // Fetch pubkeys + persisted state
   const fetchPubkeys = useCallback(() => {
@@ -250,34 +250,48 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
     setAssetContext,
   ]);
 
-  // ETH account add/remove
-  const handleAddEthAccount = useCallback(() => {
-    const nextIndex = Math.max(...ethAccounts) + 1;
+  // Account add/remove. EVM dispatches to ADD_ETH_ACCOUNT / REMOVE_ETH_ACCOUNT
+  // (cross-chain ethAccountsStorage); other supported families (non-Bitcoin
+  // UTXO, Cosmos, Solana) dispatch to the per-network ADD_ACCOUNT / REMOVE_ACCOUNT
+  // handlers keyed by networkId.
+  const handleAddAccount = useCallback(() => {
+    if (!selectedNetworkId) return;
     setIsAddingAccount(true);
-    chrome.runtime.sendMessage({ type: 'ADD_ETH_ACCOUNT', accountIndex: nextIndex }, response => {
+    const isEvm = selectedNetworkId.startsWith('eip155:');
+    const nextIndex = isEvm ? Math.max(...ethAccounts) + 1 : Math.max(0, ...accounts.map(a => a.accountIndex ?? 0)) + 1;
+    const msg = isEvm
+      ? { type: 'ADD_ETH_ACCOUNT', accountIndex: nextIndex }
+      : { type: 'ADD_ACCOUNT', networkId: selectedNetworkId, accountIndex: nextIndex };
+    chrome.runtime.sendMessage(msg, response => {
       setIsAddingAccount(false);
       if (response?.success) {
-        setEthAccounts(response.accounts);
+        if (isEvm && response.accounts) setEthAccounts(response.accounts);
         toast({ title: `Account ${nextIndex} added`, status: 'success', duration: 2000 });
         fetchPubkeys();
       } else {
         toast({ title: 'Failed to add account', description: response?.error, status: 'error', duration: 3000 });
       }
     });
-  }, [ethAccounts, fetchPubkeys, toast]);
+  }, [selectedNetworkId, ethAccounts, accounts, fetchPubkeys, toast]);
 
-  const handleRemoveEthAccount = useCallback(
+  const handleRemoveAccount = useCallback(
     (index: number) => {
-      if (index === 0) return;
-      chrome.runtime.sendMessage({ type: 'REMOVE_ETH_ACCOUNT', accountIndex: index }, response => {
+      if (index === 0 || !selectedNetworkId) return;
+      const isEvm = selectedNetworkId.startsWith('eip155:');
+      const msg = isEvm
+        ? { type: 'REMOVE_ETH_ACCOUNT', accountIndex: index }
+        : { type: 'REMOVE_ACCOUNT', networkId: selectedNetworkId, accountIndex: index };
+      chrome.runtime.sendMessage(msg, response => {
         if (response?.success) {
-          setEthAccounts(response.accounts);
+          if (isEvm && response.accounts) setEthAccounts(response.accounts);
           toast({ title: `Account ${index} removed`, status: 'info', duration: 2000 });
           fetchPubkeys();
+        } else {
+          toast({ title: 'Failed to remove account', description: response?.error, status: 'error', duration: 3000 });
         }
       });
     },
-    [fetchPubkeys, toast],
+    [selectedNetworkId, fetchPubkeys, toast],
   );
 
   // Custom network add/remove
@@ -363,9 +377,9 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
               selectedAccountKey={selectedAccountKey}
               onSelect={handleAccountSelect}
               canAddAccount={canAddAccount}
-              onAddAccount={handleAddEthAccount}
+              onAddAccount={handleAddAccount}
               isAddingAccount={isAddingAccount}
-              onRemoveAccount={canAddAccount ? handleRemoveEthAccount : undefined}
+              onRemoveAccount={canAddAccount ? handleRemoveAccount : undefined}
             />
           </Flex>
         ) : (

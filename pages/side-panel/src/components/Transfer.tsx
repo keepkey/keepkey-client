@@ -1,5 +1,4 @@
 import {
-  Avatar,
   Badge,
   Text,
   Box,
@@ -13,7 +12,6 @@ import {
   VStack,
   HStack,
   useToast,
-  useColorModeValue,
   Modal,
   ModalOverlay,
   ModalContent,
@@ -27,6 +25,7 @@ import {
   IconButton,
 } from '@chakra-ui/react';
 import { CloseIcon } from '@chakra-ui/icons';
+import { AssetIcon } from './AssetIcon';
 import React, { useCallback, useEffect, useState } from 'react';
 import { NetworkIdToChain, COIN_MAP_LONG } from '@extension/shared';
 //@ts-ignore
@@ -58,9 +57,6 @@ export function Transfer(): JSX.Element {
   const [tokenStandard, setTokenStandard] = useState<string>('');
 
   const { isOpen, onOpen, onClose } = useDisclosure();
-
-  const bgColor = useColorModeValue('white', 'gray.700');
-  const headingColor = useColorModeValue('teal.500', 'teal.300');
 
   const onStart = async () => {
     const tag = TAG + ' | onStart | ';
@@ -192,6 +188,13 @@ export function Transfer(): JSX.Element {
         recipient,
         memo,
         isMax,
+        // Carry the selected account so the background signs/builds from the
+        // chosen account instead of defaulting to account 0: accountIndex
+        // scopes the pubkey set for UTXO/Cosmos buildTx and selects the Solana
+        // address_n. Without this, receiving on account 2 but spending from
+        // account 0 is possible.
+        accountIndex: assetContext?.accountIndex,
+        note: assetContext?.note,
       };
 
       // Log token transaction info for debugging
@@ -264,21 +267,21 @@ export function Transfer(): JSX.Element {
     <>
       <VStack align="stretch" spacing={5} p={2}>
         {/* Asset Card - Shows what you're sending */}
-        <Box bg="rgba(255, 255, 255, 0.05)" borderRadius="xl" p={4} border="1px solid" borderColor="whiteAlpha.100">
+        <Box bg="kk.surface" borderRadius="xl" p={4} border="1px solid" borderColor="kk.line">
           <Flex align="center" justify="space-between">
             <Flex align="center" gap={3}>
-              <Avatar size="md" src={avatarUrl} />
+              <AssetIcon src={avatarUrl} symbol={assetContext?.symbol} size={48} />
               <Box>
-                <Text fontWeight="semibold" color="white" fontSize="lg">
+                <Text fontWeight="semibold" color="kk.text" fontSize="lg">
                   {assetContext?.name || 'Loading...'}
                 </Text>
-                <Text fontSize="sm" color="whiteAlpha.600">
+                <Text fontSize="sm" color="kk.dim">
                   {totalBalance.toFixed(6)} {assetContext?.symbol}
                 </Text>
               </Box>
             </Flex>
             {isToken && (
-              <Badge colorScheme="purple" fontSize="xs">
+              <Badge bg="kk.surfaceHi" color="kk.dim" fontSize="xs">
                 {tokenStandard}
               </Badge>
             )}
@@ -287,7 +290,7 @@ export function Transfer(): JSX.Element {
 
         {/* Recipient Input */}
         <Box>
-          <Text fontSize="sm" color="whiteAlpha.600" mb={2} fontWeight="medium">
+          <Text fontSize="sm" color="kk.dim" mb={2} fontWeight="medium">
             To
           </Text>
           <InputGroup>
@@ -295,13 +298,13 @@ export function Transfer(): JSX.Element {
               value={recipient}
               onChange={e => setRecipient(e.target.value)}
               placeholder="Address, domain or identity"
-              bg="rgba(255, 255, 255, 0.05)"
+              bg="kk.surface"
               border="1px solid"
-              borderColor="whiteAlpha.200"
+              borderColor="kk.lineHi"
               borderRadius="xl"
               py={6}
-              _placeholder={{ color: 'whiteAlpha.400' }}
-              _focus={{ borderColor: 'blue.400', boxShadow: 'none' }}
+              _placeholder={{ color: 'kk.faint' }}
+              _focus={{ borderColor: 'kk.accent', boxShadow: 'none' }}
             />
             {recipient && (
               <InputRightElement h="100%">
@@ -320,14 +323,14 @@ export function Transfer(): JSX.Element {
         {/* Amount Input */}
         <Box>
           <Flex justify="space-between" align="center" mb={2}>
-            <Text fontSize="sm" color="whiteAlpha.600" fontWeight="medium">
+            <Text fontSize="sm" color="kk.dim" fontWeight="medium">
               Amount
             </Text>
             <HStack spacing={2}>
               <Button
                 size="xs"
                 variant="ghost"
-                color="blue.400"
+                color="kk.accent"
                 onClick={() => {
                   const halfAmount = totalBalance / 2;
                   setInputAmount(halfAmount.toString());
@@ -338,13 +341,13 @@ export function Transfer(): JSX.Element {
                 }}>
                 50%
               </Button>
-              <Button size="xs" variant="ghost" color="blue.400" onClick={setMaxAmount}>
+              <Button size="xs" variant="ghost" color="kk.accent" onClick={setMaxAmount}>
                 Max
               </Button>
             </HStack>
           </Flex>
 
-          <Box bg="rgba(255, 255, 255, 0.05)" border="1px solid" borderColor="whiteAlpha.200" borderRadius="xl" p={4}>
+          <Box bg="kk.surface" border="1px solid" borderColor="kk.lineHi" borderRadius="xl" p={4}>
             <Flex align="center" justify="space-between">
               <Input
                 value={useUsdInput ? inputAmountUsd : inputAmount}
@@ -353,12 +356,12 @@ export function Transfer(): JSX.Element {
                 variant="unstyled"
                 fontSize="2xl"
                 fontWeight="semibold"
-                color="white"
-                _placeholder={{ color: 'whiteAlpha.300' }}
+                color="kk.text"
+                _placeholder={{ color: 'kk.faint' }}
                 flex={1}
               />
               <HStack spacing={2}>
-                <Text color="whiteAlpha.600" fontWeight="medium">
+                <Text color="kk.dim" fontWeight="medium">
                   {useUsdInput ? 'USD' : assetContext?.symbol || '---'}
                 </Text>
               </HStack>
@@ -366,10 +369,10 @@ export function Transfer(): JSX.Element {
 
             {/* Secondary amount display */}
             <Flex justify="space-between" align="center" mt={2}>
-              <Text fontSize="sm" color="whiteAlpha.500">
+              <Text fontSize="sm" color="kk.dim">
                 {useUsdInput ? `${inputAmount || '0'} ${assetContext?.symbol || ''}` : `$${inputAmountUsd || '0.00'}`}
               </Text>
-              <Button size="xs" variant="ghost" color="whiteAlpha.500" onClick={() => setUseUsdInput(!useUsdInput)}>
+              <Button size="xs" variant="ghost" color="kk.dim" onClick={() => setUseUsdInput(!useUsdInput)}>
                 ↕ Switch to {useUsdInput ? assetContext?.symbol : 'USD'}
               </Button>
             </Flex>
@@ -378,14 +381,13 @@ export function Transfer(): JSX.Element {
 
         {/* Send Button */}
         <Button
-          colorScheme="blue"
           size="lg"
           w="full"
           borderRadius="xl"
           py={6}
           isDisabled={isSubmitting || !inputAmount || !recipient}
           onClick={onOpen}
-          _disabled={{ bg: 'whiteAlpha.200', cursor: 'not-allowed' }}>
+          _disabled={{ opacity: 0.4, cursor: 'not-allowed' }}>
           {!recipient ? 'Enter recipient' : !inputAmount ? 'Enter amount' : isSubmitting ? 'Sending...' : 'Continue'}
         </Button>
       </VStack>
@@ -393,38 +395,38 @@ export function Transfer(): JSX.Element {
       {/* Confirmation Modal */}
       <Modal isOpen={isOpen} onClose={onClose} isCentered>
         <ModalOverlay bg="blackAlpha.700" />
-        <ModalContent bg="gray.900" borderRadius="xl">
-          <ModalHeader color="white">Confirm Transaction</ModalHeader>
-          <ModalCloseButton color="white" />
+        <ModalContent bg="kk.bg2" borderRadius="xl">
+          <ModalHeader color="kk.text">Confirm Transaction</ModalHeader>
+          <ModalCloseButton color="kk.text" />
           <ModalBody>
             <VStack spacing={4} align="stretch">
-              <Box bg="whiteAlpha.100" p={4} borderRadius="lg">
-                <Text fontSize="sm" color="whiteAlpha.600">
+              <Box bg="kk.surfaceHi" p={4} borderRadius="lg">
+                <Text fontSize="sm" color="kk.dim">
                   Sending
                 </Text>
-                <Text fontSize="xl" fontWeight="bold" color="white">
+                <Text fontSize="xl" fontWeight="bold" color="kk.text">
                   {inputAmount} {assetContext?.symbol}
                 </Text>
-                <Text fontSize="sm" color="whiteAlpha.500">
+                <Text fontSize="sm" color="kk.dim">
                   ${inputAmountUsd || '0.00'}
                 </Text>
               </Box>
 
-              <Box bg="whiteAlpha.100" p={4} borderRadius="lg">
-                <Text fontSize="sm" color="whiteAlpha.600">
+              <Box bg="kk.surfaceHi" p={4} borderRadius="lg">
+                <Text fontSize="sm" color="kk.dim">
                   To
                 </Text>
-                <Text fontSize="sm" color="white" wordBreak="break-all">
+                <Text fontSize="sm" color="kk.text" wordBreak="break-all">
                   {recipient}
                 </Text>
               </Box>
             </VStack>
           </ModalBody>
           <ModalFooter gap={3}>
-            <Button variant="ghost" onClick={onClose} color="white">
+            <Button variant="ghost" onClick={onClose} color="kk.text">
               Cancel
             </Button>
-            <Button colorScheme="blue" onClick={handleSend} isLoading={isSubmitting}>
+            <Button onClick={handleSend} isLoading={isSubmitting}>
               Confirm
             </Button>
           </ModalFooter>

@@ -34,7 +34,7 @@ export const handleDogecoinRequest = async (
       requestInfo.id = uuidv4();
       chrome.runtime.sendMessage({ action: 'TRANSACTION_CONTEXT_UPDATED', id: requestInfo.id });
 
-      const pubkeys = wallet.getPubkeys(ChainToNetworkId[Chain.Dogecoin]);
+      const pubkeys = wallet.getSendPubkeys(ChainToNetworkId[Chain.Dogecoin], params[0]?.accountIndex);
       if (!pubkeys || pubkeys.length === 0) throw Error('Failed to locate pubkeys for Dogecoin');
 
       const sendPayload = {
@@ -88,6 +88,7 @@ export const handleDogecoinRequest = async (
 
       const result = await requireApproval(networkId, requestInfo, 'dogecoin', method, params[0]);
       const response = await requestStorage.getEventById(requestInfo.id);
+      if (!response) throw Error('Failed to load event for signing!');
 
       if (result.success && response.unsignedTx) {
         const sdk = wallet.getSdk();

@@ -1,5 +1,6 @@
 import { extendTheme } from '@chakra-ui/react';
 import { config } from './config';
+import { tokens } from '../tokens';
 
 const colors = {
   keepKeyGold: {
@@ -26,29 +27,29 @@ const colors = {
     800: '#0f0f0f',
     900: '#0a0a0a',
   },
-  // Surface tokens lifted from the design handoff (darker, layered).
+  // Surface / text / status derive from the shared design tokens (styles/tokens.ts)
+  // — single source of truth so this theme and the swap inline theme can't drift.
   kkSurface: {
-    bg: '#0b0d10',
-    bg2: '#111418',
-    surface: '#161a1f',
-    surfaceHi: '#1c2127',
-    line: 'rgba(255,255,255,0.06)',
-    lineHi: 'rgba(255,255,255,0.10)',
+    bg: tokens.bg,
+    bg2: tokens.bg2,
+    surface: tokens.surface,
+    surfaceHi: tokens.surfaceHi,
+    line: tokens.line,
+    lineHi: tokens.lineHi,
   },
   kkText: {
-    base: '#e6e9ef',
-    dim: 'rgba(230,233,239,0.62)',
-    faint: 'rgba(230,233,239,0.38)',
+    base: tokens.text,
+    dim: tokens.dim,
+    faint: tokens.faint,
   },
-  // OKLCH status palette from the handoff (fallback hex for older browsers).
   kkStatus: {
-    good: '#57ce51',
-    warn: '#e6b955',
-    bad: '#e56a4d',
+    good: tokens.good,
+    warn: tokens.warn,
+    bad: tokens.bad,
   },
 };
 
-const GOLD_GRADIENT = 'linear-gradient(180deg, #d29929 0%, #916419 100%)';
+const GOLD_GRADIENT = `linear-gradient(180deg, ${tokens.accent} 0%, ${tokens.accentDeep} 100%)`;
 
 export const theme = extendTheme({
   initialColorMode: 'dark',
@@ -74,9 +75,9 @@ export const theme = extendTheme({
       'kk.good': colors.kkStatus.good,
       'kk.warn': colors.kkStatus.warn,
       'kk.bad': colors.kkStatus.bad,
-      'kk.accent': colors.keepKeyGold[400],
-      'kk.accentDim': 'rgba(210,153,41,0.16)',
-      'kk.accentEdge': 'rgba(210,153,41,0.36)',
+      'kk.accent': tokens.accent,
+      'kk.accentDim': tokens.accentDim,
+      'kk.accentEdge': tokens.accentEdge,
     },
   },
   fonts: {
@@ -87,9 +88,14 @@ export const theme = extendTheme({
   styles: {
     global: {
       'html, body, #app-container': {
+        height: '100%',
+        margin: 0,
         background: colors.kkSurface.bg,
         color: colors.kkText.base,
         fontFamily: "'Inter', system-ui, sans-serif",
+        // Inner panels own their scrolling (the body Flex / drawer bodies);
+        // pin the document so the wheel drives those, not the whole window.
+        overscrollBehavior: 'none',
       },
       // Uppercase letter-spaced micro-label used throughout the design.
       '.kk-eyebrow': {

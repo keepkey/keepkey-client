@@ -85,6 +85,7 @@ export const CustomTokenDialog = ({
       }, 500);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [contractAddress]);
 
   const handleValidate = async () => {

@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Image, Button, Card, Stack, Text, Box, Spinner } from '@chakra-ui/react';
+import { Button, Card, Stack, Text, Box, Spinner } from '@chakra-ui/react';
+import { SpinningDevice } from './SpinningDevice';
 
 interface ConnectProps {
   setIsConnecting: (isConnecting: boolean) => void;
 }
+
+const KEEPKEY_LAUNCH_URL = 'https://keepkey.com/launch';
 
 const Connect: React.FC<ConnectProps> = ({ setIsConnecting }) => {
   const [isConnecting, setLocalIsConnecting] = useState(false);
@@ -25,8 +28,17 @@ const Connect: React.FC<ConnectProps> = ({ setIsConnecting }) => {
     return () => clearInterval(interval);
   }, []);
 
+  const openBrowserTab = (url: string) => {
+    if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
+      chrome.tabs.create({ url });
+      return;
+    }
+
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   const openKeepKeyLink = () => {
-    window.open('https://keepkey.com', '_blank');
+    openBrowserTab(KEEPKEY_LAUNCH_URL);
   };
 
   const connectKeepkey = () => {
@@ -52,14 +64,7 @@ const Connect: React.FC<ConnectProps> = ({ setIsConnecting }) => {
 
   const launchKeepKey = () => {
     try {
-      console.log('window: ', window);
-      console.log('window.location: ', window.location);
-      if (window) {
-        setTimeout(() => {
-          window.location.assign('keepkey://launch');
-          window.open('https://keepkey.com/get-started', '_blank');
-        }, 100); // Adding a slight delay before launching the URL
-      }
+      openBrowserTab(KEEPKEY_LAUNCH_URL);
     } catch (error) {
       console.error('Failed to launch KeepKey:', error);
     }
@@ -68,7 +73,7 @@ const Connect: React.FC<ConnectProps> = ({ setIsConnecting }) => {
   return (
     <Box display="flex" justifyContent="center" alignItems="center" height="100vh" position="relative">
       <Card
-        bg="gray.800"
+        bg="kk.surface"
         borderRadius="md"
         p={6}
         mb={6}
@@ -78,29 +83,31 @@ const Connect: React.FC<ConnectProps> = ({ setIsConnecting }) => {
         textAlign="center"
         boxShadow="lg"
         borderWidth="1px"
-        borderColor="whiteAlpha.100">
-        <Image src={'https://i.ibb.co/jR8WcJM/kk.gif'} alt="KeepKey" />
-        <Text fontSize="lg" fontWeight="bold" mb={2} color="white">
+        borderColor="kk.line">
+        {/* Spins slowly with a dim OLED — reads as a powered-but-unreachable
+            device while we poll localhost:1646 for the vault to come up. */}
+        <Box mb={2}>
+          <SpinningDevice scale={0.4} durationSeconds={16} label="OFFLINE" />
+        </Box>
+        <Text fontSize="lg" fontWeight="bold" mb={2} color="kk.text">
           KeepKey Vault Required
         </Text>
-        <Text fontSize="sm" mb={4} color="whiteAlpha.700">
+        <Text fontSize="sm" mb={4} color="kk.dim">
           The KeepKey Vault desktop app must be running to use this extension.
         </Text>
         <Stack direction="column" spacing={4} mb={4}>
-          <Button colorScheme="blue" onClick={launchKeepKey}>
-            Launch KeepKey Vault
-          </Button>
+          <Button onClick={launchKeepKey}>Launch KeepKey Vault</Button>
 
-          <Text fontSize="xs" color="whiteAlpha.600">
+          <Text fontSize="xs" color="kk.faint">
             Already running?
           </Text>
-          <Button colorScheme="teal" onClick={connectKeepkey}>
+          <Button variant="ghost" onClick={connectKeepkey}>
             Retry Connection
           </Button>
         </Stack>
-        <Text fontSize="sm" mt={4} color="whiteAlpha.700">
+        <Text fontSize="sm" mt={4} color="kk.dim">
           Don't have KeepKey Vault?{' '}
-          <Button variant="link" color="teal.300" onClick={openKeepKeyLink}>
+          <Button variant="link" color="kk.accent" onClick={openKeepKeyLink}>
             Download at keepkey.com
           </Button>
         </Text>
@@ -116,9 +123,9 @@ const Connect: React.FC<ConnectProps> = ({ setIsConnecting }) => {
           display="flex"
           justifyContent="center"
           alignItems="center"
-          bg="rgba(255, 255, 255, 0.8)"
+          bg="rgba(11, 13, 16, 0.85)"
           zIndex={1}>
-          <Spinner size="xl" thickness="4px" color="teal.500" />
+          <Spinner size="xl" thickness="4px" color="kk.accent" />
         </Box>
       )}
     </Box>
