@@ -1033,8 +1033,13 @@ const onStart = async function () {
           await web3ProviderStorage.saveWeb3Provider({
             chainId: ethInfo.chainId,
             caip: ethInfo.caip,
+            networkId: ethInfo.networkId,
             blockExplorerUrls: ethInfo.explorer ? [ethInfo.explorer] : [],
             name: ethInfo.name,
+            // Carry the explorer tx-link prefix so TxidPage can deep-link the
+            // txid after a send. Without it the success screen shows a bare
+            // hash with no "View on Explorer" link.
+            explorerTxLink: ethInfo.explorerTxLink,
             providerUrl: ethInfo.rpc,
             // Full list (primary included) under `providers` — the key the
             // failover loops (getProvider / withRpcFailover) actually read.
@@ -1436,8 +1441,12 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                     providerData = {
                       chainId: chainInfo.chainId,
                       caip: chainInfo.caip,
+                      networkId: chainInfo.networkId,
                       blockExplorerUrls: chainInfo.explorer ? [chainInfo.explorer] : [],
                       name: chainInfo.name,
+                      // Carry the explorer tx-link prefix so TxidPage deep-links
+                      // the txid (otherwise the success screen shows a bare hash).
+                      explorerTxLink: chainInfo.explorerTxLink,
                       providerUrl: chainInfo.rpc,
                       providers: chainInfo.rpcs,
                     };
