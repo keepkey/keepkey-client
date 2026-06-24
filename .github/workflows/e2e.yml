@@ -1,10 +1,10 @@
 name: Run E2E Tests
 
+# E2E drives the full extension against a *connected* KeepKey device, which
+# GitHub's headless runners don't have — so it can never pass in CI. Keep it
+# manual-only: run it from the Actions tab on a machine with a device attached.
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   chrome:

@@ -8,7 +8,7 @@ SHELL := /bin/bash
 
 .PHONY: help build build-firefox dev dev-firefox zip zip-firefox \
         install reinstall clean clean-bundle clean-turbo clean-deps \
-        lint lint-fix prettier type-check e2e e2e-firefox \
+        lint lint-fix prettier type-check test e2e e2e-firefox \
         bump
 
 help: ## Show this help
@@ -74,7 +74,10 @@ type-check: ## Run TypeScript type-check across all packages
 
 # ---------- tests ----------
 
-e2e: ## End-to-end tests (Chrome)
+test: ## Run unit tests (vitest), same as CI
+	pnpm test
+
+e2e: ## End-to-end tests (Chrome) — needs a connected KeepKey
 	pnpm e2e
 
 e2e-firefox: ## End-to-end tests (Firefox)
