@@ -27,11 +27,18 @@ interface MaskingSettings {
   enablePhantomMasking: boolean;
 }
 
+// ponytail: must stay in sync with maskingSettingsStorage defaults in
+// packages/storage/lib/customStorage.ts. The Settings UI reads masking
+// through that storage (so unset keys show the storage defaults), but this
+// content script reads chrome.storage.local raw — and createStorage never
+// persists its defaults. If a user never toggles a switch the key is absent,
+// so these MUST match or the UI shows masking ON while the injected provider
+// silently runs all-off (no window.ethereum for legacy dApps).
 const MASKING_DEFAULTS: MaskingSettings = {
-  enableMetaMaskMasking: false,
+  enableMetaMaskMasking: true,
   enableXfiMasking: false,
   enableKeplrMasking: false,
-  enablePhantomMasking: false,
+  enablePhantomMasking: true,
 };
 
 async function readMaskingSettings(): Promise<MaskingSettings> {
@@ -39,11 +46,14 @@ async function readMaskingSettings(): Promise<MaskingSettings> {
     const result = await chrome.storage.local.get('masking-settings');
     const raw = result?.['masking-settings'];
     if (!raw || typeof raw !== 'object') return MASKING_DEFAULTS;
+    // `?? default` (not `=== true`) so a present-but-partial object keeps the
+    // storage defaults for missing fields instead of forcing them false. A
+    // stored boolean (incl. an explicit false) is always respected.
     return {
-      enableMetaMaskMasking: raw.enableMetaMaskMasking === true,
-      enableXfiMasking: raw.enableXfiMasking === true,
-      enableKeplrMasking: raw.enableKeplrMasking === true,
-      enablePhantomMasking: raw.enablePhantomMasking === true,
+      enableMetaMaskMasking: raw.enableMetaMaskMasking ?? MASKING_DEFAULTS.enableMetaMaskMasking,
+      enableXfiMasking: raw.enableXfiMasking ?? MASKING_DEFAULTS.enableXfiMasking,
+      enableKeplrMasking: raw.enableKeplrMasking ?? MASKING_DEFAULTS.enableKeplrMasking,
+      enablePhantomMasking: raw.enablePhantomMasking ?? MASKING_DEFAULTS.enablePhantomMasking,
     };
   } catch {
     return MASKING_DEFAULTS;
