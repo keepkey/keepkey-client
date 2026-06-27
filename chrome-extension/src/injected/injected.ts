@@ -552,19 +552,20 @@ import { KeepKeyTronProvider } from './tron-provider';
       ripple: createWalletObject('ripple'),
     };
 
-    // Mount providers without stomping existing wallets.
+    // Mount providers.
     //
     // Modern dApps use EIP-6963 for multi-wallet discovery (announced below),
-    // so we don't need to own `window.ethereum`. Overwriting another wallet's
-    // provider is a dApp-compatibility landmine — it breaks that wallet's
-    // connection flow, corrupts its event state, and is hard to debug.
+    // so by default we don't need to own `window.ethereum`. But when a user
+    // explicitly turns on a Masking toggle they're saying "be this wallet on
+    // this page" — that's a deliberate opt-in, so we force the global and
+    // clobber whatever else claimed it (best-effort: a non-configurable
+    // global from another wallet can still refuse the redefinition).
     //
     // Policy:
     //   - `window.keepkey`  → always mount (our own namespace, no collision risk)
-    //   - `window.ethereum` → only when MetaMask masking is ON, and only if
-    //                          nothing is there; EIP-6963 covers the default case
-    //   - `window.xfi`      → only when XFI masking is ON, and only if nothing
-    //                          else already owns the namespace (XDEFI / Ctrl)
+    //   - `window.ethereum` → when MetaMask masking is ON — forced/clobber
+    //   - `window.xfi`      → when XFI masking is ON — forced/clobber
+    //   - `window.solana`   → when Phantom masking is ON — forced/clobber
     const mountProvider = (name: string, provider: any, { force = false } = {}) => {
       const existing = (kWindow as any)[name];
       if (existing && !force) {
@@ -582,16 +583,16 @@ import { KeepKeyTronProvider } from './tron-provider';
       }
     };
 
-    // Mount providers — `keepkey` is forced because it's our own namespace
-    // and previous page-load state (e.g. from a stale injection) should not
-    // block us from rebinding to the current request pipeline. `ethereum`
-    // and `xfi` are gated on explicit user opt-in via the Masking toggles;
-    // without those flags we stay out of those globals entirely.
+    // `keepkey` is forced because it's our own namespace. `ethereum` and `xfi`
+    // are gated on explicit user opt-in via the Masking toggles; when the
+    // toggle is on we force the global so the mask actually takes effect even
+    // if another wallet already grabbed it. Without the flag we stay out of
+    // those globals entirely.
     if (masking.enableMetaMaskMasking) {
-      mountProvider('ethereum', ethereum);
+      mountProvider('ethereum', ethereum, { force: true });
     }
     if (masking.enableXfiMasking) {
-      mountProvider('xfi', xfi);
+      mountProvider('xfi', xfi, { force: true });
     }
     mountProvider('keepkey', keepkey, { force: true });
 
@@ -620,20 +621,18 @@ import { KeepKeyTronProvider } from './tron-provider';
     }
 
     // Legacy window.solana shim — the Solana counterpart to MetaMask
-    // masking. Gated on the Phantom masking toggle and mounted only if
-    // nothing else (a real Phantom/Solflare) already claims the global, so
-    // we never clobber an installed wallet. Modern dApps keep discovering
-    // KeepKey via the Wallet Standard registration above regardless.
+    // masking. Gated on the Phantom masking toggle; when on we force the
+    // global and clobber whatever claimed it (best-effort — a non-configurable
+    // global from a real Phantom/Solflare can refuse the redefinition). Modern
+    // dApps keep discovering KeepKey via the Wallet Standard registration above.
     if (masking.enablePhantomMasking) {
       try {
-        if (!(kWindow as any).solana) {
-          const solanaProvider = new KeepKeySolanaProvider(walletRequest);
-          Object.defineProperty(kWindow, 'solana', {
-            value: solanaProvider,
-            writable: false,
-            configurable: true,
-          });
-        }
+        const solanaProvider = new KeepKeySolanaProvider(walletRequest);
+        Object.defineProperty(kWindow, 'solana', {
+          value: solanaProvider,
+          writable: false,
+          configurable: true,
+        });
       } catch (_e) {
         // swallow; legacy provider is best-effort
       }
