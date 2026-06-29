@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { createProviderRpcError, createTimeoutError, formatUserError } from './utils';
+import {
+  createProviderRpcError,
+  createTimeoutError,
+  createVaultRequiredError,
+  formatUserError,
+  isVaultUnreachableError,
+  VAULT_REQUIRED_MESSAGE,
+} from './utils';
 
 describe('createProviderRpcError', () => {
   it('sets the code and message', () => {
@@ -29,7 +36,35 @@ describe('createTimeoutError', () => {
   });
 });
 
+describe('createVaultRequiredError', () => {
+  it('uses EIP-1193 disconnected code 4900 and the canonical vault message', () => {
+    const e = createVaultRequiredError();
+    expect(e.code).toBe(4900);
+    expect(e.message).toBe(VAULT_REQUIRED_MESSAGE);
+    expect(e.message).toContain('keepkey.com/launch');
+  });
+});
+
+describe('isVaultUnreachableError', () => {
+  it.each([
+    'TypeError: Failed to fetch',
+    'Load failed',
+    'NetworkError when attempting to fetch resource',
+    'connect ECONNREFUSED 127.0.0.1:1646',
+  ])('detects vault-down network error: %s', msg => {
+    expect(isVaultUnreachableError(msg)).toBe(true);
+  });
+
+  it('does not flag unrelated errors', () => {
+    expect(isVaultUnreachableError('User rejected the request')).toBe(false);
+  });
+});
+
 describe('formatUserError', () => {
+  it('translates a vault-unreachable network error into the launch instruction', () => {
+    expect(formatUserError(new Error('TypeError: Failed to fetch'))).toBe(VAULT_REQUIRED_MESSAGE);
+  });
+
   it('translates the vault "No device connected" error into a friendly message', () => {
     const e = new Error('SdkError: No device connected');
     expect(formatUserError(e)).toBe('Please connect your KeepKey device and try again.');

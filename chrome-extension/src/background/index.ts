@@ -43,7 +43,7 @@ import {
 import { getChainInfo } from './chains/registry';
 import { withRpcFailoverByNetworkId } from './chains/rpcFailover';
 import { EVM_TESTNETS, SOLANA_DEVNET, ALL_TESTNET_NETWORK_IDS } from './testnetPresets';
-import { formatUserError } from './utils';
+import { formatUserError, createVaultRequiredError } from './utils';
 import { partitionSpamTokens, getTokenVisibilityMap, setTokenVisibility } from './spamFilter';
 
 const TAG = ' | background/index.js | ';
@@ -1127,7 +1127,14 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             console.warn(tag, 'WALLET_REQUEST before wallet ready — initializing on demand');
             await ensureStarted();
           }
-          if (!wallet.isInitialized()) throw Error('Wallet not initialized');
+          if (!wallet.isInitialized()) {
+            // Distinguish "vault is closed" (state 4) from a transient init race
+            // so the dApp gets the actionable "launch the Vault" message instead
+            // of a bare "Wallet not initialized". The side panel already shows
+            // the Connect/Vault-Required card off the same state.
+            if (KEEPKEY_STATE === 4) throw createVaultRequiredError();
+            throw Error('Wallet not initialized');
+          }
           const { requestInfo } = message;
           const { method, params, chain } = requestInfo;
 
