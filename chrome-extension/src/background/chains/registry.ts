@@ -219,6 +219,34 @@ export async function getChainInfo(networkId: string): Promise<ChainInfo | null>
   return p;
 }
 
+const colorCache = new Map<string, string | null>();
+
+/**
+ * Canonical brand color for any caip (native or token), from the same
+ * discovery service getChainInfo uses — but keyed by the full caip so it
+ * works for tokens and non-EVM chains too, not just eip155 natives. The
+ * portfolio donut/legend use this instead of a hashed palette so ETH is
+ * #627EEA, USDT #24A37B, etc. Cached forever (colors are static);
+ * best-effort — returns null if discovery doesn't know the asset.
+ */
+export async function getColorForCaip(caip: string): Promise<string | null> {
+  if (!caip) return null;
+  if (colorCache.has(caip)) return colorCache.get(caip)!;
+  const url = `${PIONEER_API}/api/v1/discovery/caip/${encodeURIComponent(caip)}`;
+  let color: string | null = null;
+  try {
+    const resp = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    if (resp.ok) {
+      const body = await resp.json();
+      if (body && typeof body.color === 'string') color = body.color;
+    }
+  } catch {
+    // best-effort; leave null and fall back to the hashed palette
+  }
+  colorCache.set(caip, color);
+  return color;
+}
+
 /** Convenience: just the primary RPC URL or null. */
 export async function getEvmRpc(networkId: string): Promise<string | null> {
   const info = await getChainInfo(networkId);

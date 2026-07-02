@@ -21,7 +21,9 @@ const DonutChart: React.FC<DonutChartProps> = ({ balances, totalUsd }) => {
 
     const items = top5.map(b => {
       const symbol = b.symbol || b.ticker || '?';
-      return { symbol, value: parseFloat(b.valueUsd || '0'), color: colorForSymbol(symbol) };
+      // Prefer the canonical discovery color (enriched in the background);
+      // fall back to the hashed palette only when discovery doesn't know it.
+      return { symbol, value: parseFloat(b.valueUsd || '0'), color: b.color || colorForSymbol(symbol) };
     });
 
     if (otherValue > 0) {
