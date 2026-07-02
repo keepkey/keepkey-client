@@ -40,10 +40,10 @@ import {
   testnetSettingsStorage,
   customTokensStorageApi,
 } from '@extension/storage';
-import { getChainInfo } from './chains/registry';
+import { getChainInfo, getColorForCaip } from './chains/registry';
 import { withRpcFailoverByNetworkId } from './chains/rpcFailover';
 import { EVM_TESTNETS, SOLANA_DEVNET, ALL_TESTNET_NETWORK_IDS } from './testnetPresets';
-import { formatUserError } from './utils';
+import { formatUserError, createVaultRequiredError } from './utils';
 import { partitionSpamTokens, getTokenVisibilityMap, setTokenVisibility } from './spamFilter';
 
 const TAG = ' | background/index.js | ';
@@ -620,6 +620,7 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
           valueUsd: String(b.valueUsd ?? '0'),
           priceUsd: String(b.priceUsd ?? '0'),
           icon: b.icon || (caip ? `https://api.keepkey.info/coins/${btoa(caip).replace(/=+$/, '')}.png` : ''),
+          color: b.color || undefined,
           isNative: true,
           address: b.address || b.pubkey || '',
         };
@@ -645,6 +646,7 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
           priceUsd: String(t.priceUsd ?? '0'),
           icon:
             t.icon || t.image || (caip ? `https://api.keepkey.info/coins/${btoa(caip).replace(/=+$/, '')}.png` : ''),
+          color: t.color || undefined,
           decimals: t.decimals ?? t.decimal,
           isNative: false,
           token: true,
@@ -755,6 +757,18 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
       if (hidden.length > 0) {
         console.log(`[fetchBalances] Spam: ${visible.length} visible, ${hidden.length} hidden of ${preFilterCount}`);
       }
+
+      // Enrich with canonical brand colors from the discovery service (by
+      // caip, cached, best-effort) so the portfolio donut/legend use real
+      // asset colors — ETH #627EEA, USDT #24A37B — not a hashed palette.
+      // Only for entries the portfolio didn't already color, and only on
+      // the visible set so dropped spam never triggers a lookup.
+      await Promise.all(
+        [...new Set(balances.filter(b => b.caip && !b.color).map(b => b.caip))].map(async caip => {
+          const color = await getColorForCaip(caip);
+          if (color) for (const b of balances) if (b.caip === caip) b.color = color;
+        }),
+      );
 
       console.log(
         `[fetchBalances] Got ${balances.length} balance entries (${balances.filter((b: any) => b.isNative).length} native, ${balances.filter((b: any) => !b.isNative).length} tokens)`,
@@ -1127,7 +1141,14 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             console.warn(tag, 'WALLET_REQUEST before wallet ready — initializing on demand');
             await ensureStarted();
           }
-          if (!wallet.isInitialized()) throw Error('Wallet not initialized');
+          if (!wallet.isInitialized()) {
+            // Distinguish "vault is closed" (state 4) from a transient init race
+            // so the dApp gets the actionable "launch the Vault" message instead
+            // of a bare "Wallet not initialized". The side panel already shows
+            // the Connect/Vault-Required card off the same state.
+            if (KEEPKEY_STATE === 4) throw createVaultRequiredError();
+            throw Error('Wallet not initialized');
+          }
           const { requestInfo } = message;
           const { method, params, chain } = requestInfo;
 
