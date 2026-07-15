@@ -169,6 +169,9 @@ async function hiveTransfer(
   // Keychain semantics: the dApp may name the sending account. We control
   // exactly one account (index 0), so any mismatch is a hard reject — never
   // report success for a payment from a different account than requested.
+  if (enforce === true && !username) {
+    throw createProviderRpcError(-32602, 'enforce=true requires a username');
+  }
   if (username && username !== from.name) {
     throw createProviderRpcError(
       4100,
@@ -269,7 +272,13 @@ async function hiveTransfer(
     })
     .catch(() => {});
 
-  return { txid: bData.txid };
+  // Keychain-shaped result — dApps read response.result.id / .tx_id
+  // (hive-tx.utils.ts returns { id, tx_id, confirmed }).
+  return {
+    id: bData.txid,
+    tx_id: bData.txid,
+    confirmed: Boolean(bData.blockNum ?? bData.block_num),
+  };
 }
 
 export const handleHiveRequest = async (
