@@ -16,6 +16,7 @@ import { handleRippleRequest } from './chains/rippleHandler';
 import { handleSolanaRequest } from './chains/solanaHandler';
 import { handleTronRequest } from './chains/tronHandler';
 import { handleTonRequest } from './chains/tonHandler';
+import { handleHiveRequest } from './chains/hiveHandler';
 import type { ProviderRpcError } from './utils';
 import { createProviderRpcError, formatUserError } from './utils';
 import { openSidePanel, setApprovalBadge } from './popup';
@@ -228,6 +229,10 @@ export const handleWalletRequest = async (
       }
       case 'ton': {
         return await handleTonRequest(method, params, requestInfo, ADDRESS, __KEEPKEY_WALLET, requireApproval);
+        break;
+      }
+      case 'hive': {
+        return await handleHiveRequest(method, params, requestInfo, ADDRESS, __KEEPKEY_WALLET, requireApproval);
         break;
       }
       default: {

@@ -234,6 +234,9 @@ const Transaction = ({
           case 'tron':
             setTransactionType('other');
             break;
+          case 'hive':
+            setTransactionType('other');
+            break;
           default:
             setTransactionType('unknown');
         }
