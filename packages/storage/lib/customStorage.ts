@@ -97,6 +97,14 @@ const createApiKeyStorage = (): ApiKeyStorage => {
 
 export const keepKeyApiKeyStorage = createApiKeyStorage();
 
+// Agent mode (MCP bridge, EPIC_mcp_agent_bridge.md): when on, the background
+// connects to the vault's /bex-bridge socket and answers read-only
+// introspection tools. Default OFF.
+export const agentModeStorage = createStorage<boolean>('keepkey-agent-mode', false, {
+  storageType: StorageType.Local,
+  liveUpdate: true,
+});
+
 // Create Event Storage
 const createEventStorage = (key: string): EventStorage => {
   const storage = createStorage<Event[]>(key, [], {

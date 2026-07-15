@@ -20,6 +20,7 @@ import { handleHiveRequest } from './chains/hiveHandler';
 import type { ProviderRpcError } from './utils';
 import { createProviderRpcError, formatUserError } from './utils';
 import { openSidePanel, setApprovalBadge } from './popup';
+import { recordProviderCall, recordSite, registerPending, settlePending } from './providerLog';
 
 const TAG = ' | METHODS | ';
 
@@ -117,6 +118,17 @@ const requireApproval = async function (
     setApprovalBadge(true);
     await openSidePanel(requestInfo);
 
+    // Mirror the in-memory approval queue for the MCP agent bridge
+    // (bex_pending_requests). Settled again on resolve/timeout below.
+    registerPending({
+      id: requestInfo.id,
+      method: method || requestInfo.method,
+      params: params ?? requestInfo.params,
+      origin: requestInfo.siteUrl || requestInfo.href || '',
+      chain,
+      requestedAt: Date.now(),
+    });
+
     // Wait for user's decision. Resolves on ANY of:
     //   - user approves/rejects in sidebar (eth_sign_response arrives)
     //   - APPROVAL_TIMEOUT_MS elapses without a response (treated as reject)
@@ -128,6 +140,7 @@ const requireApproval = async function (
         chrome.runtime.onMessage.removeListener(listener);
         if (timer != null) clearTimeout(timer);
         setApprovalBadge(false);
+        settlePending(requestInfo.id);
       };
 
       const listener = (message: any) => {
@@ -151,11 +164,45 @@ const requireApproval = async function (
     });
   } catch (e) {
     console.error(tag, e);
+    settlePending(requestInfo?.id);
     return { success: false }; // Return failure in case of error
   }
 };
 
+// Thin observability wrapper: every provider call (page- or agent-originated)
+// lands in the providerLog ring buffer with its result or error CODE — the
+// data bex_logs serves (EPIC_mcp_agent_bridge.md, bug #1).
 export const handleWalletRequest = async (
+  requestInfo: any,
+  chain: string,
+  method: string,
+  params: any[],
+  __KEEPKEY_WALLET: any,
+  ADDRESS: string,
+): Promise<any> => {
+  const startedAt = Date.now();
+  const origin = requestInfo?.siteUrl || requestInfo?.href || '';
+  recordSite(origin, chain);
+  try {
+    const result = await routeWalletRequest(requestInfo, chain, method, params, __KEEPKEY_WALLET, ADDRESS);
+    recordProviderCall({ ts: Date.now(), origin, chain, method, params, result, durationMs: Date.now() - startedAt });
+    return result;
+  } catch (error: any) {
+    recordProviderCall({
+      ts: Date.now(),
+      origin,
+      chain,
+      method,
+      params,
+      errorCode: error?.code,
+      errorMessage: error?.message || String(error),
+      durationMs: Date.now() - startedAt,
+    });
+    throw error;
+  }
+};
+
+const routeWalletRequest = async (
   requestInfo: any,
   chain: string,
   method: string,

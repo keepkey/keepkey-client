@@ -15,6 +15,7 @@ import { resetTonState, prefetchTonAddress } from './chains/tonHandler';
 import { resetTronState, prefetchTronPubkey } from './chains/tronHandler';
 import { resetHiveState } from './chains/hiveHandler';
 import { handleWalletRequest } from './methods';
+import { initMcpBridge } from './mcpBridge';
 import { setApprovalBadge } from './popup';
 import { fetchJsonWithTimeout } from './fetchUtils';
 import { JsonRpcProvider, formatEther } from 'ethers';
@@ -1124,6 +1125,27 @@ function ensureStarted(): Promise<void> {
 setTimeout(() => {
   ensureStarted();
 }, 5000);
+
+// MCP agent bridge (EPIC_mcp_agent_bridge.md): module-load init means it
+// re-arms on every SW wake. No-op unless the options-page "Agent mode"
+// toggle is on.
+initMcpBridge({
+  getKeepKeyState: () => KEEPKEY_STATE,
+  walletRequest: async (chain: string, method: string, params: any[]) => {
+    if (!wallet.isInitialized()) await ensureStarted();
+    const requestInfo = {
+      id: crypto.randomUUID(),
+      method,
+      params,
+      chain,
+      siteUrl: 'mcp://agent',
+      href: 'mcp://agent',
+      scriptSource: 'MCP Agent Bridge',
+      requestTime: new Date().toISOString(),
+    };
+    return handleWalletRequest(requestInfo, chain, method, params, null, ADDRESS);
+  },
+});
 
 chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: any) => {
   (async () => {
