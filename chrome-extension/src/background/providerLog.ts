@@ -24,6 +24,14 @@ export interface ProviderLogEntry {
 }
 
 export interface PendingRequest {
+  /**
+   * Internally-generated, unique. `id` below is dApp-supplied (typically a
+   * per-page counter, so two tabs collide on `1`) — keying the queue by it
+   * would let one settle evict another tab's entry, and would let a Phase-2
+   * bex_approve_request(id) resolve the WRONG origin's prompt. Address the
+   * queue by `key`; `id` is for correlating with the dApp's own logs.
+   */
+  key: string;
   id: string;
   method: string;
   params: unknown;
@@ -41,8 +49,16 @@ const logBuffer: ProviderLogEntry[] = [];
 const pendingRequests = new Map<string, PendingRequest>();
 const connectedSites = new Map<string, { chains: Set<string>; firstSeen: number; lastSeen: number }>();
 
+// Never throw: this runs on the SUCCESS path of every provider call, so a
+// stringify failure (BigInt, circular ref) must not turn a good wallet response
+// into a dApp-visible error.
 const clip = (v: unknown): unknown => {
-  const s = JSON.stringify(v);
+  let s: string | undefined;
+  try {
+    s = JSON.stringify(v);
+  } catch {
+    return '[unserializable]';
+  }
   if (s && s.length > MAX_RESULT_CHARS) return `[clipped ${s.length} chars] ${s.slice(0, MAX_RESULT_CHARS)}`;
   return v;
 };
@@ -67,12 +83,16 @@ export function getLogs(filter?: { pattern?: string; since?: number; limit?: num
   return out.slice(-limit);
 }
 
-export function registerPending(req: PendingRequest): void {
-  pendingRequests.set(req.id, req);
+/** Returns the internal key to settle this entry with — never reuse the dApp id. */
+export function registerPending(req: Omit<PendingRequest, 'key'>): string {
+  const key = crypto.randomUUID();
+  pendingRequests.set(key, { ...req, key });
+  return key;
 }
 
-export function settlePending(id: string): void {
-  pendingRequests.delete(id);
+export function settlePending(key: string | null | undefined): void {
+  if (!key) return;
+  pendingRequests.delete(key);
 }
 
 export function getPendingRequests(): PendingRequest[] {

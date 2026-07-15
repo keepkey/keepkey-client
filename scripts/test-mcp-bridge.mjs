@@ -5,22 +5,37 @@
  * Preconditions (human, one-time): vault running on :1646, extension loaded,
  * options-page "Agent mode" toggle ON.
  *
- *   node scripts/test-mcp-bridge.mjs
+ *   KEEPKEY_API_KEY=<pairing key> node scripts/test-mcp-bridge.mjs
+ *
+ * The vault bearer-authenticates /mcp with the same pairing keys as the rest of
+ * its REST API, so the key is required. Grab the extension's own from the
+ * background console: `chrome.storage.local.get('keepkey-api-key')`.
+ *
+ * Node's fetch sends no Origin/Sec-Fetch-Site, which is what lets this pass the
+ * vault's browser-exclusion check — a browser could not run this script.
  *
  * Exits 0 when the vault serves MCP, tier-1 tools are listed, and bex_status
- * answers truthfully through the bridge (or truthfully reports bridge down).
+ * answers truthfully through the bridge; 2 when the bridge reports down.
  */
 
 const MCP_URL = 'http://localhost:1646/mcp';
 const TIER1_TOOLS = ['bex_status', 'bex_accounts', 'bex_pending_requests', 'bex_connected_sites', 'bex_logs'];
 
+const API_KEY = process.env.KEEPKEY_API_KEY;
+if (!API_KEY) {
+  console.error('KEEPKEY_API_KEY is required (the vault bearer-authenticates /mcp).');
+  console.error("Get the extension's key from the background console: chrome.storage.local.get('keepkey-api-key')");
+  process.exit(1);
+}
+
 let nextId = 1;
 async function rpc(method, params) {
   const res = await fetch(MCP_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${API_KEY}` },
     body: JSON.stringify({ jsonrpc: '2.0', id: nextId++, method, ...(params ? { params } : {}) }),
   });
+  if (res.status === 401) throw new Error(`${method}: HTTP 401 — KEEPKEY_API_KEY is not a valid vault pairing key`);
   if (!res.ok) throw new Error(`${method}: HTTP ${res.status}`);
   const body = await res.json();
   if (body.error) throw new Error(`${method}: rpc error ${body.error.code} ${body.error.message}`);

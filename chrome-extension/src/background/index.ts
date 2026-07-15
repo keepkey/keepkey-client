@@ -1133,6 +1133,13 @@ initMcpBridge({
   getKeepKeyState: () => KEEPKEY_STATE,
   walletRequest: async (chain: string, method: string, params: any[]) => {
     if (!wallet.isInitialized()) await ensureStarted();
+    // Same post-init check WALLET_REQUEST does, so an agent calling with the
+    // vault closed gets the actionable "launch the Vault" error rather than a
+    // bare handler failure.
+    if (!wallet.isInitialized()) {
+      if (KEEPKEY_STATE === 4) throw createVaultRequiredError();
+      throw Error('Wallet not initialized');
+    }
     const requestInfo = {
       id: crypto.randomUUID(),
       method,
