@@ -281,6 +281,91 @@ async function hiveTransfer(
   };
 }
 
+/**
+ * Keychain requestSignBuffer — dApp login. Firmware signs SHA256(message)
+ * with the requested role's SLIP-48 key and we return the signature hex as
+ * `result` with the STM pubkey beside it, exactly like Hive Keychain.
+ */
+async function hiveSignBuffer(
+  params: any[],
+  requestInfo: any,
+  requireApproval: (networkId: string, requestInfo: any, chain: any, method: string, params: any) => Promise<any>,
+) {
+  const { username, message, method: keyRole, title } = params[0] || {};
+  if (!message || typeof message !== 'string') {
+    throw createProviderRpcError(-32602, 'signBuffer requires a message');
+  }
+  const role = String(keyRole || '').toLowerCase();
+  // Owner is deliberately excluded (matches firmware — owner' is not a
+  // signBuffer role; it exists for recovery/authority changes only).
+  if (!['posting', 'active', 'memo'].includes(role)) {
+    throw createProviderRpcError(-32602, `signBuffer key must be Posting, Active or Memo (got ${keyRole})`);
+  }
+
+  // Keychain contract: a message that JSON-parses to a serialized Node
+  // Buffer ({type:'Buffer',data:[...]}) is signed as those raw bytes;
+  // anything else is signed as the UTF-8 string.
+  let payload = message;
+  let isText = true;
+  try {
+    const o = JSON.parse(message, (_k, v) =>
+      v !== null && typeof v === 'object' && v.type === 'Buffer' && Array.isArray(v.data) ? Uint8Array.from(v.data) : v,
+    );
+    if (o instanceof Uint8Array) {
+      payload = Array.from(o)
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+      isText = false;
+    }
+  } catch {
+    /* not JSON — sign the raw string */
+  }
+
+  await requireHiveFirmware('Hive message signing');
+  const from = await getHiveAccount();
+  if (username && username !== from.name) {
+    throw createProviderRpcError(4100, `This KeepKey controls @${from.name}, not @${username}`);
+  }
+
+  const event = buildEvent(requestInfo, 'signBuffer', params);
+  (event as any).unsignedTx = {
+    from: from.name,
+    messageUtf8: isText ? payload : undefined,
+    message: isText ? undefined : payload,
+    role,
+    title: title || '',
+  };
+  await requestUserApproval(event, requestInfo, 'signBuffer', params, requireApproval);
+
+  let resp: Response;
+  try {
+    resp = await fetch(`${VAULT_URL}/hive/sign-message`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getApiKey()}` },
+      body: JSON.stringify({
+        address_n: hiveAddressN(role as keyof typeof HIVE_ROLES, 0),
+        message: payload,
+        is_text: isText,
+      }),
+      signal: AbortSignal.timeout(300_000),
+    });
+  } catch (e: any) {
+    if (e.name === 'TimeoutError' || e.name === 'AbortError') throw createTimeoutError('Vault signing timed out');
+    throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
+  }
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw createProviderRpcError(-32603, `Vault Hive sign-message failed (${resp.status}): ${text}`);
+  }
+  const { signature, public_key } = await resp.json();
+  if (!signature) throw createProviderRpcError(-32603, 'Vault returned no Hive message signature');
+
+  chrome.runtime.sendMessage({ action: 'signature_complete', eventId: requestInfo.id }).catch(() => {});
+
+  // Keychain shape: result = signature hex, publicKey beside it.
+  return { result: signature, publicKey: public_key };
+}
+
 export const handleHiveRequest = async (
   method: string,
   params: any[],
@@ -301,6 +386,9 @@ export const handleHiveRequest = async (
     }
     case 'hive_transfer': {
       return await hiveTransfer(params, requestInfo, requireApproval);
+    }
+    case 'hive_signBuffer': {
+      return await hiveSignBuffer(params, requestInfo, requireApproval);
     }
     default:
       throw createProviderRpcError(4200, `Hive method ${method} not supported`);
