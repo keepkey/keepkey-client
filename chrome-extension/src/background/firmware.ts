@@ -17,6 +17,9 @@ import * as wallet from './wallet';
 import { createProviderRpcError } from './utils';
 
 const REQUIRED = { major: 7, minor: 14, patch: 1 } as const;
+// Hive (SLIP-0048 keys + Graphene transfer signing) shipped in 7.15.0;
+// anything older returns Failure_UnknownMessage for the Hive message types.
+const REQUIRED_HIVE = { major: 7, minor: 15, patch: 0 } as const;
 
 interface FirmwareVersion {
   major: number;
@@ -34,10 +37,10 @@ function parseVersion(features: any): FirmwareVersion | null {
   return { major, minor, patch };
 }
 
-function meetsMin(v: FirmwareVersion): boolean {
-  if (v.major !== REQUIRED.major) return v.major > REQUIRED.major;
-  if (v.minor !== REQUIRED.minor) return v.minor > REQUIRED.minor;
-  return v.patch >= REQUIRED.patch;
+function meetsMin(v: FirmwareVersion, min: FirmwareVersion = REQUIRED): boolean {
+  if (v.major !== min.major) return v.major > min.major;
+  if (v.minor !== min.minor) return v.minor > min.minor;
+  return v.patch >= min.patch;
 }
 
 async function readVersion(): Promise<FirmwareVersion | null> {
@@ -65,6 +68,26 @@ export async function requireMessageSigningFirmware(label: string): Promise<void
     throw createProviderRpcError(
       4200,
       `${label} requires firmware 7.14.1 or later. Your KeepKey is on ${v.major}.${v.minor}.${v.patch}. Update via the KeepKey Vault desktop app and retry.`,
+    );
+  }
+}
+
+/**
+ * Throw a user-facing error if the connected KeepKey is on firmware
+ * older than 7.15.0 (the release that ships Hive support).
+ */
+export async function requireHiveFirmware(label: string): Promise<void> {
+  const v = await readVersion();
+  if (!v) {
+    throw createProviderRpcError(
+      -32603,
+      `${label} requires firmware 7.15.0 — could not read device firmware version. Plug in your KeepKey and try again.`,
+    );
+  }
+  if (!meetsMin(v, REQUIRED_HIVE)) {
+    throw createProviderRpcError(
+      4200,
+      `${label} requires firmware 7.15.0 or later. Your KeepKey is on ${v.major}.${v.minor}.${v.patch}. Update via the KeepKey Vault desktop app and retry.`,
     );
   }
 }

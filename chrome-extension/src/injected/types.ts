@@ -63,7 +63,8 @@ export type ChainType =
   | 'ripple'
   | 'keplr'
   | 'solana'
-  | 'tron';
+  | 'tron'
+  | 'hive';
 
 export interface WalletProvider {
   network: string;

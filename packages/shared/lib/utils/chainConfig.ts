@@ -26,6 +26,7 @@ export const Chain = {
   THORChain: 'THOR',
   Ton: 'TON',
   Tron: 'TRX',
+  Hive: 'HIVE',
 } as const;
 
 export type ChainValue = (typeof Chain)[keyof typeof Chain];
@@ -54,6 +55,7 @@ export const ChainToNetworkId: Record<string, string> = {
   // Canonical CAIP-2 networkIds from keepkey-vault-v11/shared/chains.ts
   TON: 'ton:-239',
   TRX: 'tron:27Lqcw',
+  HIVE: 'hive:beeab0de',
 };
 
 // ---- NetworkIdToChain (reverse map) ----
@@ -86,6 +88,7 @@ export const COIN_MAP_LONG: Record<string, string> = {
   SOL: 'solana',
   TON: 'ton',
   TRX: 'tron',
+  HIVE: 'hive',
 };
 
 // ---- availableChainsByWallet (replaces @pioneer-platform/pioneer-caip's version) ----
@@ -139,6 +142,7 @@ const NETWORK_SLIP44: Record<string, string> = {
   'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp': 'slip44:501',
   'tron:27Lqcw': 'slip44:195',
   'ton:-239': 'slip44:607',
+  'hive:beeab0de': 'slip44:1275',
 };
 
 export function networkIdToIcon(networkId: string): string {

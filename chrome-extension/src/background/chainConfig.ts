@@ -42,6 +42,7 @@ export const shortListSymbolToCaip: Record<string, string> = {
   SOL: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp/slip44:501',
   TON: 'ton:-239/slip44:607',
   TRX: 'tron:27Lqcw/slip44:195',
+  HIVE: 'hive:beeab0de/slip44:1275',
 };
 
 export const shortListNameToCaip: Record<string, string> = {
@@ -65,6 +66,7 @@ export const shortListNameToCaip: Record<string, string> = {
   solana: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp/slip44:501',
   ton: 'ton:-239/slip44:607',
   tron: 'tron:27Lqcw/slip44:195',
+  hive: 'hive:beeab0de/slip44:1275',
 };
 
 // ---- bip32ToAddressNList ----

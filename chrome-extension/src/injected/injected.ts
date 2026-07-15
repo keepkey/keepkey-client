@@ -12,6 +12,7 @@ import { KeepKeySolanaWallet } from './solana-wallet-standard';
 import { registerSolanaWallet } from './solana-wallet-register';
 import { KeepKeySolanaProvider } from './solana-provider';
 import { KeepKeyTronProvider } from './tron-provider';
+import { createHiveKeychainShim } from './hive-provider';
 
 (function () {
   const VERSION = '2.1.0';
@@ -661,6 +662,19 @@ import { KeepKeyTronProvider } from './tron-provider';
       }
     } catch (_e) {
       // swallow; Tron registration is best-effort
+    }
+
+    // Hive Keychain shim — window.hive_keychain is the de-facto discovery
+    // API for Hive dApps. Mount only if the real Keychain isn't installed,
+    // and keep the property writable: we inject at document_start but the
+    // real Keychain injects at document_idle — it must be able to replace
+    // our (partial) shim with its full implementation.
+    try {
+      if (!(kWindow as any).hive_keychain) {
+        (kWindow as any).hive_keychain = createHiveKeychainShim(walletRequest);
+      }
+    } catch (_e) {
+      // swallow; Hive registration is best-effort
     }
 
     // Handle chain changes and other events
