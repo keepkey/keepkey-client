@@ -96,6 +96,73 @@ export function createHiveKeychainShim(walletRequest: WalletRequestFn) {
       dispatch('hive_transfer', data, callback);
     },
 
+    /** Vote on a post/comment (posting authority). */
+    requestVote: function (
+      account: string,
+      permlink: string,
+      author: string,
+      weight: number,
+      callback: KeychainCallback,
+      rpc?: string,
+    ) {
+      const data = { type: 'vote', username: account, permlink, author, weight, rpc };
+      dispatch('hive_vote', data, callback);
+    },
+
+    /** Blog post / comment (posting authority). comment_options unsupported in phase 1. */
+    requestPost: function (
+      account: string,
+      title: string,
+      body: string,
+      parent_perm: string,
+      parent_account: string | null,
+      json_metadata: any,
+      permlink: string,
+      comment_options: any,
+      callback: KeychainCallback,
+      rpc?: string,
+    ) {
+      const data = {
+        type: 'post',
+        username: account,
+        title,
+        body,
+        parent_perm,
+        parent_username: parent_account,
+        json_metadata,
+        permlink,
+        comment_options,
+        rpc,
+      };
+      dispatch('hive_post', data, callback);
+    },
+
+    /** custom_json broadcast (posting by default; active when key='Active'). */
+    requestCustomJson: function (
+      account: string | null,
+      id: string,
+      key: string,
+      json: string,
+      display_msg: string,
+      callback: KeychainCallback,
+      rpc?: string,
+    ) {
+      const data = { type: 'custom', username: account, id, method: key || 'Posting', json, display_msg, rpc };
+      dispatch('hive_customJson', data, callback);
+    },
+
+    /** Generic operations broadcast — phase-1 op set (vote/comment/custom_json) only. */
+    requestBroadcast: function (
+      account: string,
+      operations: any[],
+      key: string,
+      callback: KeychainCallback,
+      rpc?: string,
+    ) {
+      const data = { type: 'broadcast', username: account, operations, method: key, rpc };
+      dispatch('hive_broadcast', data, callback);
+    },
+
     /** Message signing (dApp login), mirrors Keychain's signature exactly. */
     requestSignBuffer: function (
       account: string,
@@ -123,12 +190,8 @@ export function createHiveKeychainShim(walletRequest: WalletRequestFn) {
     'requestRemoveAccountAuthority',
     'requestAddKeyAuthority',
     'requestRemoveKeyAuthority',
-    'requestBroadcast',
     'requestSignTx',
     'requestSignedCall',
-    'requestPost',
-    'requestVote',
-    'requestCustomJson',
     'requestSendToken',
     'requestDelegation',
     'requestWitnessVote',

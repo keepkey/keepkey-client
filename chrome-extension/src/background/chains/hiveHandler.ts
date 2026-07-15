@@ -366,6 +366,107 @@ async function hiveSignBuffer(
   return { result: signature, publicKey: public_key };
 }
 
+const PHASE1_OPS = new Set(['vote', 'comment', 'custom_json']);
+
+/**
+ * Shared path for vote/post/custom_json/broadcast: validate ops against the
+ * firmware's phase-1 clear-sign table, approve, sign via the vault
+ * (device parses + displays the Graphene bytes), broadcast via Pioneer
+ * /hive/broadcast-ops. Returns Keychain's { id, tx_id, confirmed } shape.
+ */
+async function hiveSignAndBroadcastOps(
+  displayType: string,
+  operations: [string, Record<string, any>][],
+  username: string | undefined,
+  params: any[],
+  requestInfo: any,
+  requireApproval: (networkId: string, requestInfo: any, chain: any, method: string, params: any) => Promise<any>,
+) {
+  for (const op of operations) {
+    if (!Array.isArray(op) || op.length !== 2 || !PHASE1_OPS.has(op[0])) {
+      throw createProviderRpcError(
+        4200,
+        `KeepKey clear-signs vote, comment and custom_json operations only (got ${Array.isArray(op) ? op[0] : typeof op})`,
+      );
+    }
+  }
+
+  await requireHiveFirmware('Hive operations');
+  const from = await getHiveAccount();
+  if (username && username !== from.name) {
+    throw createProviderRpcError(4100, `This KeepKey controls @${from.name}, not @${username}`);
+  }
+
+  const event = buildEvent(requestInfo, displayType, params);
+  (event as any).unsignedTx = {
+    from: from.name,
+    operations: operations.map(([name, p]) => ({
+      op: name,
+      summary:
+        name === 'vote'
+          ? `@${p.voter} → @${p.author}/${p.permlink} (${(Number(p.weight) / 100).toFixed(0)}%)`
+          : name === 'comment'
+            ? `@${p.author}: ${p.title || p.permlink}`
+            : `${p.id}: ${String(p.json).slice(0, 120)}`,
+    })),
+  };
+  await requestUserApproval(event, requestInfo, displayType, params, requireApproval);
+
+  // Sign — the vault serializes, the device parses + clear-signs
+  let signResp: Response;
+  try {
+    signResp = await fetch(`${VAULT_URL}/hive/sign-operations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getApiKey()}` },
+      body: JSON.stringify({ operations }),
+      signal: AbortSignal.timeout(300_000),
+    });
+  } catch (e: any) {
+    if (e.name === 'TimeoutError' || e.name === 'AbortError') throw createTimeoutError('Vault signing timed out');
+    throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
+  }
+  if (!signResp.ok) {
+    const text = await signResp.text().catch(() => '');
+    throw createProviderRpcError(-32603, `Vault Hive sign-operations failed (${signResp.status}): ${text}`);
+  }
+  const signed = await signResp.json();
+  if (!signed.signature) throw createProviderRpcError(-32603, 'Vault returned no Hive signature');
+
+  // Broadcast the EXACT tx the device signed (header echoed by the vault)
+  const bResp = await fetch(`${PIONEER_URL}/api/v1/hive/broadcast-ops`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ref_block_num: signed.ref_block_num,
+      ref_block_prefix: signed.ref_block_prefix,
+      expiration: signed.expiration,
+      operations: signed.operations,
+      signature: signed.signature.replace(/^0x/, ''),
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const bData = await bResp.json().catch(() => ({}));
+  if (!bData.success || !bData.txid) {
+    throw createProviderRpcError(
+      -32603,
+      `Hive broadcast failed: ${bData.error || `HTTP ${bResp.status} — is /hive/broadcast-ops deployed?`}`,
+    );
+  }
+
+  await requestStorage.updateEventById(event.id, { ...event, txid: bData.txid, status: 'broadcasted' } as any);
+  chrome.runtime
+    .sendMessage({
+      action: 'transaction_complete',
+      eventId: requestInfo.id,
+      txHash: bData.txid,
+      explorerTxLink: 'https://hiveblocks.com/tx/',
+      networkId: HIVE_NETWORK_ID,
+    })
+    .catch(() => {});
+
+  return { id: bData.txid, tx_id: bData.txid, confirmed: Boolean(bData.blockNum ?? bData.block_num) };
+}
+
 export const handleHiveRequest = async (
   method: string,
   params: any[],
@@ -389,6 +490,66 @@ export const handleHiveRequest = async (
     }
     case 'hive_signBuffer': {
       return await hiveSignBuffer(params, requestInfo, requireApproval);
+    }
+    case 'hive_vote': {
+      const { username, permlink, author, weight } = params[0] || {};
+      const from = await getHiveAccount();
+      const voter = username || from.name;
+      return await hiveSignAndBroadcastOps(
+        'vote',
+        [['vote', { voter, author, permlink, weight: Number(weight) }]],
+        username,
+        params,
+        requestInfo,
+        requireApproval,
+      );
+    }
+    case 'hive_post': {
+      const p = params[0] || {};
+      // comment_options is a separate op (type 19) outside the phase-1
+      // firmware table — reject rather than silently dropping beneficiaries.
+      if (p.comment_options) {
+        throw createProviderRpcError(4200, 'Posts with comment_options (beneficiaries etc.) are not supported yet');
+      }
+      const from = await getHiveAccount();
+      const author = p.username || from.name;
+      const permlink = p.permlink || `keepkey-${Date.now().toString(36)}`;
+      const op: [string, Record<string, any>] = [
+        'comment',
+        {
+          parent_author: p.parent_username || '',
+          parent_permlink: p.parent_perm,
+          author,
+          permlink,
+          title: p.title || '',
+          body: p.body,
+          json_metadata: typeof p.json_metadata === 'string' ? p.json_metadata : JSON.stringify(p.json_metadata ?? {}),
+        },
+      ];
+      return await hiveSignAndBroadcastOps('post', [op], p.username, params, requestInfo, requireApproval);
+    }
+    case 'hive_customJson': {
+      const p = params[0] || {};
+      const from = await getHiveAccount();
+      const account = p.username || from.name;
+      const active = String(p.method || 'Posting').toLowerCase() === 'active';
+      const op: [string, Record<string, any>] = [
+        'custom_json',
+        {
+          required_auths: active ? [account] : [],
+          required_posting_auths: active ? [] : [account],
+          id: p.id,
+          json: typeof p.json === 'string' ? p.json : JSON.stringify(p.json ?? {}),
+        },
+      ];
+      return await hiveSignAndBroadcastOps('custom_json', [op], p.username, params, requestInfo, requireApproval);
+    }
+    case 'hive_broadcast': {
+      const p = params[0] || {};
+      if (!Array.isArray(p.operations) || p.operations.length === 0) {
+        throw createProviderRpcError(-32602, 'requestBroadcast requires an operations array');
+      }
+      return await hiveSignAndBroadcastOps('broadcast', p.operations, p.username, params, requestInfo, requireApproval);
     }
     default:
       throw createProviderRpcError(4200, `Hive method ${method} not supported`);
