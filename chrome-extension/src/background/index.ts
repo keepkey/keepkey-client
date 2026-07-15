@@ -13,6 +13,7 @@ import { handleSwapMessage, resolveAddress } from './swapHandler';
 import { startSwapEventStream, stopSwapEventStream } from './swapEventStream';
 import { resetTonState, prefetchTonAddress } from './chains/tonHandler';
 import { resetTronState, prefetchTronPubkey } from './chains/tronHandler';
+import { resetHiveState } from './chains/hiveHandler';
 import { handleWalletRequest } from './methods';
 import { setApprovalBadge } from './popup';
 import { fetchJsonWithTimeout } from './fetchUtils';
@@ -162,6 +163,7 @@ async function handleDeviceSwitch(newDeviceInfo: any) {
   resetSolanaState();
   resetTronState();
   resetTonState();
+  resetHiveState();
 
   // Re-fetch against the new device. refreshPubkeys re-probes and pulls
   // a fresh pubkey batch, then updates state.initialized.
@@ -266,6 +268,7 @@ async function checkKeepKey() {
       resetSolanaState();
       resetTronState();
       resetTonState();
+      resetHiveState();
     }
     KEEPKEY_STATE = 4; // Set state to errored
     updateIcon();
@@ -936,6 +939,7 @@ const onStart = async function () {
     resetSolanaState(); // clear stale cached address before re-init
     resetTronState();
     resetTonState();
+    resetHiveState();
     await wallet.init();
     console.log(tag, 'Wallet initialized');
 

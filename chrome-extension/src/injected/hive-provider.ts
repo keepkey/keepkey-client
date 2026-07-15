@@ -64,7 +64,7 @@ export function createHiveKeychainShim(walletRequest: WalletRequestFn) {
     });
   }
 
-  return {
+  const shim: Record<string, any> = {
     current_id: 1,
 
     /** dApp presence check — Keychain calls back with no arguments. */
@@ -88,39 +88,50 @@ export function createHiveKeychainShim(walletRequest: WalletRequestFn) {
       const data = { type: 'transfer', username: account, to, amount, memo, enforce, currency, rpc };
       dispatch('hive_transfer', data, callback);
     },
-
-    // ── Unsupported Keychain surface — fail fast, keychain-style ──────
-    requestSignBuffer: function (_a: string, _m: string, _k: string, callback: KeychainCallback) {
-      notSupported('signBuffer', { type: 'signBuffer' }, callback);
-    },
-    requestBroadcast: function (_a: string, _ops: any[], _k: string, callback: KeychainCallback) {
-      notSupported('broadcast', { type: 'broadcast' }, callback);
-    },
-    requestSignTx: function (_a: string, _tx: any, _k: string, callback: KeychainCallback) {
-      notSupported('signTx', { type: 'signTx' }, callback);
-    },
-    requestVote: function (_a: string, _p: string, _au: string, _w: number, callback: KeychainCallback) {
-      notSupported('vote', { type: 'vote' }, callback);
-    },
-    requestCustomJson: function (
-      _a: string,
-      _id: string,
-      _k: string,
-      _j: string,
-      _d: string,
-      callback: KeychainCallback,
-    ) {
-      notSupported('custom_json', { type: 'custom' }, callback);
-    },
-    requestPost: function (...args: any[]) {
-      const callback = args.find(a => typeof a === 'function');
-      notSupported('post', { type: 'post' }, callback);
-    },
-    requestEncodeMessage: function (_u: string, _r: string, _m: string, _k: string, callback: KeychainCallback) {
-      notSupported('encode', { type: 'encode' }, callback);
-    },
-    requestVerifyKey: function (_a: string, _m: string, _k: string, callback: KeychainCallback) {
-      notSupported('decode', { type: 'decode' }, callback);
-    },
   };
+
+  // The rest of Keychain's public surface (per public/hive_keychain.js).
+  // Every method must exist — dApps call them unconditionally and a missing
+  // function is a TypeError instead of a graceful keychain-style failure.
+  // The callback can sit at a different position per method (trailing
+  // optional rpc/params), so find it rather than fixing an arity.
+  const UNSUPPORTED = [
+    'requestEncodeMessage',
+    'requestEncodeWithKeys',
+    'requestVerifyKey',
+    'requestSignBuffer',
+    'requestAddAccountAuthority',
+    'requestRemoveAccountAuthority',
+    'requestAddKeyAuthority',
+    'requestRemoveKeyAuthority',
+    'requestBroadcast',
+    'requestSignTx',
+    'requestSignedCall',
+    'requestPost',
+    'requestVote',
+    'requestCustomJson',
+    'requestSendToken',
+    'requestDelegation',
+    'requestWitnessVote',
+    'requestProxy',
+    'requestPowerUp',
+    'requestPowerDown',
+    'requestCreateClaimedAccount',
+    'requestCreateProposal',
+    'requestRemoveProposal',
+    'requestUpdateProposalVote',
+    'requestAddAccount',
+    'requestConversion',
+    'requestRecurrentTransfer',
+    'requestSavingsOperation',
+    'requestSwap',
+  ];
+  for (const name of UNSUPPORTED) {
+    shim[name] = (...args: any[]) => {
+      const callback = args.find(a => typeof a === 'function');
+      notSupported(name.replace(/^request/, ''), { type: name }, callback);
+    };
+  }
+
+  return shim;
 }

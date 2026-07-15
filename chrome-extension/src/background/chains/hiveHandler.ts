@@ -133,19 +133,48 @@ async function hiveTransfer(
   requestInfo: any,
   requireApproval: (networkId: string, requestInfo: any, chain: any, method: string, params: any) => Promise<any>,
 ) {
-  const { to, amount, memo, currency } = params[0] || {};
+  const { username, to, amount, memo, currency, enforce } = params[0] || {};
   if (!to || !amount) throw createProviderRpcError(-32602, 'Hive transfer requires { to, amount }');
   // ponytail: HIVE only — HBD needs Pioneer broadcast support first
-  if (currency && currency !== 'HIVE') {
-    throw createProviderRpcError(4200, `Only HIVE transfers are supported (got ${currency})`);
+  if (currency !== 'HIVE') {
+    throw createProviderRpcError(4200, `Only HIVE transfers are supported (got ${currency ?? 'no currency'})`);
   }
-  const parsed = parseFloat(amount);
-  if (!isFinite(parsed) || parsed <= 0) throw createProviderRpcError(-32602, `Invalid amount: ${amount}`);
-  const amountBase = Math.round(parsed * 10 ** HIVE_DECIMALS);
+  // Keychain contract: a memo starting with '#' must be encrypted with the
+  // memo key. We can't do that yet — reject rather than leak it on-chain
+  // as plaintext forever.
+  if (typeof memo === 'string' && memo.startsWith('#')) {
+    throw createProviderRpcError(
+      4200,
+      'Encrypted memos (starting with "#") are not supported — the memo would be broadcast as public plaintext',
+    );
+  }
+  // Exact decimal-string validation (Keychain requires 3 decimals); no
+  // parseFloat — "1foo" and rounding of "0.0006" must be rejected, not
+  // silently coerced into a different transfer.
+  if (typeof amount !== 'string' || !/^\d+(\.\d{1,3})?$/.test(amount)) {
+    throw createProviderRpcError(
+      -32602,
+      `Invalid amount "${amount}" — expected a decimal string with up to 3 decimals`,
+    );
+  }
+  const [whole, frac = ''] = amount.split('.');
+  const amountBase = Number(whole) * 10 ** HIVE_DECIMALS + Number(frac.padEnd(HIVE_DECIMALS, '0'));
+  if (!Number.isSafeInteger(amountBase) || amountBase <= 0) {
+    throw createProviderRpcError(-32602, `Invalid amount "${amount}" — must be greater than zero`);
+  }
   const amountStr = (amountBase / 10 ** HIVE_DECIMALS).toFixed(HIVE_DECIMALS) + ' HIVE';
 
   await requireHiveFirmware('Hive transfer');
   const from = await getHiveAccount();
+  // Keychain semantics: the dApp may name the sending account. We control
+  // exactly one account (index 0), so any mismatch is a hard reject — never
+  // report success for a payment from a different account than requested.
+  if (username && username !== from.name) {
+    throw createProviderRpcError(
+      4100,
+      `This KeepKey controls @${from.name}, not @${username}${enforce ? ' (account enforced by the dApp)' : ''}`,
+    );
+  }
 
   const txParamsResp = await fetch(`${PIONEER_URL}/api/v1/hive/tx-params`, {
     signal: AbortSignal.timeout(20_000),
@@ -158,11 +187,18 @@ async function hiveTransfer(
   const event = buildEvent(requestInfo, 'transfer', params);
   (event as any).unsignedTx = {
     from: from.name,
-    to,
-    amount: amountStr,
     memo: memo || '',
     refBlockNum: txParamsResp.refBlockNum,
     expiration: txParamsResp.expirationIso,
+    caip: 'hive:beeab0de/slip44:1275',
+    // Shape the generic approval renderer reads (RequestDetailsCard):
+    // amount in base units, divided by 10^decimals for display.
+    payment: {
+      destination: to,
+      amount: amountBase,
+      decimals: HIVE_DECIMALS,
+      symbol: 'HIVE',
+    },
   };
   await requestUserApproval(event, requestInfo, 'transfer', params, requireApproval);
 
