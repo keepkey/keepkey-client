@@ -41,14 +41,21 @@ export function createHiveKeychainShim(walletRequest: WalletRequestFn) {
   function respond(callback: KeychainCallback | undefined, requestId: number, data: any, error: any, result?: any) {
     if (typeof callback !== 'function') return;
     const message = error ? error?.message || String(error) : null;
-    callback({
+    const base = {
       success: !error,
       error: error ? (error?.code === 4001 ? 'user_cancel' : message) : null,
       message,
       request_id: requestId,
       result: error ? null : (result ?? null),
       data,
-    });
+    };
+    // A handler can return { result, ...extras } to control the top-level
+    // response shape — Keychain puts e.g. publicKey beside result, not in it.
+    if (!error && result && typeof result === 'object' && 'result' in result) {
+      callback({ ...base, ...result });
+      return;
+    }
+    callback(base);
   }
 
   function dispatch(method: string, data: any, callback?: KeychainCallback) {
@@ -88,6 +95,19 @@ export function createHiveKeychainShim(walletRequest: WalletRequestFn) {
       const data = { type: 'transfer', username: account, to, amount, memo, enforce, currency, rpc };
       dispatch('hive_transfer', data, callback);
     },
+
+    /** Message signing (dApp login), mirrors Keychain's signature exactly. */
+    requestSignBuffer: function (
+      account: string,
+      message: string,
+      key: string,
+      callback: KeychainCallback,
+      rpc?: string,
+      title?: string,
+    ) {
+      const data = { type: 'signBuffer', username: account, message, method: key, rpc, title };
+      dispatch('hive_signBuffer', data, callback);
+    },
   };
 
   // The rest of Keychain's public surface (per public/hive_keychain.js).
@@ -99,7 +119,6 @@ export function createHiveKeychainShim(walletRequest: WalletRequestFn) {
     'requestEncodeMessage',
     'requestEncodeWithKeys',
     'requestVerifyKey',
-    'requestSignBuffer',
     'requestAddAccountAuthority',
     'requestRemoveAccountAuthority',
     'requestAddKeyAuthority',
