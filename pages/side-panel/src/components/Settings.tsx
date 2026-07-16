@@ -83,7 +83,20 @@ const Settings = () => {
       return;
     }
     const cmd = `claude mcp add --transport http keepkey http://localhost:1646/mcp --header "Authorization: Bearer ${apiKey}"`;
-    await navigator.clipboard.writeText(cmd);
+    // The getApiKey() await above can outlive transient user activation, and the
+    // side panel loses document focus easily — either makes writeText reject.
+    try {
+      await navigator.clipboard.writeText(cmd);
+    } catch {
+      toast({
+        title: 'Copy failed',
+        description: 'Clipboard access was blocked. Click the side panel to focus it, then try again.',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+      return;
+    }
     toast({
       title: 'Agent config copied',
       description: 'Contains your local pairing key — treat it like a secret. Paste it into your agent terminal.',
@@ -284,8 +297,9 @@ const Settings = () => {
         </HStack>
         <Text fontSize="xs" color="kk.dim" mt={-2} mb={2}>
           Lets an AI agent (Claude Code, Claude Desktop, …) read wallet state over a local Model Context Protocol bridge
-          — device status, accounts, pending requests, connected sites, and logs. Read-only: agents can never move
-          funds; every signature still requires the physical device button. Off by default.{' '}
+          — device status, accounts, pending requests, connected sites, and logs. Today's tools only read. The lasting
+          guarantee is not that list, which will grow, but the device: no agent can sign, because every signature still
+          requires the physical button. Off by default.{' '}
           <Link href="https://docs.keepkey.com/docs/bex/mcp" isExternal textDecoration="underline">
             Learn more
           </Link>
