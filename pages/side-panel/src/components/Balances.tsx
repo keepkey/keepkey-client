@@ -3,7 +3,10 @@ import { Flex, Box, Text, Card, Stack, HStack, Skeleton, SkeletonCircle } from '
 import { AssetIcon } from './AssetIcon';
 import { SpinningDevice } from './SpinningDevice';
 import AssetSelect from './AssetSelect';
-import { COIN_MAP_LONG, NetworkIdToChain } from '@extension/shared';
+import { COIN_MAP_LONG, NetworkIdToChain, networkIdToIcon } from '@extension/shared';
+
+const HIVE_NETWORK_ID = 'hive:beeab0de';
+const HIVE_CAIP = 'hive:beeab0de/slip44:1275';
 
 const getChainDisplayName = (networkId: string): string => {
   if (networkId?.includes('eip155:1/')) return 'Ethereum';
@@ -14,6 +17,7 @@ const getChainDisplayName = (networkId: string): string => {
   if (networkId?.includes('eip155:10')) return 'Optimism';
   if (networkId?.includes('eip155:42161')) return 'Arbitrum';
   if (networkId?.includes('bip122:000000000019d6689c085ae165831e93')) return 'Bitcoin';
+  if (networkId?.includes('hive:')) return 'Hive';
   if (networkId?.includes('cosmos:')) return 'Cosmos';
   if (networkId?.includes('cosmos:thorchain')) return 'THORChain';
   if (networkId?.includes('cosmos:mayachain')) return 'Maya';
@@ -33,6 +37,11 @@ const Balances = ({ onSelectAsset, showAddBlockchain, setShowAddBlockchain }: Ba
   const [assets, setAssets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  // Hive is vault-sourced — absent from the Pioneer asset catalog and balance
+  // batch — so it's held separately and merged into the derived lists below.
+  // Kept out of `assets`/`balances` state so balance-refresh pushes (which
+  // overwrite those) don't drop it. { asset, balance } | null.
+  const [hiveHolding, setHiveHolding] = useState<{ asset: any; balance: any } | null>(null);
 
   const formatBalance = (balance: string) => {
     const numericBalance = parseFloat(balance);
@@ -49,6 +58,29 @@ const Balances = ({ onSelectAsset, showAddBlockchain, setShowAddBlockchain }: Ba
   useEffect(() => {
     chrome.runtime.sendMessage({ type: 'GET_ASSETS' }, response => {
       if (response?.assets) setAssets(response.assets);
+    });
+
+    // Hive account (read-only) — vault-sourced, so fetched on its own and
+    // merged into the holdings-driven dashboard below.
+    chrome.runtime.sendMessage({ type: 'GET_HIVE_ACCOUNT' }, hiveResp => {
+      if (chrome.runtime.lastError || !hiveResp?.ok || !hiveResp.name) return;
+      setHiveHolding({
+        asset: {
+          networkId: HIVE_NETWORK_ID,
+          caip: HIVE_CAIP,
+          name: 'Hive',
+          symbol: 'HIVE',
+          icon: networkIdToIcon(HIVE_NETWORK_ID),
+        },
+        balance: {
+          networkId: HIVE_NETWORK_ID,
+          caip: HIVE_CAIP,
+          symbol: 'HIVE',
+          balance: hiveResp.hive,
+          isNative: true,
+          valueUsd: '0',
+        },
+      });
     });
 
     const refreshBalances = () => {
@@ -77,16 +109,23 @@ const Balances = ({ onSelectAsset, showAddBlockchain, setShowAddBlockchain }: Ba
   // balance AMOUNT — not USD value — keeps a held asset visible even when its
   // price is missing/0. The complete catalog stays one tap away via
   // "+ Add blockchain", so empty chains no longer render as $0.00 rows.
+  // Merge the vault-sourced Hive holding into the catalog + balances the
+  // dashboard renders from (both are holdings-gated below).
+  const allAssets = hiveHolding ? [...assets.filter(a => a.networkId !== HIVE_NETWORK_ID), hiveHolding.asset] : assets;
+  const allBalances = hiveHolding
+    ? [...balances.filter(b => b.networkId !== HIVE_NETWORK_ID), hiveHolding.balance]
+    : balances;
+
   const heldNetworkIds = new Set(
-    balances.filter(bal => parseFloat(bal.balance ?? bal.amount ?? '0') > 0).map(bal => bal.networkId),
+    allBalances.filter(bal => parseFloat(bal.balance ?? bal.amount ?? '0') > 0).map(bal => bal.networkId),
   );
-  const sortedAssets = [...assets]
+  const sortedAssets = [...allAssets]
     .filter((asset: any) => heldNetworkIds.has(asset.networkId))
     .sort((assetA: any, assetB: any) => {
-      const valueA = balances
+      const valueA = allBalances
         .filter(bal => bal.networkId === assetA.networkId)
         .reduce((s, bal) => s + parseFloat(bal.valueUsd || '0'), 0);
-      const valueB = balances
+      const valueB = allBalances
         .filter(bal => bal.networkId === assetB.networkId)
         .reduce((s, bal) => s + parseFloat(bal.valueUsd || '0'), 0);
       return valueB - valueA;
@@ -289,7 +328,7 @@ const Balances = ({ onSelectAsset, showAddBlockchain, setShowAddBlockchain }: Ba
         ) : (
           <>
             {sortedAssets.map((asset: any, index: number) => {
-              const chainBalances = balances.filter(b => b.networkId === asset.networkId);
+              const chainBalances = allBalances.filter(b => b.networkId === asset.networkId);
               const totalUsdValue = chainBalances.reduce((sum, b) => sum + parseFloat(b.valueUsd || '0'), 0);
 
               const nativeBalances = chainBalances.filter(b => b.isNative === true || b.caip === asset.caip);
@@ -297,7 +336,7 @@ const Balances = ({ onSelectAsset, showAddBlockchain, setShowAddBlockchain }: Ba
               if (nativeBalances.length > 0) {
                 totalBalance = nativeBalances.reduce((acc, b) => acc + parseFloat(b.balance || '0'), 0).toString();
               } else {
-                const balance = balances.find(b => b.caip === asset.caip);
+                const balance = allBalances.find(b => b.caip === asset.caip);
                 totalBalance = balance?.balance || '0';
               }
 
