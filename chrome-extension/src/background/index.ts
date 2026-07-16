@@ -197,7 +197,10 @@ async function handleDeviceSwitch(newDeviceInfo: any) {
     // Kick a fresh balance fetch in the background so the dashboard
     // swaps to the new device's balances without waiting for the next
     // user-triggered refresh.
-    fetchBalancesFromPioneer(true).catch(e => console.warn(tag, 'Post-switch balance fetch failed:', e));
+    // Cached read (not forceRefresh): passive/background fetches use Pioneer's
+    // cache to stay fast. A live full-refresh happens only on an explicit
+    // refresh-button press, so one slow chain can't stall the dashboard.
+    fetchBalancesFromPioneer().catch(e => console.warn(tag, 'Post-switch balance fetch failed:', e));
   } catch (e) {
     console.error(tag, 'Failed to re-fetch pubkeys after device switch:', (e as Error)?.message || e);
     pushStateChangeEvent();
@@ -2150,12 +2153,15 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                 error: lastFetchError || undefined,
               });
               if (discovering && !balancesFetchInProgress) {
-                fetchBalancesFromPioneer(true).catch(e => console.warn(tag, 'auto token-discovery failed:', e));
+                // Cached: passive discovery no longer forces a live refresh
+                // (that only happens on the refresh button now).
+                fetchBalancesFromPioneer().catch(e => console.warn(tag, 'auto token-discovery failed:', e));
               }
             } else if (wallet.isInitialized()) {
-              // Empty cache (fresh worker): force-refresh so the first read
-              // discovers tokens too, not just native balances.
-              const balances = await fetchBalancesFromPioneer(true);
+              // Empty cache (fresh worker): cached read so first load is fast
+              // and can't time out. Fresh balances + token discovery come from
+              // the refresh button (forceRefresh), not this passive path.
+              const balances = await fetchBalancesFromPioneer();
               sendResponse({
                 balances: withHive(balances),
                 error: balances.length === 0 ? lastFetchError || undefined : undefined,
@@ -2217,7 +2223,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             await reconcileVisibility();
             sendResponse({ success: true });
             // Freshness only — the override is already applied + persisted above.
-            fetchBalancesFromPioneer(true).catch(e => console.warn(tag, 'visibility refresh failed:', e));
+            fetchBalancesFromPioneer().catch(e => console.warn(tag, 'visibility refresh failed:', e));
           } catch (error: any) {
             console.error(tag, 'SET_TOKEN_VISIBILITY error:', error);
             sendResponse({ success: false, error: error.message });
