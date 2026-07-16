@@ -684,6 +684,18 @@ export const handleHiveRequest = async (
     case 'hive_transfer': {
       return await hiveTransfer(params, requestInfo, requireApproval);
     }
+    case 'transfer': {
+      // Generic side-panel Send (Transfer.tsx) — adapt its payload shape
+      // ({ recipient, amount: { amount, denom }, memo }) to the Keychain-shaped
+      // hiveTransfer ({ to, amount, currency, memo }). Same build/sign/broadcast
+      // path as the dApp hive_transfer; the sender account is derived on-device.
+      const p = params?.[0] || {};
+      return await hiveTransfer(
+        [{ to: p.recipient, amount: p.amount?.amount, memo: p.memo, currency: p.amount?.denom || 'HIVE' }],
+        requestInfo,
+        requireApproval,
+      );
+    }
     case 'hive_signBuffer': {
       return await hiveSignBuffer(params, requestInfo, requireApproval);
     }
