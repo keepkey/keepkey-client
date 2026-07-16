@@ -11,6 +11,8 @@
  * if cross-restart logs prove necessary (epic open question #2).
  */
 
+import { v4 as uuidv4 } from 'uuid';
+
 export interface ProviderLogEntry {
   ts: number; // ms epoch, request completion time
   origin: string;
@@ -85,7 +87,9 @@ export function getLogs(filter?: { pattern?: string; since?: number; limit?: num
 
 /** Returns the internal key to settle this entry with — never reuse the dApp id. */
 export function registerPending(req: Omit<PendingRequest, 'key'>): string {
-  const key = crypto.randomUUID();
+  // uuid (not crypto.randomUUID): the Web Crypto global isn't exposed in the
+  // node/vitest test env, and `uuid` is already a dep + bundles for the SW.
+  const key = uuidv4();
   pendingRequests.set(key, { ...req, key });
   return key;
 }

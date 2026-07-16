@@ -51,6 +51,7 @@ export const NETWORK_DISPLAY_NAMES: Record<string, string> = {
   'cosmos:thorchain-mainnet-v1': 'THORChain',
   'cosmos:mayachain-mainnet-v1': 'Maya',
   'cosmos:osmosis-1': 'Osmosis',
+  'hive:beeab0de': 'Hive',
   'ripple:4109c6f2045fc7eff4cde8f9905d19c2': 'Ripple',
   'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp': 'Solana',
 };

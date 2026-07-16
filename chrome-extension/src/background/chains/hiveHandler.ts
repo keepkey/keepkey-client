@@ -26,9 +26,21 @@ function hiveAddressN(role: keyof typeof HIVE_ROLES = 'active', accountIndex = 0
 let cachedPubkey: string | null = null;
 let cachedAccountName: string | null = null;
 
+// Read-only account info cache for the UI (list/receive/balance). TTL-bounded
+// so the dashboard reflects balance changes, and an in-flight promise so the
+// concurrent UI response paths (GET_APP_PUBKEYS/BALANCES, asset-context)
+// share ONE vault round-trip instead of each hitting the device.
+const HIVE_INFO_TTL_MS = 60_000;
+let cachedInfo: HiveAccountInfo | null = null;
+let cachedInfoAt = 0;
+let inflightInfo: Promise<HiveAccountInfo> | null = null;
+
 export function resetHiveState() {
   cachedPubkey = null;
   cachedAccountName = null;
+  cachedInfo = null;
+  cachedInfoAt = 0;
+  inflightInfo = null;
 }
 
 /** Get the Bearer API key from the SDK for direct REST calls */
@@ -79,6 +91,101 @@ async function getHiveAccount(): Promise<{ name: string; pubkey: string }> {
   }
   cachedAccountName = data.account.name;
   return { name: data.account.name, pubkey };
+}
+
+/**
+ * Read-only account info for the side-panel network list (name + address +
+ * native balance). Soft-fails instead of throwing so a locked/disabled Hive
+ * or an unregistered key just leaves Hive out of the list rather than
+ * breaking the header. `address` is the Hive account name — that's the
+ * user-facing identifier and the transfer destination.
+ */
+export type HiveAccountInfo =
+  | { ok: true; name: string; pubkey: string; hive: string; hbd: string; hp: string }
+  | { ok: false; reason: string };
+
+async function fetchHiveAccountInfo(): Promise<HiveAccountInfo> {
+  try {
+    const pubkey = await getHivePublicKey();
+    const resp = await fetch(`${PIONEER_URL}/api/v1/hive/account/${encodeURIComponent(pubkey)}`, {
+      signal: AbortSignal.timeout(20_000),
+    });
+    const data = await resp.json();
+    if (!data.success || data.noAccount || !data.account?.name) {
+      return { ok: false, reason: 'no-account' };
+    }
+    cachedAccountName = data.account.name;
+    const a = data.account;
+    return { ok: true, name: a.name, pubkey, hive: a.hive ?? '0', hbd: a.hbd ?? '0', hp: a.hp ?? '0' };
+  } catch (e: any) {
+    return { ok: false, reason: e?.message || 'unavailable' };
+  }
+}
+
+export async function getHiveAccountInfo(): Promise<HiveAccountInfo> {
+  if (cachedInfo && Date.now() - cachedInfoAt < HIVE_INFO_TTL_MS) return cachedInfo;
+  if (inflightInfo) return inflightInfo;
+  inflightInfo = fetchHiveAccountInfo()
+    .then(result => {
+      // Cache successes; leave a failure uncached so the next call retries.
+      if (result.ok) {
+        cachedInfo = result;
+        cachedInfoAt = Date.now();
+      }
+      return result;
+    })
+    .finally(() => {
+      inflightInfo = null;
+    });
+  return inflightInfo;
+}
+
+/**
+ * Non-blocking accessor for hot paths (GET_APP_PUBKEYS/BALANCES): returns the
+ * last cached account info without awaiting the vault, and kicks off a refresh
+ * when stale. First call before any warm-up returns null (Hive simply absent
+ * that render); the async fetch fills it for the next.
+ */
+export function getCachedHiveInfo(): HiveAccountInfo | null {
+  if (!cachedInfo || Date.now() - cachedInfoAt >= HIVE_INFO_TTL_MS) {
+    getHiveAccountInfo().catch(() => {});
+  }
+  return cachedInfo;
+}
+
+export const HIVE_CAIP = 'hive:beeab0de/slip44:1275';
+
+/**
+ * Synthetic pubkey/asset/balance rows for the read-only UI, built from a
+ * resolved account. `address` is the Hive account name (the transfer target).
+ * These enter the shared UI response paths (pubkeys, assets, balances,
+ * pubkey-context) so every surface — list, receive, detail — agrees. They
+ * never touch wallet.getPubkeys() (the fund-critical signing store).
+ */
+export function buildHiveUiRows(info: HiveAccountInfo | null) {
+  if (!info || !info.ok) return null;
+  const pubkey = {
+    networks: [HIVE_NETWORK_ID],
+    address: info.name,
+    pubkey: info.pubkey,
+    note: 'Hive account',
+    symbol: 'HIVE',
+  };
+  const asset = {
+    networkId: HIVE_NETWORK_ID,
+    caip: HIVE_CAIP,
+    name: 'Hive',
+    symbol: 'HIVE',
+  };
+  const balance = {
+    networkId: HIVE_NETWORK_ID,
+    caip: HIVE_CAIP,
+    symbol: 'HIVE',
+    balance: info.hive,
+    isNative: true,
+    valueUsd: '0',
+  };
+  return { pubkey, asset, balance };
 }
 
 /** Build the event object for the side-panel approval flow */
@@ -576,6 +683,18 @@ export const handleHiveRequest = async (
     }
     case 'hive_transfer': {
       return await hiveTransfer(params, requestInfo, requireApproval);
+    }
+    case 'transfer': {
+      // Generic side-panel Send (Transfer.tsx) — adapt its payload shape
+      // ({ recipient, amount: { amount, denom }, memo }) to the Keychain-shaped
+      // hiveTransfer ({ to, amount, currency, memo }). Same build/sign/broadcast
+      // path as the dApp hive_transfer; the sender account is derived on-device.
+      const p = params?.[0] || {};
+      return await hiveTransfer(
+        [{ to: p.recipient, amount: p.amount?.amount, memo: p.memo, currency: p.amount?.denom || 'HIVE' }],
+        requestInfo,
+        requireApproval,
+      );
     }
     case 'hive_signBuffer': {
       return await hiveSignBuffer(params, requestInfo, requireApproval);

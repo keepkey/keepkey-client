@@ -43,6 +43,9 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
 
   const isEvm = asset.networkId?.startsWith('eip155:');
   const isUtxo = asset.networkId?.startsWith('bip122:');
+  // Hive supports Send (native HIVE transfer via the vault) and Receive, but
+  // has no swap route yet — gate only Swap off.
+  const noSwap = asset.networkId === 'hive:beeab0de';
 
   // Fallback: cached Pioneer balance for non-EVM or while loading
   const chainBalances = balances.filter(b => b.networkId === asset.networkId);
@@ -313,7 +316,7 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
           onClick={onReceive}>
           Receive
         </Button>
-        {onSwap && (
+        {onSwap && !noSwap && (
           <Button
             leftIcon={<RepeatIcon boxSize={3} />}
             variant="ghost"
