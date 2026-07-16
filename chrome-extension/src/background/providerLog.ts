@@ -85,7 +85,10 @@ export function getLogs(filter?: { pattern?: string; since?: number; limit?: num
 
 /** Returns the internal key to settle this entry with — never reuse the dApp id. */
 export function registerPending(req: Omit<PendingRequest, 'key'>): string {
-  const key = crypto.randomUUID();
+  // globalThis.crypto works in both the MV3 service worker (Web Crypto) and the
+  // Node/vitest test env (Node 20+ webcrypto); a bare `crypto` is undefined
+  // under vitest and threw ReferenceError.
+  const key = globalThis.crypto.randomUUID();
   pendingRequests.set(key, { ...req, key });
   return key;
 }
