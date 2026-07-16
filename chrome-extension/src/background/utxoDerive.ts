@@ -192,3 +192,23 @@ export function deriveUtxoAddress({ xpub, scriptType, networkId }: DeriveArgs): 
       throw new Error(`Unsupported script type: ${scriptType}`);
   }
 }
+
+/** Account string for one vault pubkey row, for `request_accounts` handlers.
+ *  /api/pubkeys/batch returns UTXO rows as { pubkey: '<xpub>', address: '' }
+ *  with no master — mapping `master || address` handed dApps empty strings for
+ *  every UTXO chain. Prefer the explicit address; otherwise derive the receive
+ *  address locally from the row's xpub (pure BIP32, no device round-trip).
+ *  Returns undefined (caller filters it out) when the row has nothing usable. */
+export function utxoAccountFromPubkeyRow(
+  row: { master?: string; address?: string; pubkey?: string; script_type?: string },
+  networkId: string,
+): string | undefined {
+  const direct = row.master || row.address;
+  if (direct) return direct;
+  if (!row.pubkey) return undefined;
+  try {
+    return deriveUtxoAddress({ xpub: row.pubkey, scriptType: row.script_type, networkId });
+  } catch {
+    return undefined;
+  }
+}

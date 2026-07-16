@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveUtxoAddress } from './utxoDerive';
+import { deriveUtxoAddress, utxoAccountFromPubkeyRow } from './utxoDerive';
 
 // Canonical BIP test vectors for the "abandon abandon ... about" mnemonic.
 // These pin our local pubkey→address derivation against the published
@@ -57,5 +57,42 @@ describe('deriveUtxoAddress — error handling', () => {
 
   it('throws on a malformed extended key', () => {
     expect(() => deriveUtxoAddress({ xpub: 'not-an-xpub', scriptType: 'p2pkh', networkId: BTC })).toThrow();
+  });
+});
+
+describe('utxoAccountFromPubkeyRow — vault batch rows to dApp account strings', () => {
+  // Regression: /api/pubkeys/batch returns UTXO rows as
+  // { pubkey: '<xpub>', address: '' } with no master. request_accounts mapped
+  // `master || address`, so dApps received EMPTY STRINGS for every UTXO chain
+  // (7 of them for Bitcoin's 7 paths) — SwapKit-connected sites could never
+  // get a BTC receive address. The row's xpub derives the address locally.
+  const row = (overrides: Record<string, unknown>) => ({
+    pubkey: '',
+    address: '',
+    script_type: 'p2wpkh',
+    ...overrides,
+  });
+
+  it('prefers an explicit master/address without deriving', () => {
+    expect(utxoAccountFromPubkeyRow(row({ master: 'bc1qexplicit' }), BTC)).toBe('bc1qexplicit');
+    expect(utxoAccountFromPubkeyRow(row({ address: '1Explicit' }), BTC)).toBe('1Explicit');
+  });
+
+  it('derives the receive address from the xpub when address is empty (the vault batch shape)', () => {
+    const account = utxoAccountFromPubkeyRow(row({ pubkey: ZPUB_BIP84, script_type: 'p2wpkh' }), BTC);
+    expect(account).toBe('bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu');
+  });
+
+  it('respects the row script type when deriving', () => {
+    expect(utxoAccountFromPubkeyRow(row({ pubkey: XPUB_BIP44, script_type: 'p2pkh' }), BTC)).toMatch(/^1/);
+    expect(utxoAccountFromPubkeyRow(row({ pubkey: XPUB_BIP44, script_type: 'p2sh-p2wpkh' }), BTC)).toMatch(/^3/);
+  });
+
+  it('returns undefined instead of an empty string when the row has nothing usable', () => {
+    expect(utxoAccountFromPubkeyRow(row({}), BTC)).toBeUndefined();
+  });
+
+  it('returns undefined instead of throwing on a malformed xpub', () => {
+    expect(utxoAccountFromPubkeyRow(row({ pubkey: 'not-an-xpub' }), BTC)).toBeUndefined();
   });
 });

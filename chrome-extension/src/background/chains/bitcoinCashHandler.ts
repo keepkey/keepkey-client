@@ -2,6 +2,7 @@ import { requestStorage } from '@extension/storage';
 import { v4 as uuidv4 } from 'uuid';
 import { Chain, ChainToNetworkId, shortListSymbolToCaip, caipToNetworkId } from '../chainConfig';
 import * as wallet from '../wallet';
+import { utxoAccountFromPubkeyRow } from '../utxoDerive';
 import { createProviderRpcError } from '../utils';
 import { fetchJsonWithTimeout } from '../fetchUtils';
 
@@ -18,8 +19,15 @@ export const handleBitcoinCashRequest = async (
   const tag = TAG + ' | handleBitcoinCashRequest | ';
   switch (method) {
     case 'request_accounts': {
-      const pubkeys = wallet.getPubkeys(ChainToNetworkId[Chain.BitcoinCash]);
-      const accounts = pubkeys.map((pubkey: any) => 'bitcoincash:' + (pubkey.master || pubkey.address));
+      const networkId = ChainToNetworkId[Chain.BitcoinCash];
+      const pubkeys = wallet.getPubkeys(networkId);
+      // Vault batch rows carry the xpub with an empty address — derive the
+      // cashaddr locally instead of returning the bare 'bitcoincash:' prefix.
+      // Derived cashaddrs already include the prefix; explicit ones may not.
+      const accounts = pubkeys
+        .map((pubkey: any) => utxoAccountFromPubkeyRow(pubkey, networkId))
+        .filter((account): account is string => !!account)
+        .map((account: string) => (account.includes(':') ? account : 'bitcoincash:' + account));
       return [accounts[0]];
     }
     case 'request_balance': {

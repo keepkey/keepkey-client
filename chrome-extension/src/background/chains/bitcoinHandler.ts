@@ -2,6 +2,7 @@ import { requestStorage } from '@extension/storage';
 import { v4 as uuidv4 } from 'uuid';
 import { Chain, ChainToNetworkId, shortListSymbolToCaip, caipToNetworkId } from '../chainConfig';
 import * as wallet from '../wallet';
+import { utxoAccountFromPubkeyRow } from '../utxoDerive';
 import { createProviderRpcError } from '../utils';
 import { fetchJsonWithTimeout } from '../fetchUtils';
 
@@ -19,8 +20,11 @@ export const handleBitcoinRequest = async (
 
   switch (method) {
     case 'request_accounts': {
-      const pubkeys = wallet.getPubkeys(ChainToNetworkId[Chain.Bitcoin]);
-      const accounts = pubkeys.map((pubkey: any) => pubkey.master || pubkey.address);
+      const networkId = ChainToNetworkId[Chain.Bitcoin];
+      const pubkeys = wallet.getPubkeys(networkId);
+      // Vault batch rows carry the xpub with an empty address — derive the
+      // receive address locally instead of handing dApps empty strings.
+      const accounts = pubkeys.map((pubkey: any) => utxoAccountFromPubkeyRow(pubkey, networkId)).filter(Boolean);
       return [accounts];
     }
 
