@@ -13,7 +13,7 @@ import { handleSwapMessage, resolveAddress } from './swapHandler';
 import { startSwapEventStream, stopSwapEventStream } from './swapEventStream';
 import { resetTonState, prefetchTonAddress } from './chains/tonHandler';
 import { resetTronState, prefetchTronPubkey } from './chains/tronHandler';
-import { resetHiveState } from './chains/hiveHandler';
+import { resetHiveState, getHiveAccountInfo } from './chains/hiveHandler';
 import { handleWalletRequest } from './methods';
 import { initMcpBridge } from './mcpBridge';
 import { setApprovalBadge } from './popup';
@@ -2072,6 +2072,14 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
 
         case 'GET_APP_PUBKEYS': {
           sendResponse({ balances: wallet.getPubkeys() });
+          break;
+        }
+
+        case 'GET_HIVE_ACCOUNT': {
+          // Read-only Hive account for the side-panel network list. Hive keys
+          // come from the vault (not wallet.getPubkeys()), so the UI fetches
+          // this separately and injects a synthetic pubkey. Soft-fails.
+          sendResponse(await getHiveAccountInfo());
           break;
         }
 

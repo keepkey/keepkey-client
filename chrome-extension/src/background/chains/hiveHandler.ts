@@ -81,6 +81,35 @@ async function getHiveAccount(): Promise<{ name: string; pubkey: string }> {
   return { name: data.account.name, pubkey };
 }
 
+/**
+ * Read-only account info for the side-panel network list (name + address +
+ * native balance). Soft-fails instead of throwing so a locked/disabled Hive
+ * or an unregistered key just leaves Hive out of the list rather than
+ * breaking the header. `address` is the Hive account name — that's the
+ * user-facing identifier and the transfer destination.
+ */
+export type HiveAccountInfo =
+  | { ok: true; name: string; pubkey: string; hive: string; hbd: string; hp: string }
+  | { ok: false; reason: string };
+
+export async function getHiveAccountInfo(): Promise<HiveAccountInfo> {
+  try {
+    const pubkey = await getHivePublicKey();
+    const resp = await fetch(`${PIONEER_URL}/api/v1/hive/account/${encodeURIComponent(pubkey)}`, {
+      signal: AbortSignal.timeout(20_000),
+    });
+    const data = await resp.json();
+    if (!data.success || data.noAccount || !data.account?.name) {
+      return { ok: false, reason: 'no-account' };
+    }
+    cachedAccountName = data.account.name;
+    const a = data.account;
+    return { ok: true, name: a.name, pubkey, hive: a.hive ?? '0', hbd: a.hbd ?? '0', hp: a.hp ?? '0' };
+  } catch (e: any) {
+    return { ok: false, reason: e?.message || 'unavailable' };
+  }
+}
+
 /** Build the event object for the side-panel approval flow */
 function buildEvent(requestInfo: any, method: string, params: any[]) {
   if (!requestInfo.id) requestInfo.id = uuidv4();
