@@ -43,6 +43,10 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
 
   const isEvm = asset.networkId?.startsWith('eip155:');
   const isUtxo = asset.networkId?.startsWith('bip122:');
+  // Hive is read-only for now: it lists + receives, but Send/Swap aren't wired
+  // (generic Send emits a shape hiveTransfer can't consume). Gate them off so
+  // we don't surface a guaranteed-failing action.
+  const isReadOnly = asset.networkId === 'hive:beeab0de';
 
   // Fallback: cached Pioneer balance for non-EVM or while loading
   const chainBalances = balances.filter(b => b.networkId === asset.networkId);
@@ -291,17 +295,19 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
 
       {/* Action Buttons */}
       <HStack spacing={2} w="100%" px={2} pb={2} flexShrink={0}>
-        <Button
-          leftIcon={<ArrowUpIcon boxSize={3} />}
-          variant="solid"
-          size="sm"
-          flex={1}
-          fontSize="xs"
-          fontWeight="semibold"
-          borderRadius="md"
-          onClick={onSend}>
-          Send
-        </Button>
+        {!isReadOnly && (
+          <Button
+            leftIcon={<ArrowUpIcon boxSize={3} />}
+            variant="solid"
+            size="sm"
+            flex={1}
+            fontSize="xs"
+            fontWeight="semibold"
+            borderRadius="md"
+            onClick={onSend}>
+            Send
+          </Button>
+        )}
         <Button
           leftIcon={<ArrowDownIcon boxSize={3} />}
           variant="ghost"
@@ -313,7 +319,7 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
           onClick={onReceive}>
           Receive
         </Button>
-        {onSwap && (
+        {onSwap && !isReadOnly && (
           <Button
             leftIcon={<RepeatIcon boxSize={3} />}
             variant="ghost"

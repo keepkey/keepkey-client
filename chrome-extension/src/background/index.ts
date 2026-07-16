@@ -13,7 +13,9 @@ import { handleSwapMessage, resolveAddress } from './swapHandler';
 import { startSwapEventStream, stopSwapEventStream } from './swapEventStream';
 import { resetTonState, prefetchTonAddress } from './chains/tonHandler';
 import { resetTronState, prefetchTronPubkey } from './chains/tronHandler';
-import { resetHiveState, getHiveAccountInfo } from './chains/hiveHandler';
+import { resetHiveState, getHiveAccountInfo, getCachedHiveInfo, buildHiveUiRows } from './chains/hiveHandler';
+
+const HIVE_NETWORK_ID = 'hive:beeab0de';
 import { handleWalletRequest } from './methods';
 import { initMcpBridge } from './mcpBridge';
 import { setApprovalBadge } from './popup';
@@ -183,7 +185,12 @@ async function handleDeviceSwitch(newDeviceInfo: any) {
     //
     // Fire in parallel — each is non-throwing, so an individual chain
     // failure won't take the others down.
-    await Promise.allSettled([prefetchSolanaAccounts(), prefetchTronPubkey(), prefetchTonAddress()]);
+    await Promise.allSettled([
+      prefetchSolanaAccounts(),
+      prefetchTronPubkey(),
+      prefetchTonAddress(),
+      getHiveAccountInfo(), // warm the Hive cache before pushBalancesUpdated so the UI lists it on first paint
+    ]);
 
     pushStateChangeEvent();
     pushBalancesUpdated();
@@ -1092,7 +1099,7 @@ const onStart = async function () {
       // cachedBalances. Users saw "No tokens" until they hit the manual
       // Discover button (which by coincidence runs after the slowest
       // prefetch finally lands).
-      Promise.allSettled([prefetchSolanaAccounts(), prefetchTronPubkey(), prefetchTonAddress()])
+      Promise.allSettled([prefetchSolanaAccounts(), prefetchTronPubkey(), prefetchTonAddress(), getHiveAccountInfo()])
         .then(() => fetchBalancesFromPioneer(true))
         .catch(e => console.warn(tag, 'Post-prefetch balance fetch failed:', e));
     } else {
@@ -1403,7 +1410,17 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               console.log(tag, 'Setting asset context:', asset);
 
               // Enrich asset with pubkeys from wallet so Asset.tsx has addresses
-              if (asset.networkId) {
+              if (asset.networkId === HIVE_NETWORK_ID) {
+                // Hive isn't in wallet.getPubkeys() — enrich from the vault-
+                // sourced synthetic row so Receive shows the Hive account (not
+                // an ETH fallback) and the detail page reads a real balance.
+                const hive = buildHiveUiRows(await getHiveAccountInfo());
+                if (hive) {
+                  asset.pubkeys = [hive.pubkey];
+                  asset.address = hive.pubkey.address;
+                  if (!asset.balance) asset.balance = hive.balance.balance;
+                }
+              } else if (asset.networkId) {
                 // An EVM address is identical on every EVM chain, so all
                 // ETH-derived accounts (0/1/2/...) are valid receive targets
                 // regardless of which EVM network is selected. Accounts 1+ are
@@ -1544,7 +1561,11 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             const allPubkeys = wallet.getPubkeys();
             let chosen: any = null;
 
-            if (ctx?.networkId) {
+            if (ctx?.networkId === HIVE_NETWORK_ID) {
+              // Hive is vault-sourced (not in wallet.getPubkeys()). Return the
+              // synthetic row so Receive shows the Hive account address.
+              chosen = buildHiveUiRows(await getHiveAccountInfo())?.pubkey ?? null;
+            } else if (ctx?.networkId) {
               // EVM addresses are identical across all EVM chains, and accounts
               // 1+ are registered only under eip155:1 (no eip155:* wildcard). A
               // literal getPubkeys(networkId) returns empty on non-mainnet EVM
@@ -1578,7 +1599,13 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               }
             }
 
-            if (!chosen) chosen = allPubkeys[0] ?? null;
+            // Fall back to allPubkeys[0] ONLY on cold-start (no selection). If a
+            // network IS selected but nothing matched (e.g. a vault-sourced
+            // chain with no store pubkey, or a stale context), returning another
+            // chain's address here would make Receive show a WRONG-CHAIN address
+            // — a fund-loss foot-gun. Return null instead so the UI shows no
+            // address rather than a dangerous one.
+            if (!chosen && !ctx?.networkId) chosen = allPubkeys[0] ?? null;
             sendResponse({ pubkeyContext: chosen });
           } catch (e) {
             console.error('GET_PUBKEY_CONTEXT failed:', e);
@@ -2071,19 +2098,25 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         }
 
         case 'GET_APP_PUBKEYS': {
-          sendResponse({ balances: wallet.getPubkeys() });
-          break;
-        }
-
-        case 'GET_HIVE_ACCOUNT': {
-          // Read-only Hive account for the side-panel network list. Hive keys
-          // come from the vault (not wallet.getPubkeys()), so the UI fetches
-          // this separately and injects a synthetic pubkey. Soft-fails.
-          sendResponse(await getHiveAccountInfo());
+          // Hive keys come from the vault (not wallet.getPubkeys()), so inject
+          // the synthetic Hive pubkey here — a single shared source the header,
+          // receive, and detail all read, rather than per-component UI hacks.
+          // Non-blocking: cached accessor, so a cold worker just omits Hive
+          // this render and fills it on the next.
+          const hive = buildHiveUiRows(getCachedHiveInfo());
+          const pubkeys = wallet.getPubkeys();
+          sendResponse({ balances: hive ? [...pubkeys, hive.pubkey] : pubkeys });
           break;
         }
 
         case 'GET_APP_BALANCES': {
+          // Hive balance is vault-sourced (not in cachedBalances), so merge the
+          // synthetic row into every response path — the dashboard AND the
+          // asset-detail page read from here, so both stay consistent.
+          // Non-blocking cached accessor.
+          const hiveBalanceRow = buildHiveUiRows(getCachedHiveInfo())?.balance;
+          const withHive = (b: any[]) =>
+            hiveBalanceRow ? [...b.filter((x: any) => x.networkId !== HIVE_NETWORK_ID), hiveBalanceRow] : b;
           try {
             await portfolioHydrated;
             // Drop a hydrated last-good cache that belongs to a different wallet
@@ -2111,7 +2144,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               // once a discovery has committed (tokenDiscoveryDone).
               const discovering = !tokenDiscoveryDone && !cachedBalances.some((b: any) => b.token === true);
               sendResponse({
-                balances: cachedBalances,
+                balances: withHive(cachedBalances),
                 discovering,
                 updatedAt: portfolioUpdatedAt,
                 error: lastFetchError || undefined,
@@ -2123,28 +2156,38 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               // Empty cache (fresh worker): force-refresh so the first read
               // discovers tokens too, not just native balances.
               const balances = await fetchBalancesFromPioneer(true);
-              sendResponse({ balances, error: balances.length === 0 ? lastFetchError || undefined : undefined });
+              sendResponse({
+                balances: withHive(balances),
+                error: balances.length === 0 ? lastFetchError || undefined : undefined,
+              });
             } else {
-              sendResponse({ balances: [] });
+              sendResponse({ balances: withHive([]) });
             }
           } catch (error: any) {
             console.error(tag, 'GET_APP_BALANCES error:', error);
-            sendResponse({ balances: cachedBalances });
+            sendResponse({ balances: withHive(cachedBalances) });
           }
           break;
         }
 
         case 'REFRESH_ALL_BALANCES': {
+          // Force a fresh Hive fetch too so an explicit refresh updates it.
+          const hiveRefreshed = buildHiveUiRows(await getHiveAccountInfo())?.balance;
+          const mergeHive = (b: any[]) =>
+            hiveRefreshed ? [...b.filter((x: any) => x.networkId !== HIVE_NETWORK_ID), hiveRefreshed] : b;
           try {
             if (!wallet.isInitialized()) {
-              sendResponse({ balances: [], error: 'Wallet not initialized' });
+              sendResponse({ balances: mergeHive([]), error: 'Wallet not initialized' });
               break;
             }
             const balances = await fetchBalancesFromPioneer(true);
-            sendResponse({ balances, error: balances.length === 0 ? lastFetchError || undefined : undefined });
+            sendResponse({
+              balances: mergeHive(balances),
+              error: balances.length === 0 ? lastFetchError || undefined : undefined,
+            });
           } catch (error: any) {
             console.error(tag, 'REFRESH_ALL_BALANCES error:', error);
-            sendResponse({ balances: cachedBalances, error: error.message });
+            sendResponse({ balances: mergeHive(cachedBalances), error: error.message });
           }
           break;
         }

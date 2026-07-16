@@ -65,26 +65,9 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
 
         chrome.runtime.sendMessage({ type: 'GET_APP_PUBKEYS' }, response => {
           if (response?.balances) {
+            // GET_APP_PUBKEYS already includes the vault-sourced Hive pubkey
+            // (injected background-side), so no per-component merge here.
             setPubkeys(response.balances);
-
-            // Hive keys come from the vault, not wallet.getPubkeys(), so the
-            // pubkey-driven network list never includes Hive. Fetch the
-            // read-only account separately and inject a synthetic pubkey so
-            // buildNetworkList/buildAccountList render it like any other
-            // single-address chain. UI-local only — never sent back to
-            // signing. Soft: a disabled/unregistered Hive adds nothing.
-            chrome.runtime.sendMessage({ type: 'GET_HIVE_ACCOUNT' }, hiveResp => {
-              if (chrome.runtime.lastError || !hiveResp?.ok || !hiveResp.name) return;
-              const hivePubkey = {
-                networks: ['hive:beeab0de'],
-                address: hiveResp.name, // account name = user-facing Hive address
-                pubkey: hiveResp.pubkey,
-                note: 'Hive account',
-                symbol: 'HIVE',
-                hiveBalance: hiveResp.hive,
-              };
-              setPubkeys(prev => [...prev.filter(p => !(p.networks || []).includes('hive:beeab0de')), hivePubkey]);
-            });
 
             // Restore selection from stored asset context. Carries
             // note + script_type + accountIndex so multi-account EVM
