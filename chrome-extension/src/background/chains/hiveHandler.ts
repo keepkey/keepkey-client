@@ -366,6 +366,196 @@ async function hiveSignBuffer(
   return { result: signature, publicKey: public_key };
 }
 
+// Firmware clear-sign op table — phase 1 + phase 2
+// (handoff-hive-sign-operations-phase2.md). The vault serializer and the
+// firmware both re-enforce this; the check here just fails fast with a
+// clear dApp-facing error.
+const SUPPORTED_OPS = new Set([
+  'vote',
+  'comment',
+  'custom_json',
+  'transfer_to_vesting',
+  'withdraw_vesting',
+  'convert',
+  'comment_options',
+  'transfer_to_savings',
+  'transfer_from_savings',
+  'claim_reward_balance',
+  'delegate_vesting_shares',
+  'account_update2',
+]);
+
+/** Strict "x.xxx" normalization — same no-parseFloat rule as hiveTransfer. */
+function normalizeAmount3(amount: any, what: string): string {
+  if (typeof amount !== 'string' || !/^\d+(\.\d{1,3})?$/.test(amount)) {
+    throw createProviderRpcError(
+      -32602,
+      `Invalid ${what} "${amount}" — expected a decimal string with up to 3 decimals`,
+    );
+  }
+  const [whole, frac = ''] = amount.split('.');
+  const base = Number(whole) * 10 ** HIVE_DECIMALS + Number(frac.padEnd(HIVE_DECIMALS, '0'));
+  if (!Number.isSafeInteger(base) || base <= 0) {
+    throw createProviderRpcError(-32602, `Invalid ${what} "${amount}" — must be greater than zero`);
+  }
+  return (base / 10 ** HIVE_DECIMALS).toFixed(HIVE_DECIMALS);
+}
+
+/**
+ * HP → VESTS via the vesting pool on Pioneer /hive/tx-params (Pioneer is the
+ * RPC source of truth — no direct Hive-node calls, same policy as transfers).
+ */
+async function hpToVests(hp3: string): Promise<string> {
+  const resp = await fetch(`${PIONEER_URL}/api/v1/hive/tx-params`, {
+    signal: AbortSignal.timeout(20_000),
+  }).then(r => r.json());
+  if (!resp.success) throw createProviderRpcError(-32603, `Hive tx-params failed: ${resp.error || 'unknown'}`);
+  const totalFund = parseFloat(resp.totalVestingFundHive);
+  const totalShares = parseFloat(resp.totalVestingShares);
+  if (!isFinite(totalFund) || !isFinite(totalShares) || totalFund <= 0 || totalShares <= 0) {
+    throw createProviderRpcError(
+      -32603,
+      'Pioneer /hive/tx-params has no vesting pool — HP conversion needs an updated api.keepkey.info deploy',
+    );
+  }
+  return ((parseFloat(hp3) * totalShares) / totalFund).toFixed(6);
+}
+
+// ponytail: epoch-seconds request id — unique enough for one-off
+// conversions/withdrawals; per-account id tracking if a dApp ever collides.
+const epochRequestId = () => Math.floor(Date.now() / 1000);
+
+/** One-line device-preview summary per op for the side-panel approval. */
+function opSummary(name: string, p: Record<string, any>): string {
+  switch (name) {
+    case 'vote':
+      return `@${p.voter} → @${p.author}/${p.permlink} (${(Number(p.weight) / 100).toFixed(0)}%)`;
+    case 'comment':
+      return `@${p.author}: ${p.title || p.permlink}`;
+    case 'custom_json':
+      return `${p.id}: ${String(p.json).slice(0, 120)}`;
+    case 'transfer_to_vesting':
+      return `Power up ${p.amount} → @${p.to}`;
+    case 'withdraw_vesting':
+      return String(p.vesting_shares).startsWith('0.000000')
+        ? `Stop power down (@${p.account})`
+        : `Power down ${p.vesting_shares} from @${p.account}`;
+    case 'convert':
+      return `Convert ${p.amount} → HIVE (request ${p.requestid})`;
+    case 'comment_options':
+      return `Payout options for @${p.author}/${p.permlink}${
+        (p.extensions?.[0]?.[1]?.beneficiaries ?? [])
+          .map((b: any) => ` · ${(Number(b.weight) / 100).toFixed(1)}% → @${b.account}`)
+          .join('') || ''
+      }`;
+    case 'transfer_to_savings':
+      return `Savings deposit ${p.amount} → @${p.to}`;
+    case 'transfer_from_savings':
+      return `Savings withdraw ${p.amount} → @${p.to}`;
+    case 'claim_reward_balance':
+      return `Claim ${p.reward_hive}, ${p.reward_hbd}, ${p.reward_vests}`;
+    case 'delegate_vesting_shares':
+      return String(p.vesting_shares).startsWith('0.000000')
+        ? `Remove delegation from @${p.delegatee}`
+        : `Delegate ${p.vesting_shares} → @${p.delegatee}`;
+    case 'account_update2':
+      return `Update profile @${p.account}`;
+    default:
+      return name;
+  }
+}
+
+/**
+ * Shared path for vote/post/custom_json/broadcast: validate ops against the
+ * firmware's phase-1 clear-sign table, approve, sign via the vault
+ * (device parses + displays the Graphene bytes), broadcast via Pioneer
+ * /hive/broadcast-ops. Returns Keychain's { id, tx_id, confirmed } shape.
+ */
+async function hiveSignAndBroadcastOps(
+  displayType: string,
+  operations: [string, Record<string, any>][],
+  username: string | undefined,
+  params: any[],
+  requestInfo: any,
+  requireApproval: (networkId: string, requestInfo: any, chain: any, method: string, params: any) => Promise<any>,
+) {
+  for (const op of operations) {
+    if (!Array.isArray(op) || op.length !== 2 || !SUPPORTED_OPS.has(op[0])) {
+      throw createProviderRpcError(
+        4200,
+        `Operation not in the KeepKey clear-sign table (got ${Array.isArray(op) ? op[0] : typeof op})`,
+      );
+    }
+  }
+
+  await requireHiveFirmware('Hive operations');
+  const from = await getHiveAccount();
+  if (username && username !== from.name) {
+    throw createProviderRpcError(4100, `This KeepKey controls @${from.name}, not @${username}`);
+  }
+
+  const event = buildEvent(requestInfo, displayType, params);
+  (event as any).unsignedTx = {
+    from: from.name,
+    operations: operations.map(([name, p]) => ({ op: name, summary: opSummary(name, p) })),
+  };
+  await requestUserApproval(event, requestInfo, displayType, params, requireApproval);
+
+  // Sign — the vault serializes, the device parses + clear-signs
+  let signResp: Response;
+  try {
+    signResp = await fetch(`${VAULT_URL}/hive/sign-operations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getApiKey()}` },
+      body: JSON.stringify({ operations }),
+      signal: AbortSignal.timeout(300_000),
+    });
+  } catch (e: any) {
+    if (e.name === 'TimeoutError' || e.name === 'AbortError') throw createTimeoutError('Vault signing timed out');
+    throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
+  }
+  if (!signResp.ok) {
+    const text = await signResp.text().catch(() => '');
+    throw createProviderRpcError(-32603, `Vault Hive sign-operations failed (${signResp.status}): ${text}`);
+  }
+  const signed = await signResp.json();
+  if (!signed.signature) throw createProviderRpcError(-32603, 'Vault returned no Hive signature');
+
+  // Broadcast the EXACT tx the device signed (header echoed by the vault)
+  const bResp = await fetch(`${PIONEER_URL}/api/v1/hive/broadcast-ops`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ref_block_num: signed.ref_block_num,
+      ref_block_prefix: signed.ref_block_prefix,
+      expiration: signed.expiration,
+      operations: signed.operations,
+      signature: signed.signature.replace(/^0x/, ''),
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const bData = await bResp.json().catch(() => ({}));
+  if (!bData.success || !bData.txid) {
+    throw createProviderRpcError(
+      -32603,
+      `Hive broadcast failed: ${bData.error || `HTTP ${bResp.status} — is /hive/broadcast-ops deployed?`}`,
+    );
+  }
+
+  await requestStorage.updateEventById(event.id, { ...event, txid: bData.txid, status: 'broadcasted' } as any);
+  chrome.runtime
+    .sendMessage({
+      action: 'transaction_complete',
+      eventId: requestInfo.id,
+      txHash: bData.txid,
+      explorerTxLink: 'https://hiveblocks.com/tx/',
+      networkId: HIVE_NETWORK_ID,
+    })
+    .catch(() => {});
+
+  return { id: bData.txid, tx_id: bData.txid, confirmed: Boolean(bData.blockNum ?? bData.block_num) };
+}
+
 export const handleHiveRequest = async (
   method: string,
   params: any[],
@@ -389,6 +579,202 @@ export const handleHiveRequest = async (
     }
     case 'hive_signBuffer': {
       return await hiveSignBuffer(params, requestInfo, requireApproval);
+    }
+    case 'hive_vote': {
+      const { username, permlink, author, weight } = params[0] || {};
+      const from = await getHiveAccount();
+      const voter = username || from.name;
+      return await hiveSignAndBroadcastOps(
+        'vote',
+        [['vote', { voter, author, permlink, weight: Number(weight) }]],
+        username,
+        params,
+        requestInfo,
+        requireApproval,
+      );
+    }
+    case 'hive_post': {
+      const p = params[0] || {};
+      const from = await getHiveAccount();
+      const author = p.username || from.name;
+      const permlink = p.permlink || `keepkey-${Date.now().toString(36)}`;
+      const ops: [string, Record<string, any>][] = [
+        [
+          'comment',
+          {
+            parent_author: p.parent_username || '',
+            parent_permlink: p.parent_perm,
+            author,
+            permlink,
+            title: p.title || '',
+            body: p.body,
+            json_metadata:
+              typeof p.json_metadata === 'string' ? p.json_metadata : JSON.stringify(p.json_metadata ?? {}),
+          },
+        ],
+      ];
+      if (p.comment_options) {
+        // Keychain sends comment_options as a JSON string or object. Author +
+        // permlink are forced to the comment's — the vault serializer rejects
+        // any mismatch (beneficiary-redirect protection).
+        let opts: any;
+        try {
+          opts = typeof p.comment_options === 'string' ? JSON.parse(p.comment_options) : p.comment_options;
+        } catch {
+          throw createProviderRpcError(-32602, 'comment_options is not valid JSON');
+        }
+        ops.push([
+          'comment_options',
+          {
+            author,
+            permlink,
+            max_accepted_payout: opts.max_accepted_payout ?? '1000000.000 HBD',
+            percent_hbd: opts.percent_hbd ?? opts.percent_steem_dollars ?? 10000,
+            allow_votes: opts.allow_votes ?? true,
+            allow_curation_rewards: opts.allow_curation_rewards ?? true,
+            extensions: opts.extensions ?? [],
+          },
+        ]);
+      }
+      return await hiveSignAndBroadcastOps('post', ops, p.username, params, requestInfo, requireApproval);
+    }
+    case 'hive_customJson': {
+      const p = params[0] || {};
+      const from = await getHiveAccount();
+      const account = p.username || from.name;
+      const active = String(p.method || 'Posting').toLowerCase() === 'active';
+      const op: [string, Record<string, any>] = [
+        'custom_json',
+        {
+          required_auths: active ? [account] : [],
+          required_posting_auths: active ? [] : [account],
+          id: p.id,
+          json: typeof p.json === 'string' ? p.json : JSON.stringify(p.json ?? {}),
+        },
+      ];
+      return await hiveSignAndBroadcastOps('custom_json', [op], p.username, params, requestInfo, requireApproval);
+    }
+    case 'hive_broadcast': {
+      const p = params[0] || {};
+      if (!Array.isArray(p.operations) || p.operations.length === 0) {
+        throw createProviderRpcError(-32602, 'requestBroadcast requires an operations array');
+      }
+      return await hiveSignAndBroadcastOps('broadcast', p.operations, p.username, params, requestInfo, requireApproval);
+    }
+    case 'hive_sendToken': {
+      // Hive Engine token transfer = custom_json on ssc-mainnet-hive (active key)
+      const p = params[0] || {};
+      if (!p.to || !p.amount || !p.currency) {
+        throw createProviderRpcError(-32602, 'sendToken requires { to, amount, currency }');
+      }
+      if (typeof p.amount !== 'string' || !/^\d+(\.\d+)?$/.test(p.amount)) {
+        throw createProviderRpcError(-32602, `Invalid token amount "${p.amount}"`);
+      }
+      const from = await getHiveAccount();
+      const account = p.username || from.name;
+      const op: [string, Record<string, any>] = [
+        'custom_json',
+        {
+          required_auths: [account],
+          required_posting_auths: [],
+          id: 'ssc-mainnet-hive',
+          json: JSON.stringify({
+            contractName: 'tokens',
+            contractAction: 'transfer',
+            contractPayload: { symbol: p.currency, to: p.to, quantity: p.amount, memo: p.memo || '' },
+          }),
+        },
+      ];
+      return await hiveSignAndBroadcastOps('sendToken', [op], p.username, params, requestInfo, requireApproval);
+    }
+    case 'hive_powerUp': {
+      const p = params[0] || {};
+      const from = await getHiveAccount();
+      const account = p.username || from.name;
+      const amount = normalizeAmount3(p.hive, 'power-up amount');
+      const op: [string, Record<string, any>] = [
+        'transfer_to_vesting',
+        { from: account, to: p.recipient || account, amount: `${amount} HIVE` },
+      ];
+      return await hiveSignAndBroadcastOps('powerUp', [op], p.username, params, requestInfo, requireApproval);
+    }
+    case 'hive_powerDown': {
+      const p = params[0] || {};
+      const from = await getHiveAccount();
+      const account = p.username || from.name;
+      // Keychain contract: hive_power is HP; '0.000' stops an active power-down
+      const stop = typeof p.hive_power === 'string' && /^0+(\.0{1,3})?$/.test(p.hive_power);
+      const vests = stop ? '0.000000' : await hpToVests(normalizeAmount3(p.hive_power, 'power-down amount'));
+      const op: [string, Record<string, any>] = ['withdraw_vesting', { account, vesting_shares: `${vests} VESTS` }];
+      return await hiveSignAndBroadcastOps('powerDown', [op], p.username, params, requestInfo, requireApproval);
+    }
+    case 'hive_delegation': {
+      const p = params[0] || {};
+      if (!p.delegatee) throw createProviderRpcError(-32602, 'delegation requires a delegatee');
+      const from = await getHiveAccount();
+      const account = p.username || from.name;
+      let vests: string;
+      if (p.unit === 'VESTS') {
+        if (typeof p.amount !== 'string' || !/^\d+\.\d{6}$/.test(p.amount)) {
+          throw createProviderRpcError(-32602, `Invalid VESTS amount "${p.amount}" — requires exactly 6 decimals`);
+        }
+        vests = p.amount;
+      } else if (p.unit === 'HP') {
+        // '0.000' HP removes the delegation — skip the pool conversion
+        vests = /^0+(\.0{1,3})?$/.test(String(p.amount))
+          ? '0.000000'
+          : await hpToVests(normalizeAmount3(p.amount, 'delegation amount'));
+      } else {
+        throw createProviderRpcError(-32602, `delegation unit must be HP or VESTS (got ${p.unit})`);
+      }
+      const op: [string, Record<string, any>] = [
+        'delegate_vesting_shares',
+        { delegator: account, delegatee: p.delegatee, vesting_shares: `${vests} VESTS` },
+      ];
+      return await hiveSignAndBroadcastOps('delegation', [op], p.username, params, requestInfo, requireApproval);
+    }
+    case 'hive_savings': {
+      const p = params[0] || {};
+      if (!['HIVE', 'HBD'].includes(p.currency)) {
+        throw createProviderRpcError(-32602, `savings currency must be HIVE or HBD (got ${p.currency})`);
+      }
+      if (!['deposit', 'withdraw'].includes(p.operation)) {
+        throw createProviderRpcError(-32602, `savings operation must be deposit or withdraw (got ${p.operation})`);
+      }
+      if (typeof p.memo === 'string' && p.memo.startsWith('#')) {
+        throw createProviderRpcError(
+          4200,
+          'Encrypted memos (starting with "#") are not supported — the memo would be broadcast as public plaintext',
+        );
+      }
+      const from = await getHiveAccount();
+      const account = p.username || from.name;
+      const to = p.to || account;
+      const amount = `${normalizeAmount3(p.amount, 'savings amount')} ${p.currency}`;
+      const op: [string, Record<string, any>] =
+        p.operation === 'deposit'
+          ? ['transfer_to_savings', { from: account, to, amount, memo: p.memo || '' }]
+          : ['transfer_from_savings', { from: account, request_id: epochRequestId(), to, amount, memo: p.memo || '' }];
+      return await hiveSignAndBroadcastOps('savings', [op], p.username, params, requestInfo, requireApproval);
+    }
+    case 'hive_conversion': {
+      const p = params[0] || {};
+      // collaterized=true is HIVE→HBD via collateralized_convert (op 48) —
+      // not in the device clear-sign table.
+      if (p.collaterized) {
+        throw createProviderRpcError(4200, 'HIVE → HBD (collateralized) conversion is not supported yet');
+      }
+      const from = await getHiveAccount();
+      const account = p.username || from.name;
+      const op: [string, Record<string, any>] = [
+        'convert',
+        {
+          owner: account,
+          requestid: epochRequestId(),
+          amount: `${normalizeAmount3(p.amount, 'conversion amount')} HBD`,
+        },
+      ];
+      return await hiveSignAndBroadcastOps('conversion', [op], p.username, params, requestInfo, requireApproval);
     }
     default:
       throw createProviderRpcError(4200, `Hive method ${method} not supported`);
