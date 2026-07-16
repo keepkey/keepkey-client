@@ -9,7 +9,7 @@ SHELL := /bin/bash
 .PHONY: help build build-firefox dev dev-firefox zip zip-firefox \
         install reinstall clean clean-bundle clean-turbo clean-deps \
         lint lint-fix prettier type-check test e2e e2e-firefox \
-        bump
+        test-mcp test-mcp-browser bump
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"; printf "targets:\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  %-18s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -76,6 +76,12 @@ type-check: ## Run TypeScript type-check across all packages
 
 test: ## Run unit tests (vitest), same as CI
 	pnpm test
+
+test-mcp: ## MCP agent-bridge exit test — needs vault on :1646, Agent mode ON, KEEPKEY_API_KEY
+	node scripts/test-mcp-bridge.mjs
+
+test-mcp-browser: ## Browser-driving tools exit test — same prereqs; opens/closes one tab
+	node scripts/test-browser-tools.mjs
 
 e2e: ## End-to-end tests (Chrome) — needs a connected KeepKey
 	pnpm e2e

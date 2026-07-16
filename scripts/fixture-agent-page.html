@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+  <head>
+    <title>BEX agent fixture</title>
+  </head>
+  <body>
+    <!--
+      Fixture for scripts/test-mcp-bridge.mjs. Deliberately shaped like the dApp
+      flows the browser tools exist to drive:
+        - a Connect button whose click is only observable via rendered text
+        - an amount field that gates a Swap button (framework-style reactive
+          disable — proves bex_type fires real input events, not just .value=)
+        - a button inside an open shadow root (web3modal and every Lit-based
+          connect modal live in shadow DOM; a snapshot that can't see in there is
+          useless for exactly the dialogs that matter)
+    -->
+    <main>
+      <h1>Agent Fixture</h1>
+      <button id="connect">Connect Wallet</button>
+      <label for="amt">You pay</label>
+      <input id="amt" value="0" />
+      <button id="swap" disabled>Swap</button>
+      <p id="out">idle</p>
+      <shadow-panel></shadow-panel>
+    </main>
+
+    <script>
+      const out = document.getElementById('out');
+      const amt = document.getElementById('amt');
+      const swap = document.getElementById('swap');
+
+      document.getElementById('connect').onclick = () => {
+        out.textContent = 'connected';
+      };
+      amt.addEventListener('input', () => {
+        swap.disabled = !(Number(amt.value) > 0);
+      });
+      swap.onclick = () => {
+        out.textContent = 'swapped ' + amt.value;
+      };
+
+      customElements.define(
+        'shadow-panel',
+        class extends HTMLElement {
+          connectedCallback() {
+            const root = this.attachShadow({ mode: 'open' });
+            root.innerHTML = '<button id="deep">Deep Shadow Button</button>';
+            root.getElementById('deep').onclick = () => {
+              out.textContent = 'shadow clicked';
+            };
+          }
+        },
+      );
+    </script>
+  </body>
+</html>

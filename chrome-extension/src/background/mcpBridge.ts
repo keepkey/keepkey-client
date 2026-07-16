@@ -16,6 +16,7 @@
 import * as wallet from './wallet';
 import { agentModeStorage, keepKeyApiKeyStorage, web3ProviderStorage } from '@extension/storage';
 import { getLogs, getPendingRequests, getConnectedSites, SW_STARTED_AT } from './providerLog';
+import { BROWSER_TOOLS, executeBrowserTool, isBrowserTool } from './browserTools';
 
 const TAG = ' | mcpBridge | ';
 const BRIDGE_URL = 'ws://localhost:1646/bex-bridge';
@@ -52,6 +53,62 @@ const ACCOUNT_CHAINS = [
   'cosmos',
   'osmosis',
   'ripple',
+];
+
+/**
+ * The tier-1 introspection catalog. It lives HERE, next to the code that
+ * implements it, rather than in the vault — the vault serves whatever
+ * bex_list_tools returns (see HANDOFF_vault_mcp_dumb_pipe.md). That keeps every
+ * future tool a one-repo change instead of a cross-repo one, which is the only
+ * reason the browser tools below could ship without touching the vault at all.
+ */
+const INTROSPECTION_TOOLS = [
+  {
+    name: 'bex_status',
+    description:
+      'KeepKey extension health: extension version, device/vault connection state, active EVM network, bridge status. Works even when the extension bridge is down (reports bridge: "down").',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'bex_accounts',
+    description:
+      'Per-chain accounts exactly as the extension returns them to dApps via request_accounts — raw shape preserved (string vs array), plus the underlying pubkey/xpub cache entries.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        chains: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Chains to query (e.g. ["ethereum","bitcoin","thorchain"]). Default: all supported.',
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'bex_pending_requests',
+    description: 'The extension approval queue: requests waiting for user approval in the side panel.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'bex_connected_sites',
+    description: 'Origins that have made provider requests through the extension, with the chains each has touched.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'bex_logs',
+    description:
+      'Structured provider request/response log from the extension background (every injected request, its result or error code). Ring buffer, newest last. This is the wallet-traffic view a generic browser MCP cannot give you.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        pattern: { type: 'string', description: 'Regex filter over method/origin/error' },
+        since: { type: 'number', description: 'Only entries with timestamp >= this (ms epoch)' },
+        limit: { type: 'number', description: 'Max entries returned (default 100)' },
+      },
+      additionalProperties: false,
+    },
+  },
 ];
 
 export interface McpBridgeDeps {
@@ -180,6 +237,11 @@ function scheduleReconnect(): void {
 
 async function executeTool(tool: string, args: any): Promise<any> {
   if (!deps) throw new Error('bridge not initialized');
+
+  // The vault asks for the catalog on tools/list and serves it verbatim.
+  if (tool === 'bex_list_tools') return { tools: [...INTROSPECTION_TOOLS, ...BROWSER_TOOLS] };
+  if (isBrowserTool(tool)) return executeBrowserTool(tool, args);
+
   switch (tool) {
     case 'bex_status': {
       const state = deps.getKeepKeyState();
