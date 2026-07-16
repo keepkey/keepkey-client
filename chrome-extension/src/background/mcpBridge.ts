@@ -21,6 +21,15 @@ const TAG = ' | mcpBridge | ';
 const BRIDGE_URL = 'ws://localhost:1646/bex-bridge';
 const RECONNECT_MAX_MS = 60_000;
 
+// MV3 evicts an idle service worker after ~30s, and an idle WebSocket does NOT
+// prevent that — only actual WS traffic resets the timer (Chrome 116+). Without
+// this ping the worker dies on a quiet machine, the socket goes with it, and
+// nothing wakes the worker back up: an agent polling bex_status would see
+// bridge "down" indefinitely. 20s keeps us inside the 30s window.
+// The vault ignores frames whose id matches no pending call, so this needs no
+// server-side handler.
+const HEARTBEAT_MS = 20_000;
+
 const KEEPKEY_STATE_NAMES: Record<number, string> = {
   0: 'unknown',
   1: 'disconnected',
@@ -55,6 +64,7 @@ let deps: McpBridgeDeps | null = null;
 let ws: WebSocket | null = null;
 let enabled = false;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let reconnectDelay = 5_000;
 let connectedAt: number | null = null;
 
@@ -69,11 +79,19 @@ export function initMcpBridge(bridgeDeps: McpBridgeDeps): void {
   agentModeStorage.get().then(apply);
 }
 
+function stopHeartbeat(): void {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+}
+
 function disconnect(): void {
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
   }
+  stopHeartbeat();
   if (ws) {
     try {
       ws.close();
@@ -106,6 +124,15 @@ async function connect(): Promise<void> {
     console.log(TAG, 'bridge connected');
     connectedAt = Date.now();
     reconnectDelay = 5_000;
+    stopHeartbeat();
+    heartbeatTimer = setInterval(() => {
+      if (ws !== socket || socket.readyState !== WebSocket.OPEN) return;
+      try {
+        socket.send(JSON.stringify({ ping: Date.now() }));
+      } catch {
+        /* onclose handles the reconnect */
+      }
+    }, HEARTBEAT_MS);
   };
 
   socket.onmessage = async event => {
@@ -133,6 +160,7 @@ async function connect(): Promise<void> {
     if (ws !== socket) return;
     ws = null;
     connectedAt = null;
+    stopHeartbeat();
     scheduleReconnect();
   };
 

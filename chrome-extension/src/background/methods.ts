@@ -66,6 +66,9 @@ const requireApproval = async function (
   params?: any,
 ): Promise<any> {
   const tag = TAG + ' | requireApproval | ';
+  // Set once the bridge's approval mirror has an entry; settled on every exit
+  // path (approve/reject, timeout, throw).
+  let pendingKey: string | null = null;
   try {
     console.log(tag, 'networkId:', networkId);
 
@@ -120,7 +123,7 @@ const requireApproval = async function (
 
     // Mirror the in-memory approval queue for the MCP agent bridge
     // (bex_pending_requests). Settled again on resolve/timeout below.
-    registerPending({
+    pendingKey = registerPending({
       id: requestInfo.id,
       method: method || requestInfo.method,
       params: params ?? requestInfo.params,
@@ -140,7 +143,7 @@ const requireApproval = async function (
         chrome.runtime.onMessage.removeListener(listener);
         if (timer != null) clearTimeout(timer);
         setApprovalBadge(false);
-        settlePending(requestInfo.id);
+        settlePending(pendingKey);
       };
 
       const listener = (message: any) => {
@@ -164,7 +167,7 @@ const requireApproval = async function (
     });
   } catch (e) {
     console.error(tag, e);
-    settlePending(requestInfo?.id);
+    settlePending(pendingKey);
     return { success: false }; // Return failure in case of error
   }
 };
