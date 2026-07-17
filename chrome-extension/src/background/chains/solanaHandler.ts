@@ -9,10 +9,11 @@ const TAG = ' | solanaHandler | ';
 
 // Vault REST API and Solana mainnet RPC
 const VAULT_URL = 'http://localhost:1646';
-const SOLANA_MAINNET_RPC_URLS = [
-  'https://api.mainnet-beta.solana.com',
-  'https://mainnet.helius-rpc.com/?api-key=1d8740dc-e5f4-421c-b823-e1bad1889eff',
-];
+// Pioneer is the source of truth for broadcast (no hardcoded RPC keys).
+const PIONEER_BROADCAST_URL = 'https://api.keepkey.info/api/v1/broadcast';
+// Keyless public endpoint only — broadcast goes through Pioneer; this list
+// now serves getLatestBlockhash reads. No API keys in source.
+const SOLANA_MAINNET_RPC_URLS = ['https://api.mainnet-beta.solana.com'];
 
 // Pick the cluster's RPC list from the active asset context. When the user
 // has Solana Devnet selected, sign/broadcast must hit devnet — otherwise a
@@ -661,15 +662,53 @@ function classifySolanaBroadcastError(msg: string): SolanaBroadcastErrorKind {
 }
 
 /**
- * Broadcast a signed Solana transaction via Solana JSON-RPC.
- * Vault has NO broadcast endpoint — we send directly to Solana RPC.
+ * Broadcast a signed Solana transaction.
+ *
+ * Mainnet goes through Pioneer (the source of truth — no hardcoded RPC keys).
+ * Devnet isn't served by Pioneer, so it falls back to the direct-RPC loop.
+ */
+async function broadcastTransaction(signedTxBase64: string): Promise<string> {
+  const urls = await getSolanaRpcUrls();
+  const isDevnet = !urls.includes(SOLANA_MAINNET_RPC_URLS[0]);
+  if (isDevnet) return broadcastViaRpc(signedTxBase64);
+
+  let data: any;
+  try {
+    const resp = await fetch(PIONEER_BROADCAST_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ networkId: SOLANA_NETWORK_ID, serialized: signedTxBase64 }),
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    data = await resp.json();
+  } catch (e: any) {
+    const errMsg = e.name === 'TimeoutError' || e.name === 'AbortError' ? 'broadcast timed out' : e.message;
+    if (/timed out|timeout/i.test(errMsg)) throw createTimeoutError('Solana broadcast timed out via Pioneer');
+    throw createProviderRpcError(-32603, `Solana broadcast failed via Pioneer: ${errMsg}`);
+  }
+
+  const txid = data?.txid || data?.results?.txid;
+  if (txid) return txid;
+
+  // Pioneer reported failure — recover if the tx is already on-chain, else throw.
+  const errMsg = data?.error || data?.results?.error || JSON.stringify(data);
+  if (classifySolanaBroadcastError(errMsg) === 'already-processed') {
+    const sig = extractFirstSignatureBase58(signedTxBase64);
+    if (sig) return sig;
+  }
+  throw createProviderRpcError(-32603, `Solana broadcast failed via Pioneer: ${errMsg}`);
+}
+
+/**
+ * Broadcast directly via Solana JSON-RPC (devnet fallback only).
  *
  * Iterates the active cluster's RPC URLs on transient failures. Health-checked URLs
  * sometimes pass `getHealth` but reject `sendTransaction` (rate-limit,
  * regional throttling), so the failover loop reaches further than the
  * pre-flight selection in `getSolanaRpcUrl`.
  */
-async function broadcastTransaction(signedTxBase64: string): Promise<string> {
+async function broadcastViaRpc(signedTxBase64: string): Promise<string> {
   const errors: { url: string; error: string }[] = [];
   // Try the cached/healthy URL first, then any others not yet attempted.
   const primary = await getSolanaRpcUrl();

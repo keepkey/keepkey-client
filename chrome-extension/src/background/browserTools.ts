@@ -172,6 +172,42 @@ export const BROWSER_TOOLS = [
     },
   },
   {
+    name: 'bex_network',
+    description:
+      "HTTP(S) traffic the page made (fetch + XMLHttpRequest): method, URL, status, duration, and failures/aborts — plus the document's navigation timing. Use this to see whether a dApp's /quote, /swap, or RPC call errored, got CORS-blocked, or was slow. Captures from extension injection onward; does not include response bodies or headers, and misses requests from workers or cross-origin iframes.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', description: "'error' to show only failures + HTTP >= 400" },
+        pattern: { type: 'string', description: 'Regex over method + url + status' },
+        since: { type: 'number', description: 'Only requests started at/after this ms-epoch time' },
+        limit: { type: 'number', description: 'Max requests (default 100)' },
+        tabId: { type: 'number' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'bex_perf',
+    description:
+      "Page performance snapshot: Core Web Vitals (LCP, CLS, FCP, TTFB, INP), memory (JS heap, DOM node count), and rendering health (a short FPS sample, long-task totals, GPU identity). Use this to answer 'is this dApp slow, janky, or leaking memory?'. Note: FPS is a main-thread-cadence proxy, not GPU load — GPU utilization/VRAM/temperature are not exposed to any web page; INP stays low under automated clicks; performance.memory is Chrome-only and coarse.",
+    inputSchema: {
+      type: 'object',
+      properties: { tabId: { type: 'number' } },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'bex_storage',
+    description:
+      "Read-only dump of what the page persisted for its origin: localStorage, sessionStorage, cookie NAMES, IndexedDB database/object-store names, and Cache Storage names. Use this to inspect a dApp's saved connection/session state (WalletConnect sessions, cached accounts, selected chain). Top-frame origin only; HttpOnly cookies (usually the session/auth ones) are invisible to JavaScript; IndexedDB record values are not dumped.",
+    inputSchema: {
+      type: 'object',
+      properties: { tabId: { type: 'number' } },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'bex_screenshot',
     description:
       "JPEG of the tab's visible viewport, for VISUAL verification only — you cannot act on a screenshot. Use bex_snapshot to find things to click. Focuses the tab as a side effect (Chrome can only capture a visible tab).",
@@ -395,6 +431,31 @@ export async function executeBrowserTool(tool: string, args: any): Promise<any> 
         return `[${t} ${e.level}] ${e.text}${where}`;
       });
       return text(lines.join('\n'));
+    }
+
+    case 'bex_network': {
+      const tab = await resolveTab(args?.tabId);
+      const { data, captured } = await dom(tab.id!, 'network', {
+        status: args?.status,
+        pattern: args?.pattern,
+        since: args?.since,
+        limit: args?.limit,
+      });
+      if (!captured)
+        return text('Network capture is not available on this tab (reload the page). Not the same as no traffic.');
+      return text(JSON.stringify(data, null, 2));
+    }
+
+    case 'bex_perf': {
+      const tab = await resolveTab(args?.tabId);
+      const { data, captured } = await dom(tab.id!, 'perf', {});
+      if (!captured) return text('Performance capture is not available on this tab (reload the page).');
+      return text(JSON.stringify(data, null, 2));
+    }
+
+    case 'bex_storage': {
+      const tab = await resolveTab(args?.tabId);
+      return text(JSON.stringify(await dom(tab.id!, 'storage', {}), null, 2));
     }
 
     case 'bex_screenshot': {

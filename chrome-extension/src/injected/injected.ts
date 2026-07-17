@@ -14,11 +14,15 @@ import { KeepKeySolanaProvider } from './solana-provider';
 import { KeepKeyTronProvider } from './tron-provider';
 import { createHiveKeychainShim } from './hive-provider';
 import { installConsoleCapture } from './consoleCapture';
+import { installPageObserver } from './pageObserver';
 
 (function () {
   // Capture the page's console/errors from the MAIN world for the bex_console
   // MCP tool. Runs first so it hooks console before the wallet logs anything.
   installConsoleCapture();
+  // Network + performance collectors (bex_network / bex_perf). Also first, so the
+  // fetch/XHR wrappers and PerformanceObservers see as much as possible.
+  installPageObserver();
 
   const VERSION = '2.1.0';
   const MAX_RETRY_COUNT = 3;
