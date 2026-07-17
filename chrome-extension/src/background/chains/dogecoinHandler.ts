@@ -4,7 +4,7 @@ import { Chain, ChainToNetworkId, shortListSymbolToCaip, caipToNetworkId } from 
 import * as wallet from '../wallet';
 import { utxoAccountFromPubkeyRow } from '../utxoDerive';
 import { createProviderRpcError } from '../utils';
-import { fetchJsonWithTimeout } from '../fetchUtils';
+import { fetchJsonWithTimeout, broadcastViaPioneer } from '../fetchUtils';
 
 const TAG = ' | dogecoinHandler | ';
 
@@ -100,17 +100,7 @@ export const handleDogecoinRequest = async (
         response.signedTx = signedTx;
         await requestStorage.updateEventById(requestInfo.id, response);
 
-        let txHash: any = await fetchJsonWithTimeout<any>(
-          'https://api.keepkey.info/api/v1/broadcastTx',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ caip, signedTx: signedTx.serializedTx || signedTx }),
-          },
-          { timeoutMs: 15000, retries: 1 },
-        );
-        if (txHash.txHash) txHash = txHash.txHash;
-        if (txHash.txid) txHash = txHash.txid;
+        const txHash: any = await broadcastViaPioneer(caip, signedTx.serializedTx || signedTx);
         response.txid = txHash;
         await requestStorage.updateEventById(requestInfo.id, response);
         chrome.runtime.sendMessage({
