@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { Chain, ChainToNetworkId, shortListSymbolToCaip, caipToNetworkId } from '../chainConfig';
 import * as wallet from '../wallet';
 import { createProviderRpcError } from '../utils';
-import { fetchJsonWithTimeout } from '../fetchUtils';
+import { fetchJsonWithTimeout, broadcastViaPioneer } from '../fetchUtils';
 
 const TAG = ' | thorchainHandler | ';
 
@@ -99,17 +99,7 @@ export const handleThorchainRequest = async (
         await requestStorage.updateEventById(requestInfo.id, response);
 
         // Broadcast via Pioneer API.
-        let txHash: any = await fetchJsonWithTimeout<any>(
-          'https://api.keepkey.info/api/v1/broadcastTx',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ caip, signedTx: signedTx.serializedTx || signedTx }),
-          },
-          { timeoutMs: 15000, retries: 1 },
-        );
-        if (txHash.txHash) txHash = txHash.txHash;
-        if (txHash.txid) txHash = txHash.txid;
+        const txHash: any = await broadcastViaPioneer(caip, signedTx.serializedTx || signedTx);
 
         response.txid = txHash;
         await requestStorage.updateEventById(requestInfo.id, response);
