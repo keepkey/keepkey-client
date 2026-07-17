@@ -16,6 +16,7 @@
 import * as wallet from './wallet';
 import { agentModeStorage, keepKeyApiKeyStorage, web3ProviderStorage } from '@extension/storage';
 import { getLogs, getPendingRequests, getConnectedSites, SW_STARTED_AT } from './providerLog';
+import { getSwConsole } from './swConsole';
 import { BROWSER_TOOLS, executeBrowserTool, isBrowserTool } from './browserTools';
 
 const TAG = ' | mcpBridge | ';
@@ -103,6 +104,21 @@ const INTROSPECTION_TOOLS = [
       type: 'object',
       properties: {
         pattern: { type: 'string', description: 'Regex filter over method/origin/error' },
+        since: { type: 'number', description: 'Only entries with timestamp >= this (ms epoch)' },
+        limit: { type: 'number', description: 'Max entries returned (default 100)' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'bex_ext_console',
+    description:
+      "The extension background service worker's own console (console.log/info/warn/error/debug) — the raw diagnostics the wallet's background prints. Use this to debug the extension itself. Distinct from bex_logs (structured provider traffic) and bex_console (the web page's console). Ring buffer, newest last; wiped when the MV3 service worker restarts (compare bex_status.swStartedAt).",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        level: { type: 'string', description: "Only this level: 'log' | 'info' | 'warn' | 'error' | 'debug'" },
+        pattern: { type: 'string', description: 'Regex filter over the log text' },
         since: { type: 'number', description: 'Only entries with timestamp >= this (ms epoch)' },
         limit: { type: 'number', description: 'Max entries returned (default 100)' },
       },
@@ -289,6 +305,9 @@ async function executeTool(tool: string, args: any): Promise<any> {
 
     case 'bex_logs':
       return { swStartedAt: SW_STARTED_AT, entries: getLogs(args) };
+
+    case 'bex_ext_console':
+      return { swStartedAt: SW_STARTED_AT, entries: getSwConsole(args) };
 
     default:
       throw Object.assign(new Error(`unknown tool: ${tool}`), { code: 'unknown_tool' });

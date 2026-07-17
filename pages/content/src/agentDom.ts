@@ -19,7 +19,91 @@
  * `debugger` permission and swap snapshot() for Accessibility.getFullAXTree.
  */
 
+import { getPageConsole } from './consoleBridge';
+import { pullObs } from './obsBridge';
+
 const TAG = ' | agentDom | ';
+
+const STORAGE_MAX_KEYS = 200;
+const STORAGE_VALUE_CLIP = 1000;
+
+/**
+ * Read-only dump of the top-frame origin's persisted state (bex_storage). Runs
+ * in the ISOLATED world — web storage is origin-scoped and shared with the page,
+ * so no main-world hop is needed. Only invokes read APIs (Storage iteration,
+ * a document.cookie read, readonly IndexedDB transactions); never writes.
+ * HttpOnly cookies are invisible to document.cookie by design.
+ */
+async function readStorage(): Promise<any> {
+  const dumpWebStorage = (s: Storage) => {
+    const out: Record<string, string> = {};
+    const n = Math.min(s.length, STORAGE_MAX_KEYS);
+    for (let i = 0; i < n; i++) {
+      const k = s.key(i);
+      if (k == null) continue;
+      const v = s.getItem(k) ?? '';
+      out[k] = v.length > STORAGE_VALUE_CLIP ? v.slice(0, STORAGE_VALUE_CLIP) + '…' : v;
+    }
+    return { keys: s.length, truncated: s.length > STORAGE_MAX_KEYS, values: out };
+  };
+
+  const cookies = (document.cookie || '')
+    .split('; ')
+    .filter(Boolean)
+    .map(c => c.split('=')[0]);
+
+  let indexedDb: any = { supported: false };
+  try {
+    if ((indexedDB as any).databases) {
+      const dbs = await (indexedDB as any).databases();
+      indexedDb = {
+        supported: true,
+        databases: await Promise.all(
+          dbs.slice(0, 20).map(
+            (d: any) =>
+              new Promise(res => {
+                // Bound the open — a concurrent versionchange elsewhere can block
+                // it indefinitely, and this path isn't behind the pull timeout.
+                const guard = setTimeout(() => res({ name: d.name, version: d.version, objectStores: [] }), 1000);
+                // Open with no version → never fires upgradeneeded, never mutates.
+                const req = indexedDB.open(d.name);
+                req.onsuccess = () => {
+                  clearTimeout(guard);
+                  const db = req.result;
+                  const stores = Array.from(db.objectStoreNames);
+                  db.close();
+                  res({ name: d.name, version: d.version, objectStores: stores });
+                };
+                req.onerror = () => {
+                  clearTimeout(guard);
+                  res({ name: d.name, version: d.version, objectStores: [] });
+                };
+              }),
+          ),
+        ),
+      };
+    }
+  } catch {
+    indexedDb = { supported: false };
+  }
+
+  let cacheStorage: any = { supported: false };
+  try {
+    if (typeof caches !== 'undefined') cacheStorage = { supported: true, names: await caches.keys() };
+  } catch {
+    cacheStorage = { supported: false };
+  }
+
+  return {
+    origin: location.origin,
+    localStorage: dumpWebStorage(localStorage),
+    sessionStorage: dumpWebStorage(sessionStorage),
+    cookieNames: cookies,
+    cookieNote: 'Names only; HttpOnly cookies (usually the session/auth ones) are invisible to JavaScript.',
+    indexedDb,
+    cacheStorage,
+  };
+}
 
 /** ref → element, re-minted per snapshot. Stale refs fail with stale_ref. */
 const refs = new Map<string, Element>();
@@ -331,6 +415,20 @@ async function handle(msg: any): Promise<any> {
 
     case 'read':
       return readPage(msg.selector, Number(msg.maxChars) || 10_000);
+
+    case 'console':
+      // Page console/errors are captured MAIN-world side; pull them over the
+      // injected-script bridge (bex_console).
+      return getPageConsole({ level: msg.level, pattern: msg.pattern, since: msg.since, limit: msg.limit });
+
+    case 'network':
+      return pullObs('network', { pattern: msg.pattern, since: msg.since, limit: msg.limit, status: msg.status });
+
+    case 'perf':
+      return pullObs('perf', {});
+
+    case 'storage':
+      return readStorage();
 
     case 'find': {
       // Search the snapshot page-side and return only the hits, so the agent can

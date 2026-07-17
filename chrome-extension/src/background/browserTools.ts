@@ -152,6 +152,62 @@ export const BROWSER_TOOLS = [
     },
   },
   {
+    name: 'bex_console',
+    description:
+      "The page's own console (console.log/info/warn/error/debug) plus uncaught errors and unhandled promise rejections — the browser DevTools console for the tab. Use this to find out why a dApp is broken. Distinct from bex_logs, which is the wallet's provider-traffic log. Ring buffer, newest last. Captures from the moment the extension injected into the page onward; logs fired before that are not recoverable.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        level: {
+          type: 'string',
+          description:
+            "Only this level: 'log' | 'info' | 'warn' | 'error' | 'debug' | 'error-event' | 'unhandledrejection'",
+        },
+        pattern: { type: 'string', description: 'Regex filter over the log text' },
+        since: { type: 'number', description: 'Only entries with timestamp >= this (ms epoch)' },
+        limit: { type: 'number', description: 'Max entries returned (default 100)' },
+        tabId: { type: 'number' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'bex_network',
+    description:
+      "HTTP(S) traffic the page made (fetch + XMLHttpRequest): method, URL, status, duration, and failures/aborts — plus the document's navigation timing. Use this to see whether a dApp's /quote, /swap, or RPC call errored, got CORS-blocked, or was slow. Captures from extension injection onward; does not include response bodies or headers, and misses requests from workers or cross-origin iframes.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', description: "'error' to show only failures + HTTP >= 400" },
+        pattern: { type: 'string', description: 'Regex over method + url + status' },
+        since: { type: 'number', description: 'Only requests started at/after this ms-epoch time' },
+        limit: { type: 'number', description: 'Max requests (default 100)' },
+        tabId: { type: 'number' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'bex_perf',
+    description:
+      "Page performance snapshot: Core Web Vitals (LCP, CLS, FCP, TTFB, INP), memory (JS heap, DOM node count), and rendering health (a short FPS sample, long-task totals, GPU identity). Use this to answer 'is this dApp slow, janky, or leaking memory?'. Note: FPS is a main-thread-cadence proxy, not GPU load — GPU utilization/VRAM/temperature are not exposed to any web page; INP stays low under automated clicks; performance.memory is Chrome-only and coarse.",
+    inputSchema: {
+      type: 'object',
+      properties: { tabId: { type: 'number' } },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'bex_storage',
+    description:
+      "Read-only dump of what the page persisted for its origin: localStorage, sessionStorage, cookie NAMES, IndexedDB database/object-store names, and Cache Storage names. Use this to inspect a dApp's saved connection/session state (WalletConnect sessions, cached accounts, selected chain). Top-frame origin only; HttpOnly cookies (usually the session/auth ones) are invisible to JavaScript; IndexedDB record values are not dumped.",
+    inputSchema: {
+      type: 'object',
+      properties: { tabId: { type: 'number' } },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'bex_screenshot',
     description:
       "JPEG of the tab's visible viewport, for VISUAL verification only — you cannot act on a screenshot. Use bex_snapshot to find things to click. Focuses the tab as a side effect (Chrome can only capture a visible tab).",
@@ -353,6 +409,53 @@ export async function executeBrowserTool(tool: string, args: any): Promise<any> 
       const tab = await resolveTab(args?.tabId);
       const res = await dom(tab.id!, 'read', { selector: args?.selector, maxChars: args?.maxChars });
       return text(res.truncated ? `${res.text}\n\n[truncated — raise maxChars or scope with selector]` : res.text);
+    }
+
+    case 'bex_console': {
+      const tab = await resolveTab(args?.tabId);
+      const { entries, captured } = await dom(tab.id!, 'console', {
+        level: args?.level,
+        pattern: args?.pattern,
+        since: args?.since,
+        limit: args?.limit,
+      });
+      if (!captured) {
+        return text(
+          'Console capture is not available on this tab (the KeepKey script has not injected — reload the page). This is not the same as an empty console.',
+        );
+      }
+      if (!entries.length) return text('No console entries captured (page has logged nothing since injection).');
+      const lines = entries.map((e: any) => {
+        const t = new Date(e.ts).toISOString().slice(11, 23);
+        const where = e.url ? ` (${e.url})` : '';
+        return `[${t} ${e.level}] ${e.text}${where}`;
+      });
+      return text(lines.join('\n'));
+    }
+
+    case 'bex_network': {
+      const tab = await resolveTab(args?.tabId);
+      const { data, captured } = await dom(tab.id!, 'network', {
+        status: args?.status,
+        pattern: args?.pattern,
+        since: args?.since,
+        limit: args?.limit,
+      });
+      if (!captured)
+        return text('Network capture is not available on this tab (reload the page). Not the same as no traffic.');
+      return text(JSON.stringify(data, null, 2));
+    }
+
+    case 'bex_perf': {
+      const tab = await resolveTab(args?.tabId);
+      const { data, captured } = await dom(tab.id!, 'perf', {});
+      if (!captured) return text('Performance capture is not available on this tab (reload the page).');
+      return text(JSON.stringify(data, null, 2));
+    }
+
+    case 'bex_storage': {
+      const tab = await resolveTab(args?.tabId);
+      return text(JSON.stringify(await dom(tab.id!, 'storage', {}), null, 2));
     }
 
     case 'bex_screenshot': {
