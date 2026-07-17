@@ -13,8 +13,13 @@ import { registerSolanaWallet } from './solana-wallet-register';
 import { KeepKeySolanaProvider } from './solana-provider';
 import { KeepKeyTronProvider } from './tron-provider';
 import { createHiveKeychainShim } from './hive-provider';
+import { installConsoleCapture } from './consoleCapture';
 
 (function () {
+  // Capture the page's console/errors from the MAIN world for the bex_console
+  // MCP tool. Runs first so it hooks console before the wallet logs anything.
+  installConsoleCapture();
+
   const VERSION = '2.1.0';
   const MAX_RETRY_COUNT = 3;
   const RETRY_DELAY = 100; // ms

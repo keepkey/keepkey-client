@@ -152,6 +152,26 @@ export const BROWSER_TOOLS = [
     },
   },
   {
+    name: 'bex_console',
+    description:
+      "The page's own console (console.log/info/warn/error/debug) plus uncaught errors and unhandled promise rejections — the browser DevTools console for the tab. Use this to find out why a dApp is broken. Distinct from bex_logs, which is the wallet's provider-traffic log. Ring buffer, newest last. Captures from the moment the extension injected into the page onward; logs fired before that are not recoverable.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        level: {
+          type: 'string',
+          description:
+            "Only this level: 'log' | 'info' | 'warn' | 'error' | 'debug' | 'error-event' | 'unhandledrejection'",
+        },
+        pattern: { type: 'string', description: 'Regex filter over the log text' },
+        since: { type: 'number', description: 'Only entries with timestamp >= this (ms epoch)' },
+        limit: { type: 'number', description: 'Max entries returned (default 100)' },
+        tabId: { type: 'number' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'bex_screenshot',
     description:
       "JPEG of the tab's visible viewport, for VISUAL verification only — you cannot act on a screenshot. Use bex_snapshot to find things to click. Focuses the tab as a side effect (Chrome can only capture a visible tab).",
@@ -353,6 +373,28 @@ export async function executeBrowserTool(tool: string, args: any): Promise<any> 
       const tab = await resolveTab(args?.tabId);
       const res = await dom(tab.id!, 'read', { selector: args?.selector, maxChars: args?.maxChars });
       return text(res.truncated ? `${res.text}\n\n[truncated — raise maxChars or scope with selector]` : res.text);
+    }
+
+    case 'bex_console': {
+      const tab = await resolveTab(args?.tabId);
+      const { entries, captured } = await dom(tab.id!, 'console', {
+        level: args?.level,
+        pattern: args?.pattern,
+        since: args?.since,
+        limit: args?.limit,
+      });
+      if (!captured) {
+        return text(
+          'Console capture is not available on this tab (the KeepKey script has not injected — reload the page). This is not the same as an empty console.',
+        );
+      }
+      if (!entries.length) return text('No console entries captured (page has logged nothing since injection).');
+      const lines = entries.map((e: any) => {
+        const t = new Date(e.ts).toISOString().slice(11, 23);
+        const where = e.url ? ` (${e.url})` : '';
+        return `[${t} ${e.level}] ${e.text}${where}`;
+      });
+      return text(lines.join('\n'));
     }
 
     case 'bex_screenshot': {

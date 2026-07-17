@@ -19,6 +19,8 @@
  * `debugger` permission and swap snapshot() for Accessibility.getFullAXTree.
  */
 
+import { getPageConsole } from './consoleBridge';
+
 const TAG = ' | agentDom | ';
 
 /** ref → element, re-minted per snapshot. Stale refs fail with stale_ref. */
@@ -331,6 +333,11 @@ async function handle(msg: any): Promise<any> {
 
     case 'read':
       return readPage(msg.selector, Number(msg.maxChars) || 10_000);
+
+    case 'console':
+      // Page console/errors are captured MAIN-world side; pull them over the
+      // injected-script bridge (bex_console).
+      return getPageConsole({ level: msg.level, pattern: msg.pattern, since: msg.since, limit: msg.limit });
 
     case 'find': {
       // Search the snapshot page-side and return only the hits, so the agent can

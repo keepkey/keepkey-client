@@ -1,3 +1,6 @@
+// First import: hooks the SW console into a ring buffer (bex_ext_console) before
+// anything else logs.
+import './swConsole';
 import 'webextension-polyfill';
 // Process polyfill for browser environment
 import '../polyfills/process';
