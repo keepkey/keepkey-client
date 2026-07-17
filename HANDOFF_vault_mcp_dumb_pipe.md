@@ -1,16 +1,18 @@
 # HANDOFF → vault: make `/mcp` a dumb pipe (serve the BEX's catalog, pass content through)
 
+> **✅ DONE — landed as keepkey-vault PR #365, merged to vault `develop` 2026-07-16** (commit
+> `8889cbf3`). All three changes shipped as specified below, the `catch` block and auth were left
+> untouched per the do-not-change list. The nine browser-driving tools are live once the vault runs
+> a build with #365. Remaining follow-up: flip the availability note on
+> `keepkey-docs-v8/content/docs/bex/mcp.mdx`. The rest of this document is kept as the record of
+> what was asked and why.
+
 **From:** keepkey-client `develop` — PR #112 (browser-driving tools) and #113 (Agent Mode UI) are
 **MERGED**. The client side is done.
 **To:** `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault`
 **File:** `src/bun/mcp.ts` — **that file only**. `src/bun/bex-bridge.ts` needs nothing; it is already
 tool-agnostic.
 **Size:** ~20 lines. One time, forever.
-
-> **Status: this is the only thing left.** Nine browser-driving tools (`bex_snapshot`, `bex_click`,
-> `bex_navigate`, `bex_type`, `bex_select`, `bex_find`, `bex_read_page`, `bex_screenshot`,
-> `bex_tabs`) are merged and shipping in the extension, and they are **inert** — not because they're
-> unfinished, but because the vault won't advertise or route them. This change turns them on.
 
 **Line numbers verified against the current vault tree on 2026-07-16** (vault repo was on branch
 `fix/thorchain-clearsign-per-chain-router`; the code below is what's there now).
