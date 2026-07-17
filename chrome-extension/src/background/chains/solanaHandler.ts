@@ -683,9 +683,15 @@ async function broadcastTransaction(signedTxBase64: string): Promise<string> {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     data = await resp.json();
   } catch (e: any) {
+    // Pioneer transport failed (timeout / 5xx) — we don't know if the tx
+    // landed. Fall back to the idempotent direct-RPC path: it re-sends the
+    // same signed bytes and, if the tx is already on-chain, recovers the
+    // real signature via already-processed (never blind-returns a sig).
+    // Restores the failover the pre-Pioneer mainnet path had; avoids a
+    // fresh-blockhash re-sign that would risk a duplicate send.
     const errMsg = e.name === 'TimeoutError' || e.name === 'AbortError' ? 'broadcast timed out' : e.message;
-    if (/timed out|timeout/i.test(errMsg)) throw createTimeoutError('Solana broadcast timed out via Pioneer');
-    throw createProviderRpcError(-32603, `Solana broadcast failed via Pioneer: ${errMsg}`);
+    console.warn(`[solana broadcast] Pioneer failed (${errMsg}); falling back to direct RPC`);
+    return broadcastViaRpc(signedTxBase64);
   }
 
   const txid = data?.txid || data?.results?.txid;
