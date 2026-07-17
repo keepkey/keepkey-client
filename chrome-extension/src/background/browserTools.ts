@@ -12,9 +12,9 @@
  * ponytail: Playwright/Puppeteer are not options here even if we wanted them —
  * the background bundles to one IIFE with no Node builtins (no `net`), so they
  * cannot run in-extension at all. chrome.tabs + a content script cover this with
- * zero new dependencies and, notably, zero new permissions: `<all_urls>` and
- * `tabs` are already granted (manifest.js:39-40) and the content script is
- * already at document_start on every http/https page.
+ * zero new dependencies and no new install warnings: `<all_urls>` and `tabs`
+ * were already granted, and `scripting` (late injection in dom()) warns nothing
+ * beyond the host access the user already approved.
  *
  * Contract with the DOM half (pages/content/src/agentDom.ts): one message per
  * op, refs minted page-side. See that file for why refs beat selectors.
@@ -239,16 +239,24 @@ async function resolveTab(tabId?: number): Promise<chrome.tabs.Tab> {
 
 /** Ask the page-side agentDom to do something, and normalize its failures. */
 async function dom(tabId: number, op: string, payload: Record<string, unknown> = {}): Promise<any> {
+  const send = () => chrome.tabs.sendMessage(tabId, { type: 'BEX_AGENT_DOM', op, ...payload });
   let res: any;
   try {
-    res = await chrome.tabs.sendMessage(tabId, { type: 'BEX_AGENT_DOM', op, ...payload });
+    res = await send();
   } catch {
-    // No content script in this tab. Either it predates the extension load, or
-    // it's a chrome:// / Web Store / PDF page where content scripts never run.
-    throw err(
-      'no_content_script',
-      `cannot reach tab ${tabId} — reload the page (or use bex_navigate); chrome:// and Web Store pages can never be driven`,
-    );
+    // sendMessage threw = no receiver in any frame = the content bundle never
+    // ran here (tab predates the extension load). Inject it and retry once —
+    // safe from double-boot precisely because the throw proves it's absent.
+    try {
+      await chrome.scripting.executeScript({ target: { tabId }, files: ['content/index.iife.js'] });
+      res = await send();
+    } catch {
+      // Injection refused: chrome:// / Web Store / PDF viewer. Not drivable, ever.
+      throw err(
+        'undriveable_page',
+        `cannot drive tab ${tabId} — Chrome blocks extensions on chrome://, Web Store and PDF pages; pick a normal web tab (bex_tabs lists them)`,
+      );
+    }
   }
   if (!res) throw err('no_content_script', `tab ${tabId} did not answer — reload the page`);
   if (!res.ok) throw err(res.code ?? 'dom_error', res.message ?? 'DOM operation failed');
@@ -310,6 +318,18 @@ function formatSnapshot(snap: { url: string; title: string; nodes: any[] }): str
 }
 
 async function screenshot(tab: chrome.tabs.Tab, quality: number): Promise<Content> {
+  // captureVisibleTab refuses privileged pages, but with a misleading message
+  // about the activeTab permission. Catch them up front with an honest one.
+  if (
+    tab.url &&
+    (/^(chrome|chrome-extension|devtools|edge|about|view-source):/.test(tab.url) ||
+      tab.url.startsWith('https://chromewebstore.google.com'))
+  ) {
+    throw err(
+      'uncapturable_page',
+      `Chrome refuses to capture ${new URL(tab.url).protocol}// pages — pass the tabId of a normal web tab (bex_tabs lists them)`,
+    );
+  }
   // Chrome can only capture the ACTIVE tab of a window, so focus it first. This
   // is a visible side effect and is called out in the tool description.
   if (!tab.active && tab.id != null) await chrome.tabs.update(tab.id, { active: true });
