@@ -12,9 +12,9 @@
  * ponytail: Playwright/Puppeteer are not options here even if we wanted them —
  * the background bundles to one IIFE with no Node builtins (no `net`), so they
  * cannot run in-extension at all. chrome.tabs + a content script cover this with
- * zero new dependencies and, notably, zero new permissions: `<all_urls>` and
- * `tabs` are already granted (manifest.js:39-40) and the content script is
- * already at document_start on every http/https page.
+ * zero new dependencies and no new install warnings: `<all_urls>` and `tabs`
+ * were already granted, and `scripting` (late injection in dom()) warns nothing
+ * beyond the host access the user already approved.
  *
  * Contract with the DOM half (pages/content/src/agentDom.ts): one message per
  * op, refs minted page-side. See that file for why refs beat selectors.
@@ -38,13 +38,17 @@ export const BROWSER_TOOLS = [
   {
     name: 'bex_tabs',
     description:
-      "List, create, close, or focus browser tabs in the user's real Chrome. action=list returns each tab's id, url, title and whether it is active.",
+      "List, create, close, or focus tabs — or open a new browser window — in the user's real Chrome. action=list returns each tab's id, url, title, windowId and whether it is active. action=create opens a tab in the current window; action=new-window opens a separate browser window.",
     inputSchema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['list', 'create', 'close', 'select'], description: 'Default: list' },
+        action: {
+          type: 'string',
+          enum: ['list', 'create', 'close', 'select', 'new-window'],
+          description: 'Default: list. create=new tab in current window; new-window=new browser window',
+        },
         tabId: { type: 'number', description: 'Target tab for close/select' },
-        url: { type: 'string', description: 'URL for create' },
+        url: { type: 'string', description: 'URL for create / new-window' },
       },
       additionalProperties: false,
     },
@@ -220,6 +224,37 @@ export const BROWSER_TOOLS = [
       additionalProperties: false,
     },
   },
+  {
+    name: 'bex_bring_to_front',
+    description:
+      "Raise the browser window to the front of the screen so the user can WATCH what you do. Call it when you START a browser task and whenever you switch windows — otherwise your work happens behind other windows and the user has to go hunting for it. Un-minimizes the window and activates the tab. (Focus within Chrome is reliable; whether the OS pulls Chrome above other apps is best-effort — the extension can't force it.) Omit tabId to raise the active window.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tabId: { type: 'number', description: 'Raise the window containing this tab; default = active window' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'bex_panel',
+    description:
+      "Control the in-page status panel the user watches while you drive. action=status raises a prominent message — use level='action-needed' for the moment a KeepKey button-press is required (call it right BEFORE you trigger a device signature, e.g. \"Confirm the swap on your KeepKey\"), and level='done' when it's handled. action=show/hide toggles the panel; the action log fills itself as you click/type. Note: the panel canNOT open Chrome's wallet side panel — that needs a user gesture the MCP lacks, so the panel just shows the user where to click. Omit tabId for the active tab.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['show', 'hide', 'status'], description: 'Default: show' },
+        message: { type: 'string', description: 'Status text (action=status)' },
+        level: {
+          type: 'string',
+          enum: ['info', 'action-needed', 'done'],
+          description: "action=status level; 'action-needed' = waiting on a KeepKey button press",
+        },
+        tabId: { type: 'number' },
+      },
+      additionalProperties: false,
+    },
+  },
 ];
 
 async function activeTab(): Promise<chrome.tabs.Tab> {
@@ -239,16 +274,24 @@ async function resolveTab(tabId?: number): Promise<chrome.tabs.Tab> {
 
 /** Ask the page-side agentDom to do something, and normalize its failures. */
 async function dom(tabId: number, op: string, payload: Record<string, unknown> = {}): Promise<any> {
+  const send = () => chrome.tabs.sendMessage(tabId, { type: 'BEX_AGENT_DOM', op, ...payload });
   let res: any;
   try {
-    res = await chrome.tabs.sendMessage(tabId, { type: 'BEX_AGENT_DOM', op, ...payload });
+    res = await send();
   } catch {
-    // No content script in this tab. Either it predates the extension load, or
-    // it's a chrome:// / Web Store / PDF page where content scripts never run.
-    throw err(
-      'no_content_script',
-      `cannot reach tab ${tabId} — reload the page (or use bex_navigate); chrome:// and Web Store pages can never be driven`,
-    );
+    // sendMessage threw = no receiver in any frame = the content bundle never
+    // ran here (tab predates the extension load). Inject it and retry once —
+    // safe from double-boot precisely because the throw proves it's absent.
+    try {
+      await chrome.scripting.executeScript({ target: { tabId }, files: ['content/index.iife.js'] });
+      res = await send();
+    } catch {
+      // Injection refused: chrome:// / Web Store / PDF viewer. Not drivable, ever.
+      throw err(
+        'undriveable_page',
+        `cannot drive tab ${tabId} — Chrome blocks extensions on chrome://, Web Store and PDF pages; pick a normal web tab (bex_tabs lists them)`,
+      );
+    }
   }
   if (!res) throw err('no_content_script', `tab ${tabId} did not answer — reload the page`);
   if (!res.ok) throw err(res.code ?? 'dom_error', res.message ?? 'DOM operation failed');
@@ -310,10 +353,30 @@ function formatSnapshot(snap: { url: string; title: string; nodes: any[] }): str
 }
 
 async function screenshot(tab: chrome.tabs.Tab, quality: number): Promise<Content> {
+  // captureVisibleTab refuses privileged pages, but with a misleading message
+  // about the activeTab permission. Catch them up front with an honest one.
+  if (
+    tab.url &&
+    (/^(chrome|chrome-extension|devtools|edge|about|view-source):/.test(tab.url) ||
+      tab.url.startsWith('https://chromewebstore.google.com'))
+  ) {
+    throw err(
+      'uncapturable_page',
+      `Chrome refuses to capture ${new URL(tab.url).protocol}// pages — pass the tabId of a normal web tab (bex_tabs lists them)`,
+    );
+  }
   // Chrome can only capture the ACTIVE tab of a window, so focus it first. This
   // is a visible side effect and is called out in the tool description.
   if (!tab.active && tab.id != null) await chrome.tabs.update(tab.id, { active: true });
-  const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId!, { format: 'jpeg', quality });
+  // Hide the agent overlay so it doesn't land in the capture; best-effort (the
+  // page may have no content script). It resolves after a painted frame.
+  if (tab.id != null) await dom(tab.id, 'overlay', { show: false }).catch(() => {});
+  let dataUrl: string;
+  try {
+    dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId!, { format: 'jpeg', quality });
+  } finally {
+    if (tab.id != null) void dom(tab.id, 'overlay', { show: true }).catch(() => {});
+  }
 
   const binary = atob(dataUrl.split(',')[1]);
   const bytes = new Uint8Array(binary.length);
@@ -345,6 +408,12 @@ export async function executeBrowserTool(tool: string, args: any): Promise<any> 
         const tab = await chrome.tabs.create({ url: args?.url, active: true });
         if (args?.url && tab.id != null) await waitForLoad(tab.id, { settledIsDone: true });
         return { tabId: tab.id, url: tab.url };
+      }
+      if (action === 'new-window') {
+        const win = await chrome.windows.create({ url: args?.url, focused: true });
+        const tab = win.tabs?.[0];
+        if (args?.url && tab?.id != null) await waitForLoad(tab.id, { settledIsDone: true });
+        return { windowId: win.id, tabId: tab?.id, url: tab?.url };
       }
       if (action === 'close') {
         const tab = await resolveTab(args?.tabId);
@@ -462,6 +531,27 @@ export async function executeBrowserTool(tool: string, args: any): Promise<any> 
       const tab = await resolveTab(args?.tabId);
       const quality = Math.min(100, Math.max(1, Number(args?.quality) || SCREENSHOT_QUALITY));
       return screenshot(tab, quality);
+    }
+
+    case 'bex_panel': {
+      const tab = await resolveTab(args?.tabId);
+      const action = args?.action ?? 'show';
+      if (action === 'hide') return dom(tab.id!, 'panel', { action: 'hide' });
+      if (action === 'status')
+        return dom(tab.id!, 'panel', { message: args?.message ?? '', level: args?.level ?? 'info' });
+      return dom(tab.id!, 'panel', {});
+    }
+
+    case 'bex_bring_to_front': {
+      const tab = await resolveTab(args?.tabId);
+      const win = await chrome.windows.get(tab.windowId!);
+      // focused raises the window; only force state:'normal' when minimized so
+      // we don't un-maximize a maximized window.
+      const update: chrome.windows.UpdateInfo = { focused: true };
+      if (win.state === 'minimized') update.state = 'normal';
+      await chrome.windows.update(tab.windowId!, update);
+      if (tab.id != null && !tab.active) await chrome.tabs.update(tab.id, { active: true });
+      return { windowId: tab.windowId, tabId: tab.id, focused: true };
     }
 
     default:

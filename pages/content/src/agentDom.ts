@@ -21,8 +21,19 @@
 
 import { getPageConsole } from './consoleBridge';
 import { pullObs } from './obsBridge';
+import { overlayAct, overlaySetVisible } from './agentOverlay';
+import { panelShow, panelHide, panelLog, panelStatus } from './agentPanel';
 
 const TAG = ' | agentDom | ';
+
+// Let the pointer/highlight land before the action fires, so the user sees WHAT
+// is being acted on. Hardware-wallet flows are slow anyway, so this is free.
+const SHOW_MS = 420;
+const showThen = (kind: string, el: Element, detail: string) => {
+  overlayAct(kind, el, detail);
+  panelLog(detail ? `${kind}: ${detail}` : kind);
+  return new Promise<void>(r => setTimeout(r, SHOW_MS));
+};
 
 const STORAGE_MAX_KEYS = 200;
 const STORAGE_VALUE_CLIP = 1000;
@@ -383,12 +394,16 @@ async function handle(msg: any): Promise<any> {
     case 'snapshot':
       return snapshot();
 
-    case 'click':
-      fireClick(resolve(msg.ref));
+    case 'click': {
+      const el = resolve(msg.ref);
+      await showThen('clicking', el, nameOf(el));
+      fireClick(el);
       return { clicked: msg.ref };
+    }
 
     case 'type': {
       const el = resolve(msg.ref);
+      await showThen('typing', el, String(msg.text ?? '').slice(0, 40));
       setValue(el, String(msg.text ?? ''));
       if (msg.submit) {
         const key = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, composed: true };
@@ -407,6 +422,7 @@ async function handle(msg: any): Promise<any> {
       if (!(el instanceof HTMLSelectElement)) {
         throw Object.assign(new Error('element is not a <select>'), { code: 'not_editable' });
       }
+      await showThen('selecting', el, String(msg.value ?? '').slice(0, 40));
       el.value = String(msg.value);
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -429,6 +445,20 @@ async function handle(msg: any): Promise<any> {
 
     case 'storage':
       return readStorage();
+
+    case 'overlay':
+      await overlaySetVisible(msg.show !== false);
+      return { overlay: msg.show !== false };
+
+    case 'panel': {
+      if (msg.action === 'hide') {
+        panelHide();
+        return { panel: 'hidden' };
+      }
+      if (msg.message != null || msg.level) panelStatus(String(msg.message ?? ''), msg.level ?? 'info');
+      else panelShow();
+      return { panel: 'shown' };
+    }
 
     case 'find': {
       // Search the snapshot page-side and return only the hits, so the agent can
