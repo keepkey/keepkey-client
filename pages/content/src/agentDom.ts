@@ -62,15 +62,22 @@ async function readStorage(): Promise<any> {
           dbs.slice(0, 20).map(
             (d: any) =>
               new Promise(res => {
+                // Bound the open — a concurrent versionchange elsewhere can block
+                // it indefinitely, and this path isn't behind the pull timeout.
+                const guard = setTimeout(() => res({ name: d.name, version: d.version, objectStores: [] }), 1000);
                 // Open with no version → never fires upgradeneeded, never mutates.
                 const req = indexedDB.open(d.name);
                 req.onsuccess = () => {
+                  clearTimeout(guard);
                   const db = req.result;
                   const stores = Array.from(db.objectStoreNames);
                   db.close();
                   res({ name: d.name, version: d.version, objectStores: stores });
                 };
-                req.onerror = () => res({ name: d.name, version: d.version, objectStores: [] });
+                req.onerror = () => {
+                  clearTimeout(guard);
+                  res({ name: d.name, version: d.version, objectStores: [] });
+                };
               }),
           ),
         ),
