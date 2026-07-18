@@ -464,7 +464,7 @@ async function hiveTransfer(
       action: 'transaction_complete',
       eventId: requestInfo.id,
       txHash: bData.txid,
-      explorerTxLink: 'https://hiveblocks.com/tx/',
+      explorerTxLink: 'https://hivehub.dev/tx/',
       networkId: HIVE_NETWORK_ID,
     })
     .catch(() => {});
@@ -745,7 +745,7 @@ async function hiveSignAndBroadcastOps(
       action: 'transaction_complete',
       eventId: requestInfo.id,
       txHash: bData.txid,
-      explorerTxLink: 'https://hiveblocks.com/tx/',
+      explorerTxLink: 'https://hivehub.dev/tx/',
       networkId: HIVE_NETWORK_ID,
     })
     .catch(() => {});
