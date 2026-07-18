@@ -279,19 +279,16 @@ async function dom(tabId: number, op: string, payload: Record<string, unknown> =
   try {
     res = await send();
   } catch {
-    // sendMessage threw = no receiver in any frame = the content bundle never
-    // ran here (tab predates the extension load). Inject it and retry once —
-    // safe from double-boot precisely because the throw proves it's absent.
-    try {
-      await chrome.scripting.executeScript({ target: { tabId }, files: ['content/index.iife.js'] });
-      res = await send();
-    } catch {
-      // Injection refused: chrome:// / Web Store / PDF viewer. Not drivable, ever.
-      throw err(
-        'undriveable_page',
-        `cannot drive tab ${tabId} — Chrome blocks extensions on chrome://, Web Store and PDF pages; pick a normal web tab (bex_tabs lists them)`,
-      );
-    }
+    // sendMessage threw = no receiver = the content bundle never ran here: the
+    // tab predates the extension load, or it's a chrome:// / Web Store / PDF
+    // page the content script can't run on. The declarative content_scripts
+    // entry loads it on the next navigation, so the fix is a reload. We do NOT
+    // inject via chrome.scripting — that permission forces a Web Store re-review
+    // and isn't worth it for this fallback.
+    throw err(
+      'no_content_script',
+      `cannot drive tab ${tabId} — reload the page so the extension's content script loads (chrome://, Web Store and PDF pages can't be driven at all)`,
+    );
   }
   if (!res) throw err('no_content_script', `tab ${tabId} did not answer — reload the page`);
   if (!res.ok) throw err(res.code ?? 'dom_error', res.message ?? 'DOM operation failed');
