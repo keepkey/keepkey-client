@@ -1,0 +1,560 @@
+/**
+ * browserTools — the `bex_*` browser-driving MCP tools.
+ *
+ * Why these live in the extension rather than in a Playwright/Puppeteer MCP: the
+ * whole point of this extension is the wallet, and a launched-fresh browser has
+ * no wallet in it. Driving the user's REAL Chrome means the agent tests the dApp
+ * against the real extension, the real vault pairing and the real device — and
+ * the existing bex_pending_requests / bex_logs tools observe the same session
+ * from the inside. That combination is the thing no general-purpose browser MCP
+ * can do, and it's the only reason this is worth building at all.
+ *
+ * ponytail: Playwright/Puppeteer are not options here even if we wanted them —
+ * the background bundles to one IIFE with no Node builtins (no `net`), so they
+ * cannot run in-extension at all. chrome.tabs + a content script cover this with
+ * zero new dependencies and no new install warnings: `<all_urls>` and `tabs`
+ * were already granted, and `scripting` (late injection in dom()) warns nothing
+ * beyond the host access the user already approved.
+ *
+ * Contract with the DOM half (pages/content/src/agentDom.ts): one message per
+ * op, refs minted page-side. See that file for why refs beat selectors.
+ */
+
+// captureVisibleTab captures at devicePixelRatio, so a retina display yields a
+// 2560px-wide image — and Claude bills images by PIXELS, not bytes (~w*h/750
+// tokens). Downscaling to 1024 wide is a ~4x token cut for no practical loss of
+// legibility. This is the single biggest token lever in the whole tool set.
+const SCREENSHOT_MAX_WIDTH = 1024;
+const SCREENSHOT_QUALITY = 60;
+const LOAD_TIMEOUT_MS = 20_000;
+
+const err = (code: string, message: string) => Object.assign(new Error(message), { code });
+
+/** MCP content blocks — the vault passes these through verbatim (see HANDOFF). */
+type Content = { content: Array<Record<string, unknown>> };
+const text = (t: string): Content => ({ content: [{ type: 'text', text: t }] });
+
+export const BROWSER_TOOLS = [
+  {
+    name: 'bex_tabs',
+    description:
+      "List, create, close, or focus tabs — or open a new browser window — in the user's real Chrome. action=list returns each tab's id, url, title, windowId and whether it is active. action=create opens a tab in the current window; action=new-window opens a separate browser window.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['list', 'create', 'close', 'select', 'new-window'],
+          description: 'Default: list. create=new tab in current window; new-window=new browser window',
+        },
+        tabId: { type: 'number', description: 'Target tab for close/select' },
+        url: { type: 'string', description: 'URL for create / new-window' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'bex_navigate',
+    description: 'Navigate a tab to a URL and wait for it to finish loading. Omit tabId to use the active tab.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string' },
+        tabId: { type: 'number' },
+      },
+      required: ['url'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'bex_snapshot',
+    description:
+      'Accessibility snapshot of the page: every visible interactive element with a stable [ref=eN] handle, plus headings for orientation. THIS is what you act on — pass a ref to bex_click / bex_type / bex_select. Refs are re-minted on each snapshot, so re-snapshot after anything that changes the page.',
+    inputSchema: {
+      type: 'object',
+      properties: { tabId: { type: 'number' } },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'bex_find',
+    description:
+      'Search the page snapshot for elements whose accessible name matches, returning only the hits with their refs. Use this instead of bex_snapshot when you already know what you are looking for — it keeps a large page out of your context.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: 'Substring (case-insensitive) or regex source if regex=true' },
+        regex: { type: 'boolean' },
+        tabId: { type: 'number' },
+      },
+      required: ['text'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'bex_click',
+    description:
+      'Click an element by its snapshot ref. Dispatches a full pointer sequence, so modal/dropdown kits that listen on pointerdown work.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ref: { type: 'string', description: 'A ref from the latest bex_snapshot, e.g. "e12"' },
+        element: {
+          type: 'string',
+          description: 'Human-readable description of what you are clicking, for the audit trail',
+        },
+        tabId: { type: 'number' },
+      },
+      required: ['ref', 'element'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'bex_type',
+    description:
+      'Type text into a textbox by its snapshot ref, replacing any current value. Set submit=true to press Enter afterwards.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ref: { type: 'string' },
+        element: { type: 'string', description: 'Human-readable description of the field' },
+        text: { type: 'string' },
+        submit: { type: 'boolean' },
+        tabId: { type: 'number' },
+      },
+      required: ['ref', 'element', 'text'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'bex_select',
+    description: 'Choose an option in a <select> by its snapshot ref.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ref: { type: 'string' },
+        element: { type: 'string' },
+        value: { type: 'string' },
+        tabId: { type: 'number' },
+      },
+      required: ['ref', 'element', 'value'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'bex_read_page',
+    description:
+      'Rendered text of the page (defaults to <main>, else <body>). Use this to assert on content — balances, error banners, quoted amounts. Scope with a CSS selector to keep it small.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: { type: 'string', description: 'CSS selector to scope the read' },
+        maxChars: { type: 'number', description: 'Default 10000' },
+        tabId: { type: 'number' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'bex_console',
+    description:
+      "The page's own console (console.log/info/warn/error/debug) plus uncaught errors and unhandled promise rejections — the browser DevTools console for the tab. Use this to find out why a dApp is broken. Distinct from bex_logs, which is the wallet's provider-traffic log. Ring buffer, newest last. Captures from the moment the extension injected into the page onward; logs fired before that are not recoverable.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        level: {
+          type: 'string',
+          description:
+            "Only this level: 'log' | 'info' | 'warn' | 'error' | 'debug' | 'error-event' | 'unhandledrejection'",
+        },
+        pattern: { type: 'string', description: 'Regex filter over the log text' },
+        since: { type: 'number', description: 'Only entries with timestamp >= this (ms epoch)' },
+        limit: { type: 'number', description: 'Max entries returned (default 100)' },
+        tabId: { type: 'number' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'bex_network',
+    description:
+      "HTTP(S) traffic the page made (fetch + XMLHttpRequest): method, URL, status, duration, and failures/aborts — plus the document's navigation timing. Use this to see whether a dApp's /quote, /swap, or RPC call errored, got CORS-blocked, or was slow. Captures from extension injection onward; does not include response bodies or headers, and misses requests from workers or cross-origin iframes.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', description: "'error' to show only failures + HTTP >= 400" },
+        pattern: { type: 'string', description: 'Regex over method + url + status' },
+        since: { type: 'number', description: 'Only requests started at/after this ms-epoch time' },
+        limit: { type: 'number', description: 'Max requests (default 100)' },
+        tabId: { type: 'number' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'bex_perf',
+    description:
+      "Page performance snapshot: Core Web Vitals (LCP, CLS, FCP, TTFB, INP), memory (JS heap, DOM node count), and rendering health (a short FPS sample, long-task totals, GPU identity). Use this to answer 'is this dApp slow, janky, or leaking memory?'. Note: FPS is a main-thread-cadence proxy, not GPU load — GPU utilization/VRAM/temperature are not exposed to any web page; INP stays low under automated clicks; performance.memory is Chrome-only and coarse.",
+    inputSchema: {
+      type: 'object',
+      properties: { tabId: { type: 'number' } },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'bex_storage',
+    description:
+      "Read-only dump of what the page persisted for its origin: localStorage, sessionStorage, cookie NAMES, IndexedDB database/object-store names, and Cache Storage names. Use this to inspect a dApp's saved connection/session state (WalletConnect sessions, cached accounts, selected chain). Top-frame origin only; HttpOnly cookies (usually the session/auth ones) are invisible to JavaScript; IndexedDB record values are not dumped.",
+    inputSchema: {
+      type: 'object',
+      properties: { tabId: { type: 'number' } },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'bex_screenshot',
+    description:
+      "JPEG of the tab's visible viewport, for VISUAL verification only — you cannot act on a screenshot. Use bex_snapshot to find things to click. Focuses the tab as a side effect (Chrome can only capture a visible tab).",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tabId: { type: 'number' },
+        quality: { type: 'number', description: 'JPEG quality 1-100, default 60' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'bex_bring_to_front',
+    description:
+      "Raise the browser window to the front of the screen so the user can WATCH what you do. Call it when you START a browser task and whenever you switch windows — otherwise your work happens behind other windows and the user has to go hunting for it. Un-minimizes the window and activates the tab. (Focus within Chrome is reliable; whether the OS pulls Chrome above other apps is best-effort — the extension can't force it.) Omit tabId to raise the active window.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tabId: { type: 'number', description: 'Raise the window containing this tab; default = active window' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'bex_panel',
+    description:
+      "Control the in-page status panel the user watches while you drive. action=status raises a prominent message — use level='action-needed' for the moment a KeepKey button-press is required (call it right BEFORE you trigger a device signature, e.g. \"Confirm the swap on your KeepKey\"), and level='done' when it's handled. action=show/hide toggles the panel; the action log fills itself as you click/type. Note: the panel canNOT open Chrome's wallet side panel — that needs a user gesture the MCP lacks, so the panel just shows the user where to click. Omit tabId for the active tab.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['show', 'hide', 'status'], description: 'Default: show' },
+        message: { type: 'string', description: 'Status text (action=status)' },
+        level: {
+          type: 'string',
+          enum: ['info', 'action-needed', 'done'],
+          description: "action=status level; 'action-needed' = waiting on a KeepKey button press",
+        },
+        tabId: { type: 'number' },
+      },
+      additionalProperties: false,
+    },
+  },
+];
+
+async function activeTab(): Promise<chrome.tabs.Tab> {
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (!tab?.id) throw err('no_active_tab', 'no active tab in the last focused window');
+  return tab;
+}
+
+async function resolveTab(tabId?: number): Promise<chrome.tabs.Tab> {
+  if (tabId == null) return activeTab();
+  try {
+    return await chrome.tabs.get(tabId);
+  } catch {
+    throw err('tab_not_found', `no tab with id ${tabId}`);
+  }
+}
+
+/** Ask the page-side agentDom to do something, and normalize its failures. */
+async function dom(tabId: number, op: string, payload: Record<string, unknown> = {}): Promise<any> {
+  const send = () => chrome.tabs.sendMessage(tabId, { type: 'BEX_AGENT_DOM', op, ...payload });
+  let res: any;
+  try {
+    res = await send();
+  } catch {
+    // sendMessage threw = no receiver in any frame = the content bundle never
+    // ran here (tab predates the extension load). Inject it and retry once —
+    // safe from double-boot precisely because the throw proves it's absent.
+    try {
+      await chrome.scripting.executeScript({ target: { tabId }, files: ['content/index.iife.js'] });
+      res = await send();
+    } catch {
+      // Injection refused: chrome:// / Web Store / PDF viewer. Not drivable, ever.
+      throw err(
+        'undriveable_page',
+        `cannot drive tab ${tabId} — Chrome blocks extensions on chrome://, Web Store and PDF pages; pick a normal web tab (bex_tabs lists them)`,
+      );
+    }
+  }
+  if (!res) throw err('no_content_script', `tab ${tabId} did not answer — reload the page`);
+  if (!res.ok) throw err(res.code ?? 'dom_error', res.message ?? 'DOM operation failed');
+  return res.data;
+}
+
+/**
+ * Resolve once `tabId` finishes loading.
+ *
+ * Call this BEFORE triggering the navigation — the listener attaches
+ * synchronously, so starting the wait first is what closes the race where a
+ * fast page (cache hit, localhost) fires `complete` before we're listening and
+ * strands us on the timeout.
+ *
+ * `settledIsDone` is for a freshly created tab, which may already be finished by
+ * the time we learn its id. Do NOT set it for a navigate: there the OLD page is
+ * still `complete`, and we'd resolve instantly on the page we're leaving.
+ */
+function waitForLoad(tabId: number, { settledIsDone = false } = {}): Promise<void> {
+  return new Promise(resolve => {
+    const done = () => {
+      chrome.tabs.onUpdated.removeListener(listener);
+      clearTimeout(timer);
+      resolve();
+    };
+    // Resolve rather than reject on timeout: a page that never fires `complete`
+    // (long-polling, hung analytics beacon) is usually still perfectly drivable,
+    // and failing the navigate outright would be worse than proceeding.
+    const timer = setTimeout(done, LOAD_TIMEOUT_MS);
+    const listener = (id: number, info: chrome.tabs.TabChangeInfo) => {
+      if (id === tabId && info.status === 'complete') done();
+    };
+    chrome.tabs.onUpdated.addListener(listener);
+    if (settledIsDone) {
+      chrome.tabs
+        .get(tabId)
+        .then(t => {
+          if (t.status === 'complete') done();
+        })
+        .catch(done); // tab vanished — nothing left to wait for
+    }
+  });
+}
+
+/** Render a snapshot as indented text — far cheaper than JSON, which repeats every key. */
+function formatSnapshot(snap: { url: string; title: string; nodes: any[] }): string {
+  const lines = [`page ${snap.url} — ${JSON.stringify(snap.title)}`];
+  for (const n of snap.nodes) {
+    let line = `- ${n.role} ${JSON.stringify(n.name)}`;
+    if (n.ref) line += ` [ref=${n.ref}]`;
+    if (n.level) line += ` [level=${n.level}]`;
+    if (n.value) line += ` value=${JSON.stringify(n.value)}`;
+    if (n.checked != null) line += n.checked ? ' [checked]' : ' [unchecked]';
+    if (n.disabled) line += ' [disabled]';
+    lines.push(line);
+  }
+  if (snap.nodes.length === 0) lines.push('(no visible interactive elements — page may still be loading)');
+  return lines.join('\n');
+}
+
+async function screenshot(tab: chrome.tabs.Tab, quality: number): Promise<Content> {
+  // captureVisibleTab refuses privileged pages, but with a misleading message
+  // about the activeTab permission. Catch them up front with an honest one.
+  if (
+    tab.url &&
+    (/^(chrome|chrome-extension|devtools|edge|about|view-source):/.test(tab.url) ||
+      tab.url.startsWith('https://chromewebstore.google.com'))
+  ) {
+    throw err(
+      'uncapturable_page',
+      `Chrome refuses to capture ${new URL(tab.url).protocol}// pages — pass the tabId of a normal web tab (bex_tabs lists them)`,
+    );
+  }
+  // Chrome can only capture the ACTIVE tab of a window, so focus it first. This
+  // is a visible side effect and is called out in the tool description.
+  if (!tab.active && tab.id != null) await chrome.tabs.update(tab.id, { active: true });
+  // Hide the agent overlay so it doesn't land in the capture; best-effort (the
+  // page may have no content script). It resolves after a painted frame.
+  if (tab.id != null) await dom(tab.id, 'overlay', { show: false }).catch(() => {});
+  let dataUrl: string;
+  try {
+    dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId!, { format: 'jpeg', quality });
+  } finally {
+    if (tab.id != null) void dom(tab.id, 'overlay', { show: true }).catch(() => {});
+  }
+
+  const binary = atob(dataUrl.split(',')[1]);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+  const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/jpeg' }));
+  const scale = Math.min(1, SCREENSHOT_MAX_WIDTH / bitmap.width);
+  const canvas = new OffscreenCanvas(Math.round(bitmap.width * scale), Math.round(bitmap.height * scale));
+  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+
+  const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: quality / 100 });
+  const out = new Uint8Array(await blob.arrayBuffer());
+  let str = '';
+  for (let i = 0; i < out.length; i++) str += String.fromCharCode(out[i]);
+
+  return { content: [{ type: 'image', data: btoa(str), mimeType: 'image/jpeg' }] };
+}
+
+export function isBrowserTool(name: string): boolean {
+  return BROWSER_TOOLS.some(t => t.name === name);
+}
+
+export async function executeBrowserTool(tool: string, args: any): Promise<any> {
+  switch (tool) {
+    case 'bex_tabs': {
+      const action = args?.action ?? 'list';
+      if (action === 'create') {
+        const tab = await chrome.tabs.create({ url: args?.url, active: true });
+        if (args?.url && tab.id != null) await waitForLoad(tab.id, { settledIsDone: true });
+        return { tabId: tab.id, url: tab.url };
+      }
+      if (action === 'new-window') {
+        const win = await chrome.windows.create({ url: args?.url, focused: true });
+        const tab = win.tabs?.[0];
+        if (args?.url && tab?.id != null) await waitForLoad(tab.id, { settledIsDone: true });
+        return { windowId: win.id, tabId: tab?.id, url: tab?.url };
+      }
+      if (action === 'close') {
+        const tab = await resolveTab(args?.tabId);
+        await chrome.tabs.remove(tab.id!);
+        return { closed: tab.id };
+      }
+      if (action === 'select') {
+        const tab = await resolveTab(args?.tabId);
+        await chrome.tabs.update(tab.id!, { active: true });
+        await chrome.windows.update(tab.windowId!, { focused: true });
+        return { selected: tab.id };
+      }
+      const tabs = await chrome.tabs.query({});
+      return {
+        tabs: tabs.map(t => ({ tabId: t.id, url: t.url, title: t.title, active: t.active, windowId: t.windowId })),
+      };
+    }
+
+    case 'bex_navigate': {
+      if (!args?.url) throw err('bad_args', 'url is required');
+      const tab = await resolveTab(args?.tabId);
+      const loaded = waitForLoad(tab.id!); // start listening BEFORE navigating
+      await chrome.tabs.update(tab.id!, { url: args.url });
+      await loaded;
+      const after = await chrome.tabs.get(tab.id!);
+      return { tabId: after.id, url: after.url, title: after.title };
+    }
+
+    case 'bex_snapshot': {
+      const tab = await resolveTab(args?.tabId);
+      return text(formatSnapshot(await dom(tab.id!, 'snapshot')));
+    }
+
+    case 'bex_find': {
+      const tab = await resolveTab(args?.tabId);
+      const snap = await dom(tab.id!, 'find', { text: args?.text, regex: !!args?.regex });
+      if (snap.nodes.length === 0) {
+        return text(`no elements match ${JSON.stringify(args?.text)} on ${snap.url}`);
+      }
+      return text(formatSnapshot(snap));
+    }
+
+    case 'bex_click': {
+      const tab = await resolveTab(args?.tabId);
+      if (!args?.ref) throw err('bad_args', 'ref is required');
+      return dom(tab.id!, 'click', { ref: args.ref });
+    }
+
+    case 'bex_type': {
+      const tab = await resolveTab(args?.tabId);
+      if (!args?.ref) throw err('bad_args', 'ref is required');
+      return dom(tab.id!, 'type', { ref: args.ref, text: args.text, submit: !!args.submit });
+    }
+
+    case 'bex_select': {
+      const tab = await resolveTab(args?.tabId);
+      if (!args?.ref) throw err('bad_args', 'ref is required');
+      return dom(tab.id!, 'select', { ref: args.ref, value: args.value });
+    }
+
+    case 'bex_read_page': {
+      const tab = await resolveTab(args?.tabId);
+      const res = await dom(tab.id!, 'read', { selector: args?.selector, maxChars: args?.maxChars });
+      return text(res.truncated ? `${res.text}\n\n[truncated — raise maxChars or scope with selector]` : res.text);
+    }
+
+    case 'bex_console': {
+      const tab = await resolveTab(args?.tabId);
+      const { entries, captured } = await dom(tab.id!, 'console', {
+        level: args?.level,
+        pattern: args?.pattern,
+        since: args?.since,
+        limit: args?.limit,
+      });
+      if (!captured) {
+        return text(
+          'Console capture is not available on this tab (the KeepKey script has not injected — reload the page). This is not the same as an empty console.',
+        );
+      }
+      if (!entries.length) return text('No console entries captured (page has logged nothing since injection).');
+      const lines = entries.map((e: any) => {
+        const t = new Date(e.ts).toISOString().slice(11, 23);
+        const where = e.url ? ` (${e.url})` : '';
+        return `[${t} ${e.level}] ${e.text}${where}`;
+      });
+      return text(lines.join('\n'));
+    }
+
+    case 'bex_network': {
+      const tab = await resolveTab(args?.tabId);
+      const { data, captured } = await dom(tab.id!, 'network', {
+        status: args?.status,
+        pattern: args?.pattern,
+        since: args?.since,
+        limit: args?.limit,
+      });
+      if (!captured)
+        return text('Network capture is not available on this tab (reload the page). Not the same as no traffic.');
+      return text(JSON.stringify(data, null, 2));
+    }
+
+    case 'bex_perf': {
+      const tab = await resolveTab(args?.tabId);
+      const { data, captured } = await dom(tab.id!, 'perf', {});
+      if (!captured) return text('Performance capture is not available on this tab (reload the page).');
+      return text(JSON.stringify(data, null, 2));
+    }
+
+    case 'bex_storage': {
+      const tab = await resolveTab(args?.tabId);
+      return text(JSON.stringify(await dom(tab.id!, 'storage', {}), null, 2));
+    }
+
+    case 'bex_screenshot': {
+      const tab = await resolveTab(args?.tabId);
+      const quality = Math.min(100, Math.max(1, Number(args?.quality) || SCREENSHOT_QUALITY));
+      return screenshot(tab, quality);
+    }
+
+    case 'bex_panel': {
+      const tab = await resolveTab(args?.tabId);
+      const action = args?.action ?? 'show';
+      if (action === 'hide') return dom(tab.id!, 'panel', { action: 'hide' });
+      if (action === 'status')
+        return dom(tab.id!, 'panel', { message: args?.message ?? '', level: args?.level ?? 'info' });
+      return dom(tab.id!, 'panel', {});
+    }
+
+    case 'bex_bring_to_front': {
+      const tab = await resolveTab(args?.tabId);
+      const win = await chrome.windows.get(tab.windowId!);
+      // focused raises the window; only force state:'normal' when minimized so
+      // we don't un-maximize a maximized window.
+      const update: chrome.windows.UpdateInfo = { focused: true };
+      if (win.state === 'minimized') update.state = 'normal';
+      await chrome.windows.update(tab.windowId!, update);
+      if (tab.id != null && !tab.active) await chrome.tabs.update(tab.id, { active: true });
+      return { windowId: tab.windowId, tabId: tab.id, focused: true };
+    }
+
+    default:
+      throw err('unknown_tool', `unknown browser tool: ${tool}`);
+  }
+}

@@ -2,8 +2,9 @@ import { requestStorage } from '@extension/storage';
 import { v4 as uuidv4 } from 'uuid';
 import { Chain, ChainToNetworkId, shortListSymbolToCaip, caipToNetworkId } from '../chainConfig';
 import * as wallet from '../wallet';
+import { utxoAccountFromPubkeyRow } from '../utxoDerive';
 import { createProviderRpcError } from '../utils';
-import { fetchJsonWithTimeout } from '../fetchUtils';
+import { fetchJsonWithTimeout, broadcastViaPioneer } from '../fetchUtils';
 
 const TAG = ' | dogecoinHandler | ';
 
@@ -18,8 +19,11 @@ export const handleDogecoinRequest = async (
   const tag = TAG + ' | handleDogecoinRequest | ';
   switch (method) {
     case 'request_accounts': {
-      const pubkeys = wallet.getPubkeys(ChainToNetworkId[Chain.Dogecoin]);
-      const accounts = pubkeys.map((pubkey: any) => pubkey.master || pubkey.address);
+      const networkId = ChainToNetworkId[Chain.Dogecoin];
+      const pubkeys = wallet.getPubkeys(networkId);
+      // Vault batch rows carry the xpub with an empty address — derive the
+      // receive address locally instead of handing dApps empty strings.
+      const accounts = pubkeys.map((pubkey: any) => utxoAccountFromPubkeyRow(pubkey, networkId)).filter(Boolean);
       return [accounts];
     }
     case 'request_paths': {
@@ -96,17 +100,7 @@ export const handleDogecoinRequest = async (
         response.signedTx = signedTx;
         await requestStorage.updateEventById(requestInfo.id, response);
 
-        let txHash: any = await fetchJsonWithTimeout<any>(
-          'https://api.keepkey.info/api/v1/broadcastTx',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ caip, signedTx: signedTx.serializedTx || signedTx }),
-          },
-          { timeoutMs: 15000, retries: 1 },
-        );
-        if (txHash.txHash) txHash = txHash.txHash;
-        if (txHash.txid) txHash = txHash.txid;
+        const txHash: any = await broadcastViaPioneer(caip, signedTx.serializedTx || signedTx);
         response.txid = txHash;
         await requestStorage.updateEventById(requestInfo.id, response);
         chrome.runtime.sendMessage({

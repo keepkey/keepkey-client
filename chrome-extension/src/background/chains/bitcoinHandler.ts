@@ -2,8 +2,9 @@ import { requestStorage } from '@extension/storage';
 import { v4 as uuidv4 } from 'uuid';
 import { Chain, ChainToNetworkId, shortListSymbolToCaip, caipToNetworkId } from '../chainConfig';
 import * as wallet from '../wallet';
+import { utxoAccountFromPubkeyRow } from '../utxoDerive';
 import { createProviderRpcError } from '../utils';
-import { fetchJsonWithTimeout } from '../fetchUtils';
+import { fetchJsonWithTimeout, broadcastViaPioneer } from '../fetchUtils';
 
 const TAG = ' | bitcoinHandler | ';
 
@@ -19,8 +20,11 @@ export const handleBitcoinRequest = async (
 
   switch (method) {
     case 'request_accounts': {
-      const pubkeys = wallet.getPubkeys(ChainToNetworkId[Chain.Bitcoin]);
-      const accounts = pubkeys.map((pubkey: any) => pubkey.master || pubkey.address);
+      const networkId = ChainToNetworkId[Chain.Bitcoin];
+      const pubkeys = wallet.getPubkeys(networkId);
+      // Vault batch rows carry the xpub with an empty address — derive the
+      // receive address locally instead of handing dApps empty strings.
+      const accounts = pubkeys.map((pubkey: any) => utxoAccountFromPubkeyRow(pubkey, networkId)).filter(Boolean);
       return [accounts];
     }
 
@@ -131,17 +135,7 @@ export const handleBitcoinRequest = async (
           // a transient Pioneer hiccup (e.g. node failover) would either
           // hang the dApp or surface as a malformed JSON error from the
           // raw `await response.json()` below.
-          let txHash: any = await fetchJsonWithTimeout<any>(
-            'https://api.keepkey.info/api/v1/broadcastTx',
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ caip, signedTx: signedTx.serializedTx || signedTx }),
-            },
-            { timeoutMs: 15000, retries: 1 },
-          );
-          if (txHash.txHash) txHash = txHash.txHash;
-          if (txHash.txid) txHash = txHash.txid;
+          const txHash: any = await broadcastViaPioneer(caip, signedTx.serializedTx || signedTx);
 
           response.txid = txHash;
           await requestStorage.updateEventById(requestInfo.id, response);

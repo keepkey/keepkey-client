@@ -466,7 +466,10 @@ const handleWalletSwitchEthereumChain = async (params: any, KEEPKEY_WALLET: any,
   const storedChainData = await blockchainDataStorage.getBlockchainData(networkId);
   if (storedChainData) {
     console.log(tag, 'Chain found in custom storage, switching...');
-    await switchToProvider(storedChainData, KEEPKEY_WALLET, tag);
+    // Records are keyed by networkId but older writes (including our own
+    // Pioneer-provision path) didn't embed it, and switchToProvider
+    // hard-requires it — stamp the key back onto the record.
+    await switchToProvider({ networkId, ...storedChainData }, KEEPKEY_WALLET, tag);
     return null;
   }
 
@@ -480,6 +483,7 @@ const handleWalletSwitchEthereumChain = async (params: any, KEEPKEY_WALLET: any,
     console.log(tag, 'Chain found in Pioneer registry, provisioning + switching...');
     try {
       await blockchainDataStorage.addBlockchainData(networkId, {
+        networkId,
         chainId: pioneerChain.chainId,
         caip: pioneerChain.caip,
         name: pioneerChain.name,

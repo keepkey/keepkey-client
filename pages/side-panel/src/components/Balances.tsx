@@ -14,6 +14,7 @@ const getChainDisplayName = (networkId: string): string => {
   if (networkId?.includes('eip155:10')) return 'Optimism';
   if (networkId?.includes('eip155:42161')) return 'Arbitrum';
   if (networkId?.includes('bip122:000000000019d6689c085ae165831e93')) return 'Bitcoin';
+  if (networkId?.includes('hive:')) return 'Hive';
   if (networkId?.includes('cosmos:')) return 'Cosmos';
   if (networkId?.includes('cosmos:thorchain')) return 'THORChain';
   if (networkId?.includes('cosmos:mayachain')) return 'Maya';

@@ -16,9 +16,11 @@ import { handleRippleRequest } from './chains/rippleHandler';
 import { handleSolanaRequest } from './chains/solanaHandler';
 import { handleTronRequest } from './chains/tronHandler';
 import { handleTonRequest } from './chains/tonHandler';
+import { handleHiveRequest } from './chains/hiveHandler';
 import type { ProviderRpcError } from './utils';
 import { createProviderRpcError, formatUserError } from './utils';
 import { openSidePanel, setApprovalBadge } from './popup';
+import { recordProviderCall, recordSite, registerPending, settlePending } from './providerLog';
 
 const TAG = ' | METHODS | ';
 
@@ -64,6 +66,9 @@ const requireApproval = async function (
   params?: any,
 ): Promise<any> {
   const tag = TAG + ' | requireApproval | ';
+  // Set once the bridge's approval mirror has an entry; settled on every exit
+  // path (approve/reject, timeout, throw).
+  let pendingKey: string | null = null;
   try {
     console.log(tag, 'networkId:', networkId);
 
@@ -116,6 +121,17 @@ const requireApproval = async function (
     setApprovalBadge(true);
     await openSidePanel(requestInfo);
 
+    // Mirror the in-memory approval queue for the MCP agent bridge
+    // (bex_pending_requests). Settled again on resolve/timeout below.
+    pendingKey = registerPending({
+      id: requestInfo.id,
+      method: method || requestInfo.method,
+      params: params ?? requestInfo.params,
+      origin: requestInfo.siteUrl || requestInfo.href || '',
+      chain,
+      requestedAt: Date.now(),
+    });
+
     // Wait for user's decision. Resolves on ANY of:
     //   - user approves/rejects in sidebar (eth_sign_response arrives)
     //   - APPROVAL_TIMEOUT_MS elapses without a response (treated as reject)
@@ -127,6 +143,7 @@ const requireApproval = async function (
         chrome.runtime.onMessage.removeListener(listener);
         if (timer != null) clearTimeout(timer);
         setApprovalBadge(false);
+        settlePending(pendingKey);
       };
 
       const listener = (message: any) => {
@@ -150,11 +167,45 @@ const requireApproval = async function (
     });
   } catch (e) {
     console.error(tag, e);
+    settlePending(pendingKey);
     return { success: false }; // Return failure in case of error
   }
 };
 
+// Thin observability wrapper: every provider call (page- or agent-originated)
+// lands in the providerLog ring buffer with its result or error CODE — the
+// data bex_logs serves (EPIC_mcp_agent_bridge.md, bug #1).
 export const handleWalletRequest = async (
+  requestInfo: any,
+  chain: string,
+  method: string,
+  params: any[],
+  __KEEPKEY_WALLET: any,
+  ADDRESS: string,
+): Promise<any> => {
+  const startedAt = Date.now();
+  const origin = requestInfo?.siteUrl || requestInfo?.href || '';
+  recordSite(origin, chain);
+  try {
+    const result = await routeWalletRequest(requestInfo, chain, method, params, __KEEPKEY_WALLET, ADDRESS);
+    recordProviderCall({ ts: Date.now(), origin, chain, method, params, result, durationMs: Date.now() - startedAt });
+    return result;
+  } catch (error: any) {
+    recordProviderCall({
+      ts: Date.now(),
+      origin,
+      chain,
+      method,
+      params,
+      errorCode: error?.code,
+      errorMessage: error?.message || String(error),
+      durationMs: Date.now() - startedAt,
+    });
+    throw error;
+  }
+};
+
+const routeWalletRequest = async (
   requestInfo: any,
   chain: string,
   method: string,
@@ -228,6 +279,10 @@ export const handleWalletRequest = async (
       }
       case 'ton': {
         return await handleTonRequest(method, params, requestInfo, ADDRESS, __KEEPKEY_WALLET, requireApproval);
+        break;
+      }
+      case 'hive': {
+        return await handleHiveRequest(method, params, requestInfo, ADDRESS, __KEEPKEY_WALLET, requireApproval);
         break;
       }
       default: {

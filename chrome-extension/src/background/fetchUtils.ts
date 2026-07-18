@@ -93,3 +93,32 @@ export async function fetchJsonWithTimeout<T = unknown>(
   }
   return (await resp.json()) as T;
 }
+
+/**
+ * Broadcast a signed transaction through Pioneer — the source of truth
+ * for every chain (no hardcoded RPC nodes/keys in the client).
+ *
+ * `POST /api/v1/broadcast` branches on the networkId prefix
+ * (bip122/eip155/cosmos:/ripple:/tron:/solana:) and returns
+ * `{ success, txid }`. On failure it returns HTTP 200 with
+ * `{ success:false, error }`, so a missing txid is the real error signal.
+ *
+ * `caip` is `<networkId>/slip44:N`; the controller keys on networkId.
+ * `serialized` is the chain's serialized signed tx (hex for UTXO/Cosmos,
+ * base64 for Solana — Solana has its own path with sig-recovery).
+ */
+export async function broadcastViaPioneer(caip: string, serialized: string): Promise<string> {
+  const networkId = caip.split('/')[0];
+  const data = await fetchJsonWithTimeout<any>(
+    'https://api.keepkey.info/api/v1/broadcast',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ networkId, caip, serialized }),
+    },
+    { timeoutMs: 15000, retries: 1 },
+  );
+  const txid = data?.txid ?? data?.results?.txid;
+  if (!txid) throw new Error(`Pioneer broadcast failed: ${data?.error?.error ?? data?.error ?? JSON.stringify(data)}`);
+  return txid;
+}

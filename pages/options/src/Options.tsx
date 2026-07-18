@@ -1,11 +1,12 @@
 import '@src/Options.css';
 import { useEffect, useState } from 'react';
 import { withErrorBoundary, withSuspense } from '@extension/shared';
-import { exampleSidebarStorage } from '@extension/storage'; // Re-import the storage
+import { exampleSidebarStorage, agentModeStorage } from '@extension/storage'; // Re-import the storage
 import type { DeviceInfo } from '@extension/storage';
 
 const Options = () => {
   const [openSidebar, setOpenSidebar] = useState<boolean>(true);
+  const [agentMode, setAgentMode] = useState<boolean>(false);
   const [cacheEnabled, setCacheEnabledState] = useState<boolean>(true);
   const [hasCachedPubkeys, setHasCachedPubkeys] = useState<boolean>(false);
   const [cachedDeviceInfo, setCachedDeviceInfo] = useState<DeviceInfo | null>(null);
@@ -25,6 +26,16 @@ const Options = () => {
     };
     fetchSidebarPreference();
   }, []);
+
+  useEffect(() => {
+    agentModeStorage.get().then(value => setAgentMode(!!value));
+  }, []);
+
+  const handleToggleAgentMode = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.checked;
+    setAgentMode(value);
+    await agentModeStorage.set(value);
+  };
 
   // Fetch cache status on component mount
   useEffect(() => {
@@ -108,6 +119,18 @@ const Options = () => {
       </section>
 
       <section>
+        <h2>Agent Mode (MCP)</h2>
+        <p className="description">
+          Lets AI agents on this computer inspect the extension (accounts, pending approvals, provider logs) through the
+          vault's MCP endpoint at localhost:1646/mcp. Read-only: agents cannot approve requests or sign anything.
+        </p>
+        <label>
+          <input type="checkbox" checked={agentMode} onChange={handleToggleAgentMode} />
+          Enable Agent mode (read-only introspection)
+        </label>
+      </section>
+
+      <section>
         <h2>View-Only Mode Cache</h2>
         <p className="description">
           Cache your device's public keys to view balances and portfolio when your KeepKey is not connected. Signing
@@ -131,7 +154,9 @@ const Options = () => {
             </div>
           )}
 
-          {!hasCachedPubkeys && cacheEnabled && <p className="info">No cached pubkeys. Connect your device to enable view-only mode.</p>}
+          {!hasCachedPubkeys && cacheEnabled && (
+            <p className="info">No cached pubkeys. Connect your device to enable view-only mode.</p>
+          )}
         </div>
       </section>
     </div>

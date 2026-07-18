@@ -65,6 +65,8 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
 
         chrome.runtime.sendMessage({ type: 'GET_APP_PUBKEYS' }, response => {
           if (response?.balances) {
+            // GET_APP_PUBKEYS already includes the vault-sourced Hive pubkey
+            // (injected background-side), so no per-component merge here.
             setPubkeys(response.balances);
 
             // Restore selection from stored asset context. Carries

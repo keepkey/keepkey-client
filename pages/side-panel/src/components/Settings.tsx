@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { VStack, HStack, Avatar, Text, Switch, Link, Button, Image, Box, useToast } from '@chakra-ui/react';
+import { VStack, HStack, Avatar, Text, Switch, Link, Button, Image, Box, Code, useToast } from '@chakra-ui/react';
+import { CopyIcon } from '@chakra-ui/icons';
 import {
   maskingSettingsStorage,
   requestStorage,
@@ -14,6 +15,7 @@ import {
   customEvmNetworksStorage,
   ethAccountsStorage,
   testnetSettingsStorage,
+  agentModeStorage,
 } from '@extension/storage';
 
 const TAG = ' | Settings | ';
@@ -27,6 +29,7 @@ const Settings = () => {
     enablePhantomMasking: false,
   });
   const [showTestnets, setShowTestnets] = useState(false);
+  const [agentMode, setAgentMode] = useState(false);
 
   // Fetch initial masking settings from storage
   useEffect(() => {
@@ -45,10 +48,63 @@ const Settings = () => {
 
       const testnetSetting = await testnetSettingsStorage.getShowTestnets();
       setShowTestnets(testnetSetting);
+
+      setAgentMode(await agentModeStorage.get());
     };
 
     loadSettings();
   }, []);
+
+  const toggleAgentMode = async () => {
+    const newValue = !agentMode;
+    setAgentMode(newValue); // optimistic
+    await agentModeStorage.set(newValue);
+    toast({
+      title: newValue ? 'MCP enabled' : 'MCP disabled',
+      description: newValue
+        ? 'Agents can now read wallet state over the local MCP bridge.'
+        : 'The MCP bridge is disconnected; agents can no longer read wallet state.',
+      status: newValue ? 'success' : 'info',
+      duration: 4000,
+      isClosable: true,
+    });
+  };
+
+  const copyMcpConfig = async () => {
+    const apiKey = await keepKeyApiKeyStorage.getApiKey();
+    if (!apiKey) {
+      toast({
+        title: 'Not paired yet',
+        description: 'Pair the extension with the KeepKey vault first, then copy the agent config.',
+        status: 'warning',
+        duration: 5000,
+        isClosable: true,
+      });
+      return;
+    }
+    const cmd = `claude mcp add --transport http keepkey http://localhost:1646/mcp --header "Authorization: Bearer ${apiKey}"`;
+    // The getApiKey() await above can outlive transient user activation, and the
+    // side panel loses document focus easily — either makes writeText reject.
+    try {
+      await navigator.clipboard.writeText(cmd);
+    } catch {
+      toast({
+        title: 'Copy failed',
+        description: 'Clipboard access was blocked. Click the side panel to focus it, then try again.',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+      return;
+    }
+    toast({
+      title: 'Agent config copied',
+      description: 'Contains your local pairing key — treat it like a secret. Paste it into your agent terminal.',
+      status: 'success',
+      duration: 5000,
+      isClosable: true,
+    });
+  };
 
   const toggleTestnets = async () => {
     const newValue = !showTestnets;
@@ -228,6 +284,34 @@ const Settings = () => {
         </HStack>
         <Text fontSize="xs" color="whiteAlpha.700" mt={-2} mb={2}>
           Adds Ethereum Sepolia, Base Sepolia, and Solana Devnet with default public RPCs. Turning off removes them.
+        </Text>
+
+        <Text fontSize="md" fontWeight="bold">
+          Agent Mode (MCP)
+        </Text>
+
+        {/* Enable MCP bridge */}
+        <HStack w="100%" justifyContent="space-between">
+          <Text>Enable MCP</Text>
+          <Switch size="md" isChecked={agentMode} onChange={toggleAgentMode} />
+        </HStack>
+        <Text fontSize="xs" color="kk.dim" mt={-2} mb={2}>
+          Lets an AI agent (Claude Code, Claude Desktop, …) read wallet state over a local Model Context Protocol bridge
+          — device status, accounts, pending requests, connected sites, and logs. Today's tools only read. The lasting
+          guarantee is not that list, which will grow, but the device: no agent can sign, because every signature still
+          requires the physical button. Off by default.{' '}
+          <Link href="https://docs.keepkey.com/docs/bex/mcp" isExternal textDecoration="underline">
+            Learn more
+          </Link>
+        </Text>
+
+        {/* Copy agent connection config */}
+        <Button leftIcon={<CopyIcon />} variant="outline" size="sm" w="100%" onClick={copyMcpConfig}>
+          Copy agent config
+        </Button>
+        <Text fontSize="xs" color="kk.dim" mt={1} mb={2}>
+          Copies a <Code fontSize="xs">claude mcp add</Code> command with your local pairing key. It contains a secret —
+          paste it only into your own agent, never share it. The agent connects once you enable MCP above.
         </Text>
 
         <Text fontSize="md" fontWeight="bold">

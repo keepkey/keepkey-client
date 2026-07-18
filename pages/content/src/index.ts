@@ -1,6 +1,7 @@
 // Enhanced content script with injection verification and security improvements
 
 import type { WalletMessage } from '../../../chrome-extension/src/injected/types';
+import { installAgentDom } from './agentDom';
 
 const INJECTION_TIMEOUT = 5000; // 5 seconds
 const MAX_INJECTION_RETRIES = 3;
@@ -432,3 +433,6 @@ chrome.runtime.onMessage.addListener((message: any) => {
     window.postMessage({ type: 'CHAIN_CHANGED', provider: message.provider }, '*');
   }
 });
+
+// Browser-driving MCP tools (bex_snapshot / bex_click / …) run their DOM work here.
+installAgentDom();
