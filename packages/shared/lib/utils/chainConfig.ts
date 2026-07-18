@@ -96,6 +96,14 @@ export const availableChainsByWallet: Record<string, string[]> = {
   KEEPKEY: Object.values(Chain),
 };
 
+// ---- FIRMWARE_GATED_CHAINS ----
+// Chains that need a minimum KeepKey firmware. The add-blockchain picker shows
+// these as locked (toggle disabled) with the required version when the device
+// is below it. Keyed by networkId (no slip44 suffix). Hive shipped in 7.15.0.
+export const FIRMWARE_GATED_CHAINS: Record<string, { major: number; minor: number; patch: number; label: string }> = {
+  'hive:beeab0de': { major: 7, minor: 15, patch: 0, label: '7.15.0' },
+};
+
 // ---- getChainEnumValue (replaces @pioneer-platform/pioneer-caip's version) ----
 const chainNameToEnum: Record<string, string> = {};
 for (const [key, value] of Object.entries(Chain)) {

@@ -16,7 +16,8 @@ import { handleSwapMessage, resolveAddress } from './swapHandler';
 import { startSwapEventStream, stopSwapEventStream } from './swapEventStream';
 import { resetTonState, prefetchTonAddress } from './chains/tonHandler';
 import { resetTronState, prefetchTronPubkey } from './chains/tronHandler';
-import { resetHiveState, getHiveAccountInfo, getCachedHiveInfo, buildHiveUiRows } from './chains/hiveHandler';
+import { resetHiveState, getHiveAccountInfo, getCachedHiveInfo, buildHiveUiRows, HBD_CAIP } from './chains/hiveHandler';
+import { getCachedFirmwareVersion } from './firmware';
 
 const HIVE_NETWORK_ID = 'hive:beeab0de';
 import { handleWalletRequest } from './methods';
@@ -1249,6 +1250,12 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           break;
         }
 
+        case 'GET_FIRMWARE_VERSION': {
+          // Cheap cached read for UI firmware-gating (add-blockchain picker).
+          sendResponse({ version: getCachedFirmwareVersion() });
+          break;
+        }
+
         case 'UPDATE_EVENT_BY_ID': {
           const { id, updatedEvent } = message.payload;
           const success = await requestStorage.updateEventById(id, updatedEvent);
@@ -1422,9 +1429,19 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                 // an ETH fallback) and the detail page reads a real balance.
                 const hive = buildHiveUiRows(await getHiveAccountInfo());
                 if (hive) {
+                  const isHbd = asset.caip === HBD_CAIP;
+                  const row = isHbd ? hive.hbdBalance : hive.balance;
                   asset.pubkeys = [hive.pubkey];
                   asset.address = hive.pubkey.address;
-                  if (!asset.balance) asset.balance = hive.balance.balance;
+                  if (!asset.balance) asset.balance = row.balance;
+                  // HIVE price is Pioneer-sourced (full CAIP); the synthetic row
+                  // carries it so the detail page shows a real value, not $0.
+                  // (HBD has no Pioneer price — leave it unpriced, never fake $1.)
+                  if (!isHbd && (!asset.priceUsd || asset.priceUsd === '0')) asset.priceUsd = hive.balance.priceUsd;
+                  if (!isHbd && (!asset.valueUsd || asset.valueUsd === '0')) asset.valueUsd = hive.balance.valueUsd;
+                  // Full account breakdown for the asset-detail page (HP, savings,
+                  // rewards, delegation, RC). Display-only.
+                  asset.hiveHoldings = hive.holdings;
                 }
               } else if (asset.networkId) {
                 // An EVM address is identical on every EVM chain, so all
@@ -2120,9 +2137,14 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           // synthetic row into every response path — the dashboard AND the
           // asset-detail page read from here, so both stay consistent.
           // Non-blocking cached accessor.
-          const hiveBalanceRow = buildHiveUiRows(getCachedHiveInfo())?.balance;
+          const hiveRows = buildHiveUiRows(getCachedHiveInfo());
+          // Inject liquid HIVE and HBD (both vault-sourced). HBD only when held,
+          // so an HBD-less account doesn't get a $0 row.
+          const hiveInject = hiveRows
+            ? [hiveRows.balance, ...(parseFloat(hiveRows.hbdBalance.balance || '0') > 0 ? [hiveRows.hbdBalance] : [])]
+            : [];
           const withHive = (b: any[]) =>
-            hiveBalanceRow ? [...b.filter((x: any) => x.networkId !== HIVE_NETWORK_ID), hiveBalanceRow] : b;
+            hiveInject.length ? [...b.filter((x: any) => x.networkId !== HIVE_NETWORK_ID), ...hiveInject] : b;
           try {
             await portfolioHydrated;
             // Drop a hydrated last-good cache that belongs to a different wallet
@@ -2181,9 +2203,19 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
 
         case 'REFRESH_ALL_BALANCES': {
           // Force a fresh Hive fetch too so an explicit refresh updates it.
-          const hiveRefreshed = buildHiveUiRows(await getHiveAccountInfo())?.balance;
+          // Inject HIVE + HBD (when held), same as the passive GET_APP_BALANCES
+          // path — otherwise refresh would drop the HBD row until the next poll.
+          const hiveRefreshedRows = buildHiveUiRows(await getHiveAccountInfo());
+          const hiveRefreshInject = hiveRefreshedRows
+            ? [
+                hiveRefreshedRows.balance,
+                ...(parseFloat(hiveRefreshedRows.hbdBalance.balance || '0') > 0 ? [hiveRefreshedRows.hbdBalance] : []),
+              ]
+            : [];
           const mergeHive = (b: any[]) =>
-            hiveRefreshed ? [...b.filter((x: any) => x.networkId !== HIVE_NETWORK_ID), hiveRefreshed] : b;
+            hiveRefreshInject.length
+              ? [...b.filter((x: any) => x.networkId !== HIVE_NETWORK_ID), ...hiveRefreshInject]
+              : b;
           try {
             if (!wallet.isInitialized()) {
               sendResponse({ balances: mergeHive([]), error: 'Wallet not initialized' });

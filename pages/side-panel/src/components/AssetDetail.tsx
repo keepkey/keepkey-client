@@ -33,6 +33,27 @@ interface AssetDetailProps {
   onSwap?: () => void;
 }
 
+// Hive account breakdown → label/value rows for the detail page. Zero lines are
+// dropped so a simple account isn't cluttered; HP and RC always show.
+const fmtHive = (v: string, unit: string): string =>
+  `${parseFloat(v || '0').toLocaleString(undefined, { maximumFractionDigits: 3 })} ${unit}`;
+function hiveHoldingRows(hh: any): Array<[string, string]> {
+  const rows: Array<[string, string]> = [['Hive Power', fmtHive(hh.hp, 'HP')]];
+  if (parseFloat(hh.hbd || '0') > 0) rows.push(['HBD', fmtHive(hh.hbd, 'HBD')]);
+  if (parseFloat(hh.hiveSavings || '0') > 0) rows.push(['Savings (HIVE)', fmtHive(hh.hiveSavings, 'HIVE')]);
+  if (parseFloat(hh.hbdSavings || '0') > 0) rows.push(['Savings (HBD)', fmtHive(hh.hbdSavings, 'HBD')]);
+  const pend: string[] = [];
+  if (parseFloat(hh.pendingHive || '0') > 0) pend.push(fmtHive(hh.pendingHive, 'HIVE'));
+  if (parseFloat(hh.pendingHbd || '0') > 0) pend.push(fmtHive(hh.pendingHbd, 'HBD'));
+  if (parseFloat(hh.pendingHp || '0') > 0) pend.push(fmtHive(hh.pendingHp, 'HP'));
+  if (pend.length) rows.push(['Pending rewards', pend.join(' · ')]);
+  if (parseFloat(hh.hpDelegatedOut || '0') > 0) rows.push(['Delegated out', fmtHive(hh.hpDelegatedOut, 'HP')]);
+  if (parseFloat(hh.hpDelegatedIn || '0') > 0) rows.push(['Delegated in', fmtHive(hh.hpDelegatedIn, 'HP')]);
+  rows.push(['Resource Credits', `${Math.round(hh.rcPercent || 0)}%`]);
+  if (hh.poweringDown) rows.push(['Powering down', `${fmtHive(hh.powerDownWeeklyHp, 'HP')} / week`]);
+  return rows;
+}
+
 const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetailProps) => {
   const [address, setAddress] = useState<string>('');
   const [hasCopied, setHasCopied] = useState(false);
@@ -330,6 +351,30 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
           </Button>
         )}
       </HStack>
+
+      {/* Hive account breakdown — HP, savings, rewards, delegation, RC. HP is
+          staked HIVE (not a receive target), so it lives here, not in Receive. */}
+      {asset.hiveHoldings && (
+        <Box px={2} pb={2} flexShrink={0}>
+          <Box bg="kk.surface" border="1px solid" borderColor="kk.line" borderRadius="12px" p={3}>
+            <Text className="kk-eyebrow" mb={2}>
+              Hive account
+            </Text>
+            <VStack align="stretch" spacing={1.5}>
+              {hiveHoldingRows(asset.hiveHoldings).map(([label, value], i) => (
+                <Flex key={i} justify="space-between" align="center">
+                  <Text fontSize="xs" color="kk.dim">
+                    {label}
+                  </Text>
+                  <Text fontSize="xs" color="kk.text" className="mono">
+                    {value}
+                  </Text>
+                </Flex>
+              ))}
+            </VStack>
+          </Box>
+        </Box>
+      )}
 
       {/* Tab Bar — Tokens / Activity. flex grows to fill everything below the
           hero so the list reaches the bottom edge (no trailing empty band). */}

@@ -21,10 +21,19 @@ const REQUIRED = { major: 7, minor: 14, patch: 1 } as const;
 // anything older returns Failure_UnknownMessage for the Hive message types.
 const REQUIRED_HIVE = { major: 7, minor: 15, patch: 0 } as const;
 
-interface FirmwareVersion {
+export interface FirmwareVersion {
   major: number;
   minor: number;
   patch: number;
+}
+
+/**
+ * Cheap, non-probing read of the connected device's firmware version for UI
+ * gating (the add-blockchain picker locks firmware-gated chains). Returns null
+ * if the version isn't known yet — callers should treat null as "not met".
+ */
+export function getCachedFirmwareVersion(): FirmwareVersion | null {
+  return parseVersion(wallet.getDeviceInfo()?.features);
 }
 
 /** Vault REST returns snake_case (see formatFeatures); raw hdwallet uses camelCase. */

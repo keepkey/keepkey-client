@@ -100,9 +100,47 @@ async function getHiveAccount(): Promise<{ name: string; pubkey: string }> {
  * breaking the header. `address` is the Hive account name — that's the
  * user-facing identifier and the transfer destination.
  */
+/** The full Hive account picture beyond liquid HIVE — display-only holdings. */
+export type HiveHoldings = {
+  hbd: string; // liquid HBD (stablecoin)
+  hp: string; // Hive Power (staked HIVE, VESTS→HP)
+  hiveSavings: string;
+  hbdSavings: string;
+  pendingHive: string;
+  pendingHbd: string;
+  pendingHp: string;
+  hpDelegatedOut: string;
+  hpDelegatedIn: string;
+  rcPercent: number; // 0-100
+  poweringDown: boolean;
+  powerDownWeeklyHp: string;
+};
+
 export type HiveAccountInfo =
-  | { ok: true; name: string; pubkey: string; hive: string; hbd: string; hp: string }
+  | ({ ok: true; name: string; pubkey: string; hive: string; priceUsd: string } & HiveHoldings)
   | { ok: false; reason: string };
+
+/**
+ * HIVE price in USD from Pioneer. Pioneer's market map is keyed by the FULL
+ * CAIP-19 (`hive:beeab0de/slip44:1275`) — the networkId or 'HIVE' ticker both
+ * return 0 — so we must ask by HIVE_CAIP. Response: `{ data: [price], success }`.
+ * Returns '0' on any failure (price simply unavailable that render).
+ */
+async function fetchHivePriceUsd(): Promise<string> {
+  try {
+    const resp = await fetch(`${PIONEER_URL}/api/v1/market/info`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify([HIVE_CAIP]),
+      signal: AbortSignal.timeout(15_000),
+    });
+    const data = await resp.json();
+    const price = data?.data?.[0];
+    return Number.isFinite(Number(price)) && Number(price) > 0 ? String(price) : '0';
+  } catch {
+    return '0';
+  }
+}
 
 async function fetchHiveAccountInfo(): Promise<HiveAccountInfo> {
   try {
@@ -116,7 +154,26 @@ async function fetchHiveAccountInfo(): Promise<HiveAccountInfo> {
     }
     cachedAccountName = data.account.name;
     const a = data.account;
-    return { ok: true, name: a.name, pubkey, hive: a.hive ?? '0', hbd: a.hbd ?? '0', hp: a.hp ?? '0' };
+    const priceUsd = await fetchHivePriceUsd();
+    return {
+      ok: true,
+      name: a.name,
+      pubkey,
+      hive: a.hive ?? '0',
+      priceUsd,
+      hbd: a.hbd ?? '0',
+      hp: a.hp ?? '0',
+      hiveSavings: a.hiveSavings ?? '0',
+      hbdSavings: a.hbdSavings ?? '0',
+      pendingHive: a.pendingHive ?? '0',
+      pendingHbd: a.pendingHbd ?? '0',
+      pendingHp: a.pendingHp ?? '0',
+      hpDelegatedOut: a.hpDelegatedOut ?? '0',
+      hpDelegatedIn: a.hpDelegatedIn ?? '0',
+      rcPercent: typeof a.rcPercent === 'number' ? a.rcPercent : 0,
+      poweringDown: !!a.poweringDown,
+      powerDownWeeklyHp: a.powerDownWeeklyHp ?? '0',
+    };
   } catch (e: any) {
     return { ok: false, reason: e?.message || 'unavailable' };
   }
@@ -154,6 +211,8 @@ export function getCachedHiveInfo(): HiveAccountInfo | null {
 }
 
 export const HIVE_CAIP = 'hive:beeab0de/slip44:1275';
+// HBD has no SLIP-44; use a stable token caip so it dedups distinctly from HIVE.
+export const HBD_CAIP = 'hive:beeab0de/token:hbd';
 
 /**
  * Synthetic pubkey/asset/balance rows for the read-only UI, built from a
@@ -171,11 +230,14 @@ export function buildHiveUiRows(info: HiveAccountInfo | null) {
     note: 'Hive account',
     symbol: 'HIVE',
   };
+  const priceUsd = info.priceUsd ?? '0';
+  const valueUsd = (parseFloat(info.hive || '0') * parseFloat(priceUsd)).toString();
   const asset = {
     networkId: HIVE_NETWORK_ID,
     caip: HIVE_CAIP,
     name: 'Hive',
     symbol: 'HIVE',
+    priceUsd,
   };
   const balance = {
     networkId: HIVE_NETWORK_ID,
@@ -183,9 +245,37 @@ export function buildHiveUiRows(info: HiveAccountInfo | null) {
     symbol: 'HIVE',
     balance: info.hive,
     isNative: true,
+    priceUsd,
+    valueUsd,
+  };
+  // HBD: receivable to the same account name, but Pioneer has no HBD price, so
+  // show the quantity with USD marked unavailable (never fake the $1 peg).
+  const hbdAsset = { networkId: HIVE_NETWORK_ID, caip: HBD_CAIP, name: 'Hive Backed Dollars', symbol: 'HBD' };
+  const hbdBalance = {
+    networkId: HIVE_NETWORK_ID,
+    caip: HBD_CAIP,
+    symbol: 'HBD',
+    balance: info.hbd,
+    isNative: false,
+    priceUnavailable: true,
     valueUsd: '0',
   };
-  return { pubkey, asset, balance };
+  // Display-only account breakdown for the asset-detail page.
+  const holdings = {
+    hp: info.hp,
+    hbd: info.hbd,
+    hiveSavings: info.hiveSavings,
+    hbdSavings: info.hbdSavings,
+    pendingHive: info.pendingHive,
+    pendingHbd: info.pendingHbd,
+    pendingHp: info.pendingHp,
+    hpDelegatedOut: info.hpDelegatedOut,
+    hpDelegatedIn: info.hpDelegatedIn,
+    rcPercent: info.rcPercent,
+    poweringDown: info.poweringDown,
+    powerDownWeeklyHp: info.powerDownWeeklyHp,
+  };
+  return { pubkey, asset, balance, hbdAsset, hbdBalance, holdings };
 }
 
 /** Build the event object for the side-panel approval flow */

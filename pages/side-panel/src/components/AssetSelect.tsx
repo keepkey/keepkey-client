@@ -8,7 +8,16 @@ import {
   NetworkIdToChain,
   COIN_MAP_LONG,
   networkIdToIcon,
+  FIRMWARE_GATED_CHAINS,
 } from '@extension/shared';
+
+type FwVersion = { major: number; minor: number; patch: number };
+const versionMeets = (v: FwVersion | null, min: { major: number; minor: number; patch: number }): boolean => {
+  if (!v) return false;
+  if (v.major !== min.major) return v.major > min.major;
+  if (v.minor !== min.minor) return v.minor > min.minor;
+  return v.patch >= min.patch;
+};
 import { blockchainStorage, blockchainDataStorage } from '@extension/storage';
 
 // Styles for truncating text with ellipsis
@@ -53,12 +62,24 @@ interface AssetSelectProps {
 export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
   const [blockchains, setBlockchains] = useState<Chain[]>([]);
   const [walletOptions, setWalletOptions] = useState<string[]>(Object.keys(availableChainsByWallet));
+  const [firmwareVersion, setFirmwareVersion] = useState<FwVersion | null>(null);
   const toast = useToast();
 
   // Effect to load enabled chains on component mount
   useEffect(() => {
     onStart();
+    // Firmware version gates chains like Hive (7.15.0+); null until read.
+    chrome.runtime.sendMessage({ type: 'GET_FIRMWARE_VERSION' }, res => {
+      if (!chrome.runtime.lastError) setFirmwareVersion(res?.version ?? null);
+    });
   }, []);
+
+  // Firmware-gate: locked (can't enable) until the device meets the min version.
+  const chainLock = (networkId: string): { label: string } | null => {
+    const gate = FIRMWARE_GATED_CHAINS[networkId];
+    if (!gate || versionMeets(firmwareVersion, gate)) return null;
+    return { label: gate.label };
+  };
 
   /**
    * Initializes the blockchain data based on the selected wallet.
@@ -122,6 +143,18 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
   const toggleChain = async (networkId: string) => {
     const chain = blockchains.find(c => c.networkId === networkId);
     if (!chain) return;
+
+    const lock = chainLock(networkId);
+    if (lock) {
+      toast({
+        title: `${chain.name} requires firmware ${lock.label}`,
+        description: 'Update your KeepKey in the KeepKey Vault desktop app to enable it.',
+        status: 'info',
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
 
     const isCurrentlyEnabled = chain.isEnabled;
 
@@ -187,9 +220,8 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
   const selectAllChains = async () => {
     const tag = ' | selectAllChains | ';
     try {
-      // Enable all chains in storage
-
-      const allnetworkIds = blockchains.map(chain => chain.networkId);
+      // Enable all chains in storage (skip firmware-locked ones like Hive).
+      const allnetworkIds = blockchains.map(chain => chain.networkId).filter(id => !chainLock(id));
       await blockchainStorage.addBlockchains(allnetworkIds);
       console.log(tag, 'All chains added to storage:', allnetworkIds);
 
@@ -313,28 +345,42 @@ export function AssetSelect({ setShowAssetSelect }: AssetSelectProps) {
    * Renders a single blockchain item with its details and toggle switch.
    * @param chain - The blockchain data to render.
    */
-  const renderChain = (chain: Chain) => (
-    <Flex
-      key={chain.networkId}
-      alignItems="center"
-      justifyContent="space-between"
-      p={2}
-      borderBottomWidth="1px"
-      borderColor="gray.200">
-      <Flex alignItems="center">
-        <AssetIcon src={chain.image} symbol={chain.name} size={32} style={{ marginRight: 16 }} />
-        <Text fontWeight="bold">{chain.name}</Text>
+  const renderChain = (chain: Chain) => {
+    const lock = chainLock(chain.networkId);
+    return (
+      <Flex
+        key={chain.networkId}
+        alignItems="center"
+        justifyContent="space-between"
+        p={2}
+        borderBottomWidth="1px"
+        borderColor="gray.200"
+        opacity={lock ? 0.6 : 1}>
+        <Flex alignItems="center">
+          <AssetIcon src={chain.image} symbol={chain.name} size={32} style={{ marginRight: 16 }} />
+          <Text fontWeight="bold">{chain.name}</Text>
+        </Flex>
+        <Flex alignItems="center">
+          {lock ? (
+            <Badge mr={4} colorScheme="yellow" title={`Requires KeepKey firmware ${lock.label}`}>
+              <Text fontSize="xs">🔒 firmware {lock.label}+</Text>
+            </Badge>
+          ) : (
+            <Badge mr={4}>
+              <Text fontSize="xs" style={middleEllipsisStyle}>
+                {chain.networkId}
+              </Text>
+            </Badge>
+          )}
+          <Switch
+            isChecked={chain.isEnabled && !lock}
+            isDisabled={!!lock}
+            onChange={() => toggleChain(chain.networkId)}
+          />
+        </Flex>
       </Flex>
-      <Flex alignItems="center">
-        <Badge mr={4}>
-          <Text fontSize="xs" style={middleEllipsisStyle}>
-            {chain.networkId}
-          </Text>
-        </Badge>
-        <Switch isChecked={chain.isEnabled} onChange={() => toggleChain(chain.networkId)} />
-      </Flex>
-    </Flex>
-  );
+    );
+  };
 
   // Group and sort chains by type
   const { UTXO, EVM, others } = blockchains.reduce(
