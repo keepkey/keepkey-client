@@ -15,7 +15,17 @@
 const ROOT_ID = '__bex_agent_overlay';
 const Z = 2147483647; // max z-index — sit above everything the page draws
 const HIGHLIGHT_MS = 1100; // how long the box + label linger after an action
-const BANNER_IDLE_MS = 8000; // hide the "driving" banner after this much quiet
+/**
+ * Safety net only — NOT the normal way the banner goes away.
+ *
+ * The banner must stay up for the whole driving session: a hardware-wallet
+ * confirmation routinely leaves the tab quiet for far longer than a few
+ * seconds, and that silence is exactly when the user most needs to see that an
+ * agent is in control. It is cleared explicitly by overlayEndSession() (the
+ * panel's 'done'/hide). This timer only covers an agent that dies mid-session
+ * and never sends one.
+ */
+const BANNER_IDLE_MS = 300_000;
 const GOLD = '#d29929'; // brand token
 
 let root: HTMLElement | null = null;
@@ -113,6 +123,47 @@ function showBanner(): void {
     if (banner) banner.style.display = 'none';
     if (cursor) cursor.style.opacity = '0';
   }, BANNER_IDLE_MS);
+}
+
+/**
+ * Announce a page-touching action that has no target element to point at —
+ * reading the DOM, capturing a screenshot, pulling console/network/storage.
+ *
+ * These are the operations a user cannot otherwise perceive at all, so this is
+ * the floor of the transparency contract: the banner goes up and the caption
+ * names what is being done. overlayAct() is the richer treatment for actions
+ * that DO have a target.
+ *
+ * Best-effort, never throws — a broken overlay must not break a wallet action.
+ */
+export function overlayAnnounce(kind: string, detail = ''): void {
+  try {
+    if (!ensureRoot() || !label) return;
+    showBanner();
+    // Park the caption top-left, under the banner: there is no element to anchor
+    // it to, and it must not imply one.
+    Object.assign(label.style, { left: '8px', top: '34px', opacity: '1' });
+    label.textContent = detail ? `${kind}: ${detail}` : kind;
+    clearTimeout(fadeTimer);
+    fadeTimer = setTimeout(() => {
+      if (label) label.style.opacity = '0';
+    }, HIGHLIGHT_MS);
+  } catch {
+    /* overlay must never break an action */
+  }
+}
+
+/** The agent is done driving: drop the banner instead of waiting out the safety timer. */
+export function overlayEndSession(): void {
+  try {
+    clearTimeout(bannerTimer);
+    if (banner) banner.style.display = 'none';
+    if (cursor) cursor.style.opacity = '0';
+    if (box) box.style.opacity = '0';
+    if (label) label.style.opacity = '0';
+  } catch {
+    /* ignore */
+  }
 }
 
 /** Point at + outline `target` and caption the action. Best-effort, never throws. */
