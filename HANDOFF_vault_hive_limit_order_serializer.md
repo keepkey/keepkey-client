@@ -1,7 +1,8 @@
 # HANDOFF — vault: Hive `limit_order_create` / `limit_order_cancel` serializer
 
-**Status:** firmware side DONE and merged-pending (PR #315). Vault side NOT started.
-Until the vault change lands, Hive internal-market swaps still fail.
+**Status:** DONE. Firmware = keepkey-firmware PR #315, vault = keepkey-vault PR
+#373, client gate = the PR carrying this doc. All three must ship together;
+until the vault PR merges, Hive internal-market swaps still fail.
 
 ## The bug this closes
 
@@ -16,8 +17,8 @@ Three layers had to know the op. Two are now done:
 
 | layer | file | state |
 |---|---|---|
-| Client gate | `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/chrome-extension/src/background/chains/hiveHandler.ts` (`SUPPORTED_OPS`) | ❌ still missing |
-| Vault serializer | `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault/src/bun/txbuilder/hive-ops.ts` | ❌ **this handoff** |
+| Client gate | `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/chrome-extension/src/background/chains/hiveHandler.ts` (`SUPPORTED_OPS`) | ✅ this PR |
+| Vault serializer | `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault/src/bun/txbuilder/hive-ops.ts` | ✅ keepkey-vault PR #373 |
 | Firmware clear-sign | `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-firmware-consolidated/lib/firmware/hive.c` | ✅ PR #315 |
 
 ## What the firmware now accepts
