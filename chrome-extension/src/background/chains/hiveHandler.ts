@@ -580,6 +580,8 @@ const SUPPORTED_OPS = new Set([
   'claim_reward_balance',
   'delegate_vesting_shares',
   'account_update2',
+  'limit_order_create',
+  'limit_order_cancel',
 ]);
 
 /** Strict "x.xxx" normalization — same no-parseFloat rule as hiveTransfer. */
@@ -657,6 +659,10 @@ function opSummary(name: string, p: Record<string, any>): string {
         : `Delegate ${p.vesting_shares} → @${p.delegatee}`;
     case 'account_update2':
       return `Update profile @${p.account}`;
+    case 'limit_order_create':
+      return `Sell ${p.amount_to_sell} for ${p.min_to_receive}${p.fill_or_kill ? ' (fill or kill)' : ''}`;
+    case 'limit_order_cancel':
+      return `Cancel order ${p.orderid} (@${p.owner})`;
     default:
       return name;
   }
