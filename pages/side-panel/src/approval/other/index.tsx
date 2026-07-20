@@ -65,7 +65,9 @@ export function OtherTransaction({ transaction: initialTransaction, handleRespon
           <RequestMethodCard transaction={transaction} />
           <Divider />
 
-          <Tabs defaultIndex={1}>
+          {/* Basic first: Raw opens to a collapsed data section, so defaulting
+              to it let a user approve without ever seeing the rendered details. */}
+          <Tabs defaultIndex={0}>
             <TabList>
               <Tab>Basic</Tab>
               {/*<Tab>Fees</Tab>*/}

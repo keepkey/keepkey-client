@@ -16,7 +16,8 @@ const SAMPLES: Record<string, Record<string, any>> = {
   vote: { voter: 'alice', author: 'bob', permlink: 'a-post', weight: 10000 },
   comment: { author: 'alice', permlink: 'a-post', title: 'Hello', body: 'hi', json_metadata: '{}' },
   custom_json: { required_auths: [], required_posting_auths: ['alice'], id: 'follow', json: '["follow",{}]' },
-  transfer_to_vesting: { from: 'alice', to: 'alice', amount: '1.500 HIVE' },
+  // to !== from on purpose: a self-power-up would hide a from/to swap.
+  transfer_to_vesting: { from: 'alice', to: 'bob', amount: '1.500 HIVE' },
   withdraw_vesting: { account: 'alice', vesting_shares: '1000.000000 VESTS' },
   limit_order_create: {
     owner: 'alice',
@@ -71,6 +72,10 @@ describe('Hive op summaries', () => {
     expect(opSummary('limit_order_create', SAMPLES.limit_order_create)).toContain('1.500 HIVE');
     expect(opSummary('limit_order_create', SAMPLES.limit_order_create)).toContain('0.400 HBD');
     expect(opSummary('transfer_to_savings', SAMPLES.transfer_to_savings)).toContain('bob');
+    // Recipient, not sender — the vault serializes str(from), str(to) and a
+    // swapped pair would still render plausibly.
+    expect(opSummary('transfer_to_vesting', SAMPLES.transfer_to_vesting)).toContain('@bob');
+    expect(opSummary('transfer_to_vesting', SAMPLES.transfer_to_vesting)).toContain('1.500 HIVE');
     expect(opSummary('claim_reward_balance', SAMPLES.claim_reward_balance)).toContain('1000.000000 VESTS');
   });
 
@@ -81,6 +86,65 @@ describe('Hive op summaries', () => {
     expect(
       opSummary('delegate_vesting_shares', { delegator: 'alice', delegatee: 'bob', vesting_shares: '0.000000 VESTS' }),
     ).toMatch(/remove/i);
+  });
+
+  it('shows the JSON a custom_json actually signs, object or string', () => {
+    // The vault serializes `typeof json === 'string' ? json : JSON.stringify(json)`
+    // (hive-ops.ts:151). String(obj) would render "[object Object]" while the
+    // object's real contents get signed — approval showing neither.
+    const asObject = opSummary('custom_json', { id: 'follow', json: { follow: 'bob' } });
+    expect(asObject).not.toContain('[object Object]');
+    expect(asObject).toContain('"follow":"bob"');
+
+    const asString = opSummary('custom_json', { id: 'follow', json: '["follow",{"a":1}]' });
+    expect(asString).toContain('["follow",{"a":1}]');
+  });
+
+  it('marks a truncated custom_json so two payloads cannot look identical', () => {
+    const prefix = 'x'.repeat(120);
+    const a = opSummary('custom_json', { id: 'test', json: prefix + 'AAAA' });
+    const b = opSummary('custom_json', { id: 'test', json: prefix + 'BBBBBBBB' });
+    expect(a).toContain('…');
+    expect(a).not.toBe(b);
+    expect(a).toContain('+4 more chars');
+    expect(b).toContain('+8 more chars');
+    // Short payloads must not be marked at all.
+    expect(opSummary('custom_json', { id: 'test', json: '{"a":1}' })).not.toContain('…');
+  });
+
+  it('surfaces every non-default comment_options payout control', () => {
+    // Defaults stay quiet — a default-everything comment_options is just the post.
+    expect(opSummary('comment_options', SAMPLES.comment_options)).toBe('Payout options for @alice/a-post');
+
+    const declined = opSummary('comment_options', { ...SAMPLES.comment_options, max_accepted_payout: '0.000 HBD' });
+    expect(declined).toContain('0.000 HBD');
+
+    const allHive = opSummary('comment_options', { ...SAMPLES.comment_options, percent_hbd: 0 });
+    expect(allHive).toContain('0.0% HBD');
+
+    const noVotes = opSummary('comment_options', { ...SAMPLES.comment_options, allow_votes: false });
+    expect(noVotes).toMatch(/votes disabled/i);
+
+    const noCuration = opSummary('comment_options', {
+      ...SAMPLES.comment_options,
+      allow_curation_rewards: false,
+    });
+    expect(noCuration).toMatch(/curation rewards disabled/i);
+
+    // Materially different payout behaviour must not render identically.
+    expect(declined).not.toBe(allHive);
+    expect(allHive).not.toBe(noVotes);
+  });
+
+  it('reads percent_steem_dollars, the legacy alias the vault also accepts', () => {
+    // hive-ops.ts:225 falls back to it; a summary that ignored it would show
+    // the default while a non-default value was signed.
+    const legacy = opSummary('comment_options', {
+      ...SAMPLES.comment_options,
+      percent_hbd: undefined,
+      percent_steem_dollars: 0,
+    });
+    expect(legacy).toContain('0.0% HBD');
   });
 
   it('names the beneficiaries a comment_options redirects payout to', () => {

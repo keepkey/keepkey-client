@@ -636,7 +636,11 @@ async function hiveSignAndBroadcastOps(
   const event = buildEvent(requestInfo, displayType, params);
   (event as any).unsignedTx = {
     from: from.name,
-    operations: operations.map(([name, p]) => ({ op: name, summary: opSummary(name, p) })),
+    // `params` verbatim so the Raw tab remains a complete record: the summary
+    // is a one-liner and necessarily elides (long custom_json, default payout
+    // controls), and a value no view can recover is a value the user cannot
+    // check against the device screen.
+    operations: operations.map(([name, p]) => ({ op: name, summary: opSummary(name, p), params: p })),
   };
   await requestUserApproval(event, requestInfo, displayType, params, requireApproval);
 
