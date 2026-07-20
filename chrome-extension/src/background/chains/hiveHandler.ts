@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import * as wallet from '../wallet';
 import { createProviderRpcError, createTimeoutError } from '../utils';
 import { requireHiveFirmware } from '../firmware';
+import { SUPPORTED_OPS, opSummary } from './hiveOps';
 
 const TAG = ' | hiveHandler | ';
 
@@ -563,27 +564,6 @@ async function hiveSignBuffer(
   return { result: signature, publicKey: public_key };
 }
 
-// Firmware clear-sign op table — phase 1 + phase 2
-// (handoff-hive-sign-operations-phase2.md). The vault serializer and the
-// firmware both re-enforce this; the check here just fails fast with a
-// clear dApp-facing error.
-const SUPPORTED_OPS = new Set([
-  'vote',
-  'comment',
-  'custom_json',
-  'transfer_to_vesting',
-  'withdraw_vesting',
-  'convert',
-  'comment_options',
-  'transfer_to_savings',
-  'transfer_from_savings',
-  'claim_reward_balance',
-  'delegate_vesting_shares',
-  'account_update2',
-  'limit_order_create',
-  'limit_order_cancel',
-]);
-
 /** Strict "x.xxx" normalization — same no-parseFloat rule as hiveTransfer. */
 function normalizeAmount3(amount: any, what: string): string {
   if (typeof amount !== 'string' || !/^\d+(\.\d{1,3})?$/.test(amount)) {
@@ -624,50 +604,6 @@ async function hpToVests(hp3: string): Promise<string> {
 // conversions/withdrawals; per-account id tracking if a dApp ever collides.
 const epochRequestId = () => Math.floor(Date.now() / 1000);
 
-/** One-line device-preview summary per op for the side-panel approval. */
-function opSummary(name: string, p: Record<string, any>): string {
-  switch (name) {
-    case 'vote':
-      return `@${p.voter} → @${p.author}/${p.permlink} (${(Number(p.weight) / 100).toFixed(0)}%)`;
-    case 'comment':
-      return `@${p.author}: ${p.title || p.permlink}`;
-    case 'custom_json':
-      return `${p.id}: ${String(p.json).slice(0, 120)}`;
-    case 'transfer_to_vesting':
-      return `Power up ${p.amount} → @${p.to}`;
-    case 'withdraw_vesting':
-      return String(p.vesting_shares).startsWith('0.000000')
-        ? `Stop power down (@${p.account})`
-        : `Power down ${p.vesting_shares} from @${p.account}`;
-    case 'convert':
-      return `Convert ${p.amount} → HIVE (request ${p.requestid})`;
-    case 'comment_options':
-      return `Payout options for @${p.author}/${p.permlink}${
-        (p.extensions?.[0]?.[1]?.beneficiaries ?? [])
-          .map((b: any) => ` · ${(Number(b.weight) / 100).toFixed(1)}% → @${b.account}`)
-          .join('') || ''
-      }`;
-    case 'transfer_to_savings':
-      return `Savings deposit ${p.amount} → @${p.to}`;
-    case 'transfer_from_savings':
-      return `Savings withdraw ${p.amount} → @${p.to}`;
-    case 'claim_reward_balance':
-      return `Claim ${p.reward_hive}, ${p.reward_hbd}, ${p.reward_vests}`;
-    case 'delegate_vesting_shares':
-      return String(p.vesting_shares).startsWith('0.000000')
-        ? `Remove delegation from @${p.delegatee}`
-        : `Delegate ${p.vesting_shares} → @${p.delegatee}`;
-    case 'account_update2':
-      return `Update profile @${p.account}`;
-    case 'limit_order_create':
-      return `Sell ${p.amount_to_sell} for ${p.min_to_receive}${p.fill_or_kill ? ' (fill or kill)' : ''}`;
-    case 'limit_order_cancel':
-      return `Cancel order ${p.orderid} (@${p.owner})`;
-    default:
-      return name;
-  }
-}
-
 /**
  * Shared path for vote/post/custom_json/broadcast: validate ops against the
  * firmware's phase-1 clear-sign table, approve, sign via the vault
@@ -700,7 +636,11 @@ async function hiveSignAndBroadcastOps(
   const event = buildEvent(requestInfo, displayType, params);
   (event as any).unsignedTx = {
     from: from.name,
-    operations: operations.map(([name, p]) => ({ op: name, summary: opSummary(name, p) })),
+    // `params` verbatim so the Raw tab remains a complete record: the summary
+    // is a one-liner and necessarily elides (long custom_json, default payout
+    // controls), and a value no view can recover is a value the user cannot
+    // check against the device screen.
+    operations: operations.map(([name, p]) => ({ op: name, summary: opSummary(name, p), params: p })),
   };
   await requestUserApproval(event, requestInfo, displayType, params, requireApproval);
 

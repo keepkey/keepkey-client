@@ -278,6 +278,50 @@ export default function RequestDetailsCard({ transaction }: any) {
     );
   }
 
+  // Hive operation batches have no single destination or amount — a tx can
+  // carry up to four ops of different shapes. hiveHandler stashes a rendered
+  // one-liner per op (opSummary); show those instead of the amount table,
+  // which would render "N/A" and "0" for every one of them.
+  //
+  // This is the user's half of the clear-sign check: the device OLED is
+  // authoritative, and they can only compare it against something readable.
+  const operations: Array<{ op?: string; summary?: string }> | undefined = unsignedTx?.operations;
+  if (Array.isArray(operations) && operations.length > 0) {
+    return (
+      <div>
+        <Flex direction="column" mb={4}>
+          <Box mb={2}>
+            <Table variant="simple" size="sm">
+              <Tbody>
+                {unsignedTx?.from && (
+                  <Tr>
+                    <Td>
+                      <Badge>Account:</Badge>
+                    </Td>
+                    <Td wordBreak="break-all">@{unsignedTx.from}</Td>
+                  </Tr>
+                )}
+                {operations.map((o, i) => (
+                  <Tr key={i}>
+                    <Td>
+                      <Badge>{o.op || 'operation'}</Badge>
+                    </Td>
+                    {/* Fall back to the op name rather than blanking the row:
+                        an unsummarized op must still be visible, not absent. */}
+                    <Td whiteSpace="pre-wrap" wordBreak="break-word">
+                      {o.summary || o.op || 'N/A'}
+                    </Td>
+                  </Tr>
+                ))}
+              </Tbody>
+            </Table>
+          </Box>
+          <Divider my={2} />
+        </Flex>
+      </div>
+    );
+  }
+
   return (
     <div>
       <Flex direction="column" mb={4}>
