@@ -25,6 +25,7 @@
  */
 
 import type { ChainType } from './types';
+import { toProviderError } from './provider-error';
 
 type WalletRequestFn = (
   method: string,
@@ -335,7 +336,7 @@ export class KeepKeySolanaProvider {
   #rpc(method: string, params: any[]): Promise<any> {
     return new Promise((resolve, reject) => {
       this.#walletRequest(method, params, 'solana' as ChainType, (error, result) => {
-        if (error) reject(error);
+        if (error) reject(toProviderError(error, `${method} failed`));
         else resolve(result);
       });
     });

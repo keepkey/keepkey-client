@@ -7,6 +7,7 @@
  */
 
 import type { ChainType } from './types';
+import { toProviderError } from './provider-error';
 
 // ---------- Base58 (inline, no external dep) ----------
 
@@ -374,7 +375,7 @@ export class KeepKeySolanaWallet {
   #rpc(method: string, params: any[]): Promise<any> {
     return new Promise((resolve, reject) => {
       this.#walletRequest(method, params, 'solana' as ChainType, (error, result) => {
-        if (error) reject(error);
+        if (error) reject(toProviderError(error, `${method} failed`));
         else resolve(result);
       });
     });
