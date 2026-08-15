@@ -1237,7 +1237,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                 `[HANDOFF] BEX → content script (${chain}/${method}) ERROR\n  params=${JSON.stringify(params)}\n  error=`,
                 error,
               );
-              sendResponse({ error: formatUserError(error) });
+              sendResponse({ error: await formatUserError(error) });
             }
           } else {
             sendResponse({ error: 'Invalid request: missing method' });
