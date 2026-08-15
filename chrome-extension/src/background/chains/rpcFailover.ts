@@ -30,6 +30,28 @@ const FAILED_RPC_COOLDOWN_MS = 60_000;
 // blocking the other.
 const failedRpcs = new Map<string, number>();
 
+/**
+ * Heuristic: is this RPC error worth retrying against a different URL?
+ * Shared by both failover loops (this module's by-networkId reads and
+ * ethereumHandler's active-provider path) so the two cannot drift.
+ * Broadcast keeps its own classifier — it has tx-level definitive cases
+ * (insufficient funds, nonce too low) that don't apply to reads.
+ *
+ * The `failed to fetch` / `load failed` / `err_` group matters more than it
+ * looks: those are what Chrome and Safari throw for a connection-level
+ * failure (TLS handshake, DNS, refused). The original list was written
+ * against Firefox/Node wording ("NetworkError..."), so the same dead RPC
+ * failed over on Firefox and hard-threw on Chrome — and that hard throw
+ * reached a catch-all that mislabeled it "KeepKey Vault is not running".
+ *
+ * The method-rejection patterns cover narrow-purpose RPCs in Pioneer's
+ * catalog (Flashbots' rpc.flashbots.net is the canonical example — supports
+ * only eth_sendRawTransaction / eth_chainId / eth_blockNumber, rejects the
+ * rest with HTTP 403 + JSON-RPC -32601). Without them such URLs are sticky:
+ * their pre-flight getBlockNumber() passes so they get picked first, then
+ * every read fails. Treating the rejection as transient blacklists them for
+ * 60s and moves on.
+ */
 export const isTransientRpcError = (errMsg: string): boolean => {
   const m = errMsg.toLowerCase();
   return (
@@ -42,7 +64,24 @@ export const isTransientRpcError = (errMsg: string): boolean => {
     m.includes('network') ||
     m.includes('server_error') ||
     m.includes('exceeded maximum retry') ||
-    /\b5\d{2}\b/.test(m) // 5xx
+    /\b5\d{2}\b/.test(m) || // 5xx
+    // Connection-level failure, browser wording.
+    m.includes('failed to fetch') || // Chrome / Edge
+    m.includes('load failed') || // Safari
+    m.includes('fetch failed') || // Node / undici
+    m.includes('err_') || // Chrome net errors: ERR_NAME_NOT_RESOLVED, ERR_CONNECTION_REFUSED, ...
+    m.includes('aborted') || // per-attempt AbortSignal.timeout fired
+    // Method-rejection: this URL doesn't support this method. Try next.
+    m.includes('rpc method is not whitelisted') ||
+    m.includes('method not found') ||
+    m.includes('method not supported') ||
+    m.includes('method does not exist') ||
+    m.includes('-32601') ||
+    // Narrow to ethers' transport-level wrapper text. A bare `.includes('403')`
+    // would misfire on revert reasons or hex payloads that happen to contain
+    // "403", replaying a successfully-rejected eth_call across every URL.
+    m.includes('server response 403') ||
+    m.includes('http 403')
   );
 };
 
@@ -115,7 +154,10 @@ export async function withRpcFailoverByNetworkId<T>(
     } catch (e: any) {
       const errMsg = String(e?.message || e);
       if (!isTransientRpcError(errMsg)) {
-        // Definitive — won't help to try another RPC.
+        // Definitive — won't help to try another RPC. Log the URL: this
+        // branch used to throw silently, which made RPC failures look like
+        // they came from somewhere else entirely.
+        console.error(`[rpcFailover] ${networkId} ${url} definitive failure, aborting failover:`, errMsg);
         throw e;
       }
       console.warn(`[rpcFailover] ${networkId} ${url} transient failure, trying next:`, errMsg);

@@ -40,13 +40,32 @@ export const VAULT_REQUIRED_MESSAGE =
 export const createVaultRequiredError = (): ProviderRpcError => createProviderRpcError(4900, VAULT_REQUIRED_MESSAGE);
 
 /**
- * True when an error came from the vault REST server being down. The signing
- * path fetches localhost:1646; when the vault is closed that rejects with a
- * network error whose message varies by browser/runtime ("Failed to fetch",
- * "Load failed", "NetworkError", "ECONNREFUSED").
+ * True when an error *could* have come from the vault REST server being down.
+ * The signing path fetches localhost:1646; when the vault is closed that
+ * rejects with a network error whose message varies by browser/runtime
+ * ("Failed to fetch", "Load failed", "NetworkError", "ECONNREFUSED").
+ *
+ * Deliberately NOT sufficient on its own. Chrome throws the exact same
+ * "Failed to fetch" for a dead Ethereum RPC, so this test alone told users to
+ * launch a vault that was already running. `formatUserError` confirms with a
+ * live probe before claiming the vault is down — see `isVaultReachable`.
  */
 export function isVaultUnreachableError(msg: string): boolean {
   return /failed to fetch|load failed|networkerror|econnrefused|fetch failed|err_connection_refused/i.test(msg);
+}
+
+/**
+ * Ask the vault directly instead of guessing from error text. Cheap
+ * (localhost, only runs on an already-failed request) and authoritative,
+ * unlike the 5s-stale KEEPKEY_STATE poll. Same endpoint `checkKeepKey()` uses.
+ */
+export async function isVaultReachable(): Promise<boolean> {
+  try {
+    await fetch('http://localhost:1646/docs', { signal: AbortSignal.timeout(1500) });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -55,9 +74,9 @@ export function isVaultUnreachableError(msg: string): boolean {
  *  - vault SdkError ("No device connected")  → connect-device instruction
  * All other errors pass through unchanged.
  */
-export function formatUserError(err: unknown): string {
+export async function formatUserError(err: unknown): Promise<string> {
   const msg = (err as Error)?.message ?? String(err);
-  if (isVaultUnreachableError(msg)) {
+  if (isVaultUnreachableError(msg) && !(await isVaultReachable())) {
     return VAULT_REQUIRED_MESSAGE;
   }
   if (msg.includes('No device connected')) {
