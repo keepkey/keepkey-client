@@ -8,6 +8,7 @@ import { COIN_MAP_LONG, NetworkIdToChain } from '@extension/shared';
 const getChainDisplayName = (networkId: string): string => {
   if (networkId?.includes('eip155:1/')) return 'Ethereum';
   if (networkId?.includes('eip155:8453')) return 'Base';
+  if (networkId?.includes('eip155:4663')) return 'Robinhood Chain';
   if (networkId?.includes('eip155:137')) return 'Polygon';
   if (networkId?.includes('eip155:43114')) return 'Avalanche';
   if (networkId?.includes('eip155:56')) return 'BSC';

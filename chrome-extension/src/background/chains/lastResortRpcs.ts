@@ -37,6 +37,7 @@ const RPCS: Record<string, string[]> = {
   'eip155:56': ['https://bsc-rpc.publicnode.com', 'https://bsc-dataseed.bnbchain.org'],
   'eip155:137': ['https://polygon-rpc.com', 'https://polygon-bor-rpc.publicnode.com'],
   'eip155:324': ['https://mainnet.era.zksync.io'],
+  'eip155:4663': ['https://rpc.mainnet.chain.robinhood.com', 'https://rpc.arrowrpc.com'],
   'eip155:8453': ['https://mainnet.base.org', 'https://base-rpc.publicnode.com'],
   'eip155:42161': ['https://arb1.arbitrum.io/rpc', 'https://arbitrum-one-rpc.publicnode.com'],
   'eip155:43114': ['https://api.avax.network/ext/bc/C/rpc', 'https://avalanche-c-chain-rpc.publicnode.com'],
