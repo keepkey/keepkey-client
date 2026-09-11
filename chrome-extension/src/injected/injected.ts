@@ -13,6 +13,7 @@ import { registerSolanaWallet } from './solana-wallet-register';
 import { KeepKeySolanaProvider } from './solana-provider';
 import { KeepKeyTronProvider } from './tron-provider';
 import { createHiveKeychainShim } from './hive-provider';
+import { toProviderError } from './provider-error';
 import { installConsoleCapture } from './consoleCapture';
 import { installPageObserver } from './pageObserver';
 
@@ -357,7 +358,7 @@ import { installPageObserver } from './pageObserver';
                 `[HANDOFF] dApp ← KeepKey (${chain}/${method}) REJECT\n  params=${JSON.stringify(params)}\n  error=`,
                 error,
               );
-              reject(error);
+              reject(toProviderError(error, `${method} failed`));
             } else {
               const resultType = typeof result;
               const resultPreview =
