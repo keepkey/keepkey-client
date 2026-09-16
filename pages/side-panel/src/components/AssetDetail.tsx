@@ -225,132 +225,111 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
 
   return (
     <Flex direction="column" h="100%" minH={0}>
-      {/* Spinning KeepKey hero — the device's OLED carries the asset + balance,
-          so the top of the page reads as the focal point instead of dead space.
-          Device sits at the top; the tab list below (flex grow) takes the rest,
-          so there's no empty band above or below. */}
-      <VStack spacing={1} align="center" pt={3} pb={1} px={2} flexShrink={0}>
-        <SpinningDevice
-          scale={0.42}
-          durationSeconds={14}
-          screen={
-            <Flex direction="column" align="center" justify="center" w="100%" gap="2px" lineHeight="1">
-              <Flex align="center" gap="5px">
-                <AssetIcon src={iconUrl} symbol={displaySymbol} size={15} />
-                <Text fontSize="11px" fontWeight={600} letterSpacing="0.08em" color="#e8e6dc">
-                  {displaySymbol}
-                </Text>
-              </Flex>
-              <Text fontFamily="ui-monospace, Menlo, monospace" fontSize="15px" fontWeight={700} color="#f3f1e7">
-                <DustAmount value={totalBalance} />
+      {/* Asset identity + holding (design: "Asset detail").
+          The spinning-device hero that used to sit here was ~200px of chrome on
+          a screen that exists to describe one asset, and it pushed the holding,
+          address, tabs and list into the lower half. The design puts the
+          identity and the number first, left-aligned. The device still fronts
+          Welcome, Connect and signing, where it is the subject. */}
+      <Box px={2} pt={3} pb={1} flexShrink={0}>
+        <Flex align="center" gap={3} mb={4}>
+          <AssetIcon src={iconUrl} symbol={displaySymbol} size={32} />
+          <Box flex={1} minW={0}>
+            <Flex align="center" gap={2} minW={0}>
+              <Text fontSize="15px" fontWeight={500} color="kk.text" isTruncated>
+                {displayName}
+              </Text>
+              <Text className="kk-eyebrow" flexShrink={0}>
+                {displaySymbol}
               </Text>
             </Flex>
-          }
-        />
-        <Text fontSize="2xl" fontWeight="bold" color="kk.text" lineHeight="1.1">
-          {formatUsd(totalUsdValue)}
-        </Text>
-        <HStack spacing={2} align="center">
-          <Text fontSize="sm" fontWeight="medium" color="kk.dim">
-            {displayName}
-          </Text>
-          {showNetworkBadge && <NetworkBadge name={networkName!} />}
+            {showNetworkBadge && (
+              <Text fontSize="11px" color="kk.faint" className="mono" mt="2px" isTruncated>
+                on {networkName}
+              </Text>
+            )}
+          </Box>
           {asset.networkId === 'tron:27Lqcw' && <TronLinkBadge />}
-        </HStack>
-        <HStack spacing={1}>
-          <Text fontSize="xs" color="kk.faint">
-            <DustAmount value={totalBalance} /> {displaySymbol}
-          </Text>
-          {priceUsd > 0 && (
-            <Text fontSize="xs" color="kk.faint">
-              @ {formatUsd(priceUsd)}
-            </Text>
-          )}
-        </HStack>
-      </VStack>
+        </Flex>
 
-      {/* Address Bar */}
-      <Box px={2} pb={2} flexShrink={0}>
-        {loadingAddress ? (
-          <Flex justify="center">
-            <Spinner size="xs" />
-          </Flex>
-        ) : address ? (
-          <Flex
-            bg="kk.surface"
-            borderRadius="md"
-            px={2}
-            py={1}
-            align="center"
-            gap={1}
-            maxW="100%"
-            justify="center"
-            mx="auto">
-            <Text fontFamily="mono" fontSize="xs" color="kk.dim" isTruncated>
-              {formatAddr(address)}
-            </Text>
-            <IconButton
-              icon={hasCopied ? <CheckIcon boxSize={2} /> : <CopyIcon boxSize={2} />}
-              aria-label="Copy address"
-              size="xs"
-              variant="ghost"
-              minW="20px"
-              h="20px"
-              color={hasCopied ? 'kk.good' : 'kk.dim'}
-              onClick={handleCopy}
-            />
-            <IconButton
-              icon={<ExternalLinkIcon boxSize={2} />}
-              aria-label="View on explorer"
-              size="xs"
-              variant="ghost"
-              minW="20px"
-              h="20px"
-              color="kk.accent"
-              onClick={handleOpenExplorer}
-            />
-          </Flex>
-        ) : null}
+        <Text className="kk-eyebrow">Holding</Text>
+        <Text className="kk-numeral" fontSize="34px" lineHeight="1.1" mt="6px" color="kk.text">
+          <DustAmount value={totalBalance} /> {displaySymbol}
+        </Text>
+        <Flex gap={3} mt="6px" className="mono" fontSize="13px">
+          <Text color="kk.dim">{formatUsd(totalUsdValue)}</Text>
+          {priceUsd > 0 && <Text color="kk.faint">@ {formatUsd(priceUsd)}</Text>}
+        </Flex>
       </Box>
 
-      {/* Action Buttons */}
-      <HStack spacing={2} w="100%" px={2} pb={2} flexShrink={0}>
-        <Button
-          leftIcon={<ArrowUpIcon boxSize={3} />}
-          variant="solid"
-          size="sm"
-          flex={1}
-          fontSize="xs"
-          fontWeight="semibold"
-          borderRadius="md"
-          onClick={onSend}>
+      {/* Actions — three equal keycaps, one gold (§9). Send/Receive/Swap were
+          a gold keycap beside two flat text links, which read as one button
+          and two afterthoughts. */}
+      <Box
+        px={2}
+        pb={3}
+        flexShrink={0}
+        display="grid"
+        gridTemplateColumns={onSwap && !noSwap ? 'repeat(3,1fr)' : 'repeat(2,1fr)'}
+        gap="8px">
+        <Button leftIcon={<ArrowUpIcon boxSize={3} />} variant="solid" height="44px" fontSize="12px" onClick={onSend}>
           Send
         </Button>
         <Button
           leftIcon={<ArrowDownIcon boxSize={3} />}
-          variant="ghost"
-          size="sm"
-          flex={1}
-          fontSize="xs"
-          fontWeight="semibold"
-          borderRadius="md"
+          variant="keycapSecondary"
+          height="44px"
+          fontSize="12px"
           onClick={onReceive}>
           Receive
         </Button>
         {onSwap && !noSwap && (
           <Button
             leftIcon={<RepeatIcon boxSize={3} />}
-            variant="ghost"
-            size="sm"
-            flex={1}
-            fontSize="xs"
-            fontWeight="semibold"
-            borderRadius="md"
+            variant="keycapSecondary"
+            height="44px"
+            fontSize="12px"
             onClick={onSwap}>
             Swap
           </Button>
         )}
-      </HStack>
+      </Box>
+
+      {/* Address — hairline row, not a boxed pill (§0). */}
+      <Box px={2} pb={3} flexShrink={0}>
+        {loadingAddress ? (
+          <Flex justify="flex-start">
+            <Spinner size="xs" />
+          </Flex>
+        ) : address ? (
+          <>
+            <Text className="kk-eyebrow" mb={2}>
+              Address
+            </Text>
+            <Flex align="center" gap={2} py={2} borderTop="1px solid" borderBottom="1px solid" borderColor="kk.line">
+              <Text fontFamily="mono" fontSize="12.5px" color="kk.dim" flex={1} minW={0} isTruncated>
+                {formatAddr(address)}
+              </Text>
+              <IconButton
+                icon={hasCopied ? <CheckIcon boxSize={2.5} /> : <CopyIcon boxSize={2.5} />}
+                aria-label="Copy address"
+                size="xs"
+                variant="ghost"
+                color={hasCopied ? 'kk.good' : 'kk.faint'}
+                onClick={handleCopy}
+              />
+              <IconButton
+                icon={<ExternalLinkIcon boxSize={2.5} />}
+                aria-label="View on explorer"
+                size="xs"
+                variant="ghost"
+                color="kk.faint"
+                onClick={handleOpenExplorer}
+              />
+            </Flex>
+          </>
+        ) : null}
+      </Box>
 
       {/* Hive account breakdown — HP, savings, rewards, delegation, RC. HP is
           staked HIVE (not a receive target), so it lives here, not in Receive. */}
@@ -379,33 +358,40 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
       {/* Tab Bar — Tokens / Activity. flex grows to fill everything below the
           hero so the list reaches the bottom edge (no trailing empty band). */}
       <Box flex={1} minH={0} px={2}>
-        <Tabs variant="soft-rounded" size="sm" display="flex" flexDirection="column" h="100%">
-          <TabList mb={1} gap={1} flexShrink={0}>
+        <Tabs variant="unstyled" size="sm" display="flex" flexDirection="column" h="100%">
+          {/* Underline indicator, not filled pills (design: Dashboard tabs).
+              A selected pill competed with the keycaps directly above it. */}
+          <TabList
+            mb={1}
+            flexShrink={0}
+            borderBottom="1px solid"
+            borderColor="kk.line"
+            sx={{ '& button': { position: 'relative', top: '1px' } }}>
             {!isUtxoNetwork && (
               <Tab
-                color="kk.dim"
-                _selected={{ color: 'kk.text', bg: 'kk.surfaceHi' }}
-                fontSize="xs"
-                fontWeight="medium"
-                py={1}
-                px={3}
-                borderRadius="md">
+                width="96px"
+                height="36px"
+                px={0}
+                fontSize="13px"
+                fontWeight={500}
+                color="kk.faint"
+                _selected={{ color: 'kk.text', borderBottom: '1px solid', borderColor: 'kk.accent' }}>
                 Tokens
               </Tab>
             )}
             <Tab
-              color="kk.dim"
-              _selected={{ color: 'kk.text', bg: 'kk.surfaceHi' }}
-              fontSize="xs"
-              fontWeight="medium"
-              py={1}
-              px={3}
-              borderRadius="md">
+              width="96px"
+              height="36px"
+              px={0}
+              fontSize="13px"
+              fontWeight={500}
+              color="kk.faint"
+              _selected={{ color: 'kk.text', borderBottom: '1px solid', borderColor: 'kk.accent' }}>
               Activity
               {events.length > 0 && (
-                <Badge ml={1} bg="kk.surfaceHi" color="kk.dim" fontSize="0.5rem" borderRadius="full" px={1}>
+                <Text as="span" className="mono" ml={1.5} fontSize="11px" color="kk.faint">
                   {events.length}
-                </Badge>
+                </Text>
               )}
             </Tab>
           </TabList>

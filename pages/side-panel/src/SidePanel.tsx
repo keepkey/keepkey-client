@@ -13,8 +13,6 @@ import {
   ModalBody,
   Spinner,
   Button,
-  Heading,
-  HStack,
   Drawer,
   DrawerOverlay,
   DrawerContent,
@@ -35,8 +33,10 @@ import { Transfer } from './components/Transfer';
 import { Receive } from './components/Receive';
 import Swap from './swap/Swap';
 import AssetDetail from './components/AssetDetail';
-import DonutChart from './components/DonutChart';
 import NetworkAccountHeader from './components/NetworkAccountHeader';
+import RollingBalance from './components/v2/RollingBalance';
+import AllocationBar, { type AllocationSegment } from './components/v2/AllocationBar';
+import { colorForSymbol } from './styles/assetColor';
 import Transaction from './approval/Transaction';
 
 // Events older than this are dropped on load — an abandoned-tab pending
@@ -88,6 +88,37 @@ const SidePanel = () => {
       fetchTotalBalance();
     }
   }, [keepkeyState, fetchTotalBalance]);
+
+  // Allocation bar segments (KEEPKEY_STYLE.md §0). Chain brand colours are
+  // enriched onto the balance rows by the background where known; fall back to
+  // the shared deterministic palette so a segment is never colourless.
+  const allocationSegments: AllocationSegment[] = React.useMemo(
+    () =>
+      balances
+        .map((b: any) => {
+          const label = b.symbol || b.ticker || '?';
+          return {
+            id: b.caip || `${b.networkId}:${label}`,
+            label,
+            color: b.color || colorForSymbol(label),
+            value: parseFloat(b.valueUsd || '0'),
+          };
+        })
+        .filter(s => s.value > 0),
+    [balances],
+  );
+
+  // Segments grow from scaleX(0); flipping this a frame after the balances land
+  // is what gives the transition somewhere to travel from.
+  const [allocationGrown, setAllocationGrown] = useState(false);
+  useEffect(() => {
+    if (balancesInitialLoading || allocationSegments.length === 0) {
+      setAllocationGrown(false);
+      return;
+    }
+    const id = window.setTimeout(() => setAllocationGrown(true), 80);
+    return () => window.clearTimeout(id);
+  }, [balancesInitialLoading, allocationSegments.length]);
 
   // Handle asset selection from Balances list
   const handleAssetSelect = (asset: any) => {
@@ -273,16 +304,6 @@ const SidePanel = () => {
     };
   }, [fetchTotalBalance]);
 
-  // Format currency for display
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(value);
-  };
-
   const renderContent = () => {
     if (transactionContext) {
       return (
@@ -333,7 +354,7 @@ const SidePanel = () => {
               Your hardware wallet, in the browser
             </Text>
             <Button
-              colorScheme="green"
+              variant="outline"
               size="lg"
               onClick={refreshBalances}
               isLoading={isRefreshing}
@@ -392,31 +413,30 @@ const SidePanel = () => {
       <Flex direction="column" flex={1} overflowY="auto" px={4} pb={4}>
         {/* Total Balance & Quick Actions - Only when paired and on home screen, after initial load */}
         {keepkeyState === 5 && !transactionContext && !balancesInitialLoading && !showAddBlockchain && (
-          <Box mb={3} textAlign="center">
-            {balances.length > 0 && totalUsdBalance > 0 && (
-              <Box mb={2}>
-                <DonutChart balances={balances} totalUsd={totalUsdBalance} />
-              </Box>
-            )}
-            <Text className="kk-eyebrow" mb={1}>
-              Total balance
-            </Text>
-            <Heading size="lg" color="kk.text" mb={3} fontWeight={700} letterSpacing="-0.6px" className="mono">
-              {formatCurrency(totalUsdBalance)}
-            </Heading>
-            <HStack spacing={2} justify="center">
+          // v2 dashboard hero (KEEPKEY_STYLE.md §0): left-aligned editorial
+          // block — micro label, rolling mono numeral, 3px allocation bar. The
+          // donut is retired; a bar reads allocation at 400px and costs 3px of
+          // height instead of 160.
+          <Box mb={3}>
+            <Text className="kk-eyebrow">Total balance</Text>
+            <RollingBalance value={totalUsdBalance} size={40} />
+            <AllocationBar segments={allocationSegments} grown={allocationGrown} />
+
+            <Box display="grid" gridTemplateColumns="repeat(3,1fr)" gap="8px" mt="24px">
               <Button
                 leftIcon={<ArrowUpIcon />}
                 variant="solid"
-                size="sm"
+                height="44px"
+                fontSize="12px"
                 onClick={handleGlobalSend}
                 isDisabled={balances.length === 0}>
                 Send
               </Button>
               <Button
                 leftIcon={<RepeatIcon />}
-                variant="ghost"
-                size="sm"
+                variant="keycapSecondary"
+                height="44px"
+                fontSize="12px"
                 onClick={() => {
                   setSwapFromCaip(undefined);
                   onSwapOpen();
@@ -425,13 +445,14 @@ const SidePanel = () => {
               </Button>
               <Button
                 leftIcon={<ArrowDownIcon />}
-                variant="ghost"
-                size="sm"
+                variant="keycapSecondary"
+                height="44px"
+                fontSize="12px"
                 onClick={handleGlobalReceive}
                 isDisabled={balances.length === 0}>
                 Receive
               </Button>
-            </HStack>
+            </Box>
           </Box>
         )}
 

@@ -139,7 +139,7 @@ export const CustomTokenDialog = ({
       const result = await onAddToken(validationResult.token);
 
       if (result.success) {
-        setSuccessMessage(`✅ ${validationResult.token.symbol} added successfully!`);
+        setSuccessMessage(`${validationResult.token.symbol} added`);
         // Clear form after 2 seconds
         setTimeout(() => {
           setContractAddress('');
@@ -164,7 +164,7 @@ export const CustomTokenDialog = ({
       const success = await onRemoveToken(token.address);
 
       if (success) {
-        setSuccessMessage(`✅ ${token.symbol} removed successfully!`);
+        setSuccessMessage(`${token.symbol} removed`);
         setTimeout(() => setSuccessMessage(''), 2000);
       } else {
         setErrorMessage('Failed to remove token');

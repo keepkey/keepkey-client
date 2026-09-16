@@ -57,7 +57,7 @@ export default function RequestDataCard({ transaction }: any) {
       {isOpen && (
         <Box mt={2}>
           {/* Fetch Data Button */}
-          <Button size="sm" colorScheme="blue" onClick={fetchEventData} disabled={loading}>
+          <Button size="sm" variant="outline" onClick={fetchEventData} disabled={loading}>
             {loading ? <Spinner size="sm" /> : 'Fetch Event Data'}
           </Button>
 

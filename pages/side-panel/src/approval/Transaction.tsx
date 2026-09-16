@@ -305,7 +305,6 @@ const Transaction = ({
     const body = isTimeout
       ? 'No response from your KeepKey in time. Reject the request in the dApp, then try again.'
       : errorMessage;
-    const buttonScheme = isTimeout ? 'yellow' : 'red';
     const buttonLabel = 'Close';
     return (
       <Flex direction="column" height="100vh" alignItems="center" justifyContent="center" p={6}>
@@ -323,7 +322,7 @@ const Transaction = ({
             <h3 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '12px' }}>{heading}</h3>
             <p style={{ marginBottom: '20px' }}>{body}</p>
             <Flex gap={2}>
-              <Button colorScheme={buttonScheme} onClick={handleCancel}>
+              <Button variant="keycapSecondary" onClick={handleCancel}>
                 {buttonLabel}
               </Button>
             </Flex>

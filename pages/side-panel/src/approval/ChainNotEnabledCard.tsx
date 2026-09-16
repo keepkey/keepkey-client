@@ -97,14 +97,14 @@ export default function ChainNotEnabledCard({ event, onDismiss }: { event: any; 
             <Text fontSize="sm" color="whiteAlpha.800" mb={2}>
               Add this network from Chainlist, then try the dApp action again.
             </Text>
-            <Link onClick={openChainlist} color="blue.300" fontSize="sm" display="inline-flex" alignItems="center">
+            <Link onClick={openChainlist} color="kk.accent" fontSize="sm" display="inline-flex" alignItems="center">
               Browse Chainlist.org
               <Icon as={ExternalLinkIcon} ml={1} boxSize={3} />
             </Link>
           </Box>
 
           <Flex justify="center" pt={2}>
-            <Button colorScheme="yellow" onClick={close}>
+            <Button variant="keycapSecondary" onClick={close}>
               Close
             </Button>
           </Flex>

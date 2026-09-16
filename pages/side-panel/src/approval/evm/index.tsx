@@ -102,14 +102,14 @@ export function EvmTransaction({ transaction, reloadEvents, handleResponse }: an
 
       <Flex justifyContent="center" alignItems="center">
         <Button
-          colorScheme="green"
+          variant="outline"
           onClick={() => handleResponse('accept')}
           mr={2}
           isDisabled={approveBlocked}
           title={approveBlocked ? 'Pick a fee strategy in the warning banner above' : undefined}>
           Approve
         </Button>
-        <Button colorScheme="red" onClick={() => handleResponse('reject')}>
+        <Button variant="keycapSecondary" onClick={() => handleResponse('reject')}>
           Reject
         </Button>
       </Flex>

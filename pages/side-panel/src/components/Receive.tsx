@@ -1,23 +1,9 @@
-import {
-  Box,
-  Button,
-  Flex,
-  Text,
-  Badge,
-  Spinner,
-  VStack,
-  HStack,
-  useToast,
-  IconButton,
-  Image,
-  Menu,
-  MenuButton,
-  MenuList,
-  MenuItem,
-} from '@chakra-ui/react';
+import { Box, Button, Flex, Text, Badge, Spinner, VStack, useToast, IconButton, Image } from '@chakra-ui/react';
 import { CopyIcon, CheckIcon, ChevronDownIcon } from '@chakra-ui/icons';
 import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
+import BottomSheet from './v2/BottomSheet';
+import { getChainDisplayName } from './chainDisplay';
 import { AssetIcon } from './AssetIcon';
 
 interface ReceiveProps {
@@ -29,6 +15,7 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
   const [walletType, setWalletType] = useState('');
   const [selectedAddress, setSelectedAddress] = useState('');
   const [pubkeys, setPubkeys] = useState<any[]>([]);
+  const [isAssetSheetOpen, setIsAssetSheetOpen] = useState(false);
   const [assetContext, setAssetContext] = useState<any>(null);
   const [pubkeyContext, setPubkeyContext] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -421,16 +408,19 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
   };
 
   return (
-    <VStack spacing={4} align="center" justify="center" p={4} h="full">
-      {/* Token Selector — dedup by CAIP so tokens that share a ticker but
-          live on different chains (or different contracts within the same
-          chain) don't collapse. Deduping by `symbol` alone let e.g. bridged
-          vs native USDC collapse into one entry and could land a user on a
-          QR for the wrong asset. CAIP is the canonical unique ID; if it's
-          absent we fall back to `${networkId}|${contract}|${symbol}` so
-          incomplete entries still get distinct keys. */}
+    // Top-aligned, not vertically centred: `justify="center"` on a full-height
+    // column pushed the selector into the middle of the panel with a ~600px
+    // void above it.
+    <VStack spacing={4} align="stretch" p={4} h="full" overflowY="auto">
+      {/* Asset selector — a bottom sheet, not a Menu. The popover opened over
+          the QR it was meant to describe (KEEPKEY_STYLE.md §0). */}
       {balances.length > 0 &&
         (() => {
+          // Dedup by CAIP so tokens that share a ticker but live on different
+          // chains (or different contracts within the same chain) don't
+          // collapse. Deduping by `symbol` alone let e.g. bridged vs native
+          // USDC collapse into one entry and could land a user on a QR for the
+          // wrong asset.
           const keyFor = (t: any): string =>
             t.caip || `${t.networkId || ''}|${t.contractAddress || ''}|${t.symbol || ''}`;
           const seen = new Set<string>();
@@ -445,57 +435,70 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
 
           return (
             <Box w="full">
-              <Menu>
-                <MenuButton
-                  as={Button}
-                  rightIcon={<ChevronDownIcon />}
-                  w="full"
-                  bg="kk.surface"
-                  color="kk.text"
-                  border="1px solid"
-                  borderColor="kk.line"
-                  _hover={{ bg: 'kk.surfaceHi' }}
-                  _active={{ bg: 'kk.surfaceHi' }}
-                  borderRadius="12px"
-                  py={5}
-                  fontWeight={500}>
-                  <HStack spacing={3} justify="center">
-                    <AssetIcon src={assetContext?.icon} symbol={assetContext?.symbol} size={32} />
-                    <Text fontWeight={600}>{assetContext?.name}</Text>
-                    <Badge
-                      bg="whiteAlpha.100"
-                      color="kk.faint"
-                      fontSize="10px"
-                      borderRadius="full"
+              <Flex
+                as="button"
+                onClick={() => setIsAssetSheetOpen(true)}
+                w="full"
+                alignItems="center"
+                gap={3}
+                py={3}
+                px={1}
+                borderBottom="1px solid"
+                borderColor="kk.lineHi"
+                background="transparent"
+                cursor="pointer"
+                textAlign="left"
+                _hover={{ bg: 'kk.bg2' }}>
+                <AssetIcon src={assetContext?.icon} symbol={assetContext?.symbol} size={28} />
+                <Box flex={1} minW={0}>
+                  <Text fontSize="14px" fontWeight={500} color="kk.text" isTruncated>
+                    {assetContext?.name}
+                  </Text>
+                  <Text fontSize="11px" color="kk.faint" className="mono" mt="2px" isTruncated>
+                    {assetContext?.symbol}
+                    {assetContext?.networkId ? ` · ${getChainDisplayName(assetContext.networkId)}` : ''}
+                  </Text>
+                </Box>
+                <ChevronDownIcon color="kk.faint" />
+              </Flex>
+
+              <BottomSheet isOpen={isAssetSheetOpen} title="Receive on" onClose={() => setIsAssetSheetOpen(false)}>
+                {uniqueTokens.map(token => {
+                  const chainName = getChainDisplayName(token.networkId);
+                  const isSelected = keyFor(token) === keyFor(assetContext || {});
+                  return (
+                    <Flex
+                      key={keyFor(token)}
+                      alignItems="center"
+                      gap={3}
+                      width="100%"
                       px={2}
-                      textTransform="uppercase"
-                      letterSpacing="0.04em">
-                      {assetContext?.symbol}
-                    </Badge>
-                  </HStack>
-                </MenuButton>
-                <MenuList bg="kk.surfaceHi" borderColor="kk.lineHi" maxH="300px" overflowY="auto">
-                  {uniqueTokens.map((token, index) => (
-                    <MenuItem
-                      key={index}
-                      onClick={() => handleTokenSelect(token)}
-                      bg={assetContext?.symbol === token.symbol ? 'whiteAlpha.100' : 'transparent'}
-                      _hover={{ bg: 'whiteAlpha.100' }}>
-                      <HStack spacing={3}>
-                        <AssetIcon src={token.icon} symbol={token.symbol} size={32} />
-                        <VStack align="start" spacing={0}>
-                          <Text fontWeight={500} color="kk.text">
-                            {token.name}
-                          </Text>
-                          <Text fontSize="xs" color="kk.faint">
-                            {token.symbol}
-                          </Text>
-                        </VStack>
-                      </HStack>
-                    </MenuItem>
-                  ))}
-                </MenuList>
-              </Menu>
+                      py={3}
+                      borderRadius="10px"
+                      cursor="pointer"
+                      _hover={{ bg: 'kk.surfaceHi' }}
+                      onClick={() => {
+                        handleTokenSelect(token);
+                        setIsAssetSheetOpen(false);
+                      }}>
+                      <AssetIcon src={token.icon} symbol={token.symbol} size={28} />
+                      <Box flex={1} minW={0}>
+                        <Text fontSize="14px" fontWeight={500} color={isSelected ? 'kk.accent' : 'kk.text'} isTruncated>
+                          {token.name}
+                        </Text>
+                        {/* Chain qualifier is what makes these rows distinct:
+                            native ETH on Ethereum / Arbitrum / Optimism / Base
+                            shares a name, ticker and logo (§5). */}
+                        <Text fontSize="11px" color="kk.faint" className="mono" mt="2px" isTruncated>
+                          {token.symbol}
+                          {chainName && chainName !== 'Unknown' ? ` · ${chainName}` : ''}
+                        </Text>
+                      </Box>
+                      {isSelected && <CheckIcon boxSize={3} color="kk.accent" />}
+                    </Flex>
+                  );
+                })}
+              </BottomSheet>
             </Box>
           );
         })()}
@@ -511,65 +514,74 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
         )}
       </Box>
 
-      {/* Combined Address Display with Selector and Copy */}
-      <Box w="full" bg="kk.surface" border="1px solid" borderColor="kk.line" borderRadius="12px" p={4}>
-        <Flex align="center" justify="space-between">
-          {/* Address with optional dropdown */}
-          <Menu>
-            <MenuButton
-              as={Box}
-              flex={1}
-              cursor={pubkeys.length > 1 ? 'pointer' : 'default'}
-              _hover={pubkeys.length > 1 ? { opacity: 0.8 } : {}}>
-              <Flex align="center">
-                <Box flex={1} overflow="hidden">
-                  <Text className="kk-eyebrow" mb={1}>
-                    {getAddressType(
-                      pubkeys.find(p => addressForPubkey(p) === selectedAddress) || pubkeys[0],
-                      pubkeys.findIndex(p => addressForPubkey(p) === selectedAddress),
-                    )}
-                  </Text>
-                  <Text className="mono" fontSize="sm" color="kk.text" wordBreak="break-all">
-                    {selectedAddress}
-                  </Text>
-                </Box>
-                {pubkeys.length > 1 && <ChevronDownIcon color="kk.dim" boxSize={5} ml={2} />}
-              </Flex>
-            </MenuButton>
-            {pubkeys.length > 1 && (
-              <MenuList bg="kk.surfaceHi" borderColor="kk.lineHi">
-                {pubkeys.map((pubkey, index) => {
-                  const addr = addressForPubkey(pubkey);
-                  return (
-                    <MenuItem
-                      key={pubkey.note || index}
-                      onClick={() => handleAccountSelect(pubkey, index)}
-                      bg={selectedAddress && selectedAddress === addr ? 'whiteAlpha.100' : 'transparent'}
-                      _hover={{ bg: 'whiteAlpha.100' }}>
-                      <VStack align="start" spacing={0}>
-                        <Text fontSize="xs" color="kk.faint">
-                          {getAddressType(pubkey, index)}
-                        </Text>
-                        <Text className="mono" fontSize="sm" color="kk.text">
-                          {addr ? formatAddress(addr) : '…'}
-                        </Text>
-                      </VStack>
-                    </MenuItem>
-                  );
-                })}
-              </MenuList>
-            )}
-          </Menu>
+      {/* Address type — a segmented row, not a dropdown (design: Receive).
+          A UTXO chain has at most three script types; laying them out flat
+          shows which are available and which is active without a tap, and
+          removes the third popover on this screen. */}
+      {pubkeys.length > 1 && (
+        <Box
+          w="full"
+          display="grid"
+          gridTemplateColumns={`repeat(${Math.min(pubkeys.length, 3)},1fr)`}
+          borderTop="1px solid"
+          borderColor="kk.line">
+          {pubkeys.map((pubkey, index) => {
+            const addr = addressForPubkey(pubkey);
+            const isActive = !!selectedAddress && selectedAddress === addr;
+            return (
+              <Box
+                as="button"
+                key={pubkey.note || index}
+                onClick={() => handleAccountSelect(pubkey, index)}
+                height="40px"
+                border={0}
+                borderTop="1px solid"
+                borderColor={isActive ? 'kk.accent' : 'transparent'}
+                mt="-1px"
+                background="transparent"
+                color={isActive ? 'kk.text' : 'kk.faint'}
+                fontSize="12px"
+                fontWeight={500}
+                textAlign="left"
+                cursor="pointer"
+                transition="color .15s ease, border-color .15s ease">
+                {getAddressType(pubkey, index)}
+              </Box>
+            );
+          })}
+        </Box>
+      )}
+
+      {/* Address */}
+      <Box w="full">
+        <Flex
+          align="center"
+          justify="space-between"
+          gap={2}
+          py={3}
+          borderTop="1px solid"
+          borderBottom="1px solid"
+          borderColor="kk.line">
+          <Box flex={1} minW={0}>
+            <Text className="kk-eyebrow" mb={2}>
+              {getAddressType(
+                pubkeys.find(p => addressForPubkey(p) === selectedAddress) || pubkeys[0],
+                pubkeys.findIndex(p => addressForPubkey(p) === selectedAddress),
+              )}
+            </Text>
+            <Text className="mono" fontSize="12.5px" color="kk.text" wordBreak="break-all" lineHeight={1.5}>
+              {selectedAddress}
+            </Text>
+          </Box>
 
           {/* Copy button */}
           <IconButton
             aria-label="Copy address"
             icon={hasCopied ? <CheckIcon /> : <CopyIcon />}
             variant="ghost"
-            color={hasCopied ? 'kk.good' : 'kk.dim'}
-            size="lg"
+            color={hasCopied ? 'kk.good' : 'kk.faint'}
+            size="sm"
             onClick={copyToClipboard}
-            ml={2}
           />
         </Flex>
       </Box>

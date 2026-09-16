@@ -1,18 +1,19 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { Flex, Text, Box, Icon, IconButton, Badge, useOutsideClick } from '@chakra-ui/react';
+import { Flex, Text, Box, Icon, IconButton, Button, Input, useOutsideClick } from '@chakra-ui/react';
 import { AssetIcon } from '../AssetIcon';
 import {
   ChevronDownIcon,
   ChevronUpIcon,
-  ChevronLeftIcon,
   AddIcon,
   SmallCloseIcon,
   ExternalLinkIcon,
+  CheckIcon,
+  SearchIcon,
 } from '@chakra-ui/icons';
 import { NetworkIdToChain } from '@extension/shared';
 import type { ChainFamily, NetworkItem } from './headerTypes';
 import { CHAIN_FAMILY_LABELS } from './headerConstants';
-import { getChainFamily } from './headerUtils';
+import BottomSheet from '../v2/BottomSheet';
 
 interface NetworkDropdownProps {
   networks: NetworkItem[];
@@ -30,7 +31,7 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
   onRemoveNetwork,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [activeFamily, setActiveFamily] = useState<ChainFamily | null>(null);
+  const [query, setQuery] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Close when the user clicks anywhere outside the trigger + panel.
@@ -49,66 +50,61 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
     return (selected.networkId && NetworkIdToChain[selected.networkId]) || selected.name;
   }, [selected]);
 
-  const groupedNetworks = useMemo(() => {
-    const groups: Partial<Record<ChainFamily, NetworkItem[]>> = {};
-    for (const net of networks) {
-      if (!groups[net.family]) groups[net.family] = [];
-      groups[net.family]!.push(net);
-    }
-    return groups;
-  }, [networks]);
-
-  const filteredNetworks = useMemo(() => {
-    if (!activeFamily) return null;
-    return networks.filter(n => n.family === activeFamily);
-  }, [networks, activeFamily]);
+  const visibleNetworks = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return networks;
+    return networks.filter(n => n.name?.toLowerCase().includes(q) || n.networkId?.toLowerCase().includes(q));
+  }, [networks, query]);
 
   const handleSelect = (net: NetworkItem) => {
     onSelect(net);
     setIsExpanded(false);
-    setActiveFamily(getChainFamily(net.networkId));
+    setQuery('');
   };
 
-  const renderNetworkRow = (net: NetworkItem) => (
-    <Flex
-      key={net.networkId}
-      alignItems="center"
-      px={3}
-      py={2}
-      cursor="pointer"
-      bg={selectedNetworkId === net.networkId ? 'kk.surfaceHi' : 'transparent'}
-      _hover={{ bg: 'kk.surfaceHi' }}
-      transition="background 0.1s"
-      onClick={() => handleSelect(net)}
-      borderBottom="1px solid"
-      borderColor="kk.line">
-      <AssetIcon src={net.icon} symbol={net.name} size={24} style={{ marginRight: 8 }} />
-      <Flex alignItems="center" gap={1} flex={1} minW={0}>
-        <Text fontSize="xs" color="kk.text" isTruncated>
-          {net.name}
-        </Text>
+  const renderNetworkRow = (net: NetworkItem) => {
+    const isSelected = selectedNetworkId === net.networkId;
+    return (
+      <Flex
+        key={net.networkId}
+        alignItems="center"
+        gap={3}
+        width="100%"
+        px={2}
+        py={3}
+        borderRadius="10px"
+        cursor="pointer"
+        _hover={{ bg: 'kk.surfaceHi' }}
+        transition="background 0.1s"
+        onClick={() => handleSelect(net)}>
+        <AssetIcon src={net.icon} symbol={net.name} size={28} />
+        <Flex alignItems="center" gap={2} flex={1} minW={0}>
+          <Text fontSize="14px" fontWeight={500} color={isSelected ? 'kk.accent' : 'kk.text'} isTruncated>
+            {net.name}
+          </Text>
+          {net.isCustom && (
+            <Text className="kk-eyebrow" fontSize="9px">
+              Custom
+            </Text>
+          )}
+        </Flex>
         {net.isCustom && (
-          <Badge fontSize="0.5rem" bg="kk.surfaceHi" color="kk.dim" variant="subtle" px={1}>
-            Custom
-          </Badge>
+          <IconButton
+            icon={<SmallCloseIcon />}
+            aria-label="Remove network"
+            size="xs"
+            variant="ghost"
+            color="kk.bad"
+            onClick={e => {
+              e.stopPropagation();
+              onRemoveNetwork(net.networkId);
+            }}
+          />
         )}
+        {isSelected && <CheckIcon boxSize={3} color="kk.accent" />}
       </Flex>
-      {net.isCustom && (
-        <IconButton
-          icon={<SmallCloseIcon />}
-          aria-label="Remove network"
-          size="xs"
-          variant="ghost"
-          color="kk.bad"
-          onClick={e => {
-            e.stopPropagation();
-            onRemoveNetwork(net.networkId);
-          }}
-          ml={1}
-        />
-      )}
-    </Flex>
-  );
+    );
+  };
 
   return (
     <Box position="relative" ref={containerRef}>
@@ -131,132 +127,74 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
         <Icon as={isExpanded ? ChevronUpIcon : ChevronDownIcon} boxSize={3} ml={1} color="kk.dim" />
       </Flex>
 
-      {/* Dropdown panel — conditionally rendered (no Collapse wrapper: an
-          absolutely-positioned child reports zero height to Collapse, which
-          then clamps overflow and breaks the panel's own scroll). */}
-      {isExpanded && (
-        <Box
-          position="absolute"
-          top="100%"
-          left={0}
-          right={0}
-          mt={1}
-          zIndex={10}
-          borderRadius="md"
-          border="1px solid"
-          borderColor="kk.lineHi"
-          bg="kk.surface"
-          maxH="calc(100vh - 84px)"
-          minW="200px"
-          overflowY="auto"
-          overscrollBehavior="contain"
-          sx={{
-            '&::-webkit-scrollbar': { width: '4px' },
-            '&::-webkit-scrollbar-thumb': { bg: 'whiteAlpha.300', borderRadius: '2px' },
-          }}>
-          {activeFamily && filteredNetworks ? (
-            <>
-              <Flex
-                alignItems="center"
-                px={3}
-                py={2}
-                cursor="pointer"
-                _hover={{ bg: 'kk.surfaceHi' }}
-                onClick={() => setActiveFamily(null)}
-                borderBottom="1px solid"
-                borderColor="kk.line">
-                <Icon as={ChevronLeftIcon} boxSize={4} color="kk.dim" mr={1} />
-                <Text fontSize="xs" color="kk.dim" fontWeight="medium">
-                  All Networks
-                </Text>
-              </Flex>
-              {filteredNetworks.map(renderNetworkRow)}
-            </>
-          ) : (
-            (['evm', 'utxo', 'cosmos', 'other'] as ChainFamily[]).map(family => {
-              const nets = groupedNetworks[family];
-              if (!nets || nets.length === 0) return null;
-              return (
-                <Box key={family}>
-                  <Text
-                    fontSize="xs"
-                    fontWeight="bold"
-                    color="kk.dim"
-                    px={3}
-                    pt={2}
-                    pb={1}
-                    textTransform="uppercase"
-                    letterSpacing="wider"
-                    cursor="pointer"
-                    _hover={{ color: 'kk.dim' }}
-                    onClick={() => setActiveFamily(family)}>
-                    {CHAIN_FAMILY_LABELS[family]}
-                  </Text>
-                  {nets.slice(0, 3).map(renderNetworkRow)}
-                  {nets.length > 3 && (
-                    <Text
-                      fontSize="xs"
-                      color="kk.accent"
-                      px={3}
-                      py={1}
-                      cursor="pointer"
-                      _hover={{ color: 'kk.accent' }}
-                      onClick={() => setActiveFamily(family)}>
-                      +{nets.length - 3} more
-                    </Text>
-                  )}
-                </Box>
-              );
-            })
-          )}
+      {/* Switcher is a bottom sheet, not a popover (KEEPKEY_STYLE.md §0).
+          Anchored to a pill near the panel's right edge, the popover clipped
+          off-screen. Full width also retires the "+N more" drill-down: that
+          existed only because the popover had no room, and it cost two taps
+          to reach a chain. One scrollable list with a search field instead. */}
+      <BottomSheet isOpen={isExpanded} title="Switch chain" onClose={() => setIsExpanded(false)}>
+        <Flex alignItems="center" gap={2} h="40px" px={2} mb={1} borderBottom="1px solid" borderColor="kk.lineHi">
+          <SearchIcon boxSize={3} color="kk.faint" />
+          <Input
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Search chains"
+            variant="unstyled"
+            fontSize="14px"
+            color="kk.text"
+          />
+        </Flex>
 
-          {networks.length === 0 && (
-            <Text fontSize="xs" color="kk.faint" p={3} textAlign="center">
-              No networks available
-            </Text>
-          )}
+        {(['evm', 'utxo', 'cosmos', 'other'] as ChainFamily[]).map(family => {
+          const nets = visibleNetworks.filter(n => n.family === family);
+          if (nets.length === 0) return null;
+          return (
+            <Box key={family} mt={2}>
+              <Text className="kk-eyebrow" px={2} pb={1}>
+                {CHAIN_FAMILY_LABELS[family]}
+              </Text>
+              {nets.map(renderNetworkRow)}
+            </Box>
+          );
+        })}
 
-          {/* Browse Chainlist.org */}
-          <Flex
-            alignItems="center"
-            justifyContent="center"
-            px={3}
-            py={2}
-            cursor="pointer"
-            _hover={{ bg: 'kk.surfaceHi' }}
-            onClick={e => {
-              e.stopPropagation();
-              window.open('https://chainlist.org/', '_blank');
-              setIsExpanded(false);
-            }}
-            borderTop="1px solid"
-            borderColor="kk.line">
-            <Icon as={ExternalLinkIcon} boxSize={3} color="kk.accent" mr={2} />
-            <Text fontSize="xs" color="kk.accent" fontWeight="medium">
-              Browse Chainlist.org
-            </Text>
-          </Flex>
+        {visibleNetworks.length === 0 && (
+          <Text fontSize="13px" color="kk.faint" p={4} textAlign="center">
+            {networks.length === 0 ? 'No networks available' : `No chains match “${query}”`}
+          </Text>
+        )}
 
-          {/* Add Custom Network */}
-          <Flex
-            alignItems="center"
-            justifyContent="center"
-            px={3}
-            py={1.5}
-            cursor="pointer"
-            _hover={{ bg: 'kk.surfaceHi' }}
-            onClick={e => {
-              e.stopPropagation();
+        <Flex direction="column" mt={3} pt={2} borderTop="1px solid" borderColor="kk.line">
+          <Button
+            variant="ghost"
+            justifyContent="flex-start"
+            height="44px"
+            px={2}
+            fontSize="13px"
+            color="kk.dim"
+            leftIcon={<AddIcon boxSize={2.5} />}
+            onClick={() => {
               onAddNetwork();
               setIsExpanded(false);
             }}>
-            <Icon as={AddIcon} boxSize={3} color="kk.dim" mr={2} />
-            <Text fontSize="xs" color="kk.dim" fontWeight="medium">
-              Add Custom Network
-            </Text>
-          </Flex>
-        </Box>
-      )}
+            Add custom network
+          </Button>
+          <Button
+            variant="ghost"
+            justifyContent="flex-start"
+            height="44px"
+            px={2}
+            fontSize="13px"
+            color="kk.dim"
+            leftIcon={<ExternalLinkIcon boxSize={3} />}
+            onClick={() => {
+              window.open('https://chainlist.org/', '_blank');
+              setIsExpanded(false);
+            }}>
+            Browse Chainlist.org
+          </Button>
+        </Flex>
+      </BottomSheet>
     </Box>
   );
 };

@@ -138,7 +138,7 @@ export default function CoinControl({ transaction }: any) {
         </Card>
       ))}
 
-      <Button colorScheme="blue" width="100%" mt={4}>
+      <Button variant="outline" width="100%" mt={4}>
         Update Transaction
       </Button>
     </Box>

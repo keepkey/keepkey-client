@@ -117,7 +117,7 @@ const AddNetworkModal: React.FC<AddNetworkModalProps> = ({ isOpen, onClose, onSu
           <Button size="sm" variant="ghost" mr={2} onClick={onClose}>
             Cancel
           </Button>
-          <Button size="sm" colorScheme="blue" onClick={handleSubmit}>
+          <Button size="sm" variant="solid" onClick={handleSubmit}>
             Add Network
           </Button>
         </ModalFooter>

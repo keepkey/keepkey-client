@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { VStack, HStack, Box, Text, Spinner, Button, Flex, Badge, IconButton } from '@chakra-ui/react';
-import { FaCoins, FaSync, FaPlus, FaEyeSlash, FaEye } from 'react-icons/fa';
+import { VStack, HStack, Box, Text, Spinner, Button, Flex, IconButton } from '@chakra-ui/react';
+import { FaEyeSlash, FaEye } from 'react-icons/fa';
 import { customTokensStorageApi, type CustomToken } from '@extension/storage';
 import { CustomTokenDialog } from './CustomTokenDialog';
 import { AssetIcon } from './AssetIcon';
@@ -330,43 +330,30 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
 
   return (
     <VStack align="stretch" gap={2} width="100%">
-      {/* Header */}
-      <Flex justify="space-between" align="center" mb={1}>
-        <HStack spacing={1}>
-          <Text fontSize="xs" fontWeight="semibold" color="kk.dim" textTransform="uppercase" letterSpacing="wider">
-            {isEvmNetwork ? 'ERC-20' : isCosmosNetwork ? 'IBC' : 'Tokens'}
-          </Text>
-          <Text fontSize="xs" color="kk.faint">
-            ({tokens.length})
-          </Text>
-        </HStack>
-        <HStack gap={1}>
+      {/* Header — micro label + flat mono actions (§0: text buttons stay flat). */}
+      <Flex justify="space-between" align="center" height="40px">
+        <Text className="kk-eyebrow">
+          {isEvmNetwork ? 'ERC-20' : isCosmosNetwork ? 'IBC' : 'Tokens'} · {tokens.length}
+        </Text>
+        <HStack gap={4}>
           {isEvmNetwork && (
             <Button
+              variant="link"
               size="xs"
-              variant="ghost"
-              onClick={() => setIsCustomTokenDialogOpen(true)}
-              leftIcon={<FaPlus size={8} />}
+              className="mono"
               color="kk.dim"
-              fontSize="xs"
-              h="22px"
-              px={2}
-              _hover={{ bg: 'kk.surfaceHi', color: 'kk.text' }}>
-              Add
+              onClick={() => setIsCustomTokenDialogOpen(true)}>
+              ADD
             </Button>
           )}
           <Button
+            variant="link"
             size="xs"
-            variant="ghost"
-            onClick={handleRefresh}
-            isLoading={isRefreshing}
-            leftIcon={<FaSync size={8} />}
+            className="mono"
             color="kk.dim"
-            fontSize="xs"
-            h="22px"
-            px={2}
-            _hover={{ bg: 'kk.surfaceHi', color: 'kk.text' }}>
-            Refresh
+            onClick={handleRefresh}
+            isLoading={isRefreshing}>
+            REFRESH
           </Button>
         </HStack>
       </Flex>
@@ -498,44 +485,38 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
           </Text>
         </Flex>
       ) : (
-        /* Empty State */
-        <VStack align="center" gap={4} py={8}>
-          <Box
-            w="60px"
-            h="60px"
-            borderRadius="full"
-            bg="kk.surface"
-            display="flex"
-            alignItems="center"
-            justifyContent="center">
-            <FaCoins color="rgba(255, 255, 255, 0.4)" size="24px" />
-          </Box>
-          <VStack gap={2}>
-            <Text fontSize="md" fontWeight="medium" color="kk.text">
-              No Tokens Found
-            </Text>
-            <Text fontSize="sm" color="kk.dim" textAlign="center" maxW="sm" px={4}>
-              {isEvmNetwork
-                ? "You don't have any ERC-20 tokens on this network yet."
-                : isCosmosNetwork
-                  ? "You don't have any IBC tokens on this network yet."
-                  : "You don't have any tokens on this network yet."}
-            </Text>
-          </VStack>
-          <HStack gap={3}>
+        /* Empty state — left-aligned, no decorative disc, and no gold button:
+           Send already owns the screen's one gold primary (§9). Discovering is
+           the useful action here, so it leads. */
+        <VStack align="stretch" gap={3} py={6}>
+          <Text fontSize="14px" fontWeight={500} color="kk.text">
+            No tokens found
+          </Text>
+          <Text fontSize="13px" color="kk.dim" lineHeight={1.5}>
+            {isEvmNetwork
+              ? "You don't have any ERC-20 tokens on this network yet."
+              : isCosmosNetwork
+                ? "You don't have any IBC tokens on this network yet."
+                : "You don't have any tokens on this network yet."}
+          </Text>
+          <HStack gap={4} pt={1}>
             <Button
-              size="sm"
-              variant="ghost"
+              variant="link"
+              size="xs"
+              className="mono"
+              color="kk.dim"
               onClick={handleRefresh}
-              isLoading={isRefreshing}
-              leftIcon={<FaSync />}
-              bg="kk.surfaceHi"
-              _hover={{ bg: 'kk.surfaceHi' }}>
-              Discover Tokens
+              isLoading={isRefreshing}>
+              DISCOVER TOKENS
             </Button>
             {isEvmNetwork && (
-              <Button size="sm" onClick={() => setIsCustomTokenDialogOpen(true)} leftIcon={<FaPlus />}>
-                Add Token
+              <Button
+                variant="link"
+                size="xs"
+                className="mono"
+                color="kk.dim"
+                onClick={() => setIsCustomTokenDialogOpen(true)}>
+                ADD TOKEN
               </Button>
             )}
           </HStack>
