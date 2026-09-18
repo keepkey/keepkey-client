@@ -31,6 +31,7 @@ const STATIC_FLOOR_WEI: Record<string, bigint> = {
   '0x38': 3n * GWEI, // BSC — 3 gwei
   '0xa': GWEI / 1000n, // Optimism — 0.001 gwei
   '0xa4b1': GWEI / 100n, // Arbitrum — 0.01 gwei
+  '0x1237': GWEI / 100n, // Robinhood Chain (Arbitrum Orbit) — 0.01 gwei; live baseFee ~0.058 gwei
   '0x2105': GWEI / 1000n, // Base — 0.001 gwei
   '0xa86a': 25n * GWEI, // Avalanche — 25 gwei
   '0x144': GWEI / 40n, // zkSync Era — 0.025 gwei
@@ -50,6 +51,7 @@ const STATIC_PRIORITY_FLOOR_WEI: Record<string, bigint> = {
   '0x38': 1n * GWEI, // BSC — 1 gwei
   '0xa': 0n, // Optimism — sequencer-driven, no tip floor
   '0xa4b1': 0n, // Arbitrum — sequencer-driven
+  '0x1237': 0n, // Robinhood Chain — sequencer-driven (Orbit)
   '0x2105': 0n, // Base — sequencer-driven
   '0xa86a': 1n * GWEI, // Avalanche — 1 gwei
   '0x144': 0n, // zkSync Era — sequencer-driven
