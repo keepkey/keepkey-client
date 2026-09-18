@@ -18,6 +18,7 @@ import {
   DrawerContent,
   DrawerHeader,
   DrawerBody,
+  useToast,
 } from '@chakra-ui/react';
 import { ArrowUpIcon, ArrowDownIcon, ChevronLeftIcon, RepeatIcon } from '@chakra-ui/icons';
 import { withErrorBoundary, withSuspense } from '@extension/shared';
@@ -90,6 +91,8 @@ const SidePanel = () => {
   // meant SidePanel kept rendering the donut/balance/Send-Receive block on
   // top of the picker, and the home button couldn't reset it.
   const [showAddBlockchain, setShowAddBlockchain] = useState(false);
+
+  const toast = useToast();
 
   // Disclosures for drawers/modals
   const { isOpen: isSettingsOpen, onOpen: onSettingsOpen, onClose: onSettingsClose } = useDisclosure();
@@ -194,7 +197,13 @@ const SidePanel = () => {
   // Handle asset selection from Balances list
   const handleAssetSelect = (asset: any) => {
     setSelectedAsset(asset);
-    chrome.runtime.sendMessage({ type: 'SET_ASSET_CONTEXT', asset }, () => {
+    chrome.runtime.sendMessage({ type: 'SET_ASSET_CONTEXT', asset }, response => {
+      // Surface a failed switch (e.g. the EVM signing network couldn't be
+      // resolved, so Send is refused). Viewing and Receive don't depend on
+      // it, so still open the detail page.
+      if (response?.error) {
+        toast({ title: "Couldn't switch network", description: response.error, status: 'warning', isClosable: true });
+      }
       onAssetDetailOpen();
     });
   };
@@ -235,7 +244,11 @@ const SidePanel = () => {
   const handleGlobalSend = () => {
     const defaultToken = pickDefaultAsset();
     if (defaultToken) {
-      chrome.runtime.sendMessage({ type: 'SET_ASSET_CONTEXT', asset: defaultToken }, () => {
+      chrome.runtime.sendMessage({ type: 'SET_ASSET_CONTEXT', asset: defaultToken }, response => {
+        if (response?.error) {
+          toast({ title: "Couldn't switch network", description: response.error, status: 'error', isClosable: true });
+          return;
+        }
         onSendOpen();
       });
     }
