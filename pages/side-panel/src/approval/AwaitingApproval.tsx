@@ -30,7 +30,7 @@ const AwaitingApproval = ({ onCancel }: { onCancel: () => void }) => {
             or....
             <br />
             <br />
-            <Button variant="ghost" onClick={onCancel}>
+            <Button variant="outline" onClick={onCancel}>
               Abort Signing
             </Button>
           </Flex>

@@ -48,14 +48,19 @@ export const BottomSheet = ({ isOpen, title, onClose, children }: BottomSheetPro
 
   const close = useCallback(() => onClose(), [onClose]);
 
+  // Capture phase + stopPropagation: a sheet opened inside a Chakra Drawer
+  // (Receive's asset picker) would otherwise let Escape reach the Drawer's own
+  // handler and close the whole Drawer along with the sheet.
   useEffect(() => {
-    if (!mounted) return;
+    if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') close();
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      close();
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [mounted, close]);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [isOpen, close]);
 
   if (!mounted) return null;
 

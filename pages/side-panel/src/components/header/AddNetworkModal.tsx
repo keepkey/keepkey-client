@@ -53,7 +53,9 @@ const AddNetworkModal: React.FC<AddNetworkModalProps> = ({ isOpen, onClose, onSu
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="sm">
       <ModalOverlay />
-      <ModalContent bg="gray.800" color="white">
+      {/* Opens below the sticky header, which sits above modals and would
+          otherwise cover the title and close button (height set by SidePanel). */}
+      <ModalContent bg="gray.800" color="white" mt="var(--kk-header-h)">
         <ModalHeader fontSize="md">Add Custom EVM Network</ModalHeader>
         <ModalCloseButton />
         <ModalBody>
@@ -114,7 +116,7 @@ const AddNetworkModal: React.FC<AddNetworkModalProps> = ({ isOpen, onClose, onSu
           </FormControl>
         </ModalBody>
         <ModalFooter>
-          <Button size="sm" variant="ghost" mr={2} onClick={onClose}>
+          <Button size="sm" variant="outline" mr={2} onClick={onClose}>
             Cancel
           </Button>
           <Button size="sm" variant="solid" onClick={handleSubmit}>

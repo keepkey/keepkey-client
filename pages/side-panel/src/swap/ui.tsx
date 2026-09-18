@@ -3,7 +3,7 @@
 // URL when the asset has one (the design mock had only colored glyphs).
 import React, { useState, useEffect } from 'react';
 import type { SwapTheme } from './theme';
-import { tokens, keycap } from '../styles/tokens';
+import { tokens, keycap, fonts } from '../styles/tokens';
 import { Icon, I } from './icons';
 import type { UiAsset } from './types';
 import { getNetworkName } from '../components/header/headerConstants';
@@ -73,7 +73,7 @@ export function TokenGlyph({ asset, size = 36 }: { asset: Pick<UiAsset, 'symbol'
         fontWeight: 700,
         fontSize: size * 0.36,
         letterSpacing: -0.5,
-        fontFamily: "'Inter',sans-serif",
+        fontFamily: fonts.ui,
         flexShrink: 0,
       }}>
       {(asset.symbol || '?')[0]}
@@ -147,6 +147,7 @@ export function PrimaryBtn({
       onPointerUp={() => setPressed(false)}
       onPointerLeave={() => setPressed(false)}
       style={{
+        position: 'relative',
         width: '100%',
         flexShrink: 0,
         height: 48,
@@ -170,6 +171,15 @@ export function PrimaryBtn({
         transform: pressed && !disabled ? 'translateY(5px)' : 'translateY(0)',
         transition: 'transform 90ms ease, box-shadow 90ms ease, filter .15s ease',
       }}>
+      {/* While pressed, reach the hit area back up by the 5px travel so a press
+          near the top edge still ends on the button (else the click is lost
+          and pointerleave un-presses the key). Always mounted, only the offset
+          toggles: pointerup un-presses before the browser resolves the click,
+          and a span unmounted then would no longer count as the button. */}
+      <span
+        aria-hidden
+        style={{ position: 'absolute', top: pressed && !disabled ? -5 : 0, left: 0, right: 0, bottom: 0 }}
+      />
       {icon}
       {children}
     </button>

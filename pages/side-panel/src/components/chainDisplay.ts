@@ -5,29 +5,18 @@
 // the name "Ethereum", the ticker "ETH" and the same asset logo, so a picker
 // that shows only name + ticker renders four rows a user cannot tell apart
 // (KEEPKEY_STYLE.md §5 — L2s show the chain, not the shared ETH ticker).
+//
+// Exact lookup on the chain id, never substring matching: `includes()` named
+// Gnosis (eip155:100) "Optimism" and Base Sepolia "Base". An unknown chain
+// shows its raw id rather than a wrong name.
 import { COIN_MAP_LONG, NetworkIdToChain } from '@extension/shared';
-
-const EXACT: Array<[string, string]> = [
-  ['eip155:1/', 'Ethereum'],
-  ['eip155:8453', 'Base'],
-  ['eip155:137', 'Polygon'],
-  ['eip155:43114', 'Avalanche'],
-  ['eip155:56', 'BSC'],
-  ['eip155:10', 'Optimism'],
-  ['eip155:42161', 'Arbitrum'],
-  ['bip122:000000000019d6689c085ae165831e93', 'Bitcoin'],
-  ['cosmos:thorchain', 'THORChain'],
-  ['cosmos:mayachain', 'Maya'],
-  ['hive:', 'Hive'],
-  ['cosmos:', 'Cosmos'],
-];
+import { getNetworkName } from './header/headerConstants';
 
 export const getChainDisplayName = (networkId: string): string => {
   if (!networkId) return 'Unknown';
-  // Ordered, most specific first — `cosmos:` must not swallow `cosmos:thorchain`.
-  for (const [needle, label] of EXACT) {
-    if (networkId.includes(needle)) return label;
-  }
-  const chain = (NetworkIdToChain as any)[networkId.split('/')[0]];
-  return (COIN_MAP_LONG as any)[chain] || 'Unknown';
+  const chainId = networkId.split('/')[0];
+  const known = getNetworkName(chainId);
+  if (known) return known;
+  const long = COIN_MAP_LONG[NetworkIdToChain[chainId]];
+  return long ? long.charAt(0).toUpperCase() + long.slice(1) : chainId;
 };

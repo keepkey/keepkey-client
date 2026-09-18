@@ -102,7 +102,7 @@ export function EvmTransaction({ transaction, reloadEvents, handleResponse }: an
 
       <Flex justifyContent="center" alignItems="center">
         <Button
-          variant="outline"
+          variant="solid"
           onClick={() => handleResponse('accept')}
           mr={2}
           isDisabled={approveBlocked}

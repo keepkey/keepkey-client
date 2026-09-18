@@ -179,7 +179,9 @@ export const CustomTokenDialog = ({
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="xl">
       <ModalOverlay />
-      <ModalContent>
+      {/* Opens below the sticky header, which sits above modals and would
+          otherwise cover the title and close button (height set by SidePanel). */}
+      <ModalContent mt="var(--kk-header-h)">
         <ModalHeader>Custom Tokens</ModalHeader>
         <ModalCloseButton />
         <ModalBody>

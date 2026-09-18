@@ -34,8 +34,14 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
   const [query, setQuery] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Every close path clears the search, so the sheet never reopens filtered.
+  const close = () => {
+    setIsExpanded(false);
+    setQuery('');
+  };
+
   // Close when the user clicks anywhere outside the trigger + panel.
-  useOutsideClick({ ref: containerRef, handler: () => setIsExpanded(false) });
+  useOutsideClick({ ref: containerRef, handler: close });
 
   const selected = useMemo(
     () => networks.find(n => n.networkId === selectedNetworkId) || null,
@@ -58,8 +64,7 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
 
   const handleSelect = (net: NetworkItem) => {
     onSelect(net);
-    setIsExpanded(false);
-    setQuery('');
+    close();
   };
 
   const renderNetworkRow = (net: NetworkItem) => {
@@ -132,7 +137,7 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
           off-screen. Full width also retires the "+N more" drill-down: that
           existed only because the popover had no room, and it cost two taps
           to reach a chain. One scrollable list with a search field instead. */}
-      <BottomSheet isOpen={isExpanded} title="Switch chain" onClose={() => setIsExpanded(false)}>
+      <BottomSheet isOpen={isExpanded} title="Switch chain" onClose={close}>
         <Flex alignItems="center" gap={2} h="40px" px={2} mb={1} borderBottom="1px solid" borderColor="kk.lineHi">
           <SearchIcon boxSize={3} color="kk.faint" />
           <Input
@@ -175,7 +180,7 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
             leftIcon={<AddIcon boxSize={2.5} />}
             onClick={() => {
               onAddNetwork();
-              setIsExpanded(false);
+              close();
             }}>
             Add custom network
           </Button>
@@ -189,7 +194,7 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
             leftIcon={<ExternalLinkIcon boxSize={3} />}
             onClick={() => {
               window.open('https://chainlist.org/', '_blank');
-              setIsExpanded(false);
+              close();
             }}>
             Browse Chainlist.org
           </Button>

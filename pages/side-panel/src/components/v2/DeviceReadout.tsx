@@ -39,6 +39,12 @@ export interface DeviceReadoutModel {
  * `Connected` (2) is deliberately *not* green: the device is on the wire but
  * not yet paired, so no address exists and nothing can be signed. Showing green
  * there would promise more than the transport can deliver.
+ *
+ * `Errored` (4) is set for three different causes: the KeepKey Vault's local
+ * endpoint doesn't answer, the Vault is up but there is no device and no cached
+ * pubkeys, or wallet init failed (e.g. the Vault rejected our pairing). The
+ * state alone can't tell them apart, so the readout names none of them as fact
+ * and the hint covers all three.
  */
 export function deviceReadout(state: number | null, deviceLabel?: string): DeviceReadoutModel {
   // The design shows a real device id ("KK-2A91 · ONLINE"). Until the
@@ -67,17 +73,17 @@ export function deviceReadout(state: number | null, deviceLabel?: string): Devic
       return { ...gold, label: tag('PAIRING'), title: 'Device found — pairing', ready: false };
     case KeepKeyState.Errored:
       return {
-        label: tag('ERROR'),
+        label: 'OFFLINE',
         color: tokens.bad,
         glow: 'none',
         pulsing: false,
-        title: 'Device error — unplug your KeepKey and plug it back in',
+        title: 'KeepKey unavailable — check the KeepKey Vault app is running and your device is plugged in and paired',
         ready: false,
       };
     case KeepKeyState.Disconnected:
-      return { ...dim, label: 'NO DEVICE', title: 'No KeepKey connected — click to connect', ready: false };
+      return { ...dim, label: 'NO DEVICE', title: 'No KeepKey connected', ready: false };
     default:
-      return { ...gold, label: 'SEARCHING USB', title: 'Looking for your KeepKey', ready: false };
+      return { ...gold, label: 'CONNECTING', title: 'Looking for your KeepKey', ready: false };
   }
 }
 
@@ -94,7 +100,7 @@ export const DeviceReadout = ({ state, deviceLabel, onClick }: DeviceReadoutProp
     <Button
       onClick={onClick}
       title={m.title}
-      aria-label={m.title}
+      aria-label="Home"
       variant="unstyled"
       display="flex"
       alignItems="center"

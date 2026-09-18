@@ -62,6 +62,11 @@ const keycapBase = {
   border: 0,
   transform: 'translateY(0)',
   transition: `transform 90ms ease, box-shadow 90ms ease, filter ${motion.micro} ease`,
+  // A press sinks the key 5px (`_active` in each variant). While held, reach
+  // the hit area back up by that travel: otherwise a press near the top edge
+  // ends with the pointer above the moved key, mouseup lands on the parent and
+  // the click is dropped. (Chakra's Button is already position: relative.)
+  '&:active::before': { content: '""', position: 'absolute', top: '-5px', left: 0, right: 0, bottom: 0 },
 };
 
 export const theme = extendTheme({

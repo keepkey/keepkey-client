@@ -503,8 +503,8 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
           );
         })()}
 
-      {/* QR Code with Logo */}
-      <Box bg="white" p={4} borderRadius="xl" boxShadow="lg">
+      {/* QR Code with Logo — centred; the column stretches its other rows */}
+      <Box bg="white" p={4} borderRadius="xl" boxShadow="lg" alignSelf="center">
         {qrCodeDataUrl ? (
           <Image src={qrCodeDataUrl} alt="QR Code" boxSize="200px" />
         ) : (
@@ -515,10 +515,12 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
       </Box>
 
       {/* Address type — a segmented row, not a dropdown (design: Receive).
-          A UTXO chain has at most three script types; laying them out flat
+          One UTXO account has up to three script types; laying them out flat
           shows which are available and which is active without a tap, and
-          removes the third popover on this screen. */}
-      {pubkeys.length > 1 && (
+          removes the third popover on this screen. BTC ships seven paths
+          across four accounts, which a row can't hold — past three they
+          stack as a list with each address. */}
+      {pubkeys.length > 1 && pubkeys.length <= 3 && (
         <Box
           w="full"
           display="grid"
@@ -546,6 +548,38 @@ export function Receive({ onClose, balances = [] }: ReceiveProps) {
                 cursor="pointer"
                 transition="color .15s ease, border-color .15s ease">
                 {getAddressType(pubkey, index)}
+              </Box>
+            );
+          })}
+        </Box>
+      )}
+      {pubkeys.length > 3 && (
+        <Box w="full" borderTop="1px solid" borderColor="kk.line">
+          {pubkeys.map((pubkey, index) => {
+            const addr = addressForPubkey(pubkey);
+            const isActive = !!selectedAddress && selectedAddress === addr;
+            return (
+              <Box
+                as="button"
+                key={pubkey.note || index}
+                onClick={() => handleAccountSelect(pubkey, index)}
+                display="block"
+                w="full"
+                py={2}
+                px={1}
+                border={0}
+                borderBottom="1px solid"
+                borderColor="kk.line"
+                background={isActive ? 'kk.surface' : 'transparent'}
+                textAlign="left"
+                cursor="pointer"
+                _hover={{ bg: 'kk.surfaceHi' }}>
+                <Text fontSize="12px" fontWeight={500} color={isActive ? 'kk.text' : 'kk.faint'}>
+                  {getAddressType(pubkey, index)}
+                </Text>
+                <Text className="mono" fontSize="12px" color={isActive ? 'kk.text' : 'kk.dim'}>
+                  {addr ? formatAddress(addr) : '…'}
+                </Text>
               </Box>
             );
           })}
