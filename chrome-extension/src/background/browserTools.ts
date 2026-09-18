@@ -365,9 +365,13 @@ async function screenshot(tab: chrome.tabs.Tab, quality: number): Promise<Conten
   // Chrome can only capture the ACTIVE tab of a window, so focus it first. This
   // is a visible side effect and is called out in the tool description.
   if (!tab.active && tab.id != null) await chrome.tabs.update(tab.id, { active: true });
-  // Hide the agent overlay so it doesn't land in the capture; best-effort (the
-  // page may have no content script). It resolves after a painted frame.
-  if (tab.id != null) await dom(tab.id, 'overlay', { show: false }).catch(() => {});
+  // Hide the agent overlay so it doesn't land in the capture. This is also the
+  // transparency check: reaching the content script is what proves the tab CAN
+  // show the driving indicator. It cannot, we don't capture — a silent
+  // screenshot of a page the user has no indication we are reading is exactly
+  // what the contract forbids. (dom() throws no_content_script here; the
+  // remedy is the same page reload it already tells the user about.)
+  if (tab.id != null) await dom(tab.id, 'overlay', { show: false });
   let dataUrl: string;
   try {
     dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId!, { format: 'jpeg', quality });
@@ -397,7 +401,53 @@ export function isBrowserTool(name: string): boolean {
   return BROWSER_TOOLS.some(t => t.name === name);
 }
 
+/**
+ * The transparency contract: if MCP touches a page, the page says so.
+ *
+ * Caption shown in the page overlay before the tool runs. Every browser tool
+ * must appear HERE or in NO_ANNOUNCE — announceContract.test.ts fails the build
+ * otherwise, so a tool added later cannot silently become invisible.
+ */
+export const ANNOUNCE_CAPTIONS: Record<string, string> = {
+  bex_snapshot: 'reading page structure',
+  bex_find: 'searching page',
+  bex_read_page: 'reading page text',
+  bex_console: 'reading console',
+  bex_network: 'reading network activity',
+  bex_perf: 'reading performance data',
+  bex_storage: 'reading local storage',
+  bex_screenshot: 'capturing screenshot',
+};
+
+/** Tools that need no announce, each with the reason it is exempt. */
+export const NO_ANNOUNCE: Record<string, string> = {
+  bex_panel: 'is the transparency UI itself',
+  bex_tabs: 'browser-level; touches no page content',
+  bex_navigate: 'self-evident — the user watches their tab move',
+  bex_bring_to_front: 'self-evident — the user watches their window raise',
+  bex_click: 'announced page-side by showThen(), which also points at the target',
+  bex_type: 'announced page-side by showThen(), which also points at the target',
+  bex_select: 'announced page-side by showThen(), which also points at the target',
+};
+
+/**
+ * Raise the page overlay before a tool runs. Never throws: a tab that cannot
+ * show the indicator is handled by each tool (bex_screenshot refuses), not by
+ * failing every read here.
+ */
+async function announce(tool: string, args: any): Promise<void> {
+  const caption = ANNOUNCE_CAPTIONS[tool];
+  if (!caption) return;
+  try {
+    const tab = await resolveTab(args?.tabId);
+    if (tab.id != null) await dom(tab.id, 'announce', { kind: caption });
+  } catch {
+    /* no content script, or the tab vanished — never block the tool on the UI */
+  }
+}
+
 export async function executeBrowserTool(tool: string, args: any): Promise<any> {
+  await announce(tool, args);
   switch (tool) {
     case 'bex_tabs': {
       const action = args?.action ?? 'list';

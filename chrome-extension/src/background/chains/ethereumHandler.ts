@@ -20,6 +20,7 @@ import * as wallet from '../wallet';
 import { buildFeeWarning, getFeeFloor, getPriorityFeeFloor, type FeeChoice, type FeeWarning } from './feeFloors';
 import { openSidePanel, setApprovalBadge } from '../popup';
 import { getChainInfo, makeStaticProvider } from './registry';
+import { isTransientRpcError } from './rpcFailover';
 import { getLastResortRpcs } from './lastResortRpcs';
 
 const TAG = ' | ethereumHandler | ';
@@ -1611,50 +1612,6 @@ async function getCandidateRpcs(): Promise<{
 }
 
 /**
- * Heuristic: is this RPC error worth retrying against a different URL?
- * Used by withRpcFailover (read calls). Broadcast has its own
- * classifier because it has additional tx-level definitive cases
- * (insufficient funds, nonce too low, etc.).
- *
- * Includes "method-rejection" patterns because narrow-purpose RPCs in
- * Pioneer's catalog (Flashbots' rpc.flashbots.net is the canonical
- * example — only supports eth_sendRawTransaction / eth_chainId /
- * eth_blockNumber, rejects everything else with HTTP 403 + JSON-RPC
- * code -32601 "rpc method is not whitelisted") would otherwise be
- * sticky: their pre-flight `getBlockNumber()` test passes, so they get
- * picked first on every read, and every read fails 403. Treating the
- * rejection as transient lets the loop blacklist them for 60s and try
- * the next URL.
- */
-const isTransientRpcError = (errMsg: string): boolean => {
-  const m = errMsg.toLowerCase();
-  return (
-    m.includes('rate limit') ||
-    m.includes('throttle') ||
-    m.includes('429') ||
-    m.includes('timeout') ||
-    m.includes('econnreset') ||
-    m.includes('etimedout') ||
-    m.includes('network') ||
-    m.includes('server_error') ||
-    m.includes('exceeded maximum retry') ||
-    /\b5\d{2}\b/.test(m) || // 5xx HTTP code
-    // Method-rejection: this URL doesn't support this method. Try next.
-    m.includes('rpc method is not whitelisted') ||
-    m.includes('method not found') ||
-    m.includes('method not supported') ||
-    m.includes('method does not exist') ||
-    m.includes('-32601') ||
-    // Narrow to ethers' transport-level wrapper text. A bare `.includes('403')`
-    // would misfire on revert reasons or hex payloads that happen to
-    // contain "403", causing a successfully-rejected eth_call to be
-    // replayed across every URL and pointlessly cool them all.
-    m.includes('server response 403') ||
-    m.includes('http 403')
-  );
-};
-
-/**
  * Run a read-style RPC call across the failover candidate list. Used
  * for preflight calls (nonce, gas estimate, fee data) where any working
  * RPC will do. Definitive errors (revert, invalid params, ABI errors)
@@ -1683,7 +1640,10 @@ async function withRpcFailover<T>(
       const errMsg = String(e?.message || e);
       if (!isTransientRpcError(errMsg)) {
         // Definitive (revert, invalid params, etc.) — won't help to
-        // try another RPC. Surface to caller.
+        // try another RPC. Surface to caller. Log the URL first: this
+        // branch used to throw silently while the transient branch below
+        // logged, so an RPC failure left no trace and got misdiagnosed.
+        console.error(tag, `RPC ${url} definitive failure, aborting failover:`, errMsg);
         throw e;
       }
       console.warn(tag, `RPC ${url} transient failure, trying next:`, errMsg);

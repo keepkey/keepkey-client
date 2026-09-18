@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { Flex, Text, Box, Icon, IconButton, Badge, Button, useToast, useOutsideClick } from '@chakra-ui/react';
+import { Flex, Text, Box, Icon, IconButton, Button, useToast, useOutsideClick } from '@chakra-ui/react';
 import { ChevronDownIcon, ChevronUpIcon, CopyIcon, CheckIcon, AddIcon, SmallCloseIcon } from '@chakra-ui/icons';
 import type { AccountItem } from './headerTypes';
 import { formatAddress } from './headerUtils';
+import BottomSheet from '../v2/BottomSheet';
 
 interface AccountDropdownProps {
   accounts: AccountItem[];
@@ -93,60 +94,53 @@ const AccountDropdown: React.FC<AccountDropdownProps> = ({
         {hasMultiple && <Icon as={isExpanded ? ChevronUpIcon : ChevronDownIcon} boxSize={3} ml={1} color="kk.dim" />}
       </Flex>
 
-      {/* Dropdown panel — conditionally rendered (no Collapse wrapper: an
-          absolutely-positioned child reports zero height to Collapse, which
-          then clamps overflow and breaks the panel's own scroll). */}
-      {isExpanded && (
-        <Box
-          position="absolute"
-          top="100%"
-          right={0}
-          mt={1}
-          zIndex={10}
-          borderRadius="md"
-          border="1px solid"
-          borderColor="kk.lineHi"
-          bg="kk.surface"
-          maxH="calc(100vh - 84px)"
-          minW="180px"
-          overflowY="auto"
-          overscrollBehavior="contain"
-          sx={{
-            '&::-webkit-scrollbar': { width: '4px' },
-            '&::-webkit-scrollbar-thumb': { bg: 'whiteAlpha.300', borderRadius: '2px' },
-          }}>
-          {accounts.map(account => (
+      {/* Switcher is a bottom sheet, not a popover (KEEPKEY_STYLE.md §0).
+          A 400px panel has nowhere to put an anchored popover: right-aligned
+          it clipped off the panel edge. The sheet gets the full width. */}
+      <BottomSheet isOpen={isExpanded} title="Accounts" onClose={() => setIsExpanded(false)}>
+        {accounts.map(account => {
+          const isSelected = selectedAccountKey === account.key;
+          return (
             <Flex
               key={account.key}
               alignItems="center"
-              px={3}
-              py={2}
+              gap={3}
+              width="100%"
+              px={2}
+              py={3}
+              borderRadius="10px"
               cursor="pointer"
-              bg={selectedAccountKey === account.key ? 'kk.surfaceHi' : 'transparent'}
               _hover={{ bg: 'kk.surfaceHi' }}
               transition="background 0.1s"
-              onClick={() => handleSelect(account)}
-              borderBottom="1px solid"
-              borderColor="kk.line">
+              onClick={() => handleSelect(account)}>
+              <Flex
+                flex="none"
+                w="28px"
+                h="28px"
+                borderRadius="50%"
+                border="1px solid"
+                borderColor="kk.lineHi"
+                alignItems="center"
+                justifyContent="center"
+                className="mono"
+                fontSize="12px"
+                color="kk.accent">
+                {account.accountIndex ?? 0}
+              </Flex>
               <Box flex={1} minW={0}>
-                <Flex alignItems="center" gap={1}>
-                  <Text fontSize="xs" color="kk.text" isTruncated>
+                <Flex alignItems="center" gap={2}>
+                  <Text fontSize="14px" fontWeight={500} color={isSelected ? 'kk.accent' : 'kk.text'} isTruncated>
                     {account.label}
                   </Text>
                   {account.isDefault && (
-                    <Badge fontSize="0.5rem" bg="kk.surfaceHi" color="kk.dim" variant="subtle" px={1}>
+                    <Text className="kk-eyebrow" fontSize="9px">
                       Default
-                    </Badge>
+                    </Text>
                   )}
                 </Flex>
-                <Text fontSize="xs" fontFamily="mono" color="kk.dim" isTruncated>
-                  {formatAddress(account.address)}
+                <Text fontSize="11px" fontFamily="mono" color="kk.faint" mt="2px" isTruncated>
+                  {account.path || formatAddress(account.address)}
                 </Text>
-                {account.path && (
-                  <Text fontSize="0.6rem" fontFamily="mono" color="kk.faint" isTruncated>
-                    {account.path}
-                  </Text>
-                )}
               </Box>
               {/* Remove button for non-default accounts. Gate on accountIndex > 0
                   (not just !isDefault): a UTXO chain's account 0 has multiple
@@ -159,12 +153,10 @@ const AccountDropdown: React.FC<AccountDropdownProps> = ({
                   aria-label={`Remove account ${account.accountIndex}`}
                   size="xs"
                   variant="ghost"
-                  colorScheme="red"
                   onClick={e => {
                     e.stopPropagation();
                     onRemoveAccount(account.accountIndex!);
                   }}
-                  ml={1}
                 />
               )}
               <IconButton
@@ -172,44 +164,33 @@ const AccountDropdown: React.FC<AccountDropdownProps> = ({
                 aria-label="Copy address"
                 size="xs"
                 variant="ghost"
-                colorScheme={copiedKey === account.key ? 'green' : 'gray'}
+                color={copiedKey === account.key ? 'kk.good' : undefined}
                 onClick={e => {
                   e.stopPropagation();
                   handleCopy(account.address, account.key);
                 }}
-                ml={1}
               />
+              {isSelected && <CheckIcon boxSize={3} color="kk.accent" />}
             </Flex>
-          ))}
+          );
+        })}
 
-          {/* Add Account button (ETH only) */}
-          {canAddAccount && onAddAccount && (
-            <Flex
-              alignItems="center"
-              justifyContent="center"
-              px={3}
-              py={2}
-              cursor="pointer"
-              _hover={{ bg: 'kk.surfaceHi' }}
-              borderTop="1px solid"
-              borderColor="kk.line">
-              <Button
-                size="xs"
-                variant="ghost"
-                color="kk.accent"
-                leftIcon={<AddIcon boxSize={2} />}
-                fontSize="xs"
-                isLoading={isAddingAccount}
-                onClick={e => {
-                  e.stopPropagation();
-                  onAddAccount();
-                }}>
-                Add Account
-              </Button>
-            </Flex>
-          )}
-        </Box>
-      )}
+        {canAddAccount && onAddAccount && (
+          <Button
+            variant="ghost"
+            width="100%"
+            justifyContent="flex-start"
+            height="52px"
+            px={2}
+            color="kk.dim"
+            fontSize="13px"
+            leftIcon={<AddIcon boxSize={2.5} />}
+            isLoading={isAddingAccount}
+            onClick={onAddAccount}>
+            Add account
+          </Button>
+        )}
+      </BottomSheet>
     </Box>
   );
 };

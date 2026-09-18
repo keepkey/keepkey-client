@@ -99,12 +99,12 @@ const TxidPage = ({ txHash, explorerUrl, onClose }: { txHash: string; explorerUr
 
           <Flex direction="column" gap={2}>
             {explorerUrl && (
-              <Button onClick={handleExplorerClick} colorScheme="teal" size="md" w="100%">
+              <Button onClick={handleExplorerClick} variant="solid" size="md" w="100%">
                 View on Explorer
               </Button>
             )}
 
-            <Button onClick={handleClose} colorScheme="gray" size="md" variant="outline" w="100%">
+            <Button onClick={handleClose} variant="keycapSecondary" size="md" w="100%">
               Close
             </Button>
           </Flex>

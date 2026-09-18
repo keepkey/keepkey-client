@@ -243,10 +243,10 @@ const History: React.FC<HistoryProps> = ({ transactionContext }) => {
                       <Button onClick={() => console.log('Open transaction')} size="sm">
                         Open
                       </Button>
-                      <Button variant="ghost" onClick={() => console.log('Broadcast transaction')} size="sm">
+                      <Button variant="outline" onClick={() => console.log('Broadcast transaction')} size="sm">
                         Broadcast
                       </Button>
-                      <Button variant="ghost" onClick={() => window.open(event.siteUrl, '_blank')} size="sm">
+                      <Button variant="outline" onClick={() => window.open(event.siteUrl, '_blank')} size="sm">
                         External
                       </Button>
                       <Tooltip label="View Raw JSON" aria-label="View Raw JSON">

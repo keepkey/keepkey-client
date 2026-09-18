@@ -423,7 +423,7 @@ export function Transfer(): JSX.Element {
             </VStack>
           </ModalBody>
           <ModalFooter gap={3}>
-            <Button variant="ghost" onClick={onClose} color="kk.text">
+            <Button variant="outline" onClick={onClose} color="kk.text">
               Cancel
             </Button>
             <Button onClick={handleSend} isLoading={isSubmitting}>

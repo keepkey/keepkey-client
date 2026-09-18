@@ -148,10 +148,10 @@ export function UtxoTransaction({ transaction: initialTransaction, handleRespons
           </Tabs>
           <Divider />
           <Flex justifyContent="center" alignItems="center">
-            <Button colorScheme="green" onClick={() => handleResponse('accept')} mr={2}>
+            <Button variant="solid" onClick={() => handleResponse('accept')} mr={2}>
               Approve
             </Button>
-            <Button colorScheme="red" onClick={() => handleResponse('reject')}>
+            <Button variant="keycapSecondary" onClick={() => handleResponse('reject')}>
               Reject
             </Button>
           </Flex>

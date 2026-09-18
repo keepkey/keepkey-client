@@ -181,7 +181,7 @@ export function SwapReview({
 
       <div style={{ flex: 1, minHeight: 6 }} />
 
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <PrimaryBtn T={T} ghost onClick={onBack} icon={<Icon d={I.left} size={13} />}>
           Back
         </PrimaryBtn>

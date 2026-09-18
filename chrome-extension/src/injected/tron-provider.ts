@@ -30,6 +30,7 @@
  */
 
 import type { ChainType } from './types';
+import { toProviderError } from './provider-error';
 
 type WalletRequestFn = (
   method: string,
@@ -122,7 +123,7 @@ class EventEmitter {
 function promisifyRequest(walletRequest: WalletRequestFn, method: string, params: any[]): Promise<any> {
   return new Promise((resolve, reject) => {
     walletRequest(method, params, 'tron', (error, result) => {
-      if (error) reject(error);
+      if (error) reject(toProviderError(error, `${method} failed`));
       else resolve(result);
     });
   });

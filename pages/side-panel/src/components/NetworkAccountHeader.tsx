@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Flex, Text, Box, IconButton, Tooltip, useToast, useDisclosure } from '@chakra-ui/react';
+import { Flex, Box, IconButton, useToast, useDisclosure } from '@chakra-ui/react';
+import DeviceReadout from './v2/DeviceReadout';
 import { SettingsIcon, RepeatIcon } from '@chakra-ui/icons';
 import { NetworkIdToChain } from '@extension/shared';
 
 import type { NetworkItem, AccountItem, CustomEvmNetwork, NetworkAccountHeaderProps } from './header/headerTypes';
-import { stateNames } from './header/headerConstants';
 import { getChainFamily, buildNetworkList, buildAccountList, supportsMultiAccount } from './header/headerUtils';
 import NetworkDropdown from './header/NetworkDropdown';
 import AccountDropdown from './header/AccountDropdown';
@@ -325,74 +325,21 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
     [fetchPubkeys, toast],
   );
 
-  // The shield badge encodes BOTH home-button and device status: its gradient
-  // tints to green when paired, red when errored, gold (brand default) while
-  // transient. One glyph, two jobs — no duplicate status indicator elsewhere.
-  const shieldStatus = isPaired
-    ? {
-        tooltip: stateNames[5],
-        gradient: 'linear-gradient(135deg, #57ce51 0%, #1f7e24 100%)',
-        edge: 'rgba(87,206,81,0.36)',
-        pulse: false,
-      }
-    : keepkeyState === 4
-      ? {
-          tooltip: stateNames[4],
-          gradient: 'linear-gradient(135deg, #e56a4d 0%, #8a2a18 100%)',
-          edge: 'rgba(229,106,77,0.36)',
-          pulse: false,
-        }
-      : {
-          tooltip: 'connecting…',
-          gradient: 'linear-gradient(135deg, #d29929 0%, #6d4a13 100%)',
-          edge: 'rgba(210,153,41,0.36)',
-          pulse: true,
-        };
-
   return (
     <Box mb={2}>
       <Flex alignItems="center" justifyContent="space-between" gap={2}>
-        {/* Left: shield-badge = home button AND device-status indicator */}
-        <Tooltip label={shieldStatus.tooltip} placement="bottom" hasArrow>
-          <span>
-            <ShieldBadge
-              onClick={onHome}
-              gradient={shieldStatus.gradient}
-              edge={shieldStatus.edge}
-              pulse={shieldStatus.pulse}
-            />
-          </span>
-        </Tooltip>
+        {/* Left: device readout = home button AND device-status indicator.
+            v2 retires the gradient shield (KEEPKEY_STYLE.md §0) — an 8px LED
+            plus a mono label says which device and what state in one line,
+            and leaves the header room for the chain/account pills. */}
+        <DeviceReadout state={keepkeyState} onClick={onHome} />
 
-        {/* Center: Network + Account dropdowns when ready, wordmark otherwise */}
-        {isPaired && hasAssetContext && networks.length > 0 ? (
-          <Flex flex={1} alignItems="center" justifyContent="center" gap={2} minW={0}>
-            <NetworkDropdown
-              networks={networks}
-              selectedNetworkId={selectedNetworkId}
-              onSelect={handleNetworkSelect}
-              onAddNetwork={onNetworkModalOpen}
-              onRemoveNetwork={handleRemoveNetwork}
-            />
-            <AccountDropdown
-              accounts={accounts}
-              selectedAccountKey={selectedAccountKey}
-              onSelect={handleAccountSelect}
-              canAddAccount={canAddAccount}
-              onAddAccount={handleAddAccount}
-              isAddingAccount={isAddingAccount}
-              onRemoveAccount={canAddAccount ? handleRemoveAccount : undefined}
-            />
-          </Flex>
-        ) : (
-          <Flex flex={1} alignItems="center" justifyContent="center">
-            <Text fontSize="sm" fontWeight={700} color="kk.text" letterSpacing="-0.1px">
-              KeepKey
-            </Text>
-          </Flex>
-        )}
+        {/* Spacer — the header is `minmax(0,1fr) auto` (readout | icons). The
+            chain/account pills deliberately do NOT live here; see the sub-bar
+            below. */}
+        <Box flex={1} minW={0} />
 
-        {/* Right: refresh + settings (status lives in the left shield now) */}
+        {/* Right: refresh + settings (status lives in the left readout now) */}
         <Flex alignItems="center" gap={1}>
           <IconButton
             icon={<RepeatIcon />}
@@ -412,57 +359,45 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
         </Flex>
       </Flex>
 
+      {/* Sub-bar: chain + account (KEEPKEY_STYLE.md §0 / design "Dashboard").
+          These sit on their own 40px row rather than in the 56px header —
+          readout, two pills and two icon buttons on one line leaves the
+          readout fighting for width at 400px, and the pills are context for
+          the screen below, not for the device. Account sits left and chain
+          right, matching the design. */}
+      {isPaired && hasAssetContext && networks.length > 0 && (
+        <Flex
+          alignItems="center"
+          justifyContent="space-between"
+          gap={2}
+          height="40px"
+          mt={1}
+          borderTop="1px solid"
+          borderColor="kk.line"
+          minW={0}>
+          <AccountDropdown
+            accounts={accounts}
+            selectedAccountKey={selectedAccountKey}
+            onSelect={handleAccountSelect}
+            canAddAccount={canAddAccount}
+            onAddAccount={handleAddAccount}
+            isAddingAccount={isAddingAccount}
+            onRemoveAccount={canAddAccount ? handleRemoveAccount : undefined}
+          />
+          <NetworkDropdown
+            networks={networks}
+            selectedNetworkId={selectedNetworkId}
+            onSelect={handleNetworkSelect}
+            onAddNetwork={onNetworkModalOpen}
+            onRemoveNetwork={handleRemoveNetwork}
+          />
+        </Flex>
+      )}
+
       {/* Add Network Modal */}
       <AddNetworkModal isOpen={isNetworkModalOpen} onClose={onNetworkModalClose} onSubmit={handleAddNetwork} />
     </Box>
   );
 };
-
-// Gradient shield tile — acts as home button AND device-status indicator.
-// Tint comes from the active state (gold / green / red); a soft pulse plays
-// while we're still figuring out the state so the user sees "thinking…".
-const ShieldBadge = ({
-  onClick,
-  gradient,
-  edge,
-  pulse,
-}: {
-  onClick?: () => void;
-  gradient: string;
-  edge: string;
-  pulse?: boolean;
-}) => (
-  <Flex
-    as={onClick ? 'button' : 'div'}
-    onClick={onClick}
-    aria-label={onClick ? 'Home' : undefined}
-    w="32px"
-    h="32px"
-    flexShrink={0}
-    borderRadius="8px"
-    alignItems="center"
-    justifyContent="center"
-    bgImage={gradient}
-    boxShadow={`0 0 0 1px ${edge}, inset 0 1px 0 rgba(255,255,255,0.25), 0 0 14px -4px ${edge}`}
-    cursor={onClick ? 'pointer' : 'default'}
-    transition="filter 0.15s, transform 0.15s, box-shadow 0.3s"
-    sx={pulse ? { animation: 'kk-badge-pulse 1.4s ease-in-out infinite' } : undefined}
-    _hover={onClick ? { filter: 'brightness(1.1)' } : {}}
-    _active={onClick ? { transform: 'scale(0.95)' } : {}}>
-    <style>{`@keyframes kk-badge-pulse { 0%,100% { opacity: 0.7 } 50% { opacity: 1 } }`}</style>
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="#0b0d10"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round">
-      <path d="M12 3l7 3v6c0 4.5-3 7.5-7 8-4-.5-7-3.5-7-8V6l7-3z" />
-      <path d="M9 12l2 2 4-4" />
-    </svg>
-  </Flex>
-);
 
 export default NetworkAccountHeader;

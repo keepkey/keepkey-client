@@ -1,27 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Flex, Box, Text, Card, Stack, HStack, Skeleton, SkeletonCircle } from '@chakra-ui/react';
+import { Flex, Box, Text, Stack } from '@chakra-ui/react';
+import { AddIcon } from '@chakra-ui/icons';
 import { AssetIcon } from './AssetIcon';
+import { HairlineRow, SkeletonRows } from './v2/primitives';
+import { getChainDisplayName } from './chainDisplay';
 import { SpinningDevice } from './SpinningDevice';
 import AssetSelect from './AssetSelect';
-import { COIN_MAP_LONG, NetworkIdToChain } from '@extension/shared';
-
-const getChainDisplayName = (networkId: string): string => {
-  if (networkId?.includes('eip155:1/')) return 'Ethereum';
-  if (networkId?.includes('eip155:8453')) return 'Base';
-  if (networkId?.includes('eip155:4663')) return 'Robinhood Chain';
-  if (networkId?.includes('eip155:137')) return 'Polygon';
-  if (networkId?.includes('eip155:43114')) return 'Avalanche';
-  if (networkId?.includes('eip155:56')) return 'BSC';
-  if (networkId?.includes('eip155:10')) return 'Optimism';
-  if (networkId?.includes('eip155:42161')) return 'Arbitrum';
-  if (networkId?.includes('bip122:000000000019d6689c085ae165831e93')) return 'Bitcoin';
-  if (networkId?.includes('hive:')) return 'Hive';
-  if (networkId?.includes('cosmos:')) return 'Cosmos';
-  if (networkId?.includes('cosmos:thorchain')) return 'THORChain';
-  if (networkId?.includes('cosmos:mayachain')) return 'Maya';
-  const chain = (NetworkIdToChain as any)[networkId?.split('/')[0]];
-  return (COIN_MAP_LONG as any)[chain] || 'Unknown';
-};
 
 interface BalancesProps {
   onSelectAsset: (asset: any) => void;
@@ -110,128 +94,18 @@ const Balances = ({ onSelectAsset, showAddBlockchain, setShowAddBlockchain }: Ba
   }
 
   if (loading) {
-    const SkeletonRow = ({ delay = 0 }: { delay?: number }) => (
-      <Card
-        borderRadius="12px"
-        p={3}
-        mb={1.5}
-        width="100%"
-        bg="kk.surface"
-        border="1px solid"
-        borderColor="kk.line"
-        position="relative"
-        overflow="hidden"
-        sx={{
-          '&::after': {
-            content: '""',
-            position: 'absolute',
-            inset: 0,
-            background:
-              'linear-gradient(90deg, transparent 0%, rgba(56, 178, 172, 0.06) 45%, rgba(56, 178, 172, 0.14) 50%, rgba(56, 178, 172, 0.06) 55%, transparent 100%)',
-            backgroundSize: '200% 100%',
-            animation: 'kk-shimmer 2.2s ease-in-out infinite',
-            animationDelay: `${delay}s`,
-            pointerEvents: 'none',
-          },
-        }}>
-        <Flex align="center" width="100%">
-          <SkeletonCircle size="10" startColor="whiteAlpha.100" endColor="whiteAlpha.300" />
-          <Box ml={3} flex="1" minWidth="0">
-            <HStack spacing={2}>
-              <Skeleton
-                height="14px"
-                width="60px"
-                borderRadius="sm"
-                startColor="whiteAlpha.100"
-                endColor="whiteAlpha.300"
-              />
-              <Skeleton
-                height="14px"
-                width="44px"
-                borderRadius="full"
-                startColor="whiteAlpha.100"
-                endColor="whiteAlpha.200"
-              />
-            </HStack>
-            <Skeleton
-              mt={2}
-              height="12px"
-              width="96px"
-              borderRadius="sm"
-              startColor="whiteAlpha.100"
-              endColor="whiteAlpha.300"
-            />
-          </Box>
-          <Flex direction="column" align="flex-end" minW="80px">
-            <Skeleton
-              height="14px"
-              width="56px"
-              borderRadius="sm"
-              startColor="whiteAlpha.100"
-              endColor="whiteAlpha.300"
-            />
-          </Flex>
-        </Flex>
-      </Card>
-    );
-
+    // v2 loading state (KEEPKEY_STYLE.md §5, §6): the device hero keeps the
+    // wait honest — it is the thing being read from — over skeletons that
+    // share the real rows' geometry, so nothing shifts when balances land.
+    // The shimmer keyframes are global (index.css); redefining them here at a
+    // different duration would silently override the spec'd 1.4s linear.
     return (
-      <Flex direction="column" width="100%" flex="1" position="relative" overflow="hidden">
-        <style>{`
-          @keyframes kk-shimmer {
-            0% { background-position: -200% 0; }
-            100% { background-position: 200% 0; }
-          }
-          @keyframes kk-breathe {
-            0%, 100% { opacity: 0.035; transform: scale(1); }
-            50% { opacity: 0.07; transform: scale(1.02); }
-          }
-          @keyframes kk-text-fade {
-            0%, 100% { opacity: 0.45; letter-spacing: 0.25em; }
-            50% { opacity: 0.85; letter-spacing: 0.35em; }
-          }
-        `}</style>
-
-        {/* Subtle KK watermark behind everything */}
-        <Box
-          position="absolute"
-          inset={0}
-          pointerEvents="none"
-          display="flex"
-          alignItems="center"
-          justifyContent="center"
-          sx={{ animation: 'kk-breathe 4s ease-in-out infinite' }}>
-          <Box
-            as="img"
-            src={chrome.runtime.getURL('kk-logo.png')}
-            alt=""
-            width="200px"
-            borderRadius="2xl"
-            filter="grayscale(1) brightness(1.4) contrast(0.9)"
-          />
-        </Box>
-
-        {/* Hero spinner above the skeletons */}
-        <Flex direction="column" align="center" gap={3} pt={2} pb={5} position="relative" zIndex={2}>
+      <Flex direction="column" width="100%" flex="1" overflow="hidden">
+        <Flex direction="column" align="center" gap={3} pt={2} pb={5}>
           <SpinningDevice scale={0.36} durationSeconds={11} label="FETCHING" />
-          <Text
-            color="whiteAlpha.700"
-            fontSize="xs"
-            textTransform="uppercase"
-            fontWeight="medium"
-            sx={{ animation: 'kk-text-fade 2.2s ease-in-out infinite' }}>
-            Fetching balances
-          </Text>
+          <Text className="kk-eyebrow">Fetching balances</Text>
         </Flex>
-
-        {/* Skeleton rows matching the real asset card layout */}
-        <Stack width="100%" position="relative" zIndex={1}>
-          <SkeletonRow delay={0} />
-          <SkeletonRow delay={0.15} />
-          <SkeletonRow delay={0.3} />
-          <SkeletonRow delay={0.45} />
-          <SkeletonRow delay={0.6} />
-        </Stack>
+        <SkeletonRows count={5} />
       </Flex>
     );
   }
@@ -306,76 +180,48 @@ const Balances = ({ onSelectAsset, showAddBlockchain, setShowAddBlockchain }: Ba
               const { integer, largePart, smallPart } = formatBalance(totalBalance);
               const chainName = getChainDisplayName(asset.networkId);
 
+              // v2 rows (KEEPKEY_STYLE.md §0): 60px, 28px logo, hairline
+              // divider, no card. The chain name only earns a place in the
+              // sub-line when it differs from the asset name — on an L2 the
+              // shared "ETH" ticker is otherwise ambiguous (§5).
+              const qty = `${integer}.${largePart}${largePart === '0000' ? smallPart : ''}`;
+              const subtitle =
+                chainName && chainName !== asset.name
+                  ? `${qty} ${asset.symbol} · ${chainName}`
+                  : `${qty} ${asset.symbol}`;
+
               return (
-                <Card
-                  key={index}
-                  borderRadius="12px"
-                  p={3}
-                  mb={1.5}
-                  width="100%"
-                  bg="kk.surface"
-                  border="1px solid"
-                  borderColor="kk.line"
-                  _hover={{ bg: 'kk.surfaceHi', cursor: 'pointer' }}
+                <HairlineRow
+                  key={asset.caip || asset.networkId || index}
+                  icon={<AssetIcon src={asset.icon} symbol={asset.symbol} size={28} />}
+                  title={asset.name}
+                  subtitle={subtitle}
+                  value={`$${formatUsd(totalUsdValue.toString())}`}
+                  delayMs={index * 50}
                   onClick={() => onSelectAsset(asset)}
-                  transition="background 0.15s">
-                  <Flex align="center" width="100%" gap={3}>
-                    <AssetIcon src={asset.icon} symbol={asset.symbol} size={32} />
-                    <Box flex="1" minWidth="0">
-                      <Flex align="center" gap={2}>
-                        <Text fontWeight={600} fontSize="sm" isTruncated color="kk.text">
-                          {asset.name}
-                        </Text>
-                        <Text
-                          as="span"
-                          fontSize="10px"
-                          px="6px"
-                          py="1px"
-                          borderRadius="full"
-                          bg="whiteAlpha.100"
-                          color="kk.faint"
-                          letterSpacing="0.04em">
-                          {chainName}
-                        </Text>
-                      </Flex>
-                      <HStack spacing={1} mt="2px">
-                        <Text fontSize="xs" color="kk.dim" className="mono">
-                          {integer}.{largePart}
-                          {largePart === '0000' && (
-                            <Text as="span" color="kk.faint">
-                              {smallPart}
-                            </Text>
-                          )}
-                        </Text>
-                        <Text as="span" color="kk.faint" fontSize="xs">
-                          {asset.symbol}
-                        </Text>
-                      </HStack>
-                    </Box>
-                    <Text fontWeight={600} color="kk.text" fontSize="sm" whiteSpace="nowrap">
-                      ${formatUsd(totalUsdValue.toString())}
-                    </Text>
-                  </Flex>
-                </Card>
+                />
               );
             })}
 
-            <Flex
-              align="center"
-              justify="center"
-              gap={1.5}
-              p={3}
-              mt={1}
-              borderRadius="12px"
-              border="1px dashed"
-              borderColor="kk.line"
-              _hover={{ borderColor: 'kk.lineHi', cursor: 'pointer' }}
+            <Box
+              as="button"
               onClick={() => setShowAddBlockchain(true)}
-              transition="border-color 0.15s">
-              <Text color="kk.faint" fontSize="xs">
-                + Add blockchain
-              </Text>
-            </Flex>
+              height="48px"
+              border={0}
+              background="transparent"
+              color="kk.faint"
+              fontSize="11px"
+              className="mono"
+              letterSpacing="0.1em"
+              cursor="pointer"
+              display="flex"
+              alignItems="center"
+              gap="8px"
+              padding="0 2px"
+              _hover={{ color: 'kk.accent' }}>
+              <AddIcon boxSize="10px" />
+              <span>ADD A CHAIN</span>
+            </Box>
           </>
         )}
       </Stack>

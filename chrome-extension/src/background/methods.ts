@@ -309,7 +309,7 @@ const routeWalletRequest = async (
     }
 
     // Translate "No device connected" SdkError into user-facing message
-    errorMessage = formatUserError({ message: errorMessage });
+    errorMessage = await formatUserError({ message: errorMessage });
 
     //push error to the popup
     // Forward `kind` so the side panel can render category-specific UI
