@@ -3,7 +3,7 @@
 */
 
 import type { JsonRpcProvider } from 'ethers';
-import { parseEther, Transaction } from 'ethers';
+import { Contract, parseEther, Transaction } from 'ethers';
 import type { ProviderRpcError } from '../utils';
 import { reportActivityToVault } from '../activityReport';
 import { createProviderRpcError } from '../utils';
@@ -20,8 +20,17 @@ import * as wallet from '../wallet';
 import { buildFeeWarning, getFeeFloor, getPriorityFeeFloor, type FeeChoice, type FeeWarning } from './feeFloors';
 import { openSidePanel, setApprovalBadge } from '../popup';
 import { getChainInfo, makeStaticProvider } from './registry';
-import { isTransientRpcError } from './rpcFailover';
+import { isTransientRpcError, withRpcFailoverByNetworkId } from './rpcFailover';
 import { getLastResortRpcs } from './lastResortRpcs';
+import {
+  extractTypedData,
+  permitTokenAddresses,
+  summarizeTypedData,
+  toTokenMeta,
+  withTokenMetadata,
+  type TokenMeta,
+  type TypedDataSummary,
+} from './evmTypedData';
 
 const TAG = ' | ethereumHandler | ';
 const DOMAIN_WHITE_LIST = [];
@@ -734,6 +743,42 @@ const handleEthRequestAccounts = async (ADDRESS: any) => {
   return requestAccounts;
 };
 
+// Symbol/decimals for the tokens a permit names, read from the chain the
+// permit is bound to (via the active provider's URLs when that is the same
+// chain). Each token settles on its own against ONE shared deadline, so a slow
+// RPC delays the approval by at most ~8s and keeps whatever did resolve.
+// Anything unresolved stays unknown: the card shows raw units, never a guess.
+const TOKEN_META_LIMIT = 8;
+const TOKEN_META_DEADLINE_MS = 8000;
+const ERC20_META_ABI = ['function symbol() view returns (string)', 'function decimals() view returns (uint8)'];
+
+const resolveTokenMeta = async (
+  addresses: string[],
+  chainId: string | null,
+  activeChainId: number | null,
+): Promise<Record<string, TokenMeta | null>> => {
+  const onActiveChain = chainId === null || chainId === String(activeChainId);
+  const read = (address: string): Promise<TokenMeta | null> => {
+    const op = async (provider: JsonRpcProvider) => {
+      const token = new Contract(address, ERC20_META_ABI, provider);
+      // symbol() is optional (bytes32 symbols don't decode); decimals() is not.
+      const [symbol, decimals] = await Promise.all([token.symbol().catch(() => null), token.decimals()]);
+      return toTokenMeta(symbol, decimals);
+    };
+    return onActiveChain
+      ? withRpcFailover(op, { tag: TAG + ' permit token meta' })
+      : withRpcFailoverByNetworkId(`eip155:${chainId}`, op);
+  };
+  const wanted = addresses.slice(0, TOKEN_META_LIMIT);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<null>(resolve => {
+    timer = setTimeout(() => resolve(null), TOKEN_META_DEADLINE_MS);
+  });
+  const results = await Promise.all(wanted.map(a => Promise.race([read(a).catch(() => null), deadline])));
+  clearTimeout(timer);
+  return Object.fromEntries(wanted.map((a, i) => [a, results[i]]));
+};
+
 const handleSigningMethods = async (
   method: any,
   params: any,
@@ -806,6 +851,20 @@ const handleSigningMethods = async (
     }
   }
 
+  // Typed data reaches the device as two hashes (EthereumSignTypedHash), so
+  // the approval card is the only readable view: decode it here, as the
+  // vault's hasher will read it (see evmTypedData.ts). A legacy-v1 or
+  // malformed payload is refused before any approval is shown.
+  let typedDataSummary: TypedDataSummary | null = null;
+  if (method.startsWith('eth_signTypedData')) {
+    const extracted = extractTypedData(params);
+    if (!extracted.ok) throw createProviderRpcError(extracted.code, extracted.message);
+    const activeChainId = parseChainId(currentProvider?.chainId);
+    const summary = summarizeTypedData(extracted.typedData, { activeChainId, nowSec: Date.now() / 1000 });
+    const meta = await resolveTokenMeta(permitTokenAddresses(summary), summary.chainId, activeChainId);
+    typedDataSummary = withTokenMetadata(summary, meta);
+  }
+
   const event = {
     id: requestInfo.id,
     networkId,
@@ -823,6 +882,7 @@ const handleSigningMethods = async (
     unsignedTx,
     feeWarning, // null when fees are fine; otherwise side-panel renders the banner
     nonceInfo, // null on non-tx flows; { latest, pending, willReplace } otherwise
+    typedDataSummary, // null except eth_signTypedData*; the card renders it
     type: method,
     request: params,
     status: 'request',
@@ -833,6 +893,7 @@ const handleSigningMethods = async (
   //@ts-expect-error
   const eventSaved = await requestStorage.addEvent(event);
   console.log(tag, 'eventSaved:', eventSaved);
+  if (!eventSaved) throw Error('Failed to create event!');
 
   const result = await requireApproval(networkId, requestInfo, 'ethereum', method, params[0]);
   console.log(tag, 'requireApproval result:', result);
@@ -1385,11 +1446,14 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
 
 const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string, eventId?: string) => {
   const tag = ' | signTypedData | ';
+  // The same extractor the approval summary used, so the device signs the
+  // payload the user was shown. Outside the try: its errors are already
+  // dApp-facing and must not be rewrapped as signing failures.
+  const extracted = extractTypedData(params);
+  if (!extracted.ok) throw createProviderRpcError(extracted.code, extracted.message);
   try {
     console.log(tag, '**** params: ', params);
-    const typedData = params[1];
-    const parsed = typeof typedData === 'string' ? JSON.parse(typedData) : typedData;
-    const { domain, types, message, primaryType } = parsed;
+    const { domain, types, message, primaryType } = extracted.typedData;
     const HDWalletPayload = {
       address: ADDRESS,
       addressNList: getAddressNListForAddress(ADDRESS),
