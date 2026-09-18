@@ -269,7 +269,17 @@ const Transaction = ({
     console.log('transactionType:', transactionType);
     switch (transactionType) {
       case 'evm':
-        return <EvmTransaction transaction={event} reloadEvents={reloadEvents} handleResponse={handleResponse} />;
+        // Keyed here, not on <Transaction>: per-request state (fee choice,
+        // sign-in ack) resets between queued requests, while this component's
+        // in-flight state (device prompt, TxidPage) survives a new request.
+        return (
+          <EvmTransaction
+            key={event.id}
+            transaction={event}
+            reloadEvents={reloadEvents}
+            handleResponse={handleResponse}
+          />
+        );
       case 'tendermint':
         return <TendermintTransaction transaction={event} handleResponse={handleResponse} />;
       case 'utxo':
