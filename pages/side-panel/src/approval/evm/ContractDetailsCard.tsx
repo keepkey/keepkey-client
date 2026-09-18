@@ -108,7 +108,7 @@ export default function ContractDetailsCard({ transaction }: ContractDetailsCard
       </CardHeader>
       <CardBody>
         {!apiResponse && !isLoading && (
-          <Button colorScheme="blue" onClick={handleGetInsight}>
+          <Button variant="outline" onClick={handleGetInsight}>
             Get Smart Insight
           </Button>
         )}

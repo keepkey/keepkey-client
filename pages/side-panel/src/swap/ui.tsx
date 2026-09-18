@@ -3,6 +3,7 @@
 // URL when the asset has one (the design mock had only colored glyphs).
 import React, { useState, useEffect } from 'react';
 import type { SwapTheme } from './theme';
+import { tokens, keycap, fonts } from '../styles/tokens';
 import { Icon, I } from './icons';
 import type { UiAsset } from './types';
 import { getNetworkName } from '../components/header/headerConstants';
@@ -72,7 +73,7 @@ export function TokenGlyph({ asset, size = 36 }: { asset: Pick<UiAsset, 'symbol'
         fontWeight: 700,
         fontSize: size * 0.36,
         letterSpacing: -0.5,
-        fontFamily: "'Inter',sans-serif",
+        fontFamily: fonts.ui,
         flexShrink: 0,
       }}>
       {(asset.symbol || '?')[0]}
@@ -129,28 +130,56 @@ export function PrimaryBtn({
   disabled?: boolean;
   ghost?: boolean;
 }) {
+  const [pressed, setPressed] = React.useState(false);
+  // No `flex: 1` here. This button is the last child of column-direction
+  // containers, where flex-grow made it swallow every pixel of leftover height
+  // — the oversized "Review Swap" that KEEPKEY_STYLE.md §4 calls out by name.
+  // It fills its parent's width instead; rows that hold two of these lay them
+  // out with a 2-column grid.
+  const face = ghost ? keycap.greyBg : keycap.goldBg;
+  const shadow = ghost ? keycap.greyShadow : keycap.goldShadow;
+  const pressedShadow = ghost ? keycap.greyPressed : keycap.goldPressed;
   return (
     <button
       onClick={onClick}
       disabled={disabled}
+      onPointerDown={() => !disabled && setPressed(true)}
+      onPointerUp={() => setPressed(false)}
+      onPointerLeave={() => setPressed(false)}
       style={{
-        flex: 1,
-        height: 40,
+        position: 'relative',
+        width: '100%',
+        flexShrink: 0,
+        height: 48,
         borderRadius: 10,
-        border: ghost ? `1px solid ${T.lineHi}` : 'none',
-        background: ghost ? 'transparent' : `linear-gradient(180deg, ${T.accent}, ${T.accentDeep})`,
-        color: ghost ? T.text : '#0b0d10',
-        fontWeight: 600,
+        border: 'none',
+        background: disabled ? keycap.offBg : face,
+        color: disabled ? T.faint : ghost ? T.text : tokens.accentInk,
+        fontWeight: 700,
         fontSize: 13,
-        letterSpacing: -0.1,
+        letterSpacing: '0.09em',
+        textTransform: 'uppercase',
+        fontFamily: 'inherit',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         gap: 8,
         cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.4 : 1,
-        boxShadow: ghost ? 'none' : `0 6px 20px -10px ${T.accent}, inset 0 1px 0 rgba(255,255,255,0.25)`,
+        // Disabled keeps the extrusion but drops the ring — still a key, just
+        // unlit. Never a faded gold (§0).
+        boxShadow: disabled ? keycap.offShadow : pressed ? pressedShadow : shadow,
+        transform: pressed && !disabled ? 'translateY(5px)' : 'translateY(0)',
+        transition: 'transform 90ms ease, box-shadow 90ms ease, filter .15s ease',
       }}>
+      {/* While pressed, reach the hit area back up by the 5px travel so a press
+          near the top edge still ends on the button (else the click is lost
+          and pointerleave un-presses the key). Always mounted, only the offset
+          toggles: pointerup un-presses before the browser resolves the click,
+          and a span unmounted then would no longer count as the button. */}
+      <span
+        aria-hidden
+        style={{ position: 'absolute', top: pressed && !disabled ? -5 : 0, left: 0, right: 0, bottom: 0 }}
+      />
       {icon}
       {children}
     </button>

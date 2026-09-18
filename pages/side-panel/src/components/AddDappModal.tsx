@@ -77,10 +77,10 @@ export function AddDappModal({ networkId, isOpen, onClose, onSave }: AddDappModa
           />
         </ModalBody>
         <ModalFooter>
-          <Button colorScheme="blue" mr={3} onClick={handleSave}>
+          <Button variant="solid" mr={3} onClick={handleSave}>
             Save
           </Button>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
         </ModalFooter>

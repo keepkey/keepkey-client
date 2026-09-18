@@ -244,7 +244,7 @@ const ProjectFeeCard = ({ transaction }: any) => {
 
         <Divider />
 
-        <Button colorScheme="blue" width="100%" mt={3} size="sm" onClick={handleUpdateFee}>
+        <Button variant="outline" width="100%" mt={3} size="sm" onClick={handleUpdateFee}>
           Confirm Fee
         </Button>
       </CardBody>

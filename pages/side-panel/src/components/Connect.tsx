@@ -101,7 +101,7 @@ const Connect: React.FC<ConnectProps> = ({ setIsConnecting }) => {
           <Text fontSize="xs" color="kk.faint">
             Already running?
           </Text>
-          <Button variant="ghost" onClick={connectKeepkey}>
+          <Button variant="outline" onClick={connectKeepkey}>
             Retry Connection
           </Button>
         </Stack>

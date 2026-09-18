@@ -332,7 +332,7 @@ export function SwapProgress({
 
       <div style={{ flex: 1, minHeight: 10 }} />
 
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <PrimaryBtn T={T} ghost onClick={onNewSwap}>
           New Swap
         </PrimaryBtn>
