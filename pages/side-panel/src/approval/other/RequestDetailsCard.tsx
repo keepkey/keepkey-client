@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Box, Divider, Flex, Table, Tbody, Tr, Td, Badge, Avatar, IconButton, Tooltip } from '@chakra-ui/react';
 import { CopyIcon, CheckIcon } from '@chakra-ui/icons';
+import SolanaTxDetails from './SolanaTxDetails';
 
 /**
  * Format a raw integer-string amount into a human-readable decimal using
@@ -156,6 +157,12 @@ export default function RequestDetailsCard({ transaction }: any) {
   //     handler decorates `unsignedTx` with `messageUtf8` (UTF-8) and
   //     `message` (hex) at solanaHandler.ts:784. Use those — pulling
   //     `request[0]` would render "[object Object]" via decodeMessage.
+  // dApp Solana transactions: render the background's decode instead of the
+  // generic TO/AMOUNT table, which has nothing to show for them ("N/A").
+  if (transaction?.type === 'solana_signTransaction' || transaction?.type === 'solana_signAndSendTransaction') {
+    return <SolanaTxDetails summary={transaction?.solanaTx} error={transaction?.solanaTxError} />;
+  }
+
   const isSignMessage =
     transaction?.type === 'solana_signMessage' || transaction?.type === 'solana_signOffchainMessage';
   if (isSignMessage) {
