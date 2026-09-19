@@ -260,7 +260,7 @@ const Settings = () => {
       {/* More Docs Link - Prominent and on top */}
       <Link href="https://docs.keepkey.com" isExternal>
         <Button variant="solid" size="lg" w="100%" mt={4} mb={6}>
-          📖 Visit KeepKey Docs
+          Visit KeepKey docs
         </Button>
       </Link>
 
@@ -417,17 +417,17 @@ const Settings = () => {
         </Text>
 
         {/* Force Reset Button */}
-        <Button variant="solid" bg="kk.bad" color="kk.text" w="100%" onClick={clearCustomStorages}>
+        <Button variant="destructive" w="100%" onClick={clearCustomStorages}>
           Clear Storage
         </Button>
 
         {/* Force Reset Button */}
-        <Button variant="solid" bg="kk.bad" color="kk.text" w="100%" onClick={handleForceReset}>
+        <Button variant="destructive" w="100%" onClick={handleForceReset}>
           Force Reset App
         </Button>
 
         {/* Announce Provider Button */}
-        <Button variant="solid" w="100%" onClick={handleAnnounceProvider}>
+        <Button variant="keycapSecondary" w="100%" onClick={handleAnnounceProvider}>
           Announce Provider
         </Button>
       </VStack>

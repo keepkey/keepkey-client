@@ -21,7 +21,7 @@
 
 import { getPageConsole } from './consoleBridge';
 import { pullObs } from './obsBridge';
-import { overlayAct, overlaySetVisible } from './agentOverlay';
+import { overlayAct, overlayAnnounce, overlayEndSession, overlaySetVisible } from './agentOverlay';
 import { panelShow, panelHide, panelLog, panelStatus } from './agentPanel';
 
 const TAG = ' | agentDom | ';
@@ -450,13 +450,25 @@ async function handle(msg: any): Promise<any> {
       await overlaySetVisible(msg.show !== false);
       return { overlay: msg.show !== false };
 
+    // The transparency floor: the background announces every page-touching tool
+    // here BEFORE running it, so reads and captures are as visible as clicks.
+    case 'announce':
+      overlayAnnounce(String(msg.kind ?? 'working'), String(msg.detail ?? ''));
+      panelLog(msg.detail ? `${msg.kind}: ${msg.detail}` : String(msg.kind ?? 'working'));
+      return { announced: msg.kind ?? 'working' };
+
     case 'panel': {
       if (msg.action === 'hide') {
+        overlayEndSession();
         panelHide();
         return { panel: 'hidden' };
       }
-      if (msg.message != null || msg.level) panelStatus(String(msg.message ?? ''), msg.level ?? 'info');
-      else panelShow();
+      if (msg.message != null || msg.level) {
+        panelStatus(String(msg.message ?? ''), msg.level ?? 'info');
+        // 'done' is the agent saying it has stopped driving — drop the banner
+        // now rather than leaving it up until the safety timer expires.
+        if (msg.level === 'done') overlayEndSession();
+      } else panelShow();
       return { panel: 'shown' };
     }
 

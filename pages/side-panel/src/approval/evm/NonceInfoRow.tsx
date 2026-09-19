@@ -30,7 +30,7 @@ export default function NonceInfoRow({ nonceInfo, address, chainId }: Props) {
 
   let label: string;
   if (willReplace) {
-    label = `⚠ Replaces a pending tx at nonce ${latest}. Needs +10% on both fees to evict.`;
+    label = `Replaces a pending tx at nonce ${latest}. Needs +10% on both fees to evict.`;
   } else if (inFlight > 0) {
     label = `Nonce ${pending} (you have ${inFlight} pending tx${inFlight > 1 ? 's' : ''} ahead of this).`;
   } else {

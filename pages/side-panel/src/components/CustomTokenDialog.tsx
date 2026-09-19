@@ -139,7 +139,7 @@ export const CustomTokenDialog = ({
       const result = await onAddToken(validationResult.token);
 
       if (result.success) {
-        setSuccessMessage(`✅ ${validationResult.token.symbol} added successfully!`);
+        setSuccessMessage(`${validationResult.token.symbol} added`);
         // Clear form after 2 seconds
         setTimeout(() => {
           setContractAddress('');
@@ -164,7 +164,7 @@ export const CustomTokenDialog = ({
       const success = await onRemoveToken(token.address);
 
       if (success) {
-        setSuccessMessage(`✅ ${token.symbol} removed successfully!`);
+        setSuccessMessage(`${token.symbol} removed`);
         setTimeout(() => setSuccessMessage(''), 2000);
       } else {
         setErrorMessage('Failed to remove token');
@@ -179,7 +179,9 @@ export const CustomTokenDialog = ({
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="xl">
       <ModalOverlay />
-      <ModalContent>
+      {/* Opens below the sticky header, which sits above modals and would
+          otherwise cover the title and close button (height set by SidePanel). */}
+      <ModalContent mt="var(--kk-header-h)">
         <ModalHeader>Custom Tokens</ModalHeader>
         <ModalCloseButton />
         <ModalBody>

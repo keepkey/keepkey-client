@@ -41,6 +41,24 @@ describe('isTransientRpcError', () => {
     expect(isTransientRpcError('503 Service Unavailable')).toBe(true);
   });
 
+  // Regression: written against Firefox/Node wording only, so a dead RPC
+  // hard-threw on Chrome instead of failing over — and the resulting error
+  // was mislabeled "KeepKey Vault is not running".
+  it('classifies browser connection-level failures as transient', () => {
+    expect(isTransientRpcError('Failed to fetch')).toBe(true);
+    expect(isTransientRpcError('TypeError: Failed to fetch')).toBe(true);
+    expect(isTransientRpcError('Load failed')).toBe(true);
+    expect(isTransientRpcError('net::ERR_NAME_NOT_RESOLVED')).toBe(true);
+    expect(isTransientRpcError('signal is aborted without reason')).toBe(true);
+    expect(isTransientRpcError('NetworkError when attempting to fetch resource.')).toBe(true);
+  });
+
+  it('classifies method-rejection (Flashbots-style narrow RPCs) as transient', () => {
+    expect(isTransientRpcError('rpc method is not whitelisted')).toBe(true);
+    expect(isTransientRpcError('server response 403 Forbidden')).toBe(true);
+    expect(isTransientRpcError('the method does not exist/is not available')).toBe(true);
+  });
+
   it('treats definitive RPC errors (revert / invalid params) as NOT transient', () => {
     expect(isTransientRpcError('execution reverted')).toBe(false);
     expect(isTransientRpcError('invalid params')).toBe(false);

@@ -97,10 +97,10 @@ export default function FeeWarningBanner({ eventId, warning, choice, onChoiceCha
         <HStack>
           <Text fontWeight="bold" color="orange.300">
             {warning.trigger === 'tip'
-              ? '⚠ Low miner tip — tx may be dropped'
+              ? 'Low miner tip — tx may be dropped'
               : warning.trigger === 'both'
-                ? '⚠ Both maxFee and tip too low'
-                : '⚠ Low fee — tx may sit pending'}
+                ? 'Both maxFee and tip too low'
+                : 'Low fee — tx may sit pending'}
           </Text>
         </HStack>
         <Text fontSize="sm" color="rgba(255,255,255,0.85)">
@@ -150,7 +150,7 @@ export default function FeeWarningBanner({ eventId, warning, choice, onChoiceCha
                 placeholder="e.g. 0.5"
               />
             </HStack>
-            <Button size="sm" colorScheme="blue" onClick={applyCustom} alignSelf="flex-end">
+            <Button size="sm" variant="outline" onClick={applyCustom} alignSelf="flex-end">
               Apply custom
             </Button>
           </Stack>

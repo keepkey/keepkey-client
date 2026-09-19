@@ -440,7 +440,15 @@ export function Swap({ onClose, initialFromCaip }: { onClose: () => void; initia
           </div>
           <div style={{ fontSize: 15, fontWeight: 600, color: T.text }}>{loadErrorTitle}</div>
           <div style={{ fontSize: 12.5, color: T.dim, lineHeight: 1.5, maxWidth: 260 }}>{loadErrorHint}</div>
-          <div style={{ display: 'flex', gap: 8, width: '100%', maxWidth: 260, marginTop: 6 }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: 8,
+              width: '100%',
+              maxWidth: 260,
+              marginTop: 6,
+            }}>
             <PrimaryBtn T={T} ghost onClick={onClose} icon={<Icon d={I.left} size={13} />}>
               Back
             </PrimaryBtn>

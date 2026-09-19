@@ -5,6 +5,7 @@ import type { SwapTheme } from './theme';
 import type { UiAsset, SwapQuote } from './types';
 import { Icon, I } from './icons';
 import { TokenButton, PrimaryBtn, IconBtn, fmtCrypto } from './ui';
+import { fonts } from '../styles/tokens';
 
 export function SwapScreen({
   T,
@@ -116,7 +117,7 @@ export function SwapScreen({
                 fontSize: 28,
                 fontWeight: 700,
                 letterSpacing: -0.5,
-                fontFamily: "'JetBrains Mono', monospace",
+                fontFamily: fonts.mono,
                 minWidth: 0,
               }}
             />

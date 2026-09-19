@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   createProviderRpcError,
   createTimeoutError,
@@ -61,27 +61,45 @@ describe('isVaultUnreachableError', () => {
 });
 
 describe('formatUserError', () => {
-  it('translates a vault-unreachable network error into the launch instruction', () => {
-    expect(formatUserError(new Error('TypeError: Failed to fetch'))).toBe(VAULT_REQUIRED_MESSAGE);
+  // formatUserError probes localhost:1646 before blaming the vault, so every
+  // case here has to say whether the vault is up. `vaultUp(false)` = closed.
+  const vaultUp = (up: boolean) =>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => (up ? Promise.resolve(new Response('ok')) : Promise.reject(new TypeError('Failed to fetch')))),
+    );
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('translates a vault-unreachable network error into the launch instruction', async () => {
+    vaultUp(false);
+    await expect(formatUserError(new Error('TypeError: Failed to fetch'))).resolves.toBe(VAULT_REQUIRED_MESSAGE);
   });
 
-  it('translates the vault "No device connected" error into a friendly message', () => {
+  // The regression this guards: Chrome throws the identical string for a dead
+  // Ethereum RPC, and users were told to launch a vault that was already up.
+  it('does NOT blame the vault when the vault answers', async () => {
+    vaultUp(true);
+    await expect(formatUserError(new Error('TypeError: Failed to fetch'))).resolves.toBe('TypeError: Failed to fetch');
+  });
+
+  it('translates the vault "No device connected" error into a friendly message', async () => {
     const e = new Error('SdkError: No device connected');
-    expect(formatUserError(e)).toBe('Please connect your KeepKey device and try again.');
+    await expect(formatUserError(e)).resolves.toBe('Please connect your KeepKey device and try again.');
   });
 
-  it('passes other error messages through unchanged', () => {
-    expect(formatUserError(new Error('replacement transaction underpriced'))).toBe(
+  it('passes other error messages through unchanged', async () => {
+    await expect(formatUserError(new Error('replacement transaction underpriced'))).resolves.toBe(
       'replacement transaction underpriced',
     );
   });
 
-  it('handles non-Error values by stringifying them', () => {
-    expect(formatUserError('plain string failure')).toBe('plain string failure');
+  it('handles non-Error values by stringifying them', async () => {
+    await expect(formatUserError('plain string failure')).resolves.toBe('plain string failure');
   });
 
-  it('does not throw on null/undefined input', () => {
-    expect(() => formatUserError(null)).not.toThrow();
-    expect(() => formatUserError(undefined)).not.toThrow();
+  it('does not throw on null/undefined input', async () => {
+    await expect(formatUserError(null)).resolves.toBeDefined();
+    await expect(formatUserError(undefined)).resolves.toBeDefined();
   });
 });

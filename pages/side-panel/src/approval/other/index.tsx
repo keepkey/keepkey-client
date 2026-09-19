@@ -65,7 +65,9 @@ export function OtherTransaction({ transaction: initialTransaction, handleRespon
           <RequestMethodCard transaction={transaction} />
           <Divider />
 
-          <Tabs defaultIndex={1}>
+          {/* Basic first: Raw opens to a collapsed data section, so defaulting
+              to it let a user approve without ever seeing the rendered details. */}
+          <Tabs defaultIndex={0}>
             <TabList>
               <Tab>Basic</Tab>
               {/*<Tab>Fees</Tab>*/}
@@ -84,10 +86,10 @@ export function OtherTransaction({ transaction: initialTransaction, handleRespon
           </Tabs>
           <Divider />
           <Flex justifyContent="center" alignItems="center">
-            <Button colorScheme="green" onClick={() => handleResponse('accept')} mr={2}>
+            <Button variant="solid" onClick={() => handleResponse('accept')} mr={2}>
               Approve
             </Button>
-            <Button colorScheme="red" onClick={() => handleResponse('reject')}>
+            <Button variant="keycapSecondary" onClick={() => handleResponse('reject')}>
               Reject
             </Button>
           </Flex>
