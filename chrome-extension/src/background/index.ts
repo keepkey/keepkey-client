@@ -21,6 +21,7 @@ import { getCachedFirmwareVersion } from './firmware';
 
 const HIVE_NETWORK_ID = 'hive:beeab0de';
 import { handleWalletRequest } from './methods';
+import { siteFromSender } from './senderSite';
 import { initMcpBridge } from './mcpBridge';
 import { setApprovalBadge } from './popup';
 import { fetchJsonWithTimeout } from './fetchUtils';
@@ -1210,6 +1211,9 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             requestInfo.__senderTabId = sender.tab.id;
             requestInfo.__senderWindowId = sender.tab.windowId;
           }
+          // The page builds siteUrl itself and can forge it — the approval
+          // card must show the site Chrome says sent this (senderSite.ts).
+          Object.assign(requestInfo, siteFromSender(sender, self.location.origin));
 
           if (method) {
             try {
