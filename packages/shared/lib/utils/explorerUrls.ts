@@ -23,6 +23,7 @@ export const EXPLORER_TX_URLS: Record<string, string> = {
   'eip155:43114': 'https://snowscan.xyz/tx/',
   'eip155:56': 'https://bscscan.com/tx/',
   'eip155:8453': 'https://basescan.org/tx/',
+  'eip155:4663': 'https://robinhoodchain.blockscout.com/tx/',
   'eip155:324': 'https://explorer.zksync.io/tx/',
 };
 
@@ -49,6 +50,7 @@ export const EXPLORER_ADDRESS_URLS: Record<string, string> = {
   'eip155:43114': 'https://snowscan.xyz/address/',
   'eip155:56': 'https://bscscan.com/address/',
   'eip155:8453': 'https://basescan.org/address/',
+  'eip155:4663': 'https://robinhoodchain.blockscout.com/address/',
   'eip155:324': 'https://explorer.zksync.io/address/',
 };
 
