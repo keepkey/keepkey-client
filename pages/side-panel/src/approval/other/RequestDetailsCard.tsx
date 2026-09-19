@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Box, Divider, Flex, Table, Tbody, Tr, Td, Badge, Avatar, IconButton, Tooltip } from '@chakra-ui/react';
+import { Box, Divider, Flex, Table, Tbody, Tr, Td, Badge, Avatar, IconButton, Text, Tooltip } from '@chakra-ui/react';
 import { CopyIcon, CheckIcon } from '@chakra-ui/icons';
 
 /**
@@ -272,6 +272,84 @@ export default function RequestDetailsCard({ transaction }: any) {
               </Tbody>
             </Table>
           </Box>
+          <Divider my={2} />
+        </Flex>
+      </div>
+    );
+  }
+
+  // Solana: a transaction is a list of instructions, not a to/amount pair.
+  // solanaHandler decodes it through the vault BEFORE asking for approval, and
+  // this branch is what the user reviews. Never fall through to the payment
+  // table below for Solana — an empty table reads as "nothing is being moved",
+  // which is exactly the wrong thing to say about a transfer we failed to read.
+  if (unsignedTx?.kind === 'solana') {
+    const decoded = unsignedTx.solanaDecoded;
+    const decodeError: string | undefined = unsignedTx.solanaDecodeError;
+    const instructions: any[] = Array.isArray(decoded?.instructions) ? decoded.instructions : [];
+    const blind = !!unsignedTx.requiresBlindSigningConsent;
+    return (
+      <div>
+        <Flex direction="column" mb={4}>
+          {decodeError && (
+            <Box mb={3} p={3} borderWidth="1px" borderColor="red.500" borderRadius="md" bg="red.900">
+              <Text fontWeight="bold" color="red.200">
+                Could not decode this transaction — do not approve unless you trust this site.
+              </Text>
+              <Text fontSize="xs" color="red.200" mt={1} wordBreak="break-all">
+                {decodeError}
+              </Text>
+            </Box>
+          )}
+          {!decodeError && blind && (
+            <Box mb={3} p={3} borderWidth="1px" borderColor="orange.400" borderRadius="md">
+              <Text fontWeight="bold" color="orange.300">
+                Blind signing — your KeepKey cannot show what this transaction does.
+              </Text>
+            </Box>
+          )}
+          {!decodeError && (
+            <Box mb={2}>
+              <Table variant="simple" size="sm">
+                <Tbody>
+                  <Tr>
+                    <Td>
+                      <Badge>Instructions:</Badge>
+                    </Td>
+                    <Td>
+                      {instructions.length} ({decoded?.version || 'legacy'})
+                    </Td>
+                  </Tr>
+                  {instructions.map((ix: any, i: number) => (
+                    <Tr key={i}>
+                      <Td>
+                        <Badge colorScheme={ix.status === 'known' ? 'green' : 'orange'}>
+                          {ix.programName || 'unknown program'}
+                        </Badge>
+                      </Td>
+                      <Td whiteSpace="pre-wrap" wordBreak="break-word">
+                        {/* An undecoded instruction says so — it never renders blank. */}
+                        {ix.instructionName || 'unrecognized instruction'}
+                        {Array.isArray(ix.args) && ix.args.length > 0 && (
+                          <Text fontSize="xs" color="gray.400">
+                            {ix.args.map((a: any) => `${a.name}: ${a.value}`).join(', ')}
+                          </Text>
+                        )}
+                      </Td>
+                    </Tr>
+                  ))}
+                  {decoded?.altResolutionIncomplete && (
+                    <Tr>
+                      <Td>
+                        <Badge colorScheme="orange">Warning:</Badge>
+                      </Td>
+                      <Td>Some address lookup tables could not be resolved</Td>
+                    </Tr>
+                  )}
+                </Tbody>
+              </Table>
+            </Box>
+          )}
           <Divider my={2} />
         </Flex>
       </div>
