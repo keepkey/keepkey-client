@@ -409,6 +409,56 @@ function getApiKey(): string {
  * The vault replaces the dummy 64-byte signature at bytes 1-64 in raw_tx
  * with the real Ed25519 signature from the device.
  */
+/**
+ * Ask the vault what a transaction DOES, before the user is asked to approve it.
+ *
+ * The vault runs this same decoder inside its signing gate, but that happens
+ * AFTER the extension has already collected the user's approval — so without
+ * this call the approval card has nothing to render and shows "N/A" over a real
+ * transfer. Decode-only: no device, no signing (see /solana/decode-transaction).
+ *
+ * Never throws: a decode failure must still reach the card, as an explicit
+ * error the user can see, never as a missing field that reads like "nothing is
+ * being moved".
+ */
+async function decodeTransactionViaRest(txBase64: string): Promise<{
+  solanaDecoded?: any;
+  solanaDecodeError?: string;
+  requiresBlindSigningConsent?: boolean;
+}> {
+  try {
+    const resp = await fetch(`${VAULT_URL}/solana/decode-transaction`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getApiKey()}` },
+      body: JSON.stringify({ raw_tx: txBase64 }),
+      // No device involved, so this is a plain RPC-speed call — but it does one
+      // ALT lookup for v0 messages. Short timeout: the approval card is waiting.
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!resp.ok) {
+      return { solanaDecodeError: `vault decode failed: HTTP ${resp.status}`, requiresBlindSigningConsent: true };
+    }
+    return await resp.json();
+  } catch (e: any) {
+    return {
+      solanaDecodeError: `${e?.name || 'Error'}: ${e?.message || String(e)}`,
+      requiresBlindSigningConsent: true,
+    };
+  }
+}
+
+/**
+ * Build an approval event for a dApp-supplied transaction, with the decode
+ * attached. Every tx approval must go through here: buildEvent() alone leaves
+ * unsignedTx undefined, and the card then renders an empty payment table.
+ */
+async function buildTxApprovalEvent(requestInfo: any, method: string, params: any[], txBase64: string) {
+  const decoded = await decodeTransactionViaRest(txBase64);
+  const event: any = buildEvent(requestInfo, method, params);
+  event.unsignedTx = { kind: 'solana', txBase64, ...decoded };
+  return event;
+}
+
 async function signTransactionViaRest(
   txBase64: string,
   accountIndex = 0,
@@ -876,10 +926,9 @@ export const handleSolanaRequest = async (
         throw createProviderRpcError(4000, 'Invalid params: expected transaction as number[]');
       }
 
-      const txEvent = buildEvent(requestInfo, method, params);
-      await requestUserApproval(txEvent, requestInfo, method, params, requireApproval);
-
       const txBase64 = toBase64(txArray);
+      const txEvent = await buildTxApprovalEvent(requestInfo, method, params, txBase64);
+      await requestUserApproval(txEvent, requestInfo, method, params, requireApproval);
       const txSignResult = await signTransactionViaRest(txBase64, resolveSolanaAccountIndex(params, requestInfo));
 
       // Return the fully signed transaction (vault replaces dummy sig at bytes 1-64)
@@ -992,11 +1041,13 @@ export const handleSolanaRequest = async (
         throw createProviderRpcError(4000, 'Invalid params: expected transaction as number[]');
       }
 
-      const sendEvent = buildEvent(requestInfo, method, params);
+      // Decode BEFORE approval: this path broadcasts immediately after signing,
+      // so an unreviewable screen here is the most expensive one in the wallet.
+      const sendBase64 = toBase64(sendTxArray);
+      const sendEvent = await buildTxApprovalEvent(requestInfo, method, params, sendBase64);
       await requestUserApproval(sendEvent, requestInfo, method, params, requireApproval);
 
       // Sign via direct REST call
-      const sendBase64 = toBase64(sendTxArray);
       const signResult = await signTransactionViaRest(sendBase64, resolveSolanaAccountIndex(params, requestInfo));
 
       // Broadcast via Solana RPC (vault has no broadcast endpoint)
