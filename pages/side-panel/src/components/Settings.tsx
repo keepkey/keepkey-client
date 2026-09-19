@@ -16,6 +16,7 @@ import {
   ethAccountsStorage,
   testnetSettingsStorage,
   agentModeStorage,
+  agentControlStorage,
 } from '@extension/storage';
 
 const TAG = ' | Settings | ';
@@ -30,6 +31,7 @@ const Settings = () => {
   });
   const [showTestnets, setShowTestnets] = useState(false);
   const [agentMode, setAgentMode] = useState(false);
+  const [agentControl, setAgentControl] = useState(true);
 
   // Fetch initial masking settings from storage
   useEffect(() => {
@@ -50,6 +52,7 @@ const Settings = () => {
       setShowTestnets(testnetSetting);
 
       setAgentMode(await agentModeStorage.get());
+      setAgentControl(await agentControlStorage.get());
     };
 
     loadSettings();
@@ -303,6 +306,25 @@ const Settings = () => {
           <Link href="https://docs.keepkey.com/docs/bex/mcp" isExternal textDecoration="underline">
             Learn more
           </Link>
+        </Text>
+
+        {/* Agent control of this UI (bex_ui click/type/approve) */}
+        <HStack w="100%" justifyContent="space-between">
+          <Text>Allow agent control</Text>
+          <Switch
+            size="md"
+            isChecked={agentControl}
+            isDisabled={!agentMode}
+            onChange={async () => {
+              const v = !agentControl;
+              setAgentControl(v);
+              await agentControlStorage.set(v);
+            }}
+          />
+        </HStack>
+        <Text fontSize="xs" color="kk.dim" mt={-2} mb={2}>
+          Lets the agent approve requests and set their options over MCP (bex_request). Rejecting is always allowed.
+          Signing still needs your device button.
         </Text>
 
         {/* Copy agent connection config */}

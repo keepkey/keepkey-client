@@ -18,6 +18,8 @@ import { agentModeStorage, keepKeyApiKeyStorage, web3ProviderStorage } from '@ex
 import { getLogs, getPendingRequests, getConnectedSites, SW_STARTED_AT } from './providerLog';
 import { getSwConsole } from './swConsole';
 import { BROWSER_TOOLS, executeBrowserTool, isBrowserTool } from './browserTools';
+import { UI_TOOL, executeUiTool } from './uiAgent';
+import { REQUEST_TOOL, executeRequestTool } from './agentRequests';
 
 const TAG = ' | mcpBridge | ';
 const BRIDGE_URL = 'ws://localhost:1646/bex-bridge';
@@ -255,8 +257,10 @@ async function executeTool(tool: string, args: any): Promise<any> {
   if (!deps) throw new Error('bridge not initialized');
 
   // The vault asks for the catalog on tools/list and serves it verbatim.
-  if (tool === 'bex_list_tools') return { tools: [...INTROSPECTION_TOOLS, ...BROWSER_TOOLS] };
+  if (tool === 'bex_list_tools') return { tools: [...INTROSPECTION_TOOLS, ...BROWSER_TOOLS, UI_TOOL, REQUEST_TOOL] };
   if (isBrowserTool(tool)) return executeBrowserTool(tool, args);
+  if (tool === UI_TOOL.name) return executeUiTool(args);
+  if (tool === REQUEST_TOOL.name) return executeRequestTool(args);
 
   switch (tool) {
     case 'bex_status': {

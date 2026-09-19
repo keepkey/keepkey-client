@@ -142,20 +142,28 @@ const requireApproval = async function (
       const cleanup = () => {
         chrome.runtime.onMessage.removeListener(listener);
         if (timer != null) clearTimeout(timer);
+        if (pendingKey) agentDecisions.delete(pendingKey);
         setApprovalBadge(false);
         settlePending(pendingKey);
       };
 
+      const decide = (accept: boolean, via: string) => {
+        if (settled) return;
+        settled = true;
+        console.log(tag, `Decision (${via}) for event:`, requestInfo.id, accept ? 'accept' : 'reject');
+        cleanup();
+        resolve({ success: accept });
+      };
+
       const listener = (message: any) => {
         if (message?.action === 'eth_sign_response' && message?.response?.eventId === requestInfo.id) {
-          if (settled) return;
-          settled = true;
-          console.log(tag, 'Received eth_sign_response for event:', message.response.eventId);
-          cleanup();
-          resolve({ success: message.response.decision === 'accept' });
+          decide(message.response.decision === 'accept', 'side panel');
         }
       };
       chrome.runtime.onMessage.addListener(listener);
+      // The agent's bex_approve/bex_reject land here (the background can't
+      // runtime.sendMessage to its own listener).
+      if (pendingKey) agentDecisions.set(pendingKey, accept => decide(accept, 'agent'));
 
       timer = setTimeout(() => {
         if (settled) return;
@@ -171,6 +179,18 @@ const requireApproval = async function (
     return { success: false }; // Return failure in case of error
   }
 };
+
+// Pending approvals the agent can decide (bex_approve / bex_reject), keyed by
+// the providerLog pending key — dApp request ids are per-page counters and
+// collide across tabs, so they can't be the handle.
+const agentDecisions = new Map<string, (accept: boolean) => void>();
+
+export function decidePendingApproval(key: string, accept: boolean): boolean {
+  const decide = agentDecisions.get(key);
+  if (!decide) return false;
+  decide(accept);
+  return true;
+}
 
 // Thin observability wrapper: every provider call (page- or agent-originated)
 // lands in the providerLog ring buffer with its result or error CODE — the
