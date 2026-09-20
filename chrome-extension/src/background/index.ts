@@ -49,6 +49,7 @@ import {
   customTokensStorageApi,
 } from '@extension/storage';
 import { getChainInfo, getColorForCaip } from './chains/registry';
+import { chainIdMatchesNetwork } from './chains/providerGuard';
 import { withRpcFailoverByNetworkId } from './chains/rpcFailover';
 import { EVM_TESTNETS, SOLANA_DEVNET, ALL_TESTNET_NETWORK_IDS } from './testnetPresets';
 import { formatUserError, createVaultRequiredError } from './utils';
@@ -1521,9 +1522,16 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               await assetContextStorage.updateContext(asset);
 
               // If eip155 then set web3 provider
+              let providerError: string | null = null;
               if (asset.networkId && asset.networkId.includes('eip155')) {
                 // Try to get provider data from custom chains first (user-added networks)
                 let providerData = await blockchainDataStorage.getBlockchainData(asset.networkId);
+                // Only a record carrying this chain's chainId counts: saving
+                // one without it as the provider leaves Send nothing to sign.
+                if (providerData && !chainIdMatchesNetwork(asset.networkId, providerData.chainId)) {
+                  console.warn(tag, 'Ignoring custom chain record without a matching chainId:', asset.networkId);
+                  providerData = null;
+                }
 
                 // Fall through to Pioneer registry if user hasn't added
                 // this chain manually. Pioneer is the source of truth for
@@ -1544,8 +1552,19 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                       providerUrl: chainInfo.rpc,
                       providers: chainInfo.rpcs,
                     };
+                  } else if (
+                    chainIdMatchesNetwork(asset.networkId, (await web3ProviderStorage.getWeb3Provider())?.chainId)
+                  ) {
+                    // Already on this chain (account-only change, or Pioneer
+                    // down after a SW restart): the stored provider still applies.
+                    console.warn(tag, 'Pioneer miss; keeping stored provider for', asset.networkId);
                   } else {
                     console.error(tag, 'Network not found in custom storage or Pioneer:', asset.networkId);
+                    // Don't report success: the signing provider is still the
+                    // previous chain. The asset context above stays set (view
+                    // and Receive don't need a provider); handleTransfer refuses
+                    // the mismatch, and this tells the side panel why up front.
+                    providerError = `Couldn't load network settings for ${asset.networkId} (no usable custom network, and Pioneer didn't return it). Sending on it is disabled until it loads.`;
                   }
                 }
 
@@ -1561,7 +1580,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                 })
                 .catch(() => {});
 
-              sendResponse(asset);
+              sendResponse(providerError ? { error: providerError } : asset);
             } catch (error) {
               console.error('Error setting asset context:', error);
               sendResponse({ error: 'Failed to set asset context' });
