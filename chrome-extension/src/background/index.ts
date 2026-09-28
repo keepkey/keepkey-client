@@ -10,6 +10,7 @@ globalThis.Buffer = Buffer;
 
 import packageJson from '../../package.json';
 import * as wallet from './wallet';
+import { synchronizeEthereumAccount } from './evmIdentity';
 import { deriveUtxoAddress } from './utxoDerive';
 import { resetSolanaState, prefetchSolanaAccounts, deriveSolanaAccount } from './chains/solanaHandler';
 import { handleSwapMessage, resolveAddress } from './swapHandler';
@@ -149,10 +150,24 @@ const DEVICE_VERIFY_INTERVAL_MS = 30_000;
  * KeepKey than the one we had cached. Clears every piece of state keyed
  * to the previous device and re-fetches from the new one.
  */
-async function handleDeviceSwitch(newDeviceInfo: any) {
+async function handleDeviceSwitch(newDeviceInfo: any, selectedEvmAddress?: string) {
   const tag = TAG + ' | handleDeviceSwitch | ';
   console.warn(tag, 'Device swap detected. Purging caches and re-fetching.');
 
+  // No provider call may keep observing the previous wallet during the refresh.
+  ADDRESS = '';
+  // Invalidate prior sessions without broadcasting the new wallet's address to
+  // every open origin. A dApp receives the new account when it reconnects.
+  void chrome.tabs
+    .query({})
+    .then(tabs =>
+      Promise.allSettled(
+        tabs
+          .filter(tab => tab.id != null)
+          .map(tab => chrome.tabs.sendMessage(tab.id!, { type: 'ACCOUNTS_CHANGED', accounts: [] })),
+      ),
+    )
+    .catch(e => console.warn(tag, 'Could not notify tabs of wallet change:', e));
   // In-memory + storage cache owned by wallet.ts
   await wallet.handleDeviceSwitch(newDeviceInfo);
 
@@ -176,6 +191,7 @@ async function handleDeviceSwitch(newDeviceInfo: any) {
   // a fresh pubkey batch, then updates state.initialized.
   try {
     await wallet.refreshPubkeys();
+    ADDRESS = selectedEvmAddress || wallet.getPubkeys(ChainToNetworkId[Chain.Ethereum])[0]?.address || '';
 
     // refreshPubkeys only hits getDefaultPaths() — the big batched
     // derivation. Solana, Tron, and TON addresses are *dynamically*
@@ -208,6 +224,7 @@ async function handleDeviceSwitch(newDeviceInfo: any) {
   } catch (e) {
     console.error(tag, 'Failed to re-fetch pubkeys after device switch:', (e as Error)?.message || e);
     pushStateChangeEvent();
+    throw e;
   }
 }
 
@@ -300,6 +317,22 @@ updateIcon();
 console.log('Background loaded');
 
 let ADDRESS = '';
+let ethereumSyncInFlight: Promise<void> | null = null;
+
+function syncEthereumAccount(): Promise<void> {
+  if (!ethereumSyncInFlight) {
+    ethereumSyncInFlight = synchronizeEthereumAccount(wallet.getSdk(), wallet.getPubkeys(), ADDRESS, async address => {
+      await handleDeviceSwitch(wallet.getDeviceInfo(), address);
+    })
+      .then(address => {
+        ADDRESS = address;
+      })
+      .finally(() => {
+        ethereumSyncInFlight = null;
+      });
+  }
+  return ethereumSyncInFlight;
+}
 
 // ---- Balance fetching via Pioneer API ----
 let cachedBalances: any[] = [];
@@ -1154,6 +1187,7 @@ initMcpBridge({
       if (KEEPKEY_STATE === 4) throw createVaultRequiredError();
       throw Error('Wallet not initialized');
     }
+    if (chain === 'ethereum' && method === 'eth_requestAccounts') await syncEthereumAccount();
     const requestInfo = {
       id: crypto.randomUUID(),
       method,
@@ -1198,6 +1232,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           }
           const { requestInfo } = message;
           const { method, params, chain } = requestInfo;
+          if (chain === 'ethereum' && method === 'eth_requestAccounts') await syncEthereumAccount();
 
           // Tag the request with the sender's browser tab/window so the
           // approval side panel opens in the SAME window the dApp lives

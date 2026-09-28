@@ -17,6 +17,7 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { ChainToNetworkId, caipToNetworkId, networkIdToIcon } from '../chainConfig';
 import * as wallet from '../wallet';
+import { signEthereumMessage } from '../evmIdentity';
 import { buildFeeWarning, getFeeFloor, getPriorityFeeFloor, type FeeChoice, type FeeWarning } from './feeFloors';
 import { openSidePanel, setApprovalBadge } from '../popup';
 import { getChainInfo, makeStaticProvider } from './registry';
@@ -725,12 +726,12 @@ const handleWalletGetCapabilities = async (params: any[]) => {
 };
 
 const handleEthAccounts = async (ADDRESS: any) => {
-  const accounts = [ADDRESS];
+  const accounts = ADDRESS ? [ADDRESS] : [];
   return accounts;
 };
 
 const handleEthRequestAccounts = async (ADDRESS: any) => {
-  const requestAccounts = [ADDRESS];
+  const requestAccounts = ADDRESS ? [ADDRESS] : [];
   return requestAccounts;
 };
 
@@ -1187,24 +1188,8 @@ const signMessage = async (message: any, KEEPKEY_WALLET: any, ADDRESS: string, e
     console.log(tag, '**** message: ', message);
     console.log(tag, '**** ADDRESS: ', ADDRESS);
 
-    // Vault SDK requires hex-encoded message (0x...).
-    // personal_sign may pass plain UTF-8 text — convert if needed.
-    let hexMessage = message;
-    if (typeof message === 'string' && !message.startsWith('0x')) {
-      hexMessage = '0x' + Array.from(new TextEncoder().encode(message), b => b.toString(16).padStart(2, '0')).join('');
-    }
-
     const sdk = wallet.getSdk();
-    const output = await sdk.eth.ethSignMessage({
-      address: ADDRESS,
-      addressNList: getAddressNListForAddress(ADDRESS),
-      message: hexMessage,
-    });
-    console.log(`${tag} Transaction output: `, output);
-
-    // EIP-1193: personal_sign/eth_sign must return hex signature string, not object.
-    // Vault SDK returns { address, signature } — extract just the signature.
-    const signatureHex = output?.signature || output;
+    const signatureHex = await signEthereumMessage(sdk, wallet.getPubkeys(), ADDRESS, message);
 
     // Notify popup that signature is complete
     chrome.runtime.sendMessage({
@@ -1216,6 +1201,8 @@ const signMessage = async (message: any, KEEPKEY_WALLET: any, ADDRESS: string, e
     return signatureHex;
   } catch (e) {
     console.error(e);
+
+    if ((e as ProviderRpcError)?.code === 4100) throw e;
 
     // Extract meaningful error message
     const errorMessage = (e as any)?.message || JSON.stringify(e);
