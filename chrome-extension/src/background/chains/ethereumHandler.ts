@@ -31,6 +31,7 @@ import {
   type TokenMeta,
   type TypedDataSummary,
 } from './evmTypedData';
+import { assertDappChainMatchesProvider, assertProviderMatchesCaip } from './providerGuard';
 
 const TAG = ' | ethereumHandler | ';
 const DOMAIN_WHITE_LIST = [];
@@ -798,6 +799,10 @@ const handleSigningMethods = async (
   if (!networkId) throw Error('Failed to set context before sending!');
   // Require user approval
   const unsignedTx = params[0];
+  if (method === 'eth_sendTransaction' || method === 'eth_signTransaction') {
+    // Refuse before the card opens: it would show the provider chain, not the dApp's.
+    assertDappChainMatchesProvider(unsignedTx?.chainId, currentProvider);
+  }
   requestInfo.id = uuidv4();
 
   // Compute the fee-floor warning ONCE up front so the side-panel can render
@@ -964,6 +969,9 @@ const handleTransfer = async (
   console.log(tag, 'requestInfo:', requestInfo);
 
   const currentProviderCtx = await web3ProviderStorage.getWeb3Provider();
+  // Everything below (chainId, nonce, gas, fees, broadcast RPCs) comes from
+  // the stored provider, so refuse unless it is the chain being sent on.
+  assertProviderMatchesCaip(params[0]?.caip, currentProviderCtx);
   const caip = currentProviderCtx?.caip || 'eip155:1/slip44:60';
   const networkId = currentProviderCtx?.networkId || caipToNetworkId(caip);
   console.log(tag, 'networkId:', networkId);
@@ -1045,6 +1053,10 @@ const handleTransfer = async (
 
   if (result.success && response.unsignedTx) {
     console.log(tag, 'FINAL: unsignedTx: ', response.unsignedTx);
+
+    // The approval can sit open for minutes; if the provider was switched
+    // meanwhile, broadcast would go to another chain's RPCs. Re-check first.
+    assertProviderMatchesCaip(params[0]?.caip, await web3ProviderStorage.getWeb3Provider());
 
     // Sign using vault SDK directly
     const signedTx = await signTransaction(response.unsignedTx, KEEPKEY_WALLET);
@@ -1223,6 +1235,8 @@ const processApprovedEvent = async (method: string, params: any, KEEPKEY_WALLET:
         // surfaced in PR #55 review).
         const tx = params[0];
         const currentProvider = await web3ProviderStorage.getWeb3Provider();
+        // Re-check: the provider can change while the approval card is open.
+        assertDappChainMatchesProvider(tx.chainId, currentProvider);
         if (currentProvider?.chainId) tx.chainId = currentProvider.chainId;
         tx.from = ADDRESS;
         await applyFeeChoiceFromStorage(tx, id, ' | eth_signTransaction | ');
@@ -1893,6 +1907,8 @@ const sendTransaction = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string
     const transaction = params[0];
     const currentProvider = await web3ProviderStorage.getWeb3Provider();
     if (!currentProvider) throw createProviderRpcError(4900, 'Provider not properly configured');
+    // Re-check: the provider can change while the approval card is open.
+    assertDappChainMatchesProvider(transaction.chainId, currentProvider);
     const chainId = currentProvider.chainId;
 
     transaction.chainId = chainId;
