@@ -1,5 +1,6 @@
 import React from 'react';
-import { Badge, Box, Flex, Stack, Text } from '@chakra-ui/react';
+import { Badge, Box, Button, Collapse, Flex, Grid, Stack, Text, useDisclosure } from '@chakra-ui/react';
+import { decodedRows, isRiskFinding, tidy } from './clearSignFormat';
 
 const LEVEL_COLORS: Record<string, string> = {
   P0: 'red',
@@ -12,6 +13,9 @@ const LEVEL_COLORS: Record<string, string> = {
 
 const severityColor = (severity: string) =>
   severity === 'danger' ? 'red.300' : severity === 'warning' ? 'orange.300' : 'gray.300';
+
+const severityScheme = (severity: string) =>
+  severity === 'danger' ? 'red' : severity === 'warning' ? 'orange' : 'blue';
 
 function signedAmount(delta: string, decimals?: number): string {
   if (!/^-?\d+$/.test(delta)) return delta;
@@ -26,6 +30,7 @@ function signedAmount(delta: string, decimals?: number): string {
 
 /** Presentation only: every statement and classification comes from Vault. */
 export default function ClearSignReportCard({ report, error }: { report?: any; error?: string }) {
+  const details = useDisclosure();
   if (!report && !error) return null;
   if (!report) {
     return (
@@ -46,6 +51,12 @@ export default function ClearSignReportCard({ report, error }: { report?: any; e
   }
 
   const simulation = report.simulation || {};
+  const findings: any[] = report.findings || [];
+  const allRows = decodedRows(findings);
+  const action = allRows.find(r => r.key === 'Action');
+  const rows = allRows.filter(r => r !== action);
+  const risks = findings.filter(isRiskFinding);
+  const otherFindings = findings.filter(f => !isRiskFinding(f) && f.code !== 'DECODED_FIELD');
   const authenticated = !!report.descriptor?.authenticated;
   const deviceStatus = report.deviceVerification?.status || 'not-attempted';
   const deviceConfirmed = deviceStatus === 'verified';
@@ -58,15 +69,58 @@ export default function ClearSignReportCard({ report, error }: { report?: any; e
       p={3}>
       <Flex justify="space-between" align="start" gap={3}>
         <Box>
-          <Text fontWeight="bold">{report.headline}</Text>
+          <Text fontWeight="bold" fontSize="md">
+            {report.descriptor?.label || report.headline}
+          </Text>
           {report.descriptor?.label && (
-            <Text fontSize="sm" color="gray.300">
-              {report.descriptor.label}
+            <Text fontSize="xs" color="gray.400">
+              {report.headline}
             </Text>
           )}
         </Box>
-        <Badge colorScheme={LEVEL_COLORS[report.protectionLevel] || 'gray'}>{report.protectionLevel}</Badge>
+        <Badge colorScheme={LEVEL_COLORS[report.protectionLevel] || 'gray'} title={report.headline}>
+          {report.protectionLevel}
+        </Badge>
       </Flex>
+
+      {action && (
+        <Text fontSize="lg" fontWeight="semibold" mt={3} title={action.value}>
+          {tidy(action.value)}
+        </Text>
+      )}
+
+      {rows.length > 0 && (
+        <Grid templateColumns="auto 1fr" columnGap={3} rowGap={1} mt={3} fontSize="sm">
+          {rows.map(row => (
+            <React.Fragment key={row.key}>
+              <Text color="gray.400">{row.key}</Text>
+              <Text title={row.value} wordBreak="break-word">
+                {tidy(row.value)}
+                {row.isSigner && (
+                  <Badge ml={2} colorScheme="green" fontSize="0.65em">
+                    you
+                  </Badge>
+                )}
+              </Text>
+            </React.Fragment>
+          ))}
+        </Grid>
+      )}
+
+      {risks.map((finding: any, index: number) => (
+        <Box
+          key={`${finding.code}-${index}`}
+          mt={3}
+          p={2}
+          borderLeftWidth="3px"
+          borderColor={`${severityScheme(finding.severity)}.400`}
+          bg={`${severityScheme(finding.severity)}.900`}
+          borderRadius="sm">
+          <Text fontSize="sm" color={severityColor(finding.severity)} title={finding.message}>
+            {tidy(finding.message)}
+          </Text>
+        </Box>
+      ))}
 
       {(report.protectionLevel === 'P4' || report.protectionLevel === 'P5') && (
         <Text fontSize="xs" color={deviceConfirmed ? 'green.300' : 'orange.300'} mt={2}>
@@ -128,30 +182,32 @@ export default function ClearSignReportCard({ report, error }: { report?: any; e
         </Text>
       )}
 
-      {[...(report.findings || []), ...(report.limitations || [])].map((finding: any, index: number) => (
-        <Box key={`${finding.code}-${index}`} mt={2}>
-          <Text fontSize="sm" color={severityColor(finding.severity)}>
-            {finding.message}
+      <Button size="xs" variant="link" mt={3} color="gray.400" onClick={details.onToggle}>
+        {details.isOpen ? 'Hide technical details' : 'Technical details'}
+      </Button>
+      <Collapse in={details.isOpen} animateOpacity>
+        <Box mt={2} pt={2} borderTopWidth="1px" borderColor="whiteAlpha.200">
+          {[...otherFindings, ...(report.limitations || [])].map((finding: any, index: number) => (
+            <Text key={`${finding.code}-${index}`} fontSize="xs" color="gray.400" mt={1} wordBreak="break-word">
+              {finding.message}
+            </Text>
+          ))}
+          <Text fontSize="xs" color="gray.400" mt={2}>
+            {simulation.status === 'success'
+              ? 'Effects are predictions from Vault simulation.'
+              : `Simulation: ${simulation.status}.`}{' '}
+            Device confirmation: {deviceStatus}.
+          </Text>
+          {(report.claims || []).map((claim: any, index: number) => (
+            <Text key={index} fontSize="xs" color="gray.400" mt={1}>
+              {claim.statement}
+            </Text>
+          ))}
+          <Text fontSize="xs" color="gray.500" mt={1} wordBreak="break-all">
+            Fingerprint: {report.transactionFingerprint}
           </Text>
         </Box>
-      ))}
-
-      <Box mt={3} pt={2} borderTopWidth="1px" borderColor="whiteAlpha.200">
-        <Text fontSize="xs" color="gray.500">
-          {simulation.status === 'success'
-            ? 'Effects are predictions from Vault simulation.'
-            : `Simulation: ${simulation.status}.`}{' '}
-          Device confirmation: {deviceStatus}.
-        </Text>
-        {(report.claims || []).map((claim: any, index: number) => (
-          <Text key={index} fontSize="xs" color="gray.500" mt={1}>
-            {claim.statement}
-          </Text>
-        ))}
-        <Text fontSize="xs" color="gray.600" mt={1} wordBreak="break-all">
-          Fingerprint: {report.transactionFingerprint}
-        </Text>
-      </Box>
+      </Collapse>
     </Box>
   );
 }
