@@ -463,7 +463,16 @@ const SidePanel = () => {
   if (pendingEvent) {
     return (
       <Flex direction="column" width="100%" height="100vh" bg="kk.bg" overflowY="auto" p={4}>
-        <Transaction event={pendingEvent} reloadEvents={fetchPendingEvent} onDismiss={fetchPendingEvent} />
+        {/* Each approval owns transient UI state (device prompt, error, txid page).
+            Force a fresh instance when the queue advances so a completed send's
+            txid screen cannot cover the next request (for example Uniswap's
+            Permit2 typed-data signature immediately after token approval). */}
+        <Transaction
+          key={pendingEvent.id}
+          event={pendingEvent}
+          reloadEvents={fetchPendingEvent}
+          onDismiss={fetchPendingEvent}
+        />
       </Flex>
     );
   }

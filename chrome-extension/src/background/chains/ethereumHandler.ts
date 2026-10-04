@@ -32,6 +32,7 @@ import {
   type TypedDataSummary,
 } from './evmTypedData';
 import { assertDappChainMatchesProvider, assertProviderMatchesCaip } from './providerGuard';
+import { assertMatchingClearSignReport, getClearSignReport, type ClearSignReport } from '../clearSignReport';
 
 const TAG = ' | ethereumHandler | ';
 const DOMAIN_WHITE_LIST = [];
@@ -869,6 +870,40 @@ const handleSigningMethods = async (
     typedDataSummary = withTokenMetadata(summary, meta);
   }
 
+  // Vault owns transaction meaning. Ask for its canonical report instead of
+  // duplicating protocol/ABI decoders in the extension. This endpoint is
+  // transaction-only; message and typed-data signing retain their dedicated UI.
+  let clearSignReport: ClearSignReport | undefined;
+  let clearSignReportError: string | undefined;
+  if ((method === 'eth_sendTransaction' || method === 'eth_signTransaction') && unsignedTx) {
+    try {
+      const rawChainId = unsignedTx.chainId ?? currentProvider?.chainId ?? String(networkId).split(':')[1];
+      const chainId =
+        typeof rawChainId === 'string' && rawChainId.startsWith('0x') ? parseInt(rawChainId, 16) : Number(rawChainId);
+      // The report fingerprint must describe the request that will actually be
+      // signed, including wallet-owned nonce, gas and fee fields.
+      unsignedTx.chainId = rawChainId;
+      unsignedTx.from = unsignedTx.from || ADDRESS;
+      await finalizeEvmTransactionFields(unsignedTx, tag);
+      clearSignReport = await getClearSignReport({
+        chain: 'evm',
+        chainId,
+        from: unsignedTx.from || ADDRESS,
+        ...(unsignedTx.to ? { to: unsignedTx.to } : {}),
+        ...(unsignedTx.data || unsignedTx.input ? { data: unsignedTx.data || unsignedTx.input } : {}),
+        ...(unsignedTx.value ? { value: unsignedTx.value } : {}),
+        ...(unsignedTx.nonce ? { nonce: unsignedTx.nonce } : {}),
+        ...(unsignedTx.gas || unsignedTx.gasLimit ? { gas: unsignedTx.gas || unsignedTx.gasLimit } : {}),
+        ...(unsignedTx.gasPrice ? { gasPrice: unsignedTx.gasPrice } : {}),
+        ...(unsignedTx.maxFeePerGas ? { maxFeePerGas: unsignedTx.maxFeePerGas } : {}),
+        ...(unsignedTx.maxPriorityFeePerGas ? { maxPriorityFeePerGas: unsignedTx.maxPriorityFeePerGas } : {}),
+      });
+    } catch (e: any) {
+      clearSignReportError = e?.message || String(e);
+      console.warn(tag, 'ClearSign report unavailable:', clearSignReportError);
+    }
+  }
+
   const event = {
     id: requestInfo.id,
     networkId,
@@ -887,6 +922,8 @@ const handleSigningMethods = async (
     feeWarning, // null when fees are fine; otherwise side-panel renders the banner
     nonceInfo, // null on non-tx flows; { latest, pending, willReplace } otherwise
     typedDataSummary, // null except eth_signTypedData*; the card renders it
+    clearSignReport,
+    clearSignReportError,
     type: method,
     request: params,
     status: 'request',
@@ -952,6 +989,34 @@ const walletChosenFees = async (
   const gasPrice = feeData.gasPrice ?? 0n;
   const floored = gasPrice > floor ? gasPrice : floor;
   return { gasPrice: '0x' + floored.toString(16) };
+};
+
+/** Fill every wallet-owned transaction field before ClearSign preview. */
+const finalizeEvmTransactionFields = async (transaction: any, tag: string): Promise<void> => {
+  if (!transaction.nonce) {
+    const nonce = await withRpcFailover(p => p.getTransactionCount(transaction.from, 'pending'), {
+      tag: tag + ' nonce',
+    });
+    transaction.nonce = '0x' + nonce.toString(16);
+  }
+  if (!transaction.gasLimit && transaction.gas) transaction.gasLimit = transaction.gas;
+  if (!transaction.gasLimit) {
+    const estimated = await withRpcFailover(
+      p =>
+        p.estimateGas({
+          from: transaction.from,
+          to: transaction.to,
+          data: transaction.data || transaction.input,
+          value: transaction.value || '0x0',
+        }),
+      { tag: tag + ' estimateGas' },
+    );
+    const buffered = BigInt(estimated) + BigInt(estimated) / 5n;
+    transaction.gasLimit = '0x' + (buffered > 10_000_000n ? 10_000_000n : buffered).toString(16);
+  }
+  if (!transaction.maxFeePerGas && !transaction.maxPriorityFeePerGas && !transaction.gasPrice) {
+    Object.assign(transaction, await walletChosenFees(transaction.chainId, tag));
+  }
 };
 
 // For 'transfer', build transaction info before calling requireApproval
@@ -1058,7 +1123,7 @@ const handleTransfer = async (
     assertProviderMatchesCaip(params[0]?.caip, await web3ProviderStorage.getWeb3Provider());
 
     // Sign using vault SDK directly
-    const signedTx = await signTransaction(response.unsignedTx, KEEPKEY_WALLET);
+    const signedTx = await signTransaction(response.unsignedTx, KEEPKEY_WALLET, requestInfo.id);
     console.log(tag, 'signedTx:', signedTx);
 
     // Update storage with signed transaction
@@ -1245,7 +1310,7 @@ const processApprovedEvent = async (method: string, params: any, KEEPKEY_WALLET:
         if (currentProvider?.chainId) tx.chainId = currentProvider.chainId;
         tx.from = ADDRESS;
         await applyFeeChoiceFromStorage(tx, id, ' | eth_signTransaction | ');
-        result = await signTransaction(tx, KEEPKEY_WALLET);
+        result = await signTransaction(tx, KEEPKEY_WALLET, id);
         break;
       }
       default:
@@ -1316,7 +1381,7 @@ const signMessage = async (message: any, KEEPKEY_WALLET: any, ADDRESS: string, e
   }
 };
 
-const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
+const signTransaction = async (transaction: any, KEEPKEY_WALLET: any, eventId?: string) => {
   const tag = ' | signTransaction | ';
   try {
     console.log(tag, '**** transaction: ', transaction);
@@ -1428,6 +1493,11 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
     console.log(`${tag} Final input: `, input);
     const sdk = wallet.getSdk();
     const output = await sdk.eth.ethSignTransaction(input);
+    if (eventId && output?.clearSignReport) {
+      const event = await requestStorage.getEventById(eventId);
+      assertMatchingClearSignReport(event?.clearSignReport, output.clearSignReport);
+      await requestStorage.updateEventById(eventId, { clearSignReport: output.clearSignReport });
+    }
     console.log(`${tag} Transaction output: `, output);
 
     // Decode-friendly handoff log. Paste `serialized` into any EVM tx
@@ -1921,7 +1991,7 @@ const sendTransaction = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string
 
     await applyFeeChoiceFromStorage(transaction, id, tag);
 
-    const signedTx = await signTransaction(transaction, KEEPKEY_WALLET);
+    const signedTx = await signTransaction(transaction, KEEPKEY_WALLET, id);
     console.log(tag, 'signedTx:', signedTx);
 
     const txHash = await broadcastTransaction(signedTx, transaction.from);

@@ -309,45 +309,64 @@ export default function RequestDetailsCard({ transaction }: any) {
             </Box>
           )}
           {!decodeError && (
-            <Box mb={2}>
-              <Table variant="simple" size="sm">
-                <Tbody>
-                  <Tr>
-                    <Td>
-                      <Badge>Instructions:</Badge>
-                    </Td>
-                    <Td>
-                      {instructions.length} ({decoded?.version || 'legacy'})
-                    </Td>
-                  </Tr>
-                  {instructions.map((ix: any, i: number) => (
-                    <Tr key={i}>
-                      <Td>
-                        <Badge colorScheme={ix.status === 'known' ? 'green' : 'orange'}>
-                          {ix.programName || 'unknown program'}
-                        </Badge>
-                      </Td>
-                      <Td whiteSpace="pre-wrap" wordBreak="break-word">
-                        {/* An undecoded instruction says so — it never renders blank. */}
-                        {ix.instructionName || 'unrecognized instruction'}
-                        {Array.isArray(ix.args) && ix.args.length > 0 && (
-                          <Text fontSize="xs" color="gray.400">
-                            {ix.args.map((a: any) => `${a.name}: ${a.value}`).join(', ')}
-                          </Text>
-                        )}
-                      </Td>
-                    </Tr>
-                  ))}
-                  {decoded?.altResolutionIncomplete && (
-                    <Tr>
-                      <Td>
-                        <Badge colorScheme="orange">Warning:</Badge>
-                      </Td>
-                      <Td>Some address lookup tables could not be resolved</Td>
-                    </Tr>
-                  )}
-                </Tbody>
-              </Table>
+            <Box mb={2} width="100%">
+              <Flex align="center" justify="space-between" gap={2} mb={3}>
+                <Text fontSize="sm" fontWeight="semibold">
+                  Instructions
+                </Text>
+                <Badge flexShrink={0}>
+                  {instructions.length} · {decoded?.version || 'legacy'}
+                </Badge>
+              </Flex>
+
+              <Flex direction="column" gap={2} width="100%">
+                {instructions.map((ix: any, i: number) => (
+                  <Box
+                    key={i}
+                    width="100%"
+                    minWidth={0}
+                    p={3}
+                    borderWidth="1px"
+                    borderColor="whiteAlpha.200"
+                    borderRadius="md"
+                    bg="whiteAlpha.50">
+                    <Badge
+                      colorScheme={ix.status === 'known' ? 'green' : 'orange'}
+                      maxWidth="100%"
+                      whiteSpace="normal"
+                      overflowWrap="anywhere">
+                      {ix.programName || 'Unknown program'}
+                    </Badge>
+                    <Text mt={2} fontSize="sm" fontWeight="medium" wordBreak="normal" overflowWrap="anywhere">
+                      {/* An undecoded instruction says so — it never renders blank. */}
+                      {ix.instructionName || 'Unrecognized instruction'}
+                    </Text>
+                    {Array.isArray(ix.args) && ix.args.length > 0 && (
+                      <Flex direction="column" gap={1} mt={2}>
+                        {ix.args.map((arg: any, argIndex: number) => (
+                          <Box key={`${arg.name || 'argument'}-${argIndex}`} minWidth={0}>
+                            <Text as="span" fontSize="xs" color="gray.500">
+                              {arg.name || `Argument ${argIndex + 1}`}:{' '}
+                            </Text>
+                            <Text as="span" fontSize="xs" color="gray.300" overflowWrap="anywhere">
+                              {String(arg.value)}
+                            </Text>
+                          </Box>
+                        ))}
+                      </Flex>
+                    )}
+                  </Box>
+                ))}
+              </Flex>
+
+              {decoded?.altResolutionIncomplete && (
+                <Box mt={3} p={3} borderWidth="1px" borderColor="orange.400" borderRadius="md">
+                  <Badge colorScheme="orange" mb={1}>
+                    Warning
+                  </Badge>
+                  <Text fontSize="sm">Some address lookup tables could not be resolved.</Text>
+                </Box>
+              )}
             </Box>
           )}
           <Divider my={2} />

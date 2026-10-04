@@ -22,6 +22,7 @@ import RequestMethodCard from './RequestMethodCard';
 import ProjectInfoCard from './ProjectInfoCard';
 import FeeWarningBanner from './FeeWarningBanner';
 import NonceInfoRow from './NonceInfoRow';
+import ClearSignReportCard from '../ClearSignReportCard';
 
 export function EvmTransaction({ transaction, reloadEvents, handleResponse }: any) {
   // Block Approve until the user picks a fee strategy when a warning is
@@ -30,13 +31,14 @@ export function EvmTransaction({ transaction, reloadEvents, handleResponse }: an
   const feeWarning = transaction?.feeWarning ?? null;
   const initialChoice = transaction?.feeChoice ?? null;
   const [feeChoice, setFeeChoice] = useState<any>(initialChoice);
-  const approveBlocked = !!feeWarning && !feeChoice;
+  const approveBlocked = (!!feeWarning && !feeChoice) || transaction?.clearSignReport?.protectionLevel === 'P0';
 
   return (
     <Stack>
       <ProjectInfoCard transaction={transaction} />
 
       <Divider />
+      <ClearSignReportCard report={transaction?.clearSignReport} error={transaction?.clearSignReportError} />
       {feeWarning && (
         <FeeWarningBanner
           eventId={transaction.id}
@@ -107,7 +109,13 @@ export function EvmTransaction({ transaction, reloadEvents, handleResponse }: an
           onClick={() => handleResponse('accept')}
           mr={2}
           isDisabled={approveBlocked}
-          title={approveBlocked ? 'Pick a fee strategy in the warning banner above' : undefined}>
+          title={
+            transaction?.clearSignReport?.protectionLevel === 'P0'
+              ? 'Vault blocked this transaction'
+              : approveBlocked
+                ? 'Pick a fee strategy in the warning banner above'
+                : undefined
+          }>
           Approve
         </Button>
         <Button variant="keycapSecondary" onClick={() => handleResponse('reject')}>

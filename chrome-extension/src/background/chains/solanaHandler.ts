@@ -3,6 +3,7 @@ import { SOLANA_DEVNET } from '../testnetPresets';
 import { v4 as uuidv4 } from 'uuid';
 import * as wallet from '../wallet';
 import { createProviderRpcError, createTimeoutError } from '../utils';
+import { assertMatchingClearSignReport, getClearSignReport, type ClearSignReport } from '../clearSignReport';
 import { requireMessageSigningFirmware } from '../firmware';
 
 const TAG = ' | solanaHandler | ';
@@ -452,16 +453,24 @@ async function decodeTransactionViaRest(txBase64: string): Promise<{
  * attached. Every tx approval must go through here: buildEvent() alone leaves
  * unsignedTx undefined, and the card then renders an empty payment table.
  */
-async function buildTxApprovalEvent(requestInfo: any, method: string, params: any[], txBase64: string) {
-  const decoded = await decodeTransactionViaRest(txBase64);
+async function buildTxApprovalEvent(requestInfo: any, method: string, params: any[], txBase64: string, owner: string) {
+  const [decoded, reportResult] = await Promise.all([
+    decodeTransactionViaRest(txBase64),
+    getClearSignReport({ chain: 'solana', raw_tx: txBase64, owner })
+      .then(clearSignReport => ({ clearSignReport }))
+      .catch((e: any) => ({ clearSignReportError: e?.message || String(e) })),
+  ]);
   const event: any = buildEvent(requestInfo, method, params);
   event.unsignedTx = { kind: 'solana', txBase64, ...decoded };
+  Object.assign(event, reportResult);
   return event;
 }
 
 async function signTransactionViaRest(
   txBase64: string,
   accountIndex = 0,
+  preflightReport?: ClearSignReport,
+  eventId?: string,
 ): Promise<{ signature: string; serializedTx: string }> {
   const apiKey = getApiKey();
   let resp: Response;
@@ -493,6 +502,10 @@ async function signTransactionViaRest(
   }
 
   const result = await resp.json();
+  assertMatchingClearSignReport(preflightReport, result.clearSignReport);
+  if (eventId && result.clearSignReport) {
+    await requestStorage.updateEventById(eventId, { clearSignReport: result.clearSignReport });
+  }
   const serializedTx = result.serializedTx || result.serialized || '';
   if (!serializedTx) {
     throw createProviderRpcError(-32603, 'Vault returned no signed transaction data');
@@ -927,9 +940,16 @@ export const handleSolanaRequest = async (
       }
 
       const txBase64 = toBase64(txArray);
-      const txEvent = await buildTxApprovalEvent(requestInfo, method, params, txBase64);
+      const accountIndex = resolveSolanaAccountIndex(params, requestInfo);
+      const owner = await getSolanaAddress(accountIndex);
+      const txEvent = await buildTxApprovalEvent(requestInfo, method, params, txBase64, owner);
       await requestUserApproval(txEvent, requestInfo, method, params, requireApproval);
-      const txSignResult = await signTransactionViaRest(txBase64, resolveSolanaAccountIndex(params, requestInfo));
+      const txSignResult = await signTransactionViaRest(
+        txBase64,
+        accountIndex,
+        txEvent.clearSignReport,
+        requestInfo.id,
+      );
 
       // Return the fully signed transaction (vault replaces dummy sig at bytes 1-64)
       const signedTxArray = fromBase64(txSignResult.serializedTx);
@@ -968,8 +988,12 @@ export const handleSolanaRequest = async (
       const txBytes = buildSolanaTransferTx(sender, recipient, lamports, blockhash);
       const txBase64 = toBase64(Array.from(txBytes));
 
+      const reportResult = await getClearSignReport({ chain: 'solana', raw_tx: txBase64, owner: sender })
+        .then(clearSignReport => ({ clearSignReport }))
+        .catch((e: any) => ({ clearSignReportError: e?.message || String(e) }));
+
       if (!requestInfo.id) requestInfo.id = uuidv4();
-      const event = {
+      const event: any = {
         id: requestInfo.id,
         networkId: SOLANA_NETWORK_ID,
         chain: 'solana',
@@ -991,12 +1015,12 @@ export const handleSolanaRequest = async (
           blockhash,
           txBase64,
         },
+        ...reportResult,
         type: 'transfer',
         request: params,
         status: 'request',
         timestamp: new Date().toISOString(),
       };
-      // @ts-expect-error
       const saved = await requestStorage.addEvent(event);
       if (!saved) throw createProviderRpcError(-32603, 'Failed to create approval event');
       chrome.runtime.sendMessage({ action: 'TRANSACTION_CONTEXT_UPDATED', id: event.id }).catch(() => {});
@@ -1006,7 +1030,7 @@ export const handleSolanaRequest = async (
         throw createProviderRpcError(4001, 'User denied transaction');
       }
 
-      const signResult = await signTransactionViaRest(txBase64, acctIdx);
+      const signResult = await signTransactionViaRest(txBase64, acctIdx, event.clearSignReport, requestInfo.id);
       const txSignature = await broadcastTransaction(signResult.serializedTx);
 
       // Persist txid so the approval UI's success state can show it.
@@ -1044,11 +1068,18 @@ export const handleSolanaRequest = async (
       // Decode BEFORE approval: this path broadcasts immediately after signing,
       // so an unreviewable screen here is the most expensive one in the wallet.
       const sendBase64 = toBase64(sendTxArray);
-      const sendEvent = await buildTxApprovalEvent(requestInfo, method, params, sendBase64);
+      const accountIndex = resolveSolanaAccountIndex(params, requestInfo);
+      const owner = await getSolanaAddress(accountIndex);
+      const sendEvent = await buildTxApprovalEvent(requestInfo, method, params, sendBase64, owner);
       await requestUserApproval(sendEvent, requestInfo, method, params, requireApproval);
 
       // Sign via direct REST call
-      const signResult = await signTransactionViaRest(sendBase64, resolveSolanaAccountIndex(params, requestInfo));
+      const signResult = await signTransactionViaRest(
+        sendBase64,
+        accountIndex,
+        sendEvent.clearSignReport,
+        requestInfo.id,
+      );
 
       // Broadcast via Solana RPC (vault has no broadcast endpoint)
       const txSignature = await broadcastTransaction(signResult.serializedTx);

@@ -5,6 +5,7 @@ import RequestMethodCard from './RequestMethodCard';
 import ProjectInfoCard from './ProjectInfoCard';
 import RequestDetailsCard from './RequestDetailsCard';
 import RequestDataCard from './RequestDataCard';
+import ClearSignReportCard from '../ClearSignReportCard';
 
 const triggerTransactionContextUpdate = (transactionId: string) => {
   chrome.runtime.sendMessage({ type: 'TRANSACTION_CONTEXT_UPDATED', id: transactionId }, response => {
@@ -62,6 +63,7 @@ export function OtherTransaction({ transaction: initialTransaction, handleRespon
         <Stack>
           <ProjectInfoCard transaction={transaction} />
           <Divider />
+          <ClearSignReportCard report={transaction?.clearSignReport} error={transaction?.clearSignReportError} />
           <RequestMethodCard transaction={transaction} />
           <Divider />
 
@@ -86,7 +88,14 @@ export function OtherTransaction({ transaction: initialTransaction, handleRespon
           </Tabs>
           <Divider />
           <Flex justifyContent="center" alignItems="center">
-            <Button variant="solid" onClick={() => handleResponse('accept')} mr={2}>
+            <Button
+              variant="solid"
+              onClick={() => handleResponse('accept')}
+              mr={2}
+              isDisabled={transaction?.clearSignReport?.protectionLevel === 'P0'}
+              title={
+                transaction?.clearSignReport?.protectionLevel === 'P0' ? 'Vault blocked this transaction' : undefined
+              }>
               Approve
             </Button>
             <Button variant="keycapSecondary" onClick={() => handleResponse('reject')}>
