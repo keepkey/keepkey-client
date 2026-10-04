@@ -7,6 +7,7 @@ import { getDefaultPaths, type PathConfig } from './chainConfig';
 import { keepKeyApiKeyStorage, pubkeyStorage } from '@extension/storage';
 
 const TAG = ' | wallet | ';
+const PROBE_TIMEOUT_MS = 5000;
 
 export interface WalletState {
   sdk: any; // KeepKeySdk instance
@@ -146,7 +147,10 @@ export async function probeDevice(): Promise<boolean> {
   const tag = TAG + ' | probeDevice | ';
   if (!state.sdk) return false;
   try {
-    const features = await state.sdk.system.info.getFeatures();
+    // Short timeout: the vault queues this behind any pending device prompt,
+    // and init blocks on it. On a miss we run view-only from cache and the
+    // health poll upgrades later — far better than the SDK's 30s default.
+    const features = await state.sdk.getClient().post('/system/info/get-features', {}, PROBE_TIMEOUT_MS);
     state.deviceInfo = {
       label: features.label || 'KeepKey',
       model: features.model || 'KeepKey',
