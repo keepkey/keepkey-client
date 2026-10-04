@@ -77,6 +77,7 @@ export function EvmTransaction({ transaction, reloadEvents, handleResponse }: an
           <TabPanel>
             {transaction.type !== 'personal_sign' &&
               transaction.type !== 'eth_sign' &&
+              !String(transaction.type).startsWith('eth_signTypedData') &&
               transaction.type !== 'wallet_addEthereumChain' && (
                 <>
                   <RequestFeeCard transaction={transaction} />

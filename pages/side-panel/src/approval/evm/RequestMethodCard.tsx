@@ -1,7 +1,7 @@
 import { Box, Flex, Text, Heading, Icon } from '@chakra-ui/react';
 import { CheckCircleIcon, WarningIcon, InfoIcon, QuestionIcon } from '@chakra-ui/icons';
 
-const getMethodInfo = (txType: string, hasSmartContractExecution: boolean) => {
+const getMethodInfo = (txType: string, hasSmartContractExecution: boolean, typedDataSummary?: any) => {
   switch (txType) {
     case 'eth_sign':
       return {
@@ -44,9 +44,20 @@ const getMethodInfo = (txType: string, hasSmartContractExecution: boolean) => {
     case 'eth_signTypedData':
     case 'eth_signTypedData_v3':
     case 'eth_signTypedData_v4':
+      // Background-decoded (evmTypedData.ts). A permit the decoder could not
+      // read still gets the approval framing — looksLikePermit covers it.
+      if (typedDataSummary && (typedDataSummary.kind !== 'generic' || typedDataSummary.looksLikePermit)) {
+        return {
+          title: 'Token Approval Signature',
+          description:
+            'Lets the spender move your tokens later. No gas now. Check the amount, spender and expiry below.',
+          icon: <WarningIcon boxSize={5} color="yellow.400" />,
+          color: 'yellow.400',
+        };
+      }
       return {
         title: 'Typed Data Transaction',
-        description: 'This transaction has smart contract execution, requires extended validation',
+        description: 'Typed data signature: can authorize actions. Review every field.',
         icon: <InfoIcon boxSize={8} />,
         color: 'yellow.400',
       };
@@ -80,7 +91,11 @@ export default function RequestMethodCard({ transaction }: any) {
   const data = transaction?.unsignedTx?.data ?? transaction?.request?.[0]?.data;
   const hasSmartContractExecution = typeof data === 'string' && data.length > 2 && data !== '0x';
 
-  const { title, description, icon, color } = getMethodInfo(transaction.type, hasSmartContractExecution);
+  const { title, description, icon, color } = getMethodInfo(
+    transaction.type,
+    hasSmartContractExecution,
+    transaction?.typedDataSummary,
+  );
 
   return (
     <Flex direction="column" p={4} borderWidth={1} borderRadius="md" borderColor={color}>

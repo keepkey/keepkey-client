@@ -46,7 +46,9 @@ export default function RequestDetailsCard({ transaction }: any) {
       case 'eth_signTypedData_v4':
       case 'eth_signTypedData_v3':
       case 'eth_signTypedData':
-        return <Eip712Tx transaction={transaction} />;
+        // Keyed per request so the next queued request starts from its own
+        // defaults (e.g. the field tree open for generic typed data).
+        return <Eip712Tx key={transaction?.id} transaction={transaction} />;
       case 'personal_sign':
       case 'eth_sign':
         return <PersonalSignTx transaction={transaction} />;
