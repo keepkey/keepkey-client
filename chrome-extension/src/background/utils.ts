@@ -84,3 +84,13 @@ export async function formatUserError(err: unknown): Promise<string> {
   }
   return msg;
 }
+
+/**
+ * The EVM address dApps should see: the user's saved pick if it belongs to
+ * the connected device's pubkeys, else account 0. Matching against the live
+ * list is what stops another KeepKey's address leaking back in.
+ */
+export function pickEvmAddress(addresses: string[], saved?: string): string | undefined {
+  const match = saved && addresses.find(a => a.toLowerCase() === saved.toLowerCase());
+  return match || addresses[0];
+}

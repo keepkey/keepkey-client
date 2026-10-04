@@ -53,7 +53,7 @@ import { getChainInfo, getColorForCaip } from './chains/registry';
 import { chainIdMatchesNetwork } from './chains/providerGuard';
 import { withRpcFailoverByNetworkId } from './chains/rpcFailover';
 import { EVM_TESTNETS, SOLANA_DEVNET, ALL_TESTNET_NETWORK_IDS } from './testnetPresets';
-import { formatUserError, createVaultRequiredError } from './utils';
+import { formatUserError, createVaultRequiredError, pickEvmAddress } from './utils';
 import { partitionSpamTokens, getTokenVisibilityMap, setTokenVisibility } from './spamFilter';
 
 const TAG = ' | background/index.js | ';
@@ -197,6 +197,7 @@ async function handleDeviceSwitch(newDeviceInfo: any) {
       prefetchTonAddress(),
       getHiveAccountInfo(), // warm the Hive cache before pushBalancesUpdated so the UI lists it on first paint
     ]);
+    await resolveEvmAddress();
 
     pushStateChangeEvent();
     pushBalancesUpdated();
@@ -238,11 +239,20 @@ async function checkKeepKey() {
       const mayProbe = now - lastDeviceProbeAt >= DEVICE_PROBE_INTERVAL_MS;
       if (wallet.isInitialized() && !wallet.isDeviceConnected() && mayProbe) {
         lastDeviceProbeAt = now;
+        // View-only state came from the pubkey cache, which may belong to a
+        // different KeepKey than the one that just answered.
+        const cachedId = wallet.getDeviceId();
         wallet
           .refreshFromDevice()
-          .then(upgraded => {
+          .then(async upgraded => {
             if (upgraded) {
+              const probedId = wallet.getDeviceId();
+              if (cachedId && probedId && cachedId !== probedId) {
+                await handleDeviceSwitch(wallet.getDeviceInfo());
+                return;
+              }
               console.log(TAG, 'Device reconnected — refreshed pubkeys from device');
+              await resolveEvmAddress();
               pushStateChangeEvent();
             }
           })
@@ -302,6 +312,38 @@ updateIcon();
 console.log('Background loaded');
 
 let ADDRESS = '';
+
+// The dApp-facing EVM address. The user's pick is saved so it survives MV3
+// service-worker restarts; resolveEvmAddress only restores it when it belongs
+// to the connected device's pubkeys.
+const EVM_ADDRESS_KEY = 'keepkey-evm-address';
+
+// Set ADDRESS and tell open tabs (EIP-1193 accountsChanged), the same way
+// a chain switch broadcasts chainChanged.
+async function setEvmAddress(address: string, persist: boolean) {
+  if (persist) await chrome.storage.local.set({ [EVM_ADDRESS_KEY]: address }).catch(() => {});
+  if (address.toLowerCase() === ADDRESS.toLowerCase()) return;
+  ADDRESS = address;
+  chrome.tabs.query({}, tabs => {
+    for (const tab of tabs) {
+      if (!tab.id) continue;
+      chrome.tabs.sendMessage(tab.id, { type: 'ACCOUNTS_CHANGED', accounts: [address] }).catch(() => {});
+    }
+  });
+}
+
+// Re-derive ADDRESS from the current pubkeys: the saved pick if it's on this
+// device, else account 0. Call after anything that replaces the pubkey set.
+async function resolveEvmAddress() {
+  const addresses = wallet
+    .getPubkeys()
+    .filter((pk: any) => pk.networks?.includes('eip155:1') || pk.networks?.includes('eip155:*'))
+    .map((pk: any) => pk.address)
+    .filter(Boolean);
+  const stored = await chrome.storage.local.get(EVM_ADDRESS_KEY).catch(() => ({}) as Record<string, any>);
+  const address = pickEvmAddress(addresses, stored[EVM_ADDRESS_KEY]);
+  if (address) await setEvmAddress(address, false);
+}
 
 // ---- Balance fetching via Pioneer API ----
 let cachedBalances: any[] = [];
@@ -1048,10 +1090,9 @@ const onStart = async function () {
     const pubkeysEth = wallet.getPubkeys(ChainToNetworkId[Chain.Ethereum]);
     if (pubkeysEth.length > 0) {
       console.log(tag, 'Ethereum pubkeys:', pubkeysEth.length);
-      const address = pubkeysEth[0].address;
-      if (address) {
-        console.log(tag, 'Ethereum address:', address);
-        ADDRESS = address;
+      await resolveEvmAddress();
+      if (ADDRESS) {
+        console.log(tag, 'Ethereum address:', ADDRESS);
         KEEPKEY_STATE = 5;
         updateIcon();
         pushStateChangeEvent();
@@ -1518,7 +1559,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
 
               // Update global ADDRESS for EVM signing when account changes
               if (asset.networkId?.startsWith('eip155:') && asset.address) {
-                ADDRESS = asset.address;
+                await setEvmAddress(asset.address, true);
                 console.log(tag, 'Updated global ADDRESS to:', ADDRESS);
               }
 

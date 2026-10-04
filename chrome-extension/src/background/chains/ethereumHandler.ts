@@ -701,9 +701,8 @@ const handleWalletWatchAsset = async () => {
   return true;
 };
 
-const handleWalletPermissions = async () => {
-  const permissions = [{ parentCapability: 'eth_accounts' }];
-  return permissions;
+const handleWalletPermissions = async (ADDRESS: string) => {
+  return [{ parentCapability: 'eth_accounts', caveats: [{ type: 'restrictReturnedAccounts', value: [ADDRESS] }] }];
 };
 
 const handleWalletGetCapabilities = async (params: any[]) => {
@@ -1169,8 +1168,14 @@ export const handleEthereumRequest = async (
       return await handleWalletWatchAsset();
 
     case 'wallet_getPermissions':
+      return await handleWalletPermissions(ADDRESS);
+
     case 'wallet_requestPermissions':
-      return await handleWalletPermissions();
+      // dApp "switch account" (Uniswap et al.). ponytail: no in-request picker —
+      // open the side panel, whose account dropdown fires accountsChanged on a
+      // pick. Build a real picker if dApps need the answer in this response.
+      await openSidePanel(requestInfo);
+      return await handleWalletPermissions(ADDRESS);
 
     case 'wallet_getCapabilities':
       return await handleWalletGetCapabilities(params);
