@@ -228,7 +228,11 @@ async function checkKeepKey() {
   try {
     const response = await fetch('http://localhost:1646/docs', { signal: AbortSignal.timeout(3000) });
     if (response.ok) {
-      if (KEEPKEY_STATE < 2) {
+      if (KEEPKEY_STATE === 4 && wallet.isInitialized() && ADDRESS) {
+        // Recovered from a vault outage (e.g. a vault restart). Without this,
+        // errored was sticky: the line below only promotes states < 2.
+        KEEPKEY_STATE = 5;
+      } else if (KEEPKEY_STATE < 2) {
         KEEPKEY_STATE = 2; // Set state to connected
       }
       updateIcon();
@@ -253,6 +257,8 @@ async function checkKeepKey() {
               }
               console.log(TAG, 'Device reconnected — refreshed pubkeys from device');
               await resolveEvmAddress();
+              if (ADDRESS) KEEPKEY_STATE = 5;
+              updateIcon();
               pushStateChangeEvent();
             }
           })
