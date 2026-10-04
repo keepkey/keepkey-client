@@ -502,9 +502,12 @@ async function signTransactionViaRest(
   }
 
   const result = await resp.json();
-  assertMatchingClearSignReport(preflightReport, result.clearSignReport);
-  if (eventId && result.clearSignReport) {
-    await requestStorage.updateEventById(eventId, { clearSignReport: result.clearSignReport });
+  const clearSignVerification = assertMatchingClearSignReport(preflightReport, result.clearSignReport);
+  if (eventId) {
+    await requestStorage.updateEventById(eventId, {
+      clearSignVerification,
+      ...(result.clearSignReport ? { clearSignReport: result.clearSignReport } : {}),
+    });
   }
   const serializedTx = result.serializedTx || result.serialized || '';
   if (!serializedTx) {

@@ -120,9 +120,21 @@ export async function getClearSignReport(request: ClearSignReportRequest): Promi
   return body;
 }
 
-export function assertMatchingClearSignReport(preflight: ClearSignReport | undefined, final: any): void {
-  if (!preflight || !final) return;
+export type ClearSignVerification = 'verified' | 'unverified';
+
+/**
+ * Compare the report the user approved with the one the vault returns from
+ * signing. A mismatch throws (the signed tx is not what was shown — never
+ * broadcast it). A missing report on either side is NOT a pass: the vault
+ * omits it when it could not build one, so the result is 'unverified'.
+ */
+export function assertMatchingClearSignReport(
+  preflight: ClearSignReport | undefined,
+  final: any,
+): ClearSignVerification {
+  if (!preflight || !final?.transactionFingerprint) return 'unverified';
   if (final.transactionFingerprint !== preflight.transactionFingerprint) {
     throw new Error('ClearSign fingerprint changed between approval and signing');
   }
+  return 'verified';
 }

@@ -1493,10 +1493,13 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any, eventId?: 
     console.log(`${tag} Final input: `, input);
     const sdk = wallet.getSdk();
     const output = await sdk.eth.ethSignTransaction(input);
-    if (eventId && output?.clearSignReport) {
+    if (eventId) {
       const event = await requestStorage.getEventById(eventId);
-      assertMatchingClearSignReport(event?.clearSignReport, output.clearSignReport);
-      await requestStorage.updateEventById(eventId, { clearSignReport: output.clearSignReport });
+      const clearSignVerification = assertMatchingClearSignReport(event?.clearSignReport, output?.clearSignReport);
+      await requestStorage.updateEventById(eventId, {
+        clearSignVerification,
+        ...(output?.clearSignReport ? { clearSignReport: output.clearSignReport } : {}),
+      });
     }
     console.log(`${tag} Transaction output: `, output);
 
