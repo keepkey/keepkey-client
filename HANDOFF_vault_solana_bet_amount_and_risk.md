@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-19
 **From:** keepkey-client work on `fix/solana-decode-before-approval` (PR keepkey/keepkey-client#152)
-**Vault repo:** `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault`
+**Vault repo:** `keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault`
 **Related vault PR already open:** keepkey/keepkey-vault#449 (`POST /solana/decode-transaction`)
 
 ## The goal, in the user's words

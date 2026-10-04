@@ -1,7 +1,7 @@
 # HANDOFF → vault: the BEX MCP tool surface grew to 19 — enable it with the dumb-pipe
 
 **From:** keepkey-client `develop` (+ PR #117, page-observability tools).
-**To:** `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault` — `src/bun/mcp.ts`.
+**To:** `keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault` — `src/bun/mcp.ts`.
 **TL;DR:** the extension now exposes **19** `bex_*` tools. You do **not** wire them one by one. The
 single ~20-line change in **`HANDOFF_vault_mcp_dumb_pipe.md`** turns on all 19 — and every future
 one — with no further vault work. This doc is the catalog + the one detail that change must get right.

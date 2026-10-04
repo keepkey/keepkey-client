@@ -1,7 +1,7 @@
 # Handoff — reviewing a Solana `signTransaction` in the extension
 
 **Date:** 2026-09-19
-**Repo:** `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client` (`develop`)
+**Repo:** `keepkey-stack/projects/keepkey-client` (`develop`)
 **Trigger:** the user driving SoltoshiDICE with a funded mainnet wallet saw
 `TO: N/A / AMOUNT: N/A` and said "we cant review the tx in client".
 **Status:** a fix landed here as `5355b5a` ("fix(solana): decode a dApp

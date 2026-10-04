@@ -1,6 +1,6 @@
 # HANDOFF — "KeepKey Vault is not running" shown while the vault IS running
 
-Repo: `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client`
+Repo: `keepkey-stack/projects/keepkey-client`
 Branch observed: `develop` @ `e2a0e57`
 Status: diagnosed, **no code changed**. All findings verified against source + live network.
 

@@ -2,7 +2,7 @@
 
 **Status:** 🔴 Still blocking 0.0.28 release. 712 signing chain definitively cleared.
 **Captured:** 2026-04-28
-**Predecessor:** `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/RETRO_uniswap_swap_release_blocker.md`
+**Predecessor:** `keepkey-stack/projects/keepkey-client/RETRO_uniswap_swap_release_blocker.md`
 
 ---
 
@@ -113,7 +113,7 @@ If the `quote.permitData.values.message` differs in any byte from what we signed
 
 ```bash
 KEEPKEY_API_KEY=<bearer> \
-  node /Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/evm-eip712/permit2-onchain-validate.js
+  node keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/evm-eip712/permit2-onchain-validate.js
 ```
 
 Pulls the latest `/eth/sign-typed-data` entry from `/api/v1/activity`, runs off-chain recover + on-chain `Permit2.permit()` simulation. Should print "✅ sig is on-chain valid" in <2s.
@@ -122,7 +122,7 @@ Pulls the latest `/eth/sign-typed-data` entry from `/api/v1/activity`, runs off-
 
 ```bash
 KEEPKEY_API_KEY=<bearer> \
-  node /Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/evm-eip712/sig-format-audit.js
+  node keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/evm-eip712/sig-format-audit.js
 ```
 
 Asserts 65 bytes, v∈{27,28}, low-S, EIP-55 case, recovery, EIP-2098 compactability. 20 assertions. Requires a fresh device approval.
@@ -148,27 +148,27 @@ curl -sS -X POST -H "Content-Type: application/json" -d '{"name":"sdk-test","url
 ## File index (every absolute path referenced)
 
 **keepkey-client (this repo):**
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/HANDOFF_uniswap_swap_v2.md` — this doc
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/RETRO_uniswap_swap_release_blocker.md` — round-1 retro
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/chrome-extension/src/background/chains/ethereumHandler.ts` — where to add the param-logging
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/chrome-extension/src/background/index.ts` — alternative HANDOFF logging location
+- `keepkey-stack/projects/keepkey-client/HANDOFF_uniswap_swap_v2.md` — this doc
+- `keepkey-stack/projects/keepkey-client/RETRO_uniswap_swap_release_blocker.md` — round-1 retro
+- `keepkey-stack/projects/keepkey-client/chrome-extension/src/background/chains/ethereumHandler.ts` — where to add the param-logging
+- `keepkey-stack/projects/keepkey-client/chrome-extension/src/background/index.ts` — alternative HANDOFF logging location
 
 **keepkey-vault-v11 (cross-repo):**
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/evm-eip712/permit2-onchain-validate.js` — new on-chain validation test
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/evm-eip712/sig-format-audit.js` — new wire-format audit test
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/evm-eip712/uniswap-permit-prod.js` — fixture-based regression suite (existing)
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/fixtures/eip712-blobs.json` — captured failing payloads
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault/src/bun/rest-api.ts` — `/api/v1/activity` endpoint
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault/docs/incident-7.14-eip712-regression.md` — original incident doc
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault/docs/handoff-signing-history.md` — REST audit-log workflow
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/modules/hdwallet/packages/hdwallet-keepkey/src/ethereum.ts:451` — `ethSignTypedData` (host-side hashing via `@metamask/eth-sig-util`)
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/modules/keepkey-firmware/lib/firmware/fsm_msg_ethereum.h:333` — firmware `fsm_msgEthereumSignTypedHash` (signs precomputed digests, doesn't walk typed data)
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/modules/keepkey-firmware/lib/firmware/ethereum.c:1083` — `ethereum_typed_hash_sign` (emits v=27+recid)
+- `keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/evm-eip712/permit2-onchain-validate.js` — new on-chain validation test
+- `keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/evm-eip712/sig-format-audit.js` — new wire-format audit test
+- `keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/evm-eip712/uniswap-permit-prod.js` — fixture-based regression suite (existing)
+- `keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/fixtures/eip712-blobs.json` — captured failing payloads
+- `keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault/src/bun/rest-api.ts` — `/api/v1/activity` endpoint
+- `keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault/docs/incident-7.14-eip712-regression.md` — original incident doc
+- `keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault/docs/handoff-signing-history.md` — REST audit-log workflow
+- `keepkey-stack/projects/keepkey-vault-v11/modules/hdwallet/packages/hdwallet-keepkey/src/ethereum.ts:451` — `ethSignTypedData` (host-side hashing via `@metamask/eth-sig-util`)
+- `keepkey-stack/projects/keepkey-vault-v11/modules/keepkey-firmware/lib/firmware/fsm_msg_ethereum.h:333` — firmware `fsm_msgEthereumSignTypedHash` (signs precomputed digests, doesn't walk typed data)
+- `keepkey-stack/projects/keepkey-vault-v11/modules/keepkey-firmware/lib/firmware/ethereum.c:1083` — `ethereum_typed_hash_sign` (emits v=27+recid)
 
 **Memory (private):**
-- `/Users/highlander/.claude/projects/-Users-highlander-WebstormProjects-keepkey-stack-projects-keepkey-client/memory/feedback_eip712_diagnosis.md` — don't blame derivation when verify-mismatches; instrument the chain
-- `/Users/highlander/.claude/projects/-Users-highlander-WebstormProjects-keepkey-stack-projects-keepkey-client/memory/feedback_uniswap_blame.md` — don't propose Uniswap-server-side hypotheses
-- `/Users/highlander/.claude/projects/-Users-highlander-WebstormProjects-keepkey-stack-projects-keepkey-client/memory/feedback_handoff_paths.md` — absolute paths only in handoff docs
+- `~/.claude/projects/-Users-highlander-WebstormProjects-keepkey-stack-projects-keepkey-client/memory/feedback_eip712_diagnosis.md` — don't blame derivation when verify-mismatches; instrument the chain
+- `~/.claude/projects/-Users-highlander-WebstormProjects-keepkey-stack-projects-keepkey-client/memory/feedback_uniswap_blame.md` — don't propose Uniswap-server-side hypotheses
+- `~/.claude/projects/-Users-highlander-WebstormProjects-keepkey-stack-projects-keepkey-client/memory/feedback_handoff_paths.md` — absolute paths only in handoff docs
 
 ---
 

@@ -3,8 +3,8 @@
 **From:** planning session (swapspro balance debugging, 2026-07-15)
 **Owners:** keepkey-client (BEX) + keepkey-vault (v11) — this epic spans both repos.
 **Repos:**
-- BEX: `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client` (this repo)
-- Vault: `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault`
+- BEX: `keepkey-stack/projects/keepkey-client` (this repo)
+- Vault: `keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault`
 
 > Absolute paths throughout (multi-repo stack). Vault REST base is
 > `http://localhost:1646` (`src/bun/rest-api.ts`); the BEX already pairs against

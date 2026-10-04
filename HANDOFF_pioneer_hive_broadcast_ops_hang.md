@@ -48,7 +48,7 @@ the node-relay loop. An invalid signature should produce a fast node-side
 
 ## Root cause
 
-`/Users/highlander/WebstormProjects/keepkey-stack/projects/pioneer/services/pioneer-server/src/controllers/hive.controller.ts`
+`keepkey-stack/projects/pioneer/services/pioneer-server/src/controllers/hive.controller.ts`
 
 The file already knows about this failure mode. Line 18-22:
 
@@ -112,7 +112,7 @@ boolean). That's a product call, not a bug.
 
 ## Client side (already understood, tracked separately)
 
-`/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/chrome-extension/src/background/chains/hiveHandler.ts:668`
+`keepkey-stack/projects/keepkey-client/chrome-extension/src/background/chains/hiveHandler.ts:668`
 posts to this endpoint with `AbortSignal.timeout(30_000)` but **outside** any
 try/catch — the sign call above it has one, the broadcast call does not. So even
 once Pioneer is fixed, a slow broadcast surfaces a raw `AbortError` rather than a
