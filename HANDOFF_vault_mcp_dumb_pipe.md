@@ -9,7 +9,7 @@
 
 **From:** keepkey-client `develop` — PR #112 (browser-driving tools) and #113 (Agent Mode UI) are
 **MERGED**. The client side is done.
-**To:** `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault`
+**To:** `keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault`
 **File:** `src/bun/mcp.ts` — **that file only**. `src/bun/bex-bridge.ts` needs nothing; it is already
 tool-agnostic.
 **Size:** ~20 lines. One time, forever.

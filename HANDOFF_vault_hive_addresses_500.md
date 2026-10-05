@@ -1,7 +1,7 @@
 # HANDOFF → vault: `/addresses/hive` 500 `json is not defined` (firmware-gate crash)
 
 **From:** keepkey-client (Hive dashboard debugging, 2026-07-17)
-**Vault tree:** `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault`
+**Vault tree:** `keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault`
 **File:** `src/bun/rest-api.ts` (one function)
 
 ## Symptom
