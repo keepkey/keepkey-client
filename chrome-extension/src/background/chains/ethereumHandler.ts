@@ -1340,7 +1340,7 @@ const signMessage = async (message: any, KEEPKEY_WALLET: any, ADDRESS: string, e
     }
 
     const sdk = wallet.getSdk();
-    const output = await sdk.eth.ethSignMessage({
+    const output = await wallet.signViaVault('/eth/sign', {
       address: ADDRESS,
       addressNList: getAddressNListForAddress(ADDRESS),
       message: hexMessage,
@@ -1492,7 +1492,7 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any, eventId?: 
 
     console.log(`${tag} Final input: `, input);
     const sdk = wallet.getSdk();
-    const output = await sdk.eth.ethSignTransaction(input);
+    const output = await wallet.signViaVault('/eth/sign-transaction', input);
     if (eventId) {
       const event = await requestStorage.getEventById(eventId);
       const clearSignVerification = assertMatchingClearSignReport(event?.clearSignReport, output?.clearSignReport);
@@ -1554,7 +1554,7 @@ const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string, 
     console.log(tag, '**** HDWalletPayload: ', HDWalletPayload);
     console.log(tag, '**** HDWalletPayload: ', JSON.stringify(HDWalletPayload));
     const sdk = wallet.getSdk();
-    const signedMessage = await sdk.eth.ethSignTypedData(HDWalletPayload);
+    const signedMessage = await wallet.signViaVault('/eth/sign-typed-data', HDWalletPayload);
     console.log('[HANDOFF] vault → BEX (eth_signTypedData_v4 raw):', JSON.stringify(signedMessage));
 
     // EIP-1193: eth_signTypedData_v4 must return hex signature string, not object.

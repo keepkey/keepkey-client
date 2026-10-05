@@ -8,6 +8,11 @@ import { keepKeyApiKeyStorage, pubkeyStorage } from '@extension/storage';
 
 const TAG = ' | wallet | ';
 const PROBE_TIMEOUT_MS = 5000;
+// The SDK posts signing calls with its 30s default. Reading the Desktop
+// approval and confirming on the device routinely takes longer, and the vault
+// keeps waiting after we give up, so a late approval signs with nobody left to
+// broadcast. Same 10 min the SDK itself uses for pairing.
+const SIGNING_TIMEOUT_MS = 10 * 60_000;
 
 export interface WalletState {
   sdk: any; // KeepKeySdk instance
@@ -680,4 +685,9 @@ export async function handleDeviceSwitch(newDeviceInfo: WalletState['deviceInfo'
  */
 export function getState(): WalletState {
   return state;
+}
+
+/** POST a signing request to the vault with the signing timeout (see SIGNING_TIMEOUT_MS). */
+export function signViaVault<T = any>(path: string, body: unknown): Promise<T> {
+  return state.sdk.getClient().post(path, body, SIGNING_TIMEOUT_MS);
 }

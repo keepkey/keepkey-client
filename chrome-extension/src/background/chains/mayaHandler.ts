@@ -89,7 +89,7 @@ export const handleMayaRequest = async (
 
       if (result.success && response.unsignedTx) {
         const sdk = wallet.getSdk();
-        const signedTx = await sdk.mayachain.mayachainSignAminoTransfer(response.unsignedTx);
+        const signedTx = await wallet.signViaVault('/mayachain/sign-amino-transfer', response.unsignedTx);
         console.log(tag, 'signedTx: ', signedTx);
 
         response.signedTx = signedTx;
