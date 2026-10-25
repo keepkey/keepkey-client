@@ -24,6 +24,9 @@ export default function ProjectInfoCard({ transaction }: IProps) {
     }
   }, [transaction?.siteUrl]);
 
+  // "app.uniswap.org" → "uniswap.org", so the initial fallback reads "U", not "A"
+  const siteName = useMemo(() => cleanUrl?.split('//')[1]?.replace(/^(www|app)\./, ''), [cleanUrl]);
+
   // Attempt to fetch the favicon from the cleaned URL or handle the KeepKey Browser Extension case
   useEffect(() => {
     setLogoError(false); // Reset error state for new URL
@@ -54,7 +57,9 @@ export default function ProjectInfoCard({ transaction }: IProps) {
             onError={() => setLogoError(true)}
           />
         ) : (
-          <Avatar src={getLogoSrc()} size="xl" bg="gray.700" onError={() => setLogoError(true)} />
+          // A site without a usable favicon gets its initial (Avatar's own fallback), never the
+          // 32px KeepKey status icon: blown up it looked faded, and it implied KeepKey was asking.
+          <Avatar src={faviconUrl ?? undefined} name={siteName} size="xl" bg="gray.600" color="white" />
         )}
 
         {/* Sub Avatar for KeepKey logo - only show if not already KeepKey */}
