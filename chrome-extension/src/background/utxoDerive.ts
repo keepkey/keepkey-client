@@ -200,15 +200,27 @@ export function deriveUtxoAddress({ xpub, scriptType, networkId }: DeriveArgs): 
  *  address locally from the row's xpub (pure BIP32, no device round-trip).
  *  Returns undefined (caller filters it out) when the row has nothing usable. */
 export function utxoAccountFromPubkeyRow(
-  row: { master?: string; address?: string; pubkey?: string; script_type?: string },
+  row: { master?: string; address?: string; pubkey?: string; script_type?: string; scriptType?: string },
   networkId: string,
 ): string | undefined {
   const direct = row.master || row.address;
   if (direct) return direct;
   if (!row.pubkey) return undefined;
   try {
-    return deriveUtxoAddress({ xpub: row.pubkey, scriptType: row.script_type, networkId });
+    return deriveUtxoAddress({ xpub: row.pubkey, scriptType: row.script_type ?? row.scriptType, networkId });
   } catch {
     return undefined;
   }
+}
+
+/** The vault's /api/pubkeys/batch rows carry `scriptType` (camelCase); this extension reads `script_type`
+ *  everywhere (account choice, send context, receive-address derivation). Without this, every UTXO row read as
+ *  "no script type" and fell back to p2pkh: a native-segwit (BIP84) account was handed to dApps as the legacy
+ *  1… encoding of the same key, and swap proceeds landed on an address KeepKey Desktop's accounts don't list
+ *  (recoverable only through Desktop's sweeper).
+ *  Copies `scriptType` into `script_type` when the latter is missing; rows that already have it are untouched. */
+export function normalizePubkeyRows<T extends { script_type?: string; scriptType?: string }>(
+  rows: T[],
+): (T & { script_type?: string })[] {
+  return rows.map(r => (r.script_type || !r.scriptType ? r : { ...r, script_type: r.scriptType }));
 }
