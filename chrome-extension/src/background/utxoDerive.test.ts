@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveUtxoAddress, utxoAccountFromPubkeyRow } from './utxoDerive';
+import { deriveUtxoAddress, normalizePubkeyRows, utxoAccountFromPubkeyRow } from './utxoDerive';
 
 // Canonical BIP test vectors for the "abandon abandon ... about" mnemonic.
 // These pin our local pubkey→address derivation against the published
@@ -94,5 +94,33 @@ describe('utxoAccountFromPubkeyRow — vault batch rows to dApp account strings'
 
   it('returns undefined instead of throwing on a malformed xpub', () => {
     expect(utxoAccountFromPubkeyRow(row({ pubkey: 'not-an-xpub' }), BTC)).toBeUndefined();
+  });
+});
+
+describe('vault batch rows carry scriptType (camelCase), not script_type', () => {
+  // Regression: KeepKey Desktop's /api/pubkeys/batch answers { pubkey, address: '', scriptType: 'p2wpkh' }.
+  // Reading only `script_type` derived the BIP84 account as p2pkh, so dApps (swaps.pro, SwapKit) got
+  // 1JaUQDVN…c54Hso, the legacy encoding of the same key, instead of bc1qcr8te4…, and BTC sent there
+  // didn't show in KeepKey Desktop's accounts (only its sweeper could recover it).
+  const vaultRow = { pubkey: ZPUB_BIP84, address: '', scriptType: 'p2wpkh', note: 'Bitcoin account 0 Native Segwit' };
+
+  it('derives the native segwit address from a vault-shaped row', () => {
+    expect(utxoAccountFromPubkeyRow(vaultRow, BTC)).toBe('bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu');
+  });
+
+  it('normalizePubkeyRows copies scriptType into script_type for the rest of the extension', () => {
+    const [row] = normalizePubkeyRows([vaultRow]);
+    expect(row.script_type).toBe('p2wpkh');
+    expect(utxoAccountFromPubkeyRow({ ...row, scriptType: undefined }, BTC)).toBe(
+      'bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu',
+    );
+  });
+
+  it('normalizePubkeyRows leaves an existing script_type and non-UTXO rows alone', () => {
+    const snake = { pubkey: XPUB_BIP44, script_type: 'p2pkh', scriptType: 'p2wpkh' };
+    const evm = { pubkey: '0x9858EfFD232B4033E47d90003D41EC34EcaEda94', script_type: 'ethereum' };
+    const [a, b] = normalizePubkeyRows([snake, evm]);
+    expect(a).toBe(snake);
+    expect(b).toBe(evm);
   });
 });
