@@ -16,6 +16,7 @@ import { createHiveKeychainShim } from './hive-provider';
 import { toProviderError } from './provider-error';
 import { installConsoleCapture } from './consoleCapture';
 import { installPageObserver } from './pageObserver';
+import { requestTimeoutFor } from './requestTimeouts';
 
 (function () {
   // Capture the page's console/errors from the MAIN world for the bex_console
@@ -28,7 +29,6 @@ import { installPageObserver } from './pageObserver';
   const VERSION = '2.1.0';
   const MAX_RETRY_COUNT = 3;
   const RETRY_DELAY = 100; // ms
-  const CALLBACK_TIMEOUT = 300000; // 5 minutes (hardware wallet needs time)
   const MESSAGE_QUEUE_MAX = 100;
 
   const kWindow = window as KeepKeyWindow;
@@ -122,7 +122,9 @@ import { installPageObserver } from './pageObserver';
   const cleanupCallbacks = () => {
     const now = Date.now();
     callbacks.forEach((callback, id) => {
-      if (now - callback.timestamp > CALLBACK_TIMEOUT) {
+      // Signing/approval requests can sit behind other queued requests and
+      // then wait on the device, so they get a much longer cap than reads.
+      if (now - callback.timestamp > requestTimeoutFor(callback.method)) {
         callback.callback(new Error('Request timeout'));
         callbacks.delete(id);
       }

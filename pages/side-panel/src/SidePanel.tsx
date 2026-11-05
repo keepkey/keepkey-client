@@ -41,8 +41,12 @@ import { colorForSymbol } from './styles/assetColor';
 import Transaction from './approval/Transaction';
 
 // Events older than this are dropped on load — an abandoned-tab pending
-// request shouldn't hijack the sidebar forever.
-const MAX_EVENT_AGE_MINUTES = 10;
+// request shouldn't hijack the sidebar forever. Ages count from enqueue, so
+// this must cover the background's longest wait: APPROVAL_QUEUE_TIMEOUT_MS
+// (30 min, not yet shown) + APPROVAL_TIMEOUT_MS (10 min, on screen). See
+// chrome-extension/src/injected/requestTimeouts.ts. At 10 min, requests queued
+// behind others (Safe{Wallet} add-owner) were evicted before the user reached them.
+const MAX_EVENT_AGE_MINUTES = 40;
 
 // Drawers and modals open below the sticky header, which floats above them.
 // Its height isn't fixed (the chain/account sub-bar only shows once paired),

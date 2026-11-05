@@ -1,6 +1,7 @@
 // Enhanced content script with injection verification and security improvements
 
 import type { WalletMessage } from '../../../chrome-extension/src/injected/types';
+import { requestTimeoutFor } from '../../../chrome-extension/src/injected/requestTimeouts';
 import { installAgentDom } from './agentDom';
 
 const INJECTION_TIMEOUT = 5000; // 5 seconds
@@ -145,7 +146,7 @@ window.addEventListener('message', (event: MessageEvent) => {
         } as WalletMessage,
         '*',
       );
-    }, 300000); // 5 minute timeout (hardware wallet needs time)
+    }, requestTimeoutFor(requestInfo.method)); // signing waits on the queue + device; reads stay at 5 min
 
     // Check if extension context is still valid before sending message
     if (!chrome.runtime?.id) {
