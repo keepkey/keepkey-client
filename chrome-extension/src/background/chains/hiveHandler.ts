@@ -1,3 +1,4 @@
+import { SIGNING_TIMEOUT_MS } from '../../signingTimeouts';
 import { requestStorage } from '@extension/storage';
 import { v4 as uuidv4 } from 'uuid';
 import * as wallet from '../wallet';
@@ -422,7 +423,7 @@ async function hiveTransfer(
         chain_id: txParamsResp.chainId,
       }),
       // Wait on the user holding the device button
-      signal: AbortSignal.timeout(300_000),
+      signal: AbortSignal.timeout(SIGNING_TIMEOUT_MS),
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') throw createTimeoutError('Vault signing timed out');
@@ -545,7 +546,7 @@ async function hiveSignBuffer(
         message: payload,
         is_text: isText,
       }),
-      signal: AbortSignal.timeout(300_000),
+      signal: AbortSignal.timeout(SIGNING_TIMEOUT_MS),
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') throw createTimeoutError('Vault signing timed out');
@@ -651,7 +652,7 @@ async function hiveSignAndBroadcastOps(
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getApiKey()}` },
       body: JSON.stringify({ operations }),
-      signal: AbortSignal.timeout(300_000),
+      signal: AbortSignal.timeout(SIGNING_TIMEOUT_MS),
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') throw createTimeoutError('Vault signing timed out');

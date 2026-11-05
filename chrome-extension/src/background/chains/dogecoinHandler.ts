@@ -95,8 +95,10 @@ export const handleDogecoinRequest = async (
       if (!response) throw Error('Failed to load event for signing!');
 
       if (result.success && response.unsignedTx) {
-        const sdk = wallet.getSdk();
-        const signedTx = await sdk.btc.btcSignTransaction({ ...response.unsignedTx, coin: 'Dogecoin' });
+        const signedTx = await wallet.signViaVault('/utxo/sign-transaction', {
+          ...response.unsignedTx,
+          coin: 'Dogecoin',
+        });
         response.signedTx = signedTx;
         await requestStorage.updateEventById(requestInfo.id, response);
 

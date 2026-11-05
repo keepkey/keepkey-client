@@ -1,3 +1,4 @@
+import { SIGNING_TIMEOUT_MS } from '../signingTimeouts';
 /**
  * Direct keepkey-vault-sdk wallet wrapper.
  * Replaces Pioneer SDK for signing, address derivation, and pubkey management.
@@ -8,11 +9,6 @@ import { keepKeyApiKeyStorage, pubkeyStorage } from '@extension/storage';
 
 const TAG = ' | wallet | ';
 const PROBE_TIMEOUT_MS = 5000;
-// The SDK posts signing calls with its 30s default. Reading the Desktop
-// approval and confirming on the device routinely takes longer, and the vault
-// keeps waiting after we give up, so a late approval signs with nobody left to
-// broadcast. Same 10 min the SDK itself uses for pairing.
-const SIGNING_TIMEOUT_MS = 10 * 60_000;
 
 export interface WalletState {
   sdk: any; // KeepKeySdk instance

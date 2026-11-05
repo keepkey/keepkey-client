@@ -1,3 +1,4 @@
+import { SIGNING_TIMEOUT_MS } from '../../signingTimeouts';
 /**
  * TON (Toncoin) signing handler.
  *
@@ -231,7 +232,7 @@ async function signTransactionViaRest(bodyHashHex: string, toAddress: string, am
         to_address: toAddress,
         amount: amountNano,
       }),
-      signal: AbortSignal.timeout(120_000), // device confirmation can take a while
+      signal: AbortSignal.timeout(SIGNING_TIMEOUT_MS), // device confirmation can take a while
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {
@@ -320,7 +321,7 @@ async function tonSignMessageViaRest(
         is_text: isText,
         show_display: true,
       }),
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.timeout(SIGNING_TIMEOUT_MS),
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {

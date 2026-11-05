@@ -1,3 +1,5 @@
+import { APPROVAL_TIMEOUT_MS } from '../signingTimeouts';
+import { withServiceWorkerKeepAlive } from './keepAlive';
 import { caipToNetworkId, shortListNameToCaip } from './chainConfig';
 
 //@ts-ignore
@@ -32,8 +34,7 @@ const TAG = ' | METHODS | ';
 // opens, and its `requestStorage` subscription picks up the pending event.
 //
 // Hard timeout on the promise so nothing hangs forever if the user
-// ignores the request. Matches the sidebar's event-age eviction window.
-const APPROVAL_TIMEOUT_MS = 10 * 60_000;
+// ignores the request. The sidebar retains the event through Vault signing.
 
 /*
   "requestInfo": {
@@ -195,7 +196,9 @@ export const handleWalletRequest = async (
   const origin = requestInfo?.siteUrl || requestInfo?.href || '';
   recordSite(origin, chain);
   try {
-    const result = await routeWalletRequest(requestInfo, chain, method, params, __KEEPKEY_WALLET, ADDRESS);
+    const result = await withServiceWorkerKeepAlive(() =>
+      routeWalletRequest(requestInfo, chain, method, params, __KEEPKEY_WALLET, ADDRESS),
+    );
     recordProviderCall({ ts: Date.now(), origin, chain, method, params, result, durationMs: Date.now() - startedAt });
     return result;
   } catch (error: any) {

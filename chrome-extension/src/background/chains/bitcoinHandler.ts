@@ -121,9 +121,8 @@ export const handleBitcoinRequest = async (
       if (!response) throw Error('Failed to load event for signing!');
 
       if (result.success && response.unsignedTx) {
-        // Sign using vault SDK
-        const sdk = wallet.getSdk();
-        const signedTx = await sdk.btc.btcSignTransaction(response.unsignedTx);
+        // Use the explicit signing budget (SDK 3.0.1 wrappers default to 30s).
+        const signedTx = await wallet.signViaVault('/utxo/sign-transaction', response.unsignedTx);
         console.log(tag, 'signedTx: ', signedTx);
 
         response.signedTx = signedTx;

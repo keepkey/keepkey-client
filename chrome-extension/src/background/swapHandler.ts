@@ -1,3 +1,5 @@
+import { SIGNING_TIMEOUT_MS } from '../signingTimeouts';
+import { withServiceWorkerKeepAlive } from './keepAlive';
 /**
  * swapHandler — background bridge for the side-panel's native swap UI.
  *
@@ -145,10 +147,12 @@ export async function handleSwapMessage(message: any, cachedBalances: any[]): Pr
 
     case 'execute':
       // Device-interactive — block on the physical button press.
-      return vaultFetch(
-        '/api/v2/swap/execute',
-        { method: 'POST', body: JSON.stringify(message.params || {}) },
-        300_000,
+      return withServiceWorkerKeepAlive(() =>
+        vaultFetch(
+          '/api/v2/swap/execute',
+          { method: 'POST', body: JSON.stringify(message.params || {}) },
+          SIGNING_TIMEOUT_MS,
+        ),
       );
 
     case 'status':

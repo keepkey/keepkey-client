@@ -1,3 +1,4 @@
+import { SIGNING_TIMEOUT_MS } from '../../signingTimeouts';
 import { requestStorage, accountsByNetworkStorage, assetContextStorage } from '@extension/storage';
 import { SOLANA_DEVNET } from '../testnetPresets';
 import { v4 as uuidv4 } from 'uuid';
@@ -487,7 +488,7 @@ async function signTransactionViaRest(
       }),
       // Wait on the user holding the device button — see the matching
       // comment in signMessageViaRest for the rationale.
-      signal: AbortSignal.timeout(300_000),
+      signal: AbortSignal.timeout(SIGNING_TIMEOUT_MS),
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {
@@ -548,7 +549,7 @@ async function signMessageViaRest(messageBase64: string, accountIndex = 0): Prom
       // (5 min) so we never time out *before* the user has a chance to
       // act. Aborting earlier produced a red "Vault sign-message timed
       // out" panel even though the device was still happily waiting.
-      signal: AbortSignal.timeout(300_000),
+      signal: AbortSignal.timeout(SIGNING_TIMEOUT_MS),
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {
@@ -610,7 +611,7 @@ async function signOffchainMessageViaRest(
         message_format: messageFormat,
         show_display: true,
       }),
-      signal: AbortSignal.timeout(300_000),
+      signal: AbortSignal.timeout(SIGNING_TIMEOUT_MS),
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {
