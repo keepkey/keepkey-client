@@ -15,6 +15,14 @@
  * roles come out wrong: Accessibility.getFullAXTree.
  */
 
+let secrets = {
+  isSecretField: (el: Element) => el instanceof HTMLInputElement && (el.type === 'password' || /password|one-time-code/i.test(el.autocomplete)),
+  rememberSecret: (_value: string) => {},
+  redact: (value: string): string => value,
+};
+/** Page adapters supply their document-local redactor; wallet UI keeps masked fields by default. */
+export function configureAgentSecrets(policy: typeof secrets) { secrets = policy; }
+
 /** ref → element, re-minted per snapshot. Stale refs fail with stale_ref. */
 const refs = new Map<string, Element>();
 let refSeq = 0;
@@ -179,11 +187,12 @@ export function snapshot(): { url: string; title: string; nodes: SnapNode[] } {
 
   const found = deepQuery(document, `${INTERACTIVE},${CONTEXT}`);
   const nodes: SnapNode[] = [];
+  for (const el of found) if (secrets.isSecretField(el)) secrets.rememberSecret((el as HTMLInputElement).value);
 
   for (const el of found) {
     if (!isVisible(el)) continue;
     const role = roleOf(el);
-    const name = clip(nameOf(el).replace(/\s+/g, ' '));
+    const name = clip(secrets.redact(nameOf(el)).replace(/\s+/g, ' '));
     const isContext = el.matches(CONTEXT);
 
     // An unnamed heading is noise; an unnamed BUTTON is still clickable and the
@@ -201,7 +210,8 @@ export function snapshot(): { url: string; title: string; nodes: SnapNode[] } {
       refs.set(ref, el);
       node.ref = ref;
       const input = el as HTMLInputElement;
-      if (input.value != null && typeof input.value === 'string' && input.value) node.value = clip(input.value, 60);
+      if (secrets.isSecretField(el)) node.value = '[redacted]';
+      else if (input.value != null && typeof input.value === 'string' && input.value) node.value = clip(secrets.redact(input.value), 60);
       if (isDisabled(el)) node.disabled = true;
       if (isObscured(el)) node.obscured = true;
       // aria-checked first: dApp toggles are usually a styled div with a role,

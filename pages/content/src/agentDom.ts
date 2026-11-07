@@ -23,7 +23,10 @@ import { getPageConsole } from './consoleBridge';
 import { pullObs } from './obsBridge';
 import { overlayAct, overlayAnnounce, overlayEndSession, overlaySetVisible } from './agentOverlay';
 import { panelShow, panelHide, panelLog, panelStatus } from './agentPanel';
-import { findNodes, fireClick, nameOf, readPage, resolve, setValue, snapshot } from '@extension/shared';
+import { configureAgentSecrets, findNodes, fireClick, nameOf, readPage, resolve, setValue, snapshot } from '@extension/shared';
+import { isSecretField, rememberSecret, redactPasswordResult, passwordProtected, passwordTargets, fillPassword } from './passwordSecrets';
+
+configureAgentSecrets({ isSecretField, rememberSecret, redact: redactPasswordResult });
 
 const TAG = ' | agentDom | ';
 
@@ -31,8 +34,9 @@ const TAG = ' | agentDom | ';
 // is being acted on. Hardware-wallet flows are slow anyway, so this is free.
 const SHOW_MS = 420;
 const showThen = (kind: string, el: Element, detail: string) => {
-  overlayAct(kind, el, detail);
-  panelLog(detail ? `${kind}: ${detail}` : kind);
+  const safeDetail = redactPasswordResult(detail);
+  overlayAct(kind, el, safeDetail);
+  panelLog(safeDetail ? `${kind}: ${safeDetail}` : kind);
   return new Promise<void>(r => setTimeout(r, SHOW_MS));
 };
 
@@ -118,6 +122,10 @@ async function readStorage(): Promise<any> {
 }
 
 async function handle(msg: any): Promise<any> {
+  if (msg.op === 'passwordProtection') return { protected: passwordProtected };
+  if (msg.op === 'passwordTargets') return passwordTargets(msg.origin);
+  if (msg.op === 'passwordFill') return fillPassword(msg);
+  if (passwordProtected && ['read', 'console', 'network', 'perf', 'storage'].includes(msg.op)) throw new Error('This page contains protected password data. Diagnostic reads are disabled until navigation.');
   switch (msg.op) {
     case 'snapshot':
       return snapshot();
@@ -131,7 +139,9 @@ async function handle(msg: any): Promise<any> {
 
     case 'type': {
       const el = resolve(msg.ref);
-      await showThen('typing', el, String(msg.text ?? '').slice(0, 40));
+      const secret = isSecretField(el);
+      if (secret) rememberSecret(String(msg.text ?? ''));
+      await showThen('typing', el, secret ? '[redacted]' : String(msg.text ?? '').slice(0, 40));
       setValue(el, String(msg.text ?? ''));
       if (msg.submit) {
         const key = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, composed: true };
@@ -211,11 +221,12 @@ async function handle(msg: any): Promise<any> {
 }
 
 export function installAgentDom(): void {
-  chrome.runtime.onMessage.addListener((msg: any, _sender, sendResponse) => {
+  chrome.runtime.onMessage.addListener((msg: any, sender, sendResponse) => {
     if (msg?.type !== 'BEX_AGENT_DOM') return;
+    if (sender.id !== chrome.runtime.id || sender.tab) return;
     handle(msg)
-      .then(data => sendResponse({ ok: true, data }))
-      .catch(e => sendResponse({ ok: false, code: e?.code ?? 'dom_error', message: e?.message || String(e) }));
+      .then(data => sendResponse({ ok: true, data: redactPasswordResult(data) }))
+      .catch(e => sendResponse({ ok: false, code: e?.code ?? 'dom_error', message: redactPasswordResult(e?.message || String(e)) }));
     return true; // async sendResponse
   });
   console.log(TAG, 'agent DOM listener installed');
