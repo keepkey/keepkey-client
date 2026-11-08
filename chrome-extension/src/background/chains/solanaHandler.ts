@@ -6,6 +6,7 @@ import * as wallet from '../wallet';
 import { createProviderRpcError, createTimeoutError } from '../utils';
 import { assertMatchingClearSignReport, getClearSignReport, type ClearSignReport } from '../clearSignReport';
 import { requireMessageSigningFirmware } from '../firmware';
+import { summarizeSolanaTx } from './solanaTxSummary';
 
 const TAG = ' | solanaHandler | ';
 
@@ -362,6 +363,22 @@ function buildEvent(requestInfo: any, method: string, params: any[]) {
     status: 'request',
     timestamp: new Date().toISOString(),
   };
+}
+
+/**
+ * Attach a decoded summary of a dApp transaction to its approval event, so the
+ * card shows what it does instead of "TO: N/A". A decode failure is surfaced
+ * as an error on the card rather than hidden — the device still signs only
+ * what the user approves there.
+ */
+async function withTxSummary(event: any, txArray: number[], params: any[], requestInfo: any) {
+  try {
+    const signer = await getSolanaAddress(resolveSolanaAccountIndex(params, requestInfo));
+    event.solanaTx = summarizeSolanaTx(Uint8Array.from(txArray), signer);
+  } catch (e: any) {
+    event.solanaTxError = e?.message || String(e);
+  }
+  return event;
 }
 
 /** Save event to storage + open popup + wait for user approval */
@@ -943,10 +960,11 @@ export const handleSolanaRequest = async (
         throw createProviderRpcError(4000, 'Invalid params: expected transaction as number[]');
       }
 
+
       const txBase64 = toBase64(txArray);
       const accountIndex = resolveSolanaAccountIndex(params, requestInfo);
       const owner = await getSolanaAddress(accountIndex);
-      const txEvent = await buildTxApprovalEvent(requestInfo, method, params, txBase64, owner);
+      const txEvent = await withTxSummary(await buildTxApprovalEvent(requestInfo, method, params, txBase64, owner), txArray, params, requestInfo);
       await requestUserApproval(txEvent, requestInfo, method, params, requireApproval);
       const txSignResult = await signTransactionViaRest(
         txBase64,
@@ -1074,7 +1092,8 @@ export const handleSolanaRequest = async (
       const sendBase64 = toBase64(sendTxArray);
       const accountIndex = resolveSolanaAccountIndex(params, requestInfo);
       const owner = await getSolanaAddress(accountIndex);
-      const sendEvent = await buildTxApprovalEvent(requestInfo, method, params, sendBase64, owner);
+      const sendEvent = await withTxSummary(await buildTxApprovalEvent(requestInfo, method, params, sendBase64, owner), sendTxArray, params, requestInfo);
+
       await requestUserApproval(sendEvent, requestInfo, method, params, requireApproval);
 
       // Sign via direct REST call
