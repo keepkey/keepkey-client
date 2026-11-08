@@ -89,7 +89,7 @@ export const handleOsmosisRequest = async (
 
       if (result.success && response.unsignedTx) {
         const sdk = wallet.getSdk();
-        const signedTx = await sdk.osmosis.osmosisSignAmino(response.unsignedTx);
+        const signedTx = await wallet.signViaVault('/osmosis/sign-amino', response.unsignedTx);
         console.log(tag, 'signedTx: ', signedTx);
 
         response.signedTx = signedTx;

@@ -1,3 +1,4 @@
+import { WALLET_REQUEST_TIMEOUT_MS } from '../../../chrome-extension/src/signingTimeouts';
 // Enhanced content script with injection verification and security improvements
 
 import type { WalletMessage } from '../../../chrome-extension/src/injected/types';
@@ -145,10 +146,11 @@ window.addEventListener('message', (event: MessageEvent) => {
         } as WalletMessage,
         '*',
       );
-    }, 300000); // 5 minute timeout (hardware wallet needs time)
+    }, WALLET_REQUEST_TIMEOUT_MS);
 
     // Check if extension context is still valid before sending message
     if (!chrome.runtime?.id) {
+      clearTimeout(timeout);
       window.postMessage(
         {
           source: 'keepkey-content',
@@ -220,6 +222,7 @@ window.addEventListener('message', (event: MessageEvent) => {
         );
       });
     } catch (_error) {
+      clearTimeout(timeout);
       window.postMessage(
         {
           source: 'keepkey-content',

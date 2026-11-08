@@ -17,9 +17,9 @@ Three layers had to know the op. Two are now done:
 
 | layer | file | state |
 |---|---|---|
-| Client gate | `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/chrome-extension/src/background/chains/hiveHandler.ts` (`SUPPORTED_OPS`) | ✅ this PR |
-| Vault serializer | `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault/src/bun/txbuilder/hive-ops.ts` | ✅ keepkey-vault PR #373 |
-| Firmware clear-sign | `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-firmware-consolidated/lib/firmware/hive.c` | ✅ PR #315 |
+| Client gate | `keepkey-stack/projects/keepkey-client/chrome-extension/src/background/chains/hiveHandler.ts` (`SUPPORTED_OPS`) | ✅ this PR |
+| Vault serializer | `keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault/src/bun/txbuilder/hive-ops.ts` | ✅ keepkey-vault PR #373 |
+| Firmware clear-sign | `keepkey-stack/projects/keepkey-firmware-consolidated/lib/firmware/hive.c` | ✅ PR #315 |
 
 ## What the firmware now accepts
 
@@ -115,7 +115,7 @@ Then add both names to `SUPPORTED_OPS` in `hiveHandler.ts` and give each an
 ## Verification
 
 Firmware unit tests covering this exact wire format are in
-`/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-firmware-consolidated/unittests/firmware/hive.cpp`
+`keepkey-stack/projects/keepkey-firmware-consolidated/unittests/firmware/hive.cpp`
 (`Hive.LimitOrderCreateRetainsEveryDisplayedField`,
 `Hive.LimitOrderRejectsDegenerateOrders`, `Hive.LimitOrderCancelParses`).
 Mirror those vectors in the vault's `hive-ops.test.ts` to confirm the two

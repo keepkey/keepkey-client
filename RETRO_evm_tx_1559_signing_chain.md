@@ -5,7 +5,7 @@
 **Status:** 🔴 **RELEASE BLOCKER** for any keepkey-client build that exposes EVM `eth_sendTransaction` flows. Do not ship 0.0.28 / merge develop → master while this is open.
 
 **Captured:** 2026-04-28
-**Symptom owner:** signing chain in `keepkey-vault-sdk` (`/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/`) and/or vault firmware (`keepkey-vault-v11`).
+**Symptom owner:** signing chain in `keepkey-vault-sdk` (`keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/`) and/or vault firmware (`keepkey-vault-v11`).
 **Not** in keepkey-client — this PR (`fix/eth-swap-dropped-tx`, https://github.com/keepkey/keepkey-client/pull/55) only adds the diagnostic that surfaces the bug.
 
 ---
@@ -40,7 +40,7 @@ Captured serialized bytes:
 0x02f9067f018201ef850218711a00850291d5740f8306c8b8944c82d1fbfe28c977cbb58d8c7ff8fcf9f70a2cca80b9060e3593564c…c080a029a5619898922af8414aba680899d5aa576bd6dec66391d3fcc79607e2fb1868a0412233e619f4f50b240958f1ab5632e4bbffa6c5d66515d69c78aa3fb3da7b0a
 ```
 
-Full fixture: `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/fixtures/evm-tx-1559-regression.json` (entry `uniswap-link-to-usdt-1`).
+Full fixture: `keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/fixtures/evm-tx-1559-regression.json` (entry `uniswap-link-to-usdt-1`).
 
 `from` is a normal EOA — `eth_getCode(0x141d…)` returns `0x` — so there is exactly one valid signature per pre-image. The SDK's signature is over a different pre-image than the envelope encodes.
 
@@ -108,7 +108,7 @@ Branch `fix/eth-swap-dropped-tx`, PR https://github.com/keepkey/keepkey-client/p
 To bisect the SDK ↔ firmware boundary without keepkey-client in the loop:
 
 ```
-/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/
+keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/
 ├── tests/
 │   ├── evm-tx-1559/
 │   │   ├── recover-fixture.js    ← offline; walks every fixture, asserts recovery
@@ -120,7 +120,7 @@ To bisect the SDK ↔ firmware boundary without keepkey-client in the loop:
 
 Run offline (no device needed):
 ```bash
-cd /Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk
+cd keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk
 node tests/evm-tx-1559/recover-fixture.js
 ```
 
@@ -141,7 +141,7 @@ When the bug is fixed, both scripts should pass and the fixture moves from "fail
 
 The bug is somewhere in this slice:
 
-1. **`/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/src/`** — the SDK's `eth.ethSignTransaction` implementation. Specifically: how it builds the signing-message payload sent to the firmware, and how it constructs the returned serialized envelope from the firmware's r/s/v.
+1. **`keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/src/`** — the SDK's `eth.ethSignTransaction` implementation. Specifically: how it builds the signing-message payload sent to the firmware, and how it constructs the returned serialized envelope from the firmware's r/s/v.
 2. **vault firmware (`keepkey-vault-v11`)** — the Rust handler for the EthereumSignTx (or whatever the relevant protobuf message is). Same questions: what hash does it actually sign, how does it form r/s/v.
 
 Specifically check:
@@ -168,13 +168,13 @@ These are the first three things `sign-and-recover.js` can probe by capturing mo
 
 ## File index
 
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/RETRO_evm_tx_1559_signing_chain.md` — this doc
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/HANDOFF_evm_tx_1559_signing_chain.md` — companion handoff for the next session
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/RETRO_uniswap_swap_dropped_tx.md` — earlier (now superseded) routing-as-root-cause framing; updated note added pointing here
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/RETRO_uniswap_swap_release_blocker.md` — original Permit2 / `/v1/swap 404` retro from 2026-04-28; the "data drift, not path/seed" diagnosis there applies here too
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/chrome-extension/src/background/chains/ethereumHandler.ts` — `broadcastTransaction()` contains the `[DECODE]` log that surfaces this bug
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/evm-tx-1559/recover-fixture.js` — offline regression test
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/evm-tx-1559/sign-and-recover.js` — live regression test
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/fixtures/evm-tx-1559-regression.json` — fixture file
-- `/Users/highlander/.claude/projects/-Users-highlander-WebstormProjects-keepkey-stack-projects-keepkey-client/memory/feedback_eip712_diagnosis.md` — the diagnostic principle that applies here
-- `/Users/highlander/.claude/projects/-Users-highlander-WebstormProjects-keepkey-stack-projects-keepkey-client/memory/feedback_no_hardcoded_rpcs.md` — separate but related: do not patch this with hardcoded RPC URLs
+- `keepkey-stack/projects/keepkey-client/RETRO_evm_tx_1559_signing_chain.md` — this doc
+- `keepkey-stack/projects/keepkey-client/HANDOFF_evm_tx_1559_signing_chain.md` — companion handoff for the next session
+- `keepkey-stack/projects/keepkey-client/RETRO_uniswap_swap_dropped_tx.md` — earlier (now superseded) routing-as-root-cause framing; updated note added pointing here
+- `keepkey-stack/projects/keepkey-client/RETRO_uniswap_swap_release_blocker.md` — original Permit2 / `/v1/swap 404` retro from 2026-04-28; the "data drift, not path/seed" diagnosis there applies here too
+- `keepkey-stack/projects/keepkey-client/chrome-extension/src/background/chains/ethereumHandler.ts` — `broadcastTransaction()` contains the `[DECODE]` log that surfaces this bug
+- `keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/evm-tx-1559/recover-fixture.js` — offline regression test
+- `keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/evm-tx-1559/sign-and-recover.js` — live regression test
+- `keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/tests/fixtures/evm-tx-1559-regression.json` — fixture file
+- `~/.claude/projects/-Users-highlander-WebstormProjects-keepkey-stack-projects-keepkey-client/memory/feedback_eip712_diagnosis.md` — the diagnostic principle that applies here
+- `~/.claude/projects/-Users-highlander-WebstormProjects-keepkey-stack-projects-keepkey-client/memory/feedback_no_hardcoded_rpcs.md` — separate but related: do not patch this with hardcoded RPC URLs

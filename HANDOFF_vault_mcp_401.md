@@ -4,7 +4,7 @@
 **For:** whoever owns `keepkey-vault`. This is a vault-side change; the client
 side needs nothing.
 
-**Repo:** `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11`
+**Repo:** `keepkey-stack/projects/keepkey-vault-v11`
 **File:** `projects/keepkey-vault/src/bun/rest-api.ts`
 (the vault repo is `github.com/keepkey/keepkey-vault`; `src/bun` lives under
 `projects/keepkey-vault/` in the v11 checkout — a known foot-gun)

@@ -1,3 +1,4 @@
+import { SIGNING_TIMEOUT_MS } from '../../signingTimeouts';
 import { requestStorage, assetContextStorage } from '@extension/storage';
 import { v4 as uuidv4 } from 'uuid';
 import * as wallet from '../wallet';
@@ -343,7 +344,7 @@ async function signTronViaRest(
         // clearer and future-proofed.
         amount: typeof amountRaw === 'bigint' ? amountRaw.toString() : String(amountRaw),
       }),
-      signal: AbortSignal.timeout(60000),
+      signal: AbortSignal.timeout(SIGNING_TIMEOUT_MS),
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {
@@ -406,7 +407,7 @@ async function tronSignMessageViaRest(
         is_text: isText,
         show_display: true,
       }),
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.timeout(SIGNING_TIMEOUT_MS),
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {
@@ -481,7 +482,7 @@ async function tronSignTypedHashViaRest(
         domain_separator_hash: ds,
         ...(mh ? { message_hash: mh } : {}),
       }),
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.timeout(SIGNING_TIMEOUT_MS),
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {

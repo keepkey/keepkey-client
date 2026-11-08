@@ -1,16 +1,16 @@
 # HANDOFF → vault: EIP-712 decoder shows values the hasher does not sign
 
 **From:** keepkey-client, branch `feat/permit-clear-sign` (permit clear-sign in the side-panel, 2026-09-17)
-**Vault tree:** `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault`
+**Vault tree:** `keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault`
 **Files:** `src/bun/eip712-decoder.ts`, its caller in `src/bun/rest-api.ts` (the `/eth/sign-typed-data` preview, `decodeEIP712(preview.typedData)`), `src/shared/types.ts` (`EIP712DecodedInfo`), `src/mainview/components/device/SigningApproval.tsx` (`typedDataDecoded`)
-**Reference implementation (client):** `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/chrome-extension/src/background/chains/evmTypedData.ts` and its tests, `evmTypedData.test.ts`, in the same folder. It is a pure module with no imports, so it can be copied as-is.
+**Reference implementation (client):** `keepkey-stack/projects/keepkey-client/chrome-extension/src/background/chains/evmTypedData.ts` and its tests, `evmTypedData.test.ts`, in the same folder. It is a pure module with no imports, so it can be copied as-is.
 
 No vault code was changed. This doc is the request.
 
 ## Why it matters
 
 `ethSignTypedData` in hdwallet-keepkey
-(`/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/modules/hdwallet/packages/hdwallet-keepkey/src/ethereum.ts`)
+(`keepkey-stack/projects/keepkey-vault-v11/modules/hdwallet/packages/hdwallet-keepkey/src/ethereum.ts`)
 sends `EthereumSignTypedHash` for everything except x402 EIP-3009. The device
 shows two hashes. The vault's SigningApproval card and the client's side-panel
 card are the only places a user can read a Permit / Permit2 before approving it.
@@ -183,7 +183,7 @@ the decoder should mirror the hasher as it is today.
    deadline".
 5. **Fix nested-array typehashes in hdwallet's eip-712 patch** (the signer,
    not the decoder):
-   `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/modules/hdwallet/patches/eip-712+1.0.0.patch`,
+   `keepkey-stack/projects/keepkey-vault-v11/modules/hdwallet/patches/eip-712+1.0.0.patch`,
    `getDependencies` in both `lib/cjs/eip-712.js` and `lib/es/eip-712.js`.
    Strip *every* trailing `[..]`, not one. The patch's `isValidType` already
    recurses, so it handles nested arrays. Use a linear form such as

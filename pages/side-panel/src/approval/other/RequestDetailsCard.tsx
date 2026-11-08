@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Box, Divider, Flex, Table, Tbody, Tr, Td, Badge, Avatar, IconButton, Tooltip } from '@chakra-ui/react';
+import { Box, Divider, Flex, Table, Tbody, Tr, Td, Badge, Avatar, IconButton, Text, Tooltip } from '@chakra-ui/react';
 import { CopyIcon, CheckIcon } from '@chakra-ui/icons';
 
 /**
@@ -272,6 +272,103 @@ export default function RequestDetailsCard({ transaction }: any) {
               </Tbody>
             </Table>
           </Box>
+          <Divider my={2} />
+        </Flex>
+      </div>
+    );
+  }
+
+  // Solana: a transaction is a list of instructions, not a to/amount pair.
+  // solanaHandler decodes it through the vault BEFORE asking for approval, and
+  // this branch is what the user reviews. Never fall through to the payment
+  // table below for Solana — an empty table reads as "nothing is being moved",
+  // which is exactly the wrong thing to say about a transfer we failed to read.
+  if (unsignedTx?.kind === 'solana') {
+    const decoded = unsignedTx.solanaDecoded;
+    const decodeError: string | undefined = unsignedTx.solanaDecodeError;
+    const instructions: any[] = Array.isArray(decoded?.instructions) ? decoded.instructions : [];
+    const blind = !!unsignedTx.requiresBlindSigningConsent;
+    return (
+      <div>
+        <Flex direction="column" mb={4}>
+          {decodeError && (
+            <Box mb={3} p={3} borderWidth="1px" borderColor="red.500" borderRadius="md" bg="red.900">
+              <Text fontWeight="bold" color="red.200">
+                Could not decode this transaction — do not approve unless you trust this site.
+              </Text>
+              <Text fontSize="xs" color="red.200" mt={1} wordBreak="break-all">
+                {decodeError}
+              </Text>
+            </Box>
+          )}
+          {!decodeError && blind && (
+            <Box mb={3} p={3} borderWidth="1px" borderColor="orange.400" borderRadius="md">
+              <Text fontWeight="bold" color="orange.300">
+                Blind signing — your KeepKey cannot show what this transaction does.
+              </Text>
+            </Box>
+          )}
+          {!decodeError && (
+            <Box mb={2} width="100%">
+              <Flex align="center" justify="space-between" gap={2} mb={3}>
+                <Text fontSize="sm" fontWeight="semibold">
+                  Instructions
+                </Text>
+                <Badge flexShrink={0}>
+                  {instructions.length} · {decoded?.version || 'legacy'}
+                </Badge>
+              </Flex>
+
+              <Flex direction="column" gap={2} width="100%">
+                {instructions.map((ix: any, i: number) => (
+                  <Box
+                    key={i}
+                    width="100%"
+                    minWidth={0}
+                    p={3}
+                    borderWidth="1px"
+                    borderColor="whiteAlpha.200"
+                    borderRadius="md"
+                    bg="whiteAlpha.50">
+                    <Badge
+                      colorScheme={ix.status === 'known' ? 'green' : 'orange'}
+                      maxWidth="100%"
+                      whiteSpace="normal"
+                      overflowWrap="anywhere">
+                      {ix.programName || 'Unknown program'}
+                    </Badge>
+                    <Text mt={2} fontSize="sm" fontWeight="medium" wordBreak="normal" overflowWrap="anywhere">
+                      {/* An undecoded instruction says so — it never renders blank. */}
+                      {ix.instructionName || 'Unrecognized instruction'}
+                    </Text>
+                    {Array.isArray(ix.args) && ix.args.length > 0 && (
+                      <Flex direction="column" gap={1} mt={2}>
+                        {ix.args.map((arg: any, argIndex: number) => (
+                          <Box key={`${arg.name || 'argument'}-${argIndex}`} minWidth={0}>
+                            <Text as="span" fontSize="xs" color="gray.500">
+                              {arg.name || `Argument ${argIndex + 1}`}:{' '}
+                            </Text>
+                            <Text as="span" fontSize="xs" color="gray.300" overflowWrap="anywhere">
+                              {String(arg.value)}
+                            </Text>
+                          </Box>
+                        ))}
+                      </Flex>
+                    )}
+                  </Box>
+                ))}
+              </Flex>
+
+              {decoded?.altResolutionIncomplete && (
+                <Box mt={3} p={3} borderWidth="1px" borderColor="orange.400" borderRadius="md">
+                  <Badge colorScheme="orange" mb={1}>
+                    Warning
+                  </Badge>
+                  <Text fontSize="sm">Some address lookup tables could not be resolved.</Text>
+                </Box>
+              )}
+            </Box>
+          )}
           <Divider my={2} />
         </Flex>
       </div>

@@ -1,3 +1,4 @@
+import { WALLET_REQUEST_TIMEOUT_MS } from '../../../chrome-extension/src/signingTimeouts';
 import React, { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import {
   useDisclosure,
@@ -42,7 +43,7 @@ import Transaction from './approval/Transaction';
 
 // Events older than this are dropped on load — an abandoned-tab pending
 // request shouldn't hijack the sidebar forever.
-const MAX_EVENT_AGE_MINUTES = 10;
+const MAX_EVENT_AGE_MS = WALLET_REQUEST_TIMEOUT_MS;
 
 // Drawers and modals open below the sticky header, which floats above them.
 // Its height isn't fixed (the chain/account sub-bar only shows once paired),
@@ -310,7 +311,7 @@ const SidePanel = () => {
       const fresh: any[] = [];
       for (const ev of events) {
         const ageMs = now - new Date(ev.timestamp).getTime();
-        if (ageMs <= MAX_EVENT_AGE_MINUTES * 60_000) {
+        if (ageMs <= MAX_EVENT_AGE_MS) {
           fresh.push(ev);
         } else {
           void requestStorage.removeEventById(ev.id);
@@ -463,7 +464,16 @@ const SidePanel = () => {
   if (pendingEvent) {
     return (
       <Flex direction="column" width="100%" height="100vh" bg="kk.bg" overflowY="auto" p={4}>
-        <Transaction event={pendingEvent} reloadEvents={fetchPendingEvent} onDismiss={fetchPendingEvent} />
+        {/* Each approval owns transient UI state (device prompt, error, txid page).
+            Force a fresh instance when the queue advances so a completed send's
+            txid screen cannot cover the next request (for example Uniswap's
+            Permit2 typed-data signature immediately after token approval). */}
+        <Transaction
+          key={pendingEvent.id}
+          event={pendingEvent}
+          reloadEvents={fetchPendingEvent}
+          onDismiss={fetchPendingEvent}
+        />
       </Flex>
     );
   }

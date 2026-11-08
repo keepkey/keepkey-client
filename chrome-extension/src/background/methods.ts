@@ -1,3 +1,5 @@
+import { APPROVAL_TIMEOUT_MS } from '../signingTimeouts';
+import { withServiceWorkerKeepAlive } from './keepAlive';
 import { caipToNetworkId, shortListNameToCaip } from './chainConfig';
 
 //@ts-ignore
@@ -20,7 +22,7 @@ import { handleHiveRequest } from './chains/hiveHandler';
 import type { ProviderRpcError } from './utils';
 import { createProviderRpcError, formatUserError } from './utils';
 import { openSidePanel, setApprovalBadge } from './popup';
-import { recordProviderCall, recordSite, registerPending, settlePending } from './providerLog';
+import { getPendingRequests, recordProviderCall, recordSite, registerPending, settlePending } from './providerLog';
 
 const TAG = ' | METHODS | ';
 
@@ -32,8 +34,7 @@ const TAG = ' | METHODS | ';
 // opens, and its `requestStorage` subscription picks up the pending event.
 //
 // Hard timeout on the promise so nothing hangs forever if the user
-// ignores the request. Matches the sidebar's event-age eviction window.
-const APPROVAL_TIMEOUT_MS = 10 * 60_000;
+// ignores the request. The sidebar retains the event through Vault signing.
 
 /*
   "requestInfo": {
@@ -118,9 +119,6 @@ const requireApproval = async function (
     //   throw new Error('Event not saved');
     // }
 
-    setApprovalBadge(true);
-    await openSidePanel(requestInfo);
-
     // Mirror the in-memory approval queue for the MCP agent bridge
     // (bex_pending_requests). Settled again on resolve/timeout below.
     pendingKey = registerPending({
@@ -132,18 +130,25 @@ const requireApproval = async function (
       requestedAt: Date.now(),
     });
 
+    setApprovalBadge(true);
+
     // Wait for user's decision. Resolves on ANY of:
     //   - user approves/rejects in sidebar (eth_sign_response arrives)
     //   - APPROVAL_TIMEOUT_MS elapses without a response (treated as reject)
-    return new Promise(resolve => {
+    // Install the listener before trying to open/focus the panel. An already
+    // open panel receives the storage update immediately and can otherwise
+    // respond during the await in openSidePanel(), losing the decision.
+    const approval = new Promise(resolve => {
       let settled = false;
       let timer: ReturnType<typeof setTimeout> | null = null;
 
       const cleanup = () => {
         chrome.runtime.onMessage.removeListener(listener);
         if (timer != null) clearTimeout(timer);
-        setApprovalBadge(false);
         settlePending(pendingKey);
+        // Multiple dApp requests may be waiting at once. Settling one must not
+        // clear the visual signal for the rest of the approval queue.
+        setApprovalBadge(getPendingRequests().length > 0);
       };
 
       const listener = (message: any) => {
@@ -165,9 +170,13 @@ const requireApproval = async function (
         resolve({ success: false });
       }, APPROVAL_TIMEOUT_MS);
     });
+
+    await openSidePanel(requestInfo);
+    return approval;
   } catch (e) {
     console.error(tag, e);
     settlePending(pendingKey);
+    setApprovalBadge(getPendingRequests().length > 0);
     return { success: false }; // Return failure in case of error
   }
 };
@@ -187,7 +196,9 @@ export const handleWalletRequest = async (
   const origin = requestInfo?.siteUrl || requestInfo?.href || '';
   recordSite(origin, chain);
   try {
-    const result = await routeWalletRequest(requestInfo, chain, method, params, __KEEPKEY_WALLET, ADDRESS);
+    const result = await withServiceWorkerKeepAlive(() =>
+      routeWalletRequest(requestInfo, chain, method, params, __KEEPKEY_WALLET, ADDRESS),
+    );
     recordProviderCall({ ts: Date.now(), origin, chain, method, params, result, durationMs: Date.now() - startedAt });
     return result;
   } catch (error: any) {
