@@ -44,7 +44,7 @@
     "cross-env": "^7.0.3",
     "deepmerge": "^4.3.1",
     "magic-string": "^0.30.11",
-    "ts-loader": "^9.5.1",
+    "ts-loader": "^9.6.2",
     "vitest": "^2.1.9"
   }
 }
