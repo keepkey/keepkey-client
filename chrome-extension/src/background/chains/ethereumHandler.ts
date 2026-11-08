@@ -35,6 +35,7 @@ import {
 import { assertDappChainMatchesProvider, assertProviderMatchesCaip } from './providerGuard';
 import { assertMatchingClearSignReport, getClearSignReport, type ClearSignReport } from '../clearSignReport';
 import { checkSiwe, eip191Text, type SiweCheck } from './siwe';
+import { methodNotAvailableMessage, walletGetCapabilities } from './eip5792';
 
 const TAG = ' | ethereumHandler | ';
 const DOMAIN_WHITE_LIST = [];
@@ -708,34 +709,6 @@ const handleWalletPermissions = async (ADDRESS: string) => {
   return [{ parentCapability: 'eth_accounts', caveats: [{ type: 'restrictReturnedAccounts', value: [ADDRESS] }] }];
 };
 
-const handleWalletGetCapabilities = async (params: any[]) => {
-  // wallet_getCapabilities is used by dApps to determine what features the wallet supports
-  // Uniswap uses this to check for things like atomic batch transactions
-  const address = params[0]?.toLowerCase();
-
-  // Return capabilities for the specified address or all addresses
-  const capabilities: Record<string, any> = {};
-
-  // Add base capabilities that KeepKey supports
-  const baseCapabilities = {
-    atomicBatch: {
-      supported: false, // KeepKey doesn't support atomic batch transactions yet
-    },
-    paymasterService: {
-      supported: false, // No paymaster service support
-    },
-  };
-
-  if (address) {
-    capabilities[address] = baseCapabilities;
-  } else {
-    // Return for all addresses if none specified
-    capabilities['0x0000000000000000000000000000000000000000'] = baseCapabilities;
-  }
-
-  return capabilities;
-};
-
 const handleEthAccounts = async (ADDRESS: any) => {
   const accounts = ADDRESS ? [ADDRESS] : [];
   return accounts;
@@ -1256,7 +1229,7 @@ export const handleEthereumRequest = async (
       return await handleWalletPermissions(ADDRESS);
 
     case 'wallet_getCapabilities':
-      return await handleWalletGetCapabilities(params);
+      return walletGetCapabilities(params);
 
     case 'request_accounts':
     case 'eth_accounts':
@@ -1279,6 +1252,12 @@ export const handleEthereumRequest = async (
 
     case 'eth_getEncryptionPublicKey':
       throw createProviderRpcError(4200, 'Method eth_getEncryptionPublicKey not supported');
+
+    // EIP-5792 batching is not implemented — see eip5792.ts for why the wording matters.
+    case 'wallet_sendCalls':
+    case 'wallet_getCallsStatus':
+    case 'wallet_showCallsStatus':
+      throw createProviderRpcError(4200, methodNotAvailableMessage(method));
 
     default:
       throw createProviderRpcError(4200, `Method ${method} not supported`);
@@ -1424,14 +1403,18 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any, eventId?: 
           from: transaction.from,
           to: transaction.to,
           data: transaction.data,
+          value: transaction.value,
         });
 
+        // Include value: payable calls that check msg.value revert when
+        // estimated with 0 and would fall through to the blind 400k limit.
         let estimatedGas: any = await withRpcFailover(
           p =>
             p.estimateGas({
               from: transaction.from,
               to: transaction.to,
               data: transaction.data,
+              value: transaction.value,
             }),
           { tag: tag + ' estimateGas' },
         );
