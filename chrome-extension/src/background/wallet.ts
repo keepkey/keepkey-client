@@ -5,6 +5,7 @@ import { SIGNING_TIMEOUT_MS } from '../signingTimeouts';
  */
 import { KeepKeySdk } from 'keepkey-vault-sdk';
 import { getDefaultPaths, type PathConfig } from './chainConfig';
+import { applyDeviceTimeouts } from './vaultTimeouts';
 import { keepKeyApiKeyStorage, pubkeyStorage } from '@extension/storage';
 
 const TAG = ' | wallet | ';
@@ -236,6 +237,10 @@ async function doInit(): Promise<WalletState> {
       serviceImageUrl: 'https://pioneers.dev/coins/keepkey.png',
     });
 
+    // Sign routes default to the SDK's 30s deadline; give them device time.
+    if (!applyDeviceTimeouts(sdk)) {
+      console.warn(tag, 'Could not extend vault signing timeout; device signatures abort after 30s');
+    }
     state.sdk = sdk;
 
     // Save new API key if it changed

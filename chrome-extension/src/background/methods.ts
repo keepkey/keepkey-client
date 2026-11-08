@@ -22,6 +22,7 @@ import { handleHiveRequest } from './chains/hiveHandler';
 import type { ProviderRpcError } from './utils';
 import { createProviderRpcError, formatUserError } from './utils';
 import { openSidePanel, setApprovalBadge } from './popup';
+import { waitForApprovalDecision } from './approvalWait';
 import { getPendingRequests, recordProviderCall, recordSite, registerPending, settlePending } from './providerLog';
 
 const TAG = ' | METHODS | ';
@@ -132,43 +133,13 @@ const requireApproval = async function (
 
     setApprovalBadge(true);
 
-    // Wait for user's decision. Resolves on ANY of:
-    //   - user approves/rejects in sidebar (eth_sign_response arrives)
-    //   - APPROVAL_TIMEOUT_MS elapses without a response (treated as reject)
-    // Install the listener before trying to open/focus the panel. An already
-    // open panel receives the storage update immediately and can otherwise
-    // respond during the await in openSidePanel(), losing the decision.
-    const approval = new Promise(resolve => {
-      let settled = false;
-      let timer: ReturnType<typeof setTimeout> | null = null;
-
-      const cleanup = () => {
-        chrome.runtime.onMessage.removeListener(listener);
-        if (timer != null) clearTimeout(timer);
+    // Register before opening the panel so an immediate decision is observed.
+    const approval = waitForApprovalDecision(requestInfo.id, {
+      log: (...args) => console.log(tag, ...args),
+      onSettle: () => {
         settlePending(pendingKey);
-        // Multiple dApp requests may be waiting at once. Settling one must not
-        // clear the visual signal for the rest of the approval queue.
         setApprovalBadge(getPendingRequests().length > 0);
-      };
-
-      const listener = (message: any) => {
-        if (message?.action === 'eth_sign_response' && message?.response?.eventId === requestInfo.id) {
-          if (settled) return;
-          settled = true;
-          console.log(tag, 'Received eth_sign_response for event:', message.response.eventId);
-          cleanup();
-          resolve({ success: message.response.decision === 'accept' });
-        }
-      };
-      chrome.runtime.onMessage.addListener(listener);
-
-      timer = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        console.log(tag, 'Approval timed out, rejecting for event:', requestInfo.id);
-        cleanup();
-        resolve({ success: false });
-      }, APPROVAL_TIMEOUT_MS);
+      },
     });
 
     await openSidePanel(requestInfo);

@@ -54,6 +54,17 @@ const Transaction = ({
   const NO_DEVICE_STEP_TYPES = new Set(['wallet_addEthereumChain']);
   const hasDeviceStep = !NO_DEVICE_STEP_TYPES.has(event?.type);
 
+  // Tell the background this card is on screen: its approval clock starts
+  // now, not when the dApp queued the request.
+  useEffect(() => {
+    if (!event?.id) return;
+    try {
+      chrome.runtime.sendMessage({ action: 'approval_shown', eventId: event.id }).catch?.(() => {});
+    } catch (e) {
+      console.warn('approval_shown not delivered:', e);
+    }
+  }, [event?.id]);
+
   // Fetch the assetContext on component mount
   useEffect(() => {
     requestAssetContext()

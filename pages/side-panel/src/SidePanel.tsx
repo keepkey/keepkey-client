@@ -1,4 +1,3 @@
-import { WALLET_REQUEST_TIMEOUT_MS } from '../../../chrome-extension/src/signingTimeouts';
 import React, { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import {
   useDisclosure,
@@ -42,8 +41,8 @@ import { colorForSymbol } from './styles/assetColor';
 import Transaction from './approval/Transaction';
 
 // Events older than this are dropped on load — an abandoned-tab pending
-// request shouldn't hijack the sidebar forever.
-const MAX_EVENT_AGE_MS = WALLET_REQUEST_TIMEOUT_MS;
+// Retain queued and visible requests through the full approval budget.
+const MAX_EVENT_AGE_MS = 40 * 60_000;
 
 // Drawers and modals open below the sticky header, which floats above them.
 // Its height isn't fixed (the chain/account sub-bar only shows once paired),

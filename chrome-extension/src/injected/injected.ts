@@ -1,4 +1,3 @@
-import { PROVIDER_CALLBACK_TIMEOUT_MS } from '../signingTimeouts';
 import type {
   WalletRequestInfo,
   WalletMessage,
@@ -17,6 +16,7 @@ import { createHiveKeychainShim } from './hive-provider';
 import { toProviderError } from './provider-error';
 import { installConsoleCapture } from './consoleCapture';
 import { installPageObserver } from './pageObserver';
+import { requestTimeoutFor } from './requestTimeouts';
 
 (function () {
   // Capture the page's console/errors from the MAIN world for the bex_console
@@ -122,7 +122,10 @@ import { installPageObserver } from './pageObserver';
   const cleanupCallbacks = () => {
     const now = Date.now();
     callbacks.forEach((callback, id) => {
-      if (now - callback.timestamp > PROVIDER_CALLBACK_TIMEOUT_MS) {
+      // Signing/approval requests can sit behind other queued requests and
+      // then wait on the device, so they get a much longer cap than reads.
+      if (now - callback.timestamp > requestTimeoutFor(callback.method)) {
+
         callback.callback(new Error('Request timeout'));
         callbacks.delete(id);
       }
