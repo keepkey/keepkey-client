@@ -6,6 +6,7 @@ import { SIGNING_TIMEOUT_MS } from '../signingTimeouts';
 import { KeepKeySdk } from 'keepkey-vault-sdk';
 import { getDefaultPaths, type PathConfig } from './chainConfig';
 import { applyDeviceTimeouts } from './vaultTimeouts';
+import { normalizePubkeyRows } from './utxoDerive';
 import { keepKeyApiKeyStorage, pubkeyStorage } from '@extension/storage';
 
 const TAG = ' | wallet | ';
@@ -336,7 +337,7 @@ async function loadCachedPubkeys(): Promise<any[]> {
  */
 async function fetchPubkeys(): Promise<void> {
   const tag = TAG + ' | fetchPubkeys | ';
-  const cachedPubkeys = await loadCachedPubkeys();
+  const cachedPubkeys = normalizePubkeyRows(await loadCachedPubkeys()); // caches written before the fix lack script_type
 
   // No device: use cache directly, no device call
   if (!state.deviceConnected) {
@@ -377,7 +378,7 @@ async function fetchPubkeys(): Promise<void> {
       // Preserve dynamically-added pubkeys (e.g. Solana) that aren't part of the batch
       const batchNotes = new Set(state.paths.map(p => p.note));
       const dynamicPubkeys = state.pubkeys.filter(pk => !batchNotes.has(pk.note));
-      state.pubkeys = [...result.pubkeys, ...dynamicPubkeys];
+      state.pubkeys = [...normalizePubkeyRows(result.pubkeys), ...dynamicPubkeys];
 
       // Save to cache
       if (state.deviceInfo) {

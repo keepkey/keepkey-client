@@ -1,4 +1,3 @@
-import { APPROVAL_TIMEOUT_MS } from '../signingTimeouts';
 import { withServiceWorkerKeepAlive } from './keepAlive';
 import { caipToNetworkId, shortListNameToCaip } from './chainConfig';
 
