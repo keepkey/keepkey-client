@@ -34,6 +34,7 @@ import {
 } from './evmTypedData';
 import { assertDappChainMatchesProvider, assertProviderMatchesCaip } from './providerGuard';
 import { assertMatchingClearSignReport, getClearSignReport, type ClearSignReport } from '../clearSignReport';
+import { checkSiwe, eip191Text, type SiweCheck } from './siwe';
 
 const TAG = ' | ethereumHandler | ';
 const DOMAIN_WHITE_LIST = [];
@@ -905,6 +906,16 @@ const handleSigningMethods = async (
     }
   }
 
+  // ERC-4361 domain binding (siwe.ts). Keep the param slot in sync with what
+  // processApprovedEvent signs: personal_sign params[0], eth_sign params[1].
+  // origin is the Chrome-derived one (senderSite.ts), never the page's claim.
+  let siwe: SiweCheck | null = null;
+  if (method === 'personal_sign' || method === 'eth_sign') {
+    siwe = checkSiwe(eip191Text(method === 'personal_sign' ? params[0] : params[1]), {
+      origin: requestInfo.origin ?? null,
+    });
+  }
+
   const event = {
     id: requestInfo.id,
     networkId,
@@ -925,6 +936,7 @@ const handleSigningMethods = async (
     typedDataSummary, // null except eth_signTypedData*; the card renders it
     clearSignReport,
     clearSignReportError,
+    siwe, // null unless a personal_sign/eth_sign message is a Sign-In with Ethereum
     type: method,
     request: params,
     status: 'request',
@@ -1282,6 +1294,8 @@ const processApprovedEvent = async (method: string, params: any, KEEPKEY_WALLET:
 
     let result;
     switch (method) {
+      // Keep these message slots in sync with the SIWE check in
+      // handleSigningMethods, or the panel checks one text and the device signs another.
       case 'personal_sign':
         // EIP-191 personal_sign: params = [message, address]. Prefer the dApp-supplied
         // address so multi-account wallets sign with the correct derivation path.
