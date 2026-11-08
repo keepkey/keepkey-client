@@ -21,7 +21,7 @@
     "@extension/shared": "workspace:*",
     "@extension/storage": "workspace:*",
     "@noble/hashes": "^1.5.0",
-    "@scure/base": "^1.1.9",
+    "@scure/base": "^2.4.0",
     "@scure/bip32": "^1.5.0",
     "@solana/wallet-standard-features": "^1.3.0",
     "@wallet-standard/base": "^1.1.0",
