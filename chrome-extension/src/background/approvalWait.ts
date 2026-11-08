@@ -15,7 +15,7 @@ import { APPROVAL_QUEUE_TIMEOUT_MS, APPROVAL_TIMEOUT_MS } from '../injected/requ
  */
 export function waitForApprovalDecision(
   eventId: string,
-  opts: { onSettle?: () => void; log?: (...args: any[]) => void } = {},
+  opts: { onReady?: (decide: (success: boolean) => void) => void; onSettle?: () => void; log?: (...args: any[]) => void } = {},
 ): Promise<{ success: boolean }> {
   const log = opts.log ?? (() => {});
   return new Promise(resolve => {
@@ -24,6 +24,7 @@ export function waitForApprovalDecision(
     let timer: ReturnType<typeof setTimeout> | null = null;
 
     const finish = (success: boolean) => {
+      if (settled) return;
       settled = true;
       chrome.runtime.onMessage.removeListener(listener);
       if (timer != null) clearTimeout(timer);
@@ -56,5 +57,6 @@ export function waitForApprovalDecision(
 
     chrome.runtime.onMessage.addListener(listener);
     arm(APPROVAL_QUEUE_TIMEOUT_MS, 'never shown');
+    opts.onReady?.(finish);
   });
 }

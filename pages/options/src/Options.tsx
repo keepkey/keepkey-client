@@ -1,12 +1,13 @@
 import '@src/Options.css';
 import { useEffect, useState } from 'react';
 import { withErrorBoundary, withSuspense } from '@extension/shared';
-import { exampleSidebarStorage, agentModeStorage } from '@extension/storage'; // Re-import the storage
+import { exampleSidebarStorage, agentModeStorage, agentControlStorage } from '@extension/storage'; // Re-import the storage
 import type { DeviceInfo } from '@extension/storage';
 
 const Options = () => {
   const [openSidebar, setOpenSidebar] = useState<boolean>(true);
   const [agentMode, setAgentMode] = useState<boolean>(false);
+  const [agentControl, setAgentControl] = useState<boolean>(true);
   const [cacheEnabled, setCacheEnabledState] = useState<boolean>(true);
   const [hasCachedPubkeys, setHasCachedPubkeys] = useState<boolean>(false);
   const [cachedDeviceInfo, setCachedDeviceInfo] = useState<DeviceInfo | null>(null);
@@ -29,6 +30,7 @@ const Options = () => {
 
   useEffect(() => {
     agentModeStorage.get().then(value => setAgentMode(!!value));
+    agentControlStorage.get().then(value => setAgentControl(!!value));
   }, []);
 
   const handleToggleAgentMode = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -127,6 +129,18 @@ const Options = () => {
         <label>
           <input type="checkbox" checked={agentMode} onChange={handleToggleAgentMode} />
           Enable Agent mode (read-only introspection)
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={agentControl}
+            disabled={!agentMode}
+            onChange={async e => {
+              setAgentControl(e.target.checked);
+              await agentControlStorage.set(e.target.checked);
+            }}
+          />
+          Allow agent control: approve requests and set their options over MCP. Signing still needs your device button.
         </label>
       </section>
 

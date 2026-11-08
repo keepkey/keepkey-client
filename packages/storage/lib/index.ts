@@ -2,6 +2,7 @@ import { createStorage, StorageType, type BaseStorage, SessionAccessLevel } from
 import {
   keepKeyApiKeyStorage,
   agentModeStorage,
+  agentControlStorage,
   requestStorage,
   approvalStorage,
   completedStorage,
@@ -27,6 +28,7 @@ export {
   chainIdStorage,
   keepKeyApiKeyStorage,
   agentModeStorage,
+  agentControlStorage,
   web3ProviderStorage,
   requestStorage,
   approvalStorage,

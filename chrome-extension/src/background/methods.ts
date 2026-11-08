@@ -132,10 +132,12 @@ const requireApproval = async function (
 
     setApprovalBadge(true);
 
-    // Register before opening the panel so an immediate decision is observed.
+    // Register before opening the panel so immediate UI or agent decisions are observed.
     const approval = waitForApprovalDecision(requestInfo.id, {
       log: (...args) => console.log(tag, ...args),
+      onReady: decide => { if (pendingKey) agentDecisions.set(pendingKey, decide); },
       onSettle: () => {
+        if (pendingKey) agentDecisions.delete(pendingKey);
         settlePending(pendingKey);
         setApprovalBadge(getPendingRequests().length > 0);
       },
@@ -145,11 +147,24 @@ const requireApproval = async function (
     return approval;
   } catch (e) {
     console.error(tag, e);
+    if (pendingKey) agentDecisions.delete(pendingKey);
     settlePending(pendingKey);
     setApprovalBadge(getPendingRequests().length > 0);
     return { success: false }; // Return failure in case of error
   }
 };
+
+// Pending approvals the agent can decide (bex_approve / bex_reject), keyed by
+// the providerLog pending key — dApp request ids are per-page counters and
+// collide across tabs, so they can't be the handle.
+const agentDecisions = new Map<string, (accept: boolean) => void>();
+
+export function decidePendingApproval(key: string, accept: boolean): boolean {
+  const decide = agentDecisions.get(key);
+  if (!decide) return false;
+  decide(accept);
+  return true;
+}
 
 // Thin observability wrapper: every provider call (page- or agent-originated)
 // lands in the providerLog ring buffer with its result or error CODE — the

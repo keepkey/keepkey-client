@@ -334,7 +334,7 @@ function waitForLoad(tabId: number, { settledIsDone = false } = {}): Promise<voi
 }
 
 /** Render a snapshot as indented text — far cheaper than JSON, which repeats every key. */
-function formatSnapshot(snap: { url: string; title: string; nodes: any[] }): string {
+export function formatSnapshot(snap: { url: string; title: string; nodes: any[] }): string {
   const lines = [`page ${snap.url} — ${JSON.stringify(snap.title)}`];
   for (const n of snap.nodes) {
     let line = `- ${n.role} ${JSON.stringify(n.name)}`;
@@ -343,6 +343,7 @@ function formatSnapshot(snap: { url: string; title: string; nodes: any[] }): str
     if (n.value) line += ` value=${JSON.stringify(n.value)}`;
     if (n.checked != null) line += n.checked ? ' [checked]' : ' [unchecked]';
     if (n.disabled) line += ' [disabled]';
+    if (n.obscured) line += ' [obscured]';
     lines.push(line);
   }
   if (snap.nodes.length === 0) lines.push('(no visible interactive elements — page may still be loading)');
@@ -372,13 +373,20 @@ async function screenshot(tab: chrome.tabs.Tab, quality: number): Promise<Conten
   // what the contract forbids. (dom() throws no_content_script here; the
   // remedy is the same page reload it already tells the user about.)
   if (tab.id != null) await dom(tab.id, 'overlay', { show: false });
-  let dataUrl: string;
   try {
-    dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId!, { format: 'jpeg', quality });
+    return await captureWindow(tab.windowId!, quality);
   } finally {
     if (tab.id != null) void dom(tab.id, 'overlay', { show: true }).catch(() => {});
   }
+}
 
+/**
+ * Capture a window's visible tab as a downscaled JPEG content block. Shared with
+ * bex_ui, which captures the KeepKey window (an extension page — allowed there,
+ * since it is our own origin).
+ */
+export async function captureWindow(windowId: number, quality = SCREENSHOT_QUALITY): Promise<Content> {
+  const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: 'jpeg', quality });
   const binary = atob(dataUrl.split(',')[1]);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
