@@ -87,3 +87,21 @@ describe('waitForApprovalDecision', () => {
     expect(listeners.size).toBe(0);
   });
 });
+
+it('agent decision uses the same one-use settle path and removes the listener', async () => {
+  const onSettle = vi.fn();
+  let decide!: (ok: boolean) => void;
+  const p = waitForApprovalDecision('agent', {
+    onReady: d => {
+      decide = d;
+    },
+    onSettle,
+  });
+  decide(false);
+  decide(true);
+  await expect(p).resolves.toEqual({ success: false });
+  expect(onSettle).toHaveBeenCalledTimes(1);
+  expect(listeners.size).toBe(0);
+  await vi.runAllTimersAsync();
+  expect(onSettle).toHaveBeenCalledTimes(1);
+});

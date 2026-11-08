@@ -16,12 +16,15 @@
  */
 
 let secrets = {
-  isSecretField: (el: Element) => el instanceof HTMLInputElement && (el.type === 'password' || /password|one-time-code/i.test(el.autocomplete)),
+  isSecretField: (el: Element) =>
+    el instanceof HTMLInputElement && (el.type === 'password' || /password|one-time-code/i.test(el.autocomplete)),
   rememberSecret: (_value: string) => {},
   redact: (value: string): string => value,
 };
 /** Page adapters supply their document-local redactor; wallet UI keeps masked fields by default. */
-export function configureAgentSecrets(policy: typeof secrets) { secrets = policy; }
+export function configureAgentSecrets(policy: typeof secrets) {
+  secrets = policy;
+}
 
 /** ref → element, re-minted per snapshot. Stale refs fail with stale_ref. */
 const refs = new Map<string, Element>();
@@ -211,7 +214,8 @@ export function snapshot(): { url: string; title: string; nodes: SnapNode[] } {
       node.ref = ref;
       const input = el as HTMLInputElement;
       if (secrets.isSecretField(el)) node.value = '[redacted]';
-      else if (input.value != null && typeof input.value === 'string' && input.value) node.value = clip(secrets.redact(input.value), 60);
+      else if (input.value != null && typeof input.value === 'string' && input.value)
+        node.value = clip(secrets.redact(input.value), 60);
       if (isDisabled(el)) node.disabled = true;
       if (isObscured(el)) node.obscured = true;
       // aria-checked first: dApp toggles are usually a styled div with a role,

@@ -1,6 +1,6 @@
-// Allow ten minutes for BEX review, then ten minutes for Vault/device signing.
-// Keep outer bridges alive until both stages can return a result or error.
-export const APPROVAL_TIMEOUT_MS = 10 * 60_000;
+import { APPROVAL_TIMEOUT_MS, INTERACTIVE_REQUEST_TIMEOUT_MS } from './injected/requestTimeouts';
+export { APPROVAL_TIMEOUT_MS };
 export const SIGNING_TIMEOUT_MS = 10 * 60_000;
-export const WALLET_REQUEST_TIMEOUT_MS = APPROVAL_TIMEOUT_MS + SIGNING_TIMEOUT_MS + 60_000;
-export const PROVIDER_CALLBACK_TIMEOUT_MS = WALLET_REQUEST_TIMEOUT_MS + 60_000;
+// Legacy consumers use the same queue + review + signing cap as both bridges.
+export const WALLET_REQUEST_TIMEOUT_MS = INTERACTIVE_REQUEST_TIMEOUT_MS;
+export const PROVIDER_CALLBACK_TIMEOUT_MS = INTERACTIVE_REQUEST_TIMEOUT_MS + 60_000;

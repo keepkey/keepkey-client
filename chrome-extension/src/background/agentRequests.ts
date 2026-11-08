@@ -21,6 +21,7 @@
 import { agentControlStorage, requestStorage } from '@extension/storage';
 import { getPendingRequests } from './providerLog';
 import { decidePendingApproval } from './methods';
+import { agentApprovalBlockers } from './agentApprovalBlockers';
 import type { FeeChoice, FeeWarning } from './chains/feeFloors';
 
 const err = (code: string, message: string) => Object.assign(new Error(message), { code });
@@ -68,11 +69,7 @@ function pendingEntry(key?: string) {
 }
 
 /** What stands between this request and Approve — mirrors the approval card's own gates. */
-function blockers(event: any): string[] {
-  const out: string[] = [];
-  if (event?.feeWarning && !event?.feeChoice) out.push('fee_choice_required: pick a feeChoice with action=set');
-  return out;
-}
+const blockers = agentApprovalBlockers;
 
 function options(event: any) {
   const w: FeeWarning | undefined = event?.feeWarning;
@@ -106,6 +103,8 @@ export async function executeRequestTool(args: any): Promise<any> {
       await requireControl('set');
       const c = args?.feeChoice;
       if (!c) throw err('nothing_to_set', 'pass feeChoice');
+      if (!['dapp', 'suggested', 'custom'].includes(c.source))
+        throw err('invalid_fee', 'Choose dapp, suggested or custom fees');
       if (!event?.feeWarning)
         throw err('option_unavailable', 'this request has no fee warning, so no fee choice applies');
       const next: FeeChoice = { source: c.source };

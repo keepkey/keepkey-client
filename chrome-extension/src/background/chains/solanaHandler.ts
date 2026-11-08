@@ -960,11 +960,15 @@ export const handleSolanaRequest = async (
         throw createProviderRpcError(4000, 'Invalid params: expected transaction as number[]');
       }
 
-
       const txBase64 = toBase64(txArray);
       const accountIndex = resolveSolanaAccountIndex(params, requestInfo);
       const owner = await getSolanaAddress(accountIndex);
-      const txEvent = await withTxSummary(await buildTxApprovalEvent(requestInfo, method, params, txBase64, owner), txArray, params, requestInfo);
+      const txEvent = await withTxSummary(
+        await buildTxApprovalEvent(requestInfo, method, params, txBase64, owner),
+        txArray,
+        params,
+        requestInfo,
+      );
       await requestUserApproval(txEvent, requestInfo, method, params, requireApproval);
       const txSignResult = await signTransactionViaRest(
         txBase64,
@@ -1092,7 +1096,12 @@ export const handleSolanaRequest = async (
       const sendBase64 = toBase64(sendTxArray);
       const accountIndex = resolveSolanaAccountIndex(params, requestInfo);
       const owner = await getSolanaAddress(accountIndex);
-      const sendEvent = await withTxSummary(await buildTxApprovalEvent(requestInfo, method, params, sendBase64, owner), sendTxArray, params, requestInfo);
+      const sendEvent = await withTxSummary(
+        await buildTxApprovalEvent(requestInfo, method, params, sendBase64, owner),
+        sendTxArray,
+        params,
+        requestInfo,
+      );
 
       await requestUserApproval(sendEvent, requestInfo, method, params, requireApproval);
 

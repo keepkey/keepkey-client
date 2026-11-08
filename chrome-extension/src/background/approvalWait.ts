@@ -15,7 +15,11 @@ import { APPROVAL_QUEUE_TIMEOUT_MS, APPROVAL_TIMEOUT_MS } from '../injected/requ
  */
 export function waitForApprovalDecision(
   eventId: string,
-  opts: { onReady?: (decide: (success: boolean) => void) => void; onSettle?: () => void; log?: (...args: any[]) => void } = {},
+  opts: {
+    onReady?: (decide: (success: boolean) => void) => void;
+    onSettle?: () => void;
+    log?: (...args: any[]) => void;
+  } = {},
 ): Promise<{ success: boolean }> {
   const log = opts.log ?? (() => {});
   return new Promise(resolve => {

@@ -126,8 +126,8 @@ export function EvmTransaction({ transaction, reloadEvents, handleResponse }: an
               : siweBlocked
                 ? 'Confirm the sign-in warning above'
                 : feeBlocked
-                ? 'Pick a fee strategy in the warning banner above'
-                : undefined
+                  ? 'Pick a fee strategy in the warning banner above'
+                  : undefined
           }>
           Approve
         </Button>

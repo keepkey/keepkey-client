@@ -135,7 +135,9 @@ const requireApproval = async function (
     // Register before opening the panel so immediate UI or agent decisions are observed.
     const approval = waitForApprovalDecision(requestInfo.id, {
       log: (...args) => console.log(tag, ...args),
-      onReady: decide => { if (pendingKey) agentDecisions.set(pendingKey, decide); },
+      onReady: decide => {
+        if (pendingKey) agentDecisions.set(pendingKey, decide);
+      },
       onSettle: () => {
         if (pendingKey) agentDecisions.delete(pendingKey);
         settlePending(pendingKey);

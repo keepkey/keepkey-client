@@ -23,8 +23,24 @@ import { getPageConsole } from './consoleBridge';
 import { pullObs } from './obsBridge';
 import { overlayAct, overlayAnnounce, overlayEndSession, overlaySetVisible } from './agentOverlay';
 import { panelShow, panelHide, panelLog, panelStatus } from './agentPanel';
-import { configureAgentSecrets, findNodes, fireClick, nameOf, readPage, resolve, setValue, snapshot } from '@extension/shared';
-import { isSecretField, rememberSecret, redactPasswordResult, passwordProtected, passwordTargets, fillPassword } from './passwordSecrets';
+import {
+  configureAgentSecrets,
+  findNodes,
+  fireClick,
+  nameOf,
+  readPage,
+  resolve,
+  setValue,
+  snapshot,
+} from '@extension/shared';
+import {
+  isSecretField,
+  rememberSecret,
+  redactPasswordResult,
+  passwordProtected,
+  passwordTargets,
+  fillPassword,
+} from './passwordSecrets';
 
 configureAgentSecrets({ isSecretField, rememberSecret, redact: redactPasswordResult });
 
@@ -125,7 +141,8 @@ async function handle(msg: any): Promise<any> {
   if (msg.op === 'passwordProtection') return { protected: passwordProtected };
   if (msg.op === 'passwordTargets') return passwordTargets(msg.origin);
   if (msg.op === 'passwordFill') return fillPassword(msg);
-  if (passwordProtected && ['read', 'console', 'network', 'perf', 'storage'].includes(msg.op)) throw new Error('This page contains protected password data. Diagnostic reads are disabled until navigation.');
+  if (passwordProtected && ['read', 'console', 'network', 'perf', 'storage'].includes(msg.op))
+    throw new Error('This page contains protected password data. Diagnostic reads are disabled until navigation.');
   switch (msg.op) {
     case 'snapshot':
       return snapshot();
@@ -226,7 +243,13 @@ export function installAgentDom(): void {
     if (sender.id !== chrome.runtime.id || sender.tab) return;
     handle(msg)
       .then(data => sendResponse({ ok: true, data: redactPasswordResult(data) }))
-      .catch(e => sendResponse({ ok: false, code: e?.code ?? 'dom_error', message: redactPasswordResult(e?.message || String(e)) }));
+      .catch(e =>
+        sendResponse({
+          ok: false,
+          code: e?.code ?? 'dom_error',
+          message: redactPasswordResult(e?.message || String(e)),
+        }),
+      );
     return true; // async sendResponse
   });
   console.log(TAG, 'agent DOM listener installed');

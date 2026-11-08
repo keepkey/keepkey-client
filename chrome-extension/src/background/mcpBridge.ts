@@ -36,7 +36,9 @@ const HEARTBEAT_MS = 20_000;
 const passwordProtectedTabs = new Set<number>();
 let browserOperations = 0;
 chrome.tabs.onRemoved.addListener(tabId => passwordProtectedTabs.delete(tabId));
-chrome.tabs.onUpdated.addListener((tabId, change) => { if (change.status === 'loading') passwordProtectedTabs.delete(tabId); });
+chrome.tabs.onUpdated.addListener((tabId, change) => {
+  if (change.status === 'loading') passwordProtectedTabs.delete(tabId);
+});
 
 const KEEPKEY_STATE_NAMES: Record<number, string> = {
   0: 'unknown',
@@ -265,14 +267,26 @@ async function executeTool(tool: string, args: any): Promise<any> {
     if (!Number.isSafeInteger(args.tabId) || args.tabId < 0) throw new Error('Choose a browser tab');
     const tab = await chrome.tabs.get(args.tabId);
     const expected = new URL(args.origin);
-    if (expected.protocol !== 'https:' || expected.origin !== args.origin || !tab.url || new URL(tab.url).origin !== expected.origin) throw new Error('Browser tab does not match the saved login origin');
+    if (
+      expected.protocol !== 'https:' ||
+      expected.origin !== args.origin ||
+      !tab.url ||
+      new URL(tab.url).origin !== expected.origin
+    )
+      throw new Error('Browser tab does not match the saved login origin');
     if (tool === '__vault_password_fill_v1') {
       if (browserOperations) throw new Error('Wait for browser tools to finish before filling a password');
       passwordProtectedTabs.add(args.tabId);
     }
-    const reply = await chrome.tabs.sendMessage(args.tabId, {
-      ...args, type: 'BEX_AGENT_DOM', op: tool === '__vault_password_targets_v1' ? 'passwordTargets' : 'passwordFill',
-    }, { frameId: 0 });
+    const reply = await chrome.tabs.sendMessage(
+      args.tabId,
+      {
+        ...args,
+        type: 'BEX_AGENT_DOM',
+        op: tool === '__vault_password_targets_v1' ? 'passwordTargets' : 'passwordFill',
+      },
+      { frameId: 0 },
+    );
     if (!reply?.ok) throw new Error(reply?.message || 'Password field is unavailable. Reload the tab.');
     return reply.data;
   }
@@ -282,13 +296,18 @@ async function executeTool(tool: string, args: any): Promise<any> {
   if (isBrowserTool(tool)) {
     // captureVisibleTab is window-scoped; conservatively stop every screenshot
     // while a protected password document exists in this browser profile.
-    if (tool === 'bex_screenshot' && passwordProtectedTabs.size) throw new Error('Screenshots are disabled while a protected password page is open');
+    if (tool === 'bex_screenshot' && passwordProtectedTabs.size)
+      throw new Error('Screenshots are disabled while a protected password page is open');
     browserOperations++;
-    try { return await executeBrowserTool(tool, args); }
-    finally { browserOperations--; }
+    try {
+      return await executeBrowserTool(tool, args);
+    } finally {
+      browserOperations--;
+    }
   }
   if (tool === UI_TOOL.name) {
-    if (args?.action === 'screenshot' && passwordProtectedTabs.size) throw new Error('Screenshots are disabled while a protected password page is open');
+    if (args?.action === 'screenshot' && passwordProtectedTabs.size)
+      throw new Error('Screenshots are disabled while a protected password page is open');
     return executeUiTool(args);
   }
   if (tool === REQUEST_TOOL.name) return executeRequestTool(args);
