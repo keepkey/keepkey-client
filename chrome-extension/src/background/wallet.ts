@@ -644,9 +644,7 @@ export function getDeviceId(): string | null {
  * Tear down everything keyed to the previously-connected device so the
  * next `refreshPubkeys()` / `fetchPubkeys()` starts clean:
  *   - in-memory pubkeys (cleared)
- *   - paths (rebuilt to defaults — refreshPubkeys does NOT repopulate
- *     them, so leaving paths empty would silently send an empty batch
- *     to the device and return zero pubkeys)
+ *   - paths retained as account configuration; defaults if none were loaded
  *   - persisted pubkey cache (wiped)
  *   - `deviceConnected` flag (forces re-probe on next call)
  *
@@ -660,7 +658,9 @@ export async function handleDeviceSwitch(newDeviceInfo: WalletState['deviceInfo'
   const tag = TAG + ' | handleDeviceSwitch | ';
   console.warn(tag, 'Device switch detected — clearing caches');
   state.pubkeys = [];
-  state.paths = getDefaultPaths();
+  // Derivation choices belong to the extension's account settings, not a seed.
+  // Preserve selected account indices while discarding every derived value.
+  if (state.paths.length === 0) state.paths = getDefaultPaths();
   state.deviceInfo = newDeviceInfo;
   state.deviceConnected = false;
   state.initialized = false;
