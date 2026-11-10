@@ -10,6 +10,7 @@ globalThis.Buffer = Buffer;
 
 import packageJson from '../../package.json';
 import * as wallet from './wallet';
+import { keepKeyConnectionCode, VAULT_LOCKED_MESSAGE, isForegroundDeviceRequest } from './vaultDeviceAccess';
 import { synchronizeEthereumAccount } from './evmIdentity';
 import { deriveUtxoAddress } from './utxoDerive';
 import { resetSolanaState, prefetchSolanaAccounts, deriveSolanaAccount } from './chains/solanaHandler';
@@ -80,6 +81,7 @@ const KEEPKEY_STATES = {
   3: 'busy',
   4: 'errored',
   5: 'paired',
+  6: 'wallet access needed',
 };
 let KEEPKEY_STATE = 0;
 
@@ -100,7 +102,7 @@ let iconRetryPending = false;
 
 function currentIconPath(): string {
   // Show green/online icon when connected (state 2) or paired (state 5)
-  return KEEPKEY_STATE === 2 || KEEPKEY_STATE === 5 ? './icon-128-online.png' : './icon-128.png';
+  return KEEPKEY_STATE === 2 || KEEPKEY_STATE === 5 || KEEPKEY_STATE === 6 ? './icon-128-online.png' : './icon-128.png';
 }
 
 function updateIcon() {
@@ -130,6 +132,7 @@ function pushStateChangeEvent() {
     .sendMessage({
       type: 'KEEPKEY_STATE_CHANGED',
       state: KEEPKEY_STATE,
+      connection: wallet.getConnectionState(),
     })
     .catch(() => {
       // Ignore — no popup/sidebar listening
@@ -243,15 +246,12 @@ async function checkKeepKey() {
   healthPollInflight = true;
   const prevState = KEEPKEY_STATE;
   try {
-    const response = await fetch('http://localhost:1646/docs', { signal: AbortSignal.timeout(3000) });
+    const response = await fetch('http://localhost:1646/api/health', { signal: AbortSignal.timeout(3000) });
     if (response.ok) {
-      if (KEEPKEY_STATE === 4 && wallet.isInitialized() && ADDRESS) {
-        // Recovered from a vault outage (e.g. a vault restart). Without this,
-        // errored was sticky: the line below only promotes states < 2.
-        KEEPKEY_STATE = 5;
-      } else if (KEEPKEY_STATE < 2) {
-        KEEPKEY_STATE = 2; // Set state to connected
-      }
+      const previousConnection = JSON.stringify(wallet.getConnectionState());
+      wallet.recordVaultHealth(await response.json().catch(() => ({})));
+      KEEPKEY_STATE = keepKeyConnectionCode(wallet.getConnectionState(), wallet.isInitialized());
+      if (JSON.stringify(wallet.getConnectionState()) !== previousConnection) pushStateChangeEvent();
       updateIcon();
       if (KEEPKEY_STATE !== prevState) pushStateChangeEvent();
       // If the wallet is initialized but in view-only mode, try to upgrade by
@@ -320,7 +320,8 @@ async function checkKeepKey() {
       resetTonState();
       resetHiveState();
     }
-    KEEPKEY_STATE = 4; // Set state to errored
+    wallet.markVaultUnreachable();
+    KEEPKEY_STATE = 4; // API transport is unreachable, independently of the PIN.
     updateIcon();
     if (KEEPKEY_STATE !== prevState) pushStateChangeEvent();
   } finally {
@@ -1042,10 +1043,10 @@ const onStart = async function () {
     console.log(tag, 'Wallet initialized');
 
     if (!wallet.isInitialized()) {
-      // No device + no cached pubkeys. Show errored icon but don't crash the
-      // service worker — a later device plug-in will trigger a refresh.
-      console.warn(tag, 'No pubkeys available (no device and no cache). Plug in KeepKey to initialize.');
-      KEEPKEY_STATE = 4;
+      // The API can be paired and reachable before any wallet data is cached.
+      // Keep that distinct from an outage; load on a deliberate user request.
+      console.info(tag, 'Vault connected; wallet data will load on demand.');
+      KEEPKEY_STATE = keepKeyConnectionCode(wallet.getConnectionState(), false);
       updateIcon();
       pushStateChangeEvent();
       return;
@@ -1195,7 +1196,7 @@ const onStart = async function () {
       console.error(tag, 'FAILED TO INIT, No Ethereum address found');
     }
   } catch (e) {
-    KEEPKEY_STATE = 4; // errored
+    KEEPKEY_STATE = keepKeyConnectionCode(wallet.getConnectionState(), wallet.isInitialized());
     updateIcon();
     pushStateChangeEvent();
     console.error(tag, 'Error:', e);
@@ -1218,6 +1219,17 @@ function ensureStarted(): Promise<void> {
   return onStartInFlight;
 }
 
+let foregroundInitInFlight: Promise<void> | null = null;
+async function ensureForegroundWallet(): Promise<void> {
+  if (wallet.isInitialized()) return;
+  if (!wallet.getConnectionState().vaultReachable || !wallet.getConnectionState().paired) return;
+  if (!foregroundInitInFlight) foregroundInitInFlight = (async () => {
+    await wallet.refreshPubkeys(true);
+    await ensureStarted();
+  })().finally(() => { foregroundInitInFlight = null; });
+  await foregroundInitInFlight;
+}
+
 setTimeout(() => {
   ensureStarted();
 }, 5000);
@@ -1229,12 +1241,13 @@ initMcpBridge({
   getKeepKeyState: () => KEEPKEY_STATE,
   walletRequest: async (chain: string, method: string, params: any[]) => {
     if (!wallet.isInitialized()) await ensureStarted();
+    if (!wallet.isInitialized() && isForegroundDeviceRequest(method)) await ensureForegroundWallet();
     // Same post-init check WALLET_REQUEST does, so an agent calling with the
     // vault closed gets the actionable "launch the Vault" error rather than a
     // bare handler failure.
     if (!wallet.isInitialized()) {
       if (KEEPKEY_STATE === 4) throw createVaultRequiredError();
-      throw Error('Wallet not initialized');
+      throw Error(wallet.getConnectionState().deviceLocked ? VAULT_LOCKED_MESSAGE : 'Vault is connected. Connect your KeepKey and load the wallet to continue.');
     }
     if (chain === 'ethereum' && method === 'eth_requestAccounts') await syncEthereumAccount();
     const requestInfo = {
@@ -1271,13 +1284,14 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             console.warn(tag, 'WALLET_REQUEST before wallet ready — initializing on demand');
             await ensureStarted();
           }
+          if (!wallet.isInitialized() && isForegroundDeviceRequest(message.requestInfo?.method)) await ensureForegroundWallet();
           if (!wallet.isInitialized()) {
             // Distinguish "vault is closed" (state 4) from a transient init race
             // so the dApp gets the actionable "launch the Vault" message instead
             // of a bare "Wallet not initialized". The side panel already shows
             // the Connect/Vault-Required card off the same state.
             if (KEEPKEY_STATE === 4) throw createVaultRequiredError();
-            throw Error('Wallet not initialized');
+            throw Error(wallet.getConnectionState().deviceLocked ? VAULT_LOCKED_MESSAGE : 'Vault is connected. Connect your KeepKey and load the wallet to continue.');
           }
           const { requestInfo } = message;
           const { method, params, chain } = requestInfo;
@@ -1333,7 +1347,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         }
 
         case 'GET_KEEPKEY_STATE': {
-          sendResponse({ state: KEEPKEY_STATE });
+          sendResponse({ state: KEEPKEY_STATE, connection: wallet.getConnectionState() });
           break;
         }
 
@@ -1377,10 +1391,13 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         }
 
         case 'ON_START': {
-          ensureStarted();
-          setTimeout(() => {
-            sendResponse({ state: KEEPKEY_STATE });
-          }, 15000);
+          try {
+            await ensureStarted();
+            if (message.foreground === true) await ensureForegroundWallet();
+            sendResponse({ success: true, state: KEEPKEY_STATE, connection: wallet.getConnectionState() });
+          } catch (error) {
+            sendResponse({ error: await formatUserError(error), state: KEEPKEY_STATE, connection: wallet.getConnectionState() });
+          }
           break;
         }
 
@@ -1822,7 +1839,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           const { path } = message;
           try {
             wallet.addPath(path);
-            const pubkeys = await wallet.refreshPubkeys();
+            const pubkeys = await wallet.refreshPubkeys(true);
             sendResponse({ success: true, pubkeys });
           } catch (error) {
             console.error('Error adding account path:', error);
@@ -1863,7 +1880,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               accountIndex,
             };
             wallet.addPath(path);
-            const pubkeys = await wallet.refreshPubkeys();
+            const pubkeys = await wallet.refreshPubkeys(true);
             sendResponse({ success: true, accounts, pubkeys });
           } catch (error) {
             console.error('Error adding ETH account:', error);
@@ -1923,7 +1940,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                 break;
               }
               for (const p of paths) wallet.addPath(p);
-              await wallet.refreshPubkeys();
+              await wallet.refreshPubkeys(true);
             }
             sendResponse({ success: true, accounts, pubkeys: wallet.getPubkeys() });
           } catch (error) {

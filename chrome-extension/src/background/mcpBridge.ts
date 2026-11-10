@@ -47,6 +47,7 @@ const KEEPKEY_STATE_NAMES: Record<number, string> = {
   3: 'busy',
   4: 'errored',
   5: 'paired',
+  6: 'wallet access needed',
 };
 
 // Chains whose request_accounts is a cache read (no device round-trip).

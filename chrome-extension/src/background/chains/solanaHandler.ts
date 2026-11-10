@@ -1,3 +1,4 @@
+import { readFromVault, VAULT_LOCKED_MESSAGE } from '../vaultDeviceAccess';
 import { SIGNING_TIMEOUT_MS } from '../../signingTimeouts';
 import { requestStorage, accountsByNetworkStorage, assetContextStorage } from '@extension/storage';
 import { SOLANA_DEVNET } from '../testnetPresets';
@@ -272,7 +273,7 @@ function resolveSolanaAccountIndex(params: any[], requestInfo: any): number {
   return 0;
 }
 
-async function getSolanaAddress(accountIndex = 0): Promise<string> {
+async function getSolanaAddress(accountIndex = 0, foreground = false): Promise<string> {
   const cached = cachedAddresses.get(accountIndex);
   if (cached) return cached;
 
@@ -287,7 +288,7 @@ async function getSolanaAddress(accountIndex = 0): Promise<string> {
   }
 
   // Not cached — need the device.
-  if (!wallet.isDeviceConnected()) {
+  if (!wallet.isDeviceConnected() && !foreground) {
     // Try one probe in case device was plugged in after start
     const reachable = await wallet.probeDevice();
     if (!reachable) {
@@ -300,7 +301,7 @@ async function getSolanaAddress(accountIndex = 0): Promise<string> {
 
   const sdk = wallet.getSdk();
   const address_n = solanaAddressN(accountIndex);
-  const result = await sdk.address.solanaGetAddress({ address_n });
+  const result = await readFromVault(sdk, '/addresses/solana', { address_n }, foreground);
 
   const address = result.address || result;
   if (!address || typeof address !== 'string') {
@@ -336,7 +337,7 @@ async function getSolanaAddress(accountIndex = 0): Promise<string> {
  * which both need to materialize account N's pubkey outside the batch xpub flow.
  */
 export async function deriveSolanaAccount(accountIndex: number): Promise<string> {
-  return getSolanaAddress(accountIndex);
+  return getSolanaAddress(accountIndex, true);
 }
 
 /** Build the event object for popup approval flow */
@@ -373,7 +374,7 @@ function buildEvent(requestInfo: any, method: string, params: any[]) {
  */
 async function withTxSummary(event: any, txArray: number[], params: any[], requestInfo: any) {
   try {
-    const signer = await getSolanaAddress(resolveSolanaAccountIndex(params, requestInfo));
+    const signer = await getSolanaAddress(resolveSolanaAccountIndex(params, requestInfo), true);
     event.solanaTx = summarizeSolanaTx(Uint8Array.from(txArray), signer);
   } catch (e: any) {
     event.solanaTxError = e?.message || String(e);
@@ -515,6 +516,7 @@ async function signTransactionViaRest(
   }
 
   if (!resp.ok) {
+    if (resp.status === 423) throw Object.assign(new Error(VAULT_LOCKED_MESSAGE), { status: 423 });
     const text = await resp.text().catch(() => '');
     throw createProviderRpcError(-32603, `Vault sign failed (${resp.status}): ${text}`);
   }
@@ -576,6 +578,7 @@ async function signMessageViaRest(messageBase64: string, accountIndex = 0): Prom
   }
 
   if (!resp.ok) {
+    if (resp.status === 423) throw Object.assign(new Error(VAULT_LOCKED_MESSAGE), { status: 423 });
     const text = await resp.text().catch(() => '');
     throw createProviderRpcError(-32603, `Vault sign-message failed (${resp.status}): ${text}`);
   }
@@ -637,6 +640,7 @@ async function signOffchainMessageViaRest(
     throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
   }
   if (!resp.ok) {
+    if (resp.status === 423) throw Object.assign(new Error(VAULT_LOCKED_MESSAGE), { status: 423 });
     const text = await resp.text().catch(() => '');
     throw createProviderRpcError(-32603, `Vault Solana sign-offchain failed (${resp.status}): ${text}`);
   }
@@ -898,7 +902,7 @@ export const handleSolanaRequest = async (
   switch (method) {
     // ---- Connect ----
     case 'solana_connect': {
-      const address = await getSolanaAddress();
+      const address = await getSolanaAddress(0, true);
       console.log(tag, 'Connected with address:', address);
       return address;
     }
@@ -912,7 +916,7 @@ export const handleSolanaRequest = async (
 
     // ---- Get public key ----
     case 'solana_getPublicKey': {
-      return await getSolanaAddress();
+      return await getSolanaAddress(0, true);
     }
 
     // ---- Enumerate accounts (wallet-standard multi-account) ----
@@ -928,7 +932,7 @@ export const handleSolanaRequest = async (
           accountIndex: typeof pk.accountIndex === 'number' ? pk.accountIndex : 0,
         }));
       if (existing.length === 0) {
-        const addr = await getSolanaAddress(0);
+        const addr = await getSolanaAddress(0, true);
         return [{ address: addr, accountIndex: 0 }];
       }
       return existing.sort((a, b) => a.accountIndex - b.accountIndex);
@@ -962,7 +966,7 @@ export const handleSolanaRequest = async (
 
       const txBase64 = toBase64(txArray);
       const accountIndex = resolveSolanaAccountIndex(params, requestInfo);
-      const owner = await getSolanaAddress(accountIndex);
+      const owner = await getSolanaAddress(accountIndex, true);
       const txEvent = await withTxSummary(
         await buildTxApprovalEvent(requestInfo, method, params, txBase64, owner),
         txArray,
@@ -1009,7 +1013,7 @@ export const handleSolanaRequest = async (
       // sender and signer MUST use the same account or the built tx won't
       // match the signature. Both derive from acctIdx.
       const acctIdx = typeof payload.accountIndex === 'number' ? payload.accountIndex : 0;
-      const sender = await getSolanaAddress(acctIdx);
+      const sender = await getSolanaAddress(acctIdx, true);
       const blockhash = await getLatestBlockhash();
       const txBytes = buildSolanaTransferTx(sender, recipient, lamports, blockhash);
       const txBase64 = toBase64(Array.from(txBytes));
@@ -1095,7 +1099,7 @@ export const handleSolanaRequest = async (
       // so an unreviewable screen here is the most expensive one in the wallet.
       const sendBase64 = toBase64(sendTxArray);
       const accountIndex = resolveSolanaAccountIndex(params, requestInfo);
-      const owner = await getSolanaAddress(accountIndex);
+      const owner = await getSolanaAddress(accountIndex, true);
       const sendEvent = await withTxSummary(
         await buildTxApprovalEvent(requestInfo, method, params, sendBase64, owner),
         sendTxArray,

@@ -1,3 +1,4 @@
+import { readFromVault, VAULT_LOCKED_MESSAGE } from '../vaultDeviceAccess';
 import { SIGNING_TIMEOUT_MS } from '../../signingTimeouts';
 /**
  * TON (Toncoin) signing handler.
@@ -70,7 +71,7 @@ function isPlausibleTonAddress(addr: string): boolean {
 
 /** Fetch the device's TON address; cache on the shared pubkey store so
  *  watch-only sessions work without replugging the device. */
-export async function getTonAddress(): Promise<string> {
+export async function getTonAddress(foreground = false): Promise<string> {
   if (cachedAddress) return cachedAddress;
 
   const walletAddress = wallet.getAddressForNetwork(TON_NETWORK_ID);
@@ -84,7 +85,7 @@ export async function getTonAddress(): Promise<string> {
     console.warn(TAG, 'Discarding implausible cached TON address:', walletAddress);
   }
 
-  if (!wallet.isDeviceConnected()) {
+  if (!wallet.isDeviceConnected() && !foreground) {
     const reachable = await wallet.probeDevice();
     if (!reachable) {
       throw createProviderRpcError(
@@ -94,28 +95,7 @@ export async function getTonAddress(): Promise<string> {
     }
   }
 
-  const apiKey = getApiKey();
-  let resp: Response;
-  try {
-    resp = await fetch(`${VAULT_URL}/addresses/ton`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({ address_n: TON_ADDRESS_N, show_display: false }),
-      signal: AbortSignal.timeout(30000),
-    });
-  } catch (e: any) {
-    throw createProviderRpcError(-32603, `Vault TON address fetch failed: ${e.message}`);
-  }
-
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => '');
-    throw createProviderRpcError(-32603, `Vault TON address fetch failed (${resp.status}): ${text}`);
-  }
-
-  const result = (await resp.json()) as { address?: string };
+  const result = await readFromVault<{ address?: string }>(wallet.getSdk(), '/addresses/ton', { address_n: TON_ADDRESS_N, show_display: false }, foreground);
   const address = result.address;
   console.log(TAG, '/addresses/ton returned:', address);
   if (!address || typeof address !== 'string') {
@@ -210,6 +190,7 @@ async function buildTransferViaRest(params: {
     throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
   }
   if (!resp.ok) {
+    if (resp.status === 423) throw Object.assign(new Error(VAULT_LOCKED_MESSAGE), { status: 423 });
     const text = await resp.text().catch(() => '');
     throw createProviderRpcError(-32603, `Vault TON build failed (${resp.status}): ${text}`);
   }
@@ -241,6 +222,7 @@ async function signTransactionViaRest(bodyHashHex: string, toAddress: string, am
     throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
   }
   if (!resp.ok) {
+    if (resp.status === 423) throw Object.assign(new Error(VAULT_LOCKED_MESSAGE), { status: 423 });
     const text = await resp.text().catch(() => '');
     throw createProviderRpcError(-32603, `Vault TON sign failed (${resp.status}): ${text}`);
   }
@@ -330,6 +312,7 @@ async function tonSignMessageViaRest(
     throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
   }
   if (!resp.ok) {
+    if (resp.status === 423) throw Object.assign(new Error(VAULT_LOCKED_MESSAGE), { status: 423 });
     const text = await resp.text().catch(() => '');
     if (/advanced\s*mode/i.test(text)) {
       // Translate the firmware-policy failure into a clear, actionable
@@ -369,6 +352,7 @@ async function finalizeTransferViaRest(build: any, signature: string): Promise<{
     throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
   }
   if (!resp.ok) {
+    if (resp.status === 423) throw Object.assign(new Error(VAULT_LOCKED_MESSAGE), { status: 423 });
     const text = await resp.text().catch(() => '');
     throw createProviderRpcError(-32603, `Vault TON finalize failed (${resp.status}): ${text}`);
   }
@@ -391,7 +375,7 @@ export const handleTonRequest = async (
 
   switch (method) {
     case 'request_accounts': {
-      const address = await getTonAddress();
+      const address = await getTonAddress(true);
       return [address];
     }
 
@@ -410,7 +394,7 @@ export const handleTonRequest = async (
       if (!rawAmount) throw createProviderRpcError(4000, 'Missing TON amount');
 
       const amountNano = tonToNano(String(rawAmount));
-      const fromAddress = await getTonAddress();
+      const fromAddress = await getTonAddress(true);
 
       // Build first so we have the unsigned body ready to display before
       // we pop the approval UI. Without the build step the approval card
@@ -549,7 +533,7 @@ export const handleTonRequest = async (
       }
 
       if (!requestInfo.id) requestInfo.id = uuidv4();
-      const fromAddress = await getTonAddress();
+      const fromAddress = await getTonAddress(true);
       const event = {
         id: requestInfo.id,
         networkId: TON_NETWORK_ID,

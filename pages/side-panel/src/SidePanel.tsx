@@ -77,6 +77,7 @@ const SidePanel = () => {
   const [balances, setBalances] = useState<any[]>([]);
   const [totalUsdBalance, setTotalUsdBalance] = useState<number>(0);
   const [keepkeyState, setKeepkeyState] = useState<number | null>(null);
+  const [deviceLocked, setDeviceLocked] = useState(false);
   const [transactionContext, setTransactionContext] = useState<any>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -282,13 +283,12 @@ const SidePanel = () => {
   const refreshBalances = async () => {
     try {
       setIsRefreshing(true);
-      setKeepkeyState(null);
       chrome.runtime.sendMessage({ type: 'CLEAR_CACHE' }, response => {
         if (response?.success) {
           console.log('Cache cleared');
         }
       });
-      chrome.runtime.sendMessage({ type: 'ON_START' }, response => {
+      chrome.runtime.sendMessage({ type: 'ON_START', foreground: true }, response => {
         if (response?.success) {
           console.log('ON_START triggered');
         }
@@ -340,6 +340,7 @@ const SidePanel = () => {
     const messageListener = (message: any) => {
       if (message.type === 'KEEPKEY_STATE_CHANGED' && message.state !== undefined) {
         setKeepkeyState(message.state);
+        if (message.connection) setDeviceLocked(!!message.connection.deviceLocked);
       }
       if (message.type === 'TRANSACTION_CONTEXT_UPDATED' && message.id) {
         setTransactionContext(message.id);
@@ -417,6 +418,14 @@ const SidePanel = () => {
         return <Loading setIsConnecting={setIsConnecting} keepkeyState={keepkeyState} />;
       case 4:
         return <Connect setIsConnecting={setIsConnecting} />;
+      case 6:
+        return (
+          <Flex direction="column" align="center" justify="center" minH="300px" gap={3} textAlign="center">
+            <Text fontSize="lg" fontWeight="semibold">Vault connected</Text>
+            <Text fontSize="sm" color="kk.dim">Load your wallet when you are ready. KeepKey will ask for your PIN if needed.</Text>
+            <Button onClick={refreshBalances} isLoading={isRefreshing}>Load wallet</Button>
+          </Flex>
+        );
       case 5:
         return (
           <Balances
@@ -495,6 +504,7 @@ const SidePanel = () => {
         overflow="visible">
         <NetworkAccountHeader
           keepkeyState={keepkeyState}
+          deviceLocked={deviceLocked}
           isRefreshing={isRefreshing}
           onSettingsOpen={onSettingsOpen}
           onHome={handleGoHome}

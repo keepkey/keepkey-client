@@ -81,4 +81,5 @@ export const stateNames: Record<number, string> = {
   3: 'busy',
   4: 'errored',
   5: 'paired',
+  6: 'wallet access needed',
 };
