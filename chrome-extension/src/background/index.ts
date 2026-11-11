@@ -1223,10 +1223,13 @@ let foregroundInitInFlight: Promise<void> | null = null;
 async function ensureForegroundWallet(): Promise<void> {
   if (wallet.isInitialized()) return;
   if (!wallet.getConnectionState().vaultReachable || !wallet.getConnectionState().paired) return;
-  if (!foregroundInitInFlight) foregroundInitInFlight = (async () => {
-    await wallet.refreshPubkeys(true);
-    await ensureStarted();
-  })().finally(() => { foregroundInitInFlight = null; });
+  if (!foregroundInitInFlight)
+    foregroundInitInFlight = (async () => {
+      await wallet.refreshPubkeys(true);
+      await ensureStarted();
+    })().finally(() => {
+      foregroundInitInFlight = null;
+    });
   await foregroundInitInFlight;
 }
 
@@ -1247,7 +1250,11 @@ initMcpBridge({
     // bare handler failure.
     if (!wallet.isInitialized()) {
       if (KEEPKEY_STATE === 4) throw createVaultRequiredError();
-      throw Error(wallet.getConnectionState().deviceLocked ? VAULT_LOCKED_MESSAGE : 'Vault is connected. Connect your KeepKey and load the wallet to continue.');
+      throw Error(
+        wallet.getConnectionState().deviceLocked
+          ? VAULT_LOCKED_MESSAGE
+          : 'Vault is connected. Connect your KeepKey and load the wallet to continue.',
+      );
     }
     if (chain === 'ethereum' && method === 'eth_requestAccounts') await syncEthereumAccount();
     const requestInfo = {
@@ -1284,14 +1291,19 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             console.warn(tag, 'WALLET_REQUEST before wallet ready — initializing on demand');
             await ensureStarted();
           }
-          if (!wallet.isInitialized() && isForegroundDeviceRequest(message.requestInfo?.method)) await ensureForegroundWallet();
+          if (!wallet.isInitialized() && isForegroundDeviceRequest(message.requestInfo?.method))
+            await ensureForegroundWallet();
           if (!wallet.isInitialized()) {
             // Distinguish "vault is closed" (state 4) from a transient init race
             // so the dApp gets the actionable "launch the Vault" message instead
             // of a bare "Wallet not initialized". The side panel already shows
             // the Connect/Vault-Required card off the same state.
             if (KEEPKEY_STATE === 4) throw createVaultRequiredError();
-            throw Error(wallet.getConnectionState().deviceLocked ? VAULT_LOCKED_MESSAGE : 'Vault is connected. Connect your KeepKey and load the wallet to continue.');
+            throw Error(
+              wallet.getConnectionState().deviceLocked
+                ? VAULT_LOCKED_MESSAGE
+                : 'Vault is connected. Connect your KeepKey and load the wallet to continue.',
+            );
           }
           const { requestInfo } = message;
           const { method, params, chain } = requestInfo;
@@ -1396,7 +1408,11 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             if (message.foreground === true) await ensureForegroundWallet();
             sendResponse({ success: true, state: KEEPKEY_STATE, connection: wallet.getConnectionState() });
           } catch (error) {
-            sendResponse({ error: await formatUserError(error), state: KEEPKEY_STATE, connection: wallet.getConnectionState() });
+            sendResponse({
+              error: await formatUserError(error),
+              state: KEEPKEY_STATE,
+              connection: wallet.getConnectionState(),
+            });
           }
           break;
         }

@@ -61,10 +61,17 @@ async function getHivePublicKey(foreground = false): Promise<string> {
   if (cachedPubkey) return cachedPubkey;
   let address: string;
   try {
-    ({ address } = await readFromVault(wallet.getSdk(), '/addresses/hive', { address_n: hiveAddressN('active', 0) }, foreground));
+    ({ address } = await readFromVault(
+      wallet.getSdk(),
+      '/addresses/hive',
+      { address_n: hiveAddressN('active', 0) },
+      foreground,
+    ));
   } catch (error) {
-    if ((error as any)?.status === 403) throw createProviderRpcError(4100, 'Hive is disabled in the vault — enable it in Vault settings');
-    if ((error as any)?.status === 501) throw createProviderRpcError(4100, `Hive requires firmware 7.15.0+: ${(error as Error).message}`);
+    if ((error as any)?.status === 403)
+      throw createProviderRpcError(4100, 'Hive is disabled in the vault — enable it in Vault settings');
+    if ((error as any)?.status === 501)
+      throw createProviderRpcError(4100, `Hive requires firmware 7.15.0+: ${(error as Error).message}`);
     throw error;
   }
   if (!address) throw createProviderRpcError(-32603, 'Vault returned no Hive public key');

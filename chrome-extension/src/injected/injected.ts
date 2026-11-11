@@ -125,7 +125,6 @@ import { requestTimeoutFor } from './requestTimeouts';
       // Signing/approval requests can sit behind other queued requests and
       // then wait on the device, so they get a much longer cap than reads.
       if (now - callback.timestamp > requestTimeoutFor(callback.method)) {
-
         callback.callback(new Error('Request timeout'));
         callbacks.delete(id);
       }

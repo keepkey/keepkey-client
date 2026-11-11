@@ -14,11 +14,25 @@ describe('swap quote device access', () => {
     { isMax: undefined, foreground: true, access: 'cached' },
     { isMax: 'true', foreground: true, access: 'cached' },
   ])('requires explicit foreground MAX to allow a device prompt: %j', async ({ isMax, foreground, access }) => {
-    const fetcher = vi.fn(async (_url: string, _options: RequestInit) => Response.json({ data: { expectedOutput: '1' } }));
+    const fetcher = vi.fn(async (_url: string, _options: RequestInit) =>
+      Response.json({ data: { expectedOutput: '1' } }),
+    );
     vi.stubGlobal('fetch', fetcher);
-    await handleSwapMessage({ action: 'quote', foreground, params: {
-      fromCaip: 'synthetic:from', toCaip: 'synthetic:to', fromAddress: 'from', toAddress: 'to', amount: '1', isMax,
-    } }, []);
+    await handleSwapMessage(
+      {
+        action: 'quote',
+        foreground,
+        params: {
+          fromCaip: 'synthetic:from',
+          toCaip: 'synthetic:to',
+          fromAddress: 'from',
+          toAddress: 'to',
+          amount: '1',
+          isMax,
+        },
+      },
+      [],
+    );
     expect(fetcher).toHaveBeenCalledOnce();
     expect(fetcher.mock.calls[0][1]).toMatchObject({ headers: { 'X-KeepKey-Device-Access': access } });
     const body = JSON.parse(fetcher.mock.calls[0][1].body as string);

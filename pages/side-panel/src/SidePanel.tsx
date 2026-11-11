@@ -421,9 +421,15 @@ const SidePanel = () => {
       case 6:
         return (
           <Flex direction="column" align="center" justify="center" minH="300px" gap={3} textAlign="center">
-            <Text fontSize="lg" fontWeight="semibold">Vault connected</Text>
-            <Text fontSize="sm" color="kk.dim">Load your wallet when you are ready. KeepKey will ask for your PIN if needed.</Text>
-            <Button onClick={refreshBalances} isLoading={isRefreshing}>Load wallet</Button>
+            <Text fontSize="lg" fontWeight="semibold">
+              Vault connected
+            </Text>
+            <Text fontSize="sm" color="kk.dim">
+              Load your wallet when you are ready. KeepKey will ask for your PIN if needed.
+            </Text>
+            <Button onClick={refreshBalances} isLoading={isRefreshing}>
+              Load wallet
+            </Button>
           </Flex>
         );
       case 5:
