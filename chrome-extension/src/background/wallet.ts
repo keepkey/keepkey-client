@@ -91,7 +91,10 @@ async function probeVaultAuth(apiKey?: string): Promise<VaultAuthStatus> {
   }
 
   // Reachable but no saved key → must pair.
-  if (!apiKey) { state.paired = false; return 'invalid'; }
+  if (!apiKey) {
+    state.paired = false;
+    return 'invalid';
+  }
 
   // Validate the saved key. An explicit reject means re-pair; a transient error
   // means retry later — it must NOT escalate to a pairing prompt.
@@ -107,7 +110,10 @@ async function probeVaultAuth(apiKey?: string): Promise<VaultAuthStatus> {
         state.paired = data?.paired === true;
         return state.paired ? 'valid' : 'invalid';
       }
-      if (resp.status === 401 || resp.status === 403) { state.paired = false; return 'invalid'; }
+      if (resp.status === 401 || resp.status === 403) {
+        state.paired = false;
+        return 'invalid';
+      }
       // 5xx / other: transient — retry
     } catch {
       /* network blip — retry */
@@ -171,7 +177,8 @@ export async function probeDevice(): Promise<boolean> {
     state.deviceConnected = true;
     state.devicePresent = true;
     state.vaultReachable = true;
-    state.deviceLocked = !!(features.pin_protection ?? features.pinProtection) && !(features.pin_cached ?? features.pinCached);
+    state.deviceLocked =
+      !!(features.pin_protection ?? features.pinProtection) && !(features.pin_cached ?? features.pinCached);
     console.log(tag, 'Device present:', state.deviceInfo.label);
     return true;
   } catch (e) {
@@ -722,7 +729,12 @@ export function signViaVault<T = any>(path: string, body: unknown): Promise<T> {
 
 /** No credentials or wallet addresses are exposed in connection status. */
 export function getConnectionState(): VaultConnectionState {
-  return { vaultReachable: state.vaultReachable, paired: state.paired, devicePresent: state.devicePresent, deviceLocked: state.deviceLocked };
+  return {
+    vaultReachable: state.vaultReachable,
+    paired: state.paired,
+    devicePresent: state.devicePresent,
+    deviceLocked: state.deviceLocked,
+  };
 }
 
 export function recordVaultHealth(health: any): void {

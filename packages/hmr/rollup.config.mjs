@@ -5,8 +5,8 @@ const plugins = [
   replace({
     preventAssignment: true,
     values: {
-      '__HMR_ID': JSON.stringify('hmr-extension')
-    }
+      __HMR_ID: JSON.stringify('hmr-extension'),
+    },
   }),
   sucrase({
     exclude: ['node_modules/**'],

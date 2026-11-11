@@ -28,7 +28,7 @@ async function build() {
       },
       logLevel: 'info',
     });
-    
+
     console.log('✅ Injected script built successfully');
   } catch (error) {
     console.error('❌ Build failed:', error);

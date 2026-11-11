@@ -4,5 +4,5 @@ export default {
     format: 'iife',
     file: 'build/test.js',
   },
-  plugins: []
+  plugins: [],
 };

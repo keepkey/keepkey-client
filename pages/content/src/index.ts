@@ -148,7 +148,6 @@ window.addEventListener('message', (event: MessageEvent) => {
       );
     }, requestTimeoutFor(requestInfo.method)); // signing waits on the queue + device; reads stay at 5 min
 
-
     // Check if extension context is still valid before sending message
     if (!chrome.runtime?.id) {
       clearTimeout(timeout);

@@ -79,10 +79,10 @@ async function vaultFetch(path: string, init: RequestInit, timeoutMs = 30_000): 
       resp.status === 423
         ? VAULT_LOCKED_MESSAGE
         : resp.status === 401
-        ? 'Pairing expired — reconnect your KeepKey.'
-        : resp.status === 404 || resp.status === 503
-          ? 'Swap endpoints are not available on this vault yet.'
-          : body?.error || `Vault error (${resp.status})`;
+          ? 'Pairing expired — reconnect your KeepKey.'
+          : resp.status === 404 || resp.status === 503
+            ? 'Swap endpoints are not available on this vault yet.'
+            : body?.error || `Vault error (${resp.status})`;
     return { ok: false, status: resp.status, error };
   }
   // vault wraps payloads as { data: ... } on /api/v2/swap/* and { entries }/record on /api/v1/swaps

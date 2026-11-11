@@ -60,9 +60,22 @@ export function deviceReadout(state: number | null, deviceLabel?: string, device
 
   switch (state) {
     case KeepKeyState.WalletAccessNeeded:
-      return { ...dim, color: tokens.accent, label: tag(deviceLocked ? 'LOCKED' : 'VAULT ONLINE'), title: 'Vault is connected. Load your wallet when you need device access.', ready: false };
+      return {
+        ...dim,
+        color: tokens.accent,
+        label: tag(deviceLocked ? 'LOCKED' : 'VAULT ONLINE'),
+        title: 'Vault is connected. Load your wallet when you need device access.',
+        ready: false,
+      };
     case KeepKeyState.Paired:
-      if (deviceLocked) return { ...dim, color: tokens.accent, label: tag('LOCKED'), title: 'Vault is connected. Monitoring works; unlock when a device request needs it.', ready: true };
+      if (deviceLocked)
+        return {
+          ...dim,
+          color: tokens.accent,
+          label: tag('LOCKED'),
+          title: 'Vault is connected. Monitoring works; unlock when a device request needs it.',
+          ready: true,
+        };
       return {
         label: tag('ONLINE'),
         color: tokens.good,

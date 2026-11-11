@@ -584,7 +584,8 @@ export async function executeBrowserTool(tool: string, args: any): Promise<any> 
 
     case 'bex_screenshot': {
       const tab = await resolveTab(args?.tabId);
-      if ((await dom(tab.id!, 'passwordProtection')).protected) throw err('password_protected', 'Screenshots are disabled on protected password pages');
+      if ((await dom(tab.id!, 'passwordProtection')).protected)
+        throw err('password_protected', 'Screenshots are disabled on protected password pages');
       const quality = Math.min(100, Math.max(1, Number(args?.quality) || SCREENSHOT_QUALITY));
       return screenshot(tab, quality);
     }

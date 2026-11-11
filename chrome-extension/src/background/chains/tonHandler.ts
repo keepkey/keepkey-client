@@ -95,7 +95,12 @@ export async function getTonAddress(foreground = false): Promise<string> {
     }
   }
 
-  const result = await readFromVault<{ address?: string }>(wallet.getSdk(), '/addresses/ton', { address_n: TON_ADDRESS_N, show_display: false }, foreground);
+  const result = await readFromVault<{ address?: string }>(
+    wallet.getSdk(),
+    '/addresses/ton',
+    { address_n: TON_ADDRESS_N, show_display: false },
+    foreground,
+  );
   const address = result.address;
   console.log(TAG, '/addresses/ton returned:', address);
   if (!address || typeof address !== 'string') {
