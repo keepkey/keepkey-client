@@ -70,7 +70,7 @@ Live base fee at the time: **1.063 gwei**. So the tx was valid (`maxFee 1.9015 �
 
 ### 3. EVM `eth_sendTransaction` is misclassified as "Simple transfer"
 - Screenshot shows green-check **"Transaction — Simple transfer - no smart contract interaction"** for a tx whose `data` is `0x3593564c…` (Universal Router `execute()`). This is a contract call — should be the yellow **"Smart Contract — Interacts with smart contract — review carefully"** branch.
-- Logic at `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/pages/side-panel/src/approval/evm/RequestMethodCard.tsx:76-77`:
+- Logic at `keepkey-stack/projects/keepkey-client/pages/side-panel/src/approval/evm/RequestMethodCard.tsx:76-77`:
   ```ts
   const hasSmartContractExecution =
     transaction.request?.data && transaction.request.data.length > 0 && transaction.request.data !== '0x';
@@ -120,14 +120,14 @@ The conservative read: **#1 is the proximate cause, #3 may compound it**. We can
 
 ## File index
 
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/pages/side-panel/src/approval/evm/RequestMethodCard.tsx` — smart-contract detection bug at line 76-77
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/pages/side-panel/src/approval/evm/NonceInfoRow.tsx` — working BEX nonce display
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/chrome-extension/src/background/index.ts` — broadcast handoff log site
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/HANDOFF_fee_pipeline_audit.md` — earlier audit, contains base-fee analysis
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/HANDOFF_vault_eth_tx_tracker.md` — companion vault-side tracker plan
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/HANDOFF_uniswap_swap_v2.md` — running notes
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/RETRO_uniswap_swap_release_blocker.md` — prior retro (Permit2 verify mismatch saga)
-- `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/dist/background.iife.js` — built bundle, 510KB, contains [HANDOFF]/[DIAG]/fee-warning probes (verified by grep)
+- `keepkey-stack/projects/keepkey-client/pages/side-panel/src/approval/evm/RequestMethodCard.tsx` — smart-contract detection bug at line 76-77
+- `keepkey-stack/projects/keepkey-client/pages/side-panel/src/approval/evm/NonceInfoRow.tsx` — working BEX nonce display
+- `keepkey-stack/projects/keepkey-client/chrome-extension/src/background/index.ts` — broadcast handoff log site
+- `keepkey-stack/projects/keepkey-client/HANDOFF_fee_pipeline_audit.md` — earlier audit, contains base-fee analysis
+- `keepkey-stack/projects/keepkey-client/HANDOFF_vault_eth_tx_tracker.md` — companion vault-side tracker plan
+- `keepkey-stack/projects/keepkey-client/HANDOFF_uniswap_swap_v2.md` — running notes
+- `keepkey-stack/projects/keepkey-client/RETRO_uniswap_swap_release_blocker.md` — prior retro (Permit2 verify mismatch saga)
+- `keepkey-stack/projects/keepkey-client/dist/background.iife.js` — built bundle, 510KB, contains [HANDOFF]/[DIAG]/fee-warning probes (verified by grep)
 
 ## Reference
 

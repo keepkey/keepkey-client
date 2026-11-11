@@ -1,3 +1,5 @@
+import { readFromVault, VAULT_LOCKED_MESSAGE } from '../vaultDeviceAccess';
+import { SIGNING_TIMEOUT_MS } from '../../signingTimeouts';
 import { requestStorage, assetContextStorage } from '@extension/storage';
 import { v4 as uuidv4 } from 'uuid';
 import * as wallet from '../wallet';
@@ -42,7 +44,7 @@ export async function prefetchTronPubkey(): Promise<void> {
   }
 }
 
-async function getTronAddress(): Promise<string> {
+async function getTronAddress(foreground = false): Promise<string> {
   if (cachedAddress) return cachedAddress;
 
   // Persisted pubkey cache — works in watch-only mode.
@@ -52,7 +54,7 @@ async function getTronAddress(): Promise<string> {
     return walletAddress;
   }
 
-  if (!wallet.isDeviceConnected()) {
+  if (!wallet.isDeviceConnected() && !foreground) {
     const reachable = await wallet.probeDevice();
     if (!reachable) {
       throw createProviderRpcError(
@@ -63,7 +65,7 @@ async function getTronAddress(): Promise<string> {
   }
 
   const sdk = wallet.getSdk();
-  const result = await sdk.address.tronGetAddress({ address_n: TRON_ADDRESS_N });
+  const result = await readFromVault(sdk, '/addresses/tron', { address_n: TRON_ADDRESS_N }, foreground);
   const address = result?.address || (result as any);
   if (!address || typeof address !== 'string') {
     throw createProviderRpcError(-32603, 'Vault returned invalid Tron address');
@@ -161,6 +163,7 @@ async function buildTronTransfer(from: string, to: string, sunAmount: number): P
     throw createProviderRpcError(-32603, `TronGrid createtransaction failed: ${e.message}`);
   }
   if (!resp.ok) {
+    if (resp.status === 423) throw Object.assign(new Error(VAULT_LOCKED_MESSAGE), { status: 423 });
     const text = await resp.text().catch(() => '');
     throw createProviderRpcError(-32603, `TronGrid build failed (${resp.status}): ${text}`);
   }
@@ -296,6 +299,7 @@ async function buildTrc20Transfer(
     throw createProviderRpcError(-32603, `TronGrid triggersmartcontract failed: ${e.message}`);
   }
   if (!resp.ok) {
+    if (resp.status === 423) throw Object.assign(new Error(VAULT_LOCKED_MESSAGE), { status: 423 });
     const text = await resp.text().catch(() => '');
     throw createProviderRpcError(-32603, `TronGrid TRC-20 build failed (${resp.status}): ${text}`);
   }
@@ -343,7 +347,7 @@ async function signTronViaRest(
         // clearer and future-proofed.
         amount: typeof amountRaw === 'bigint' ? amountRaw.toString() : String(amountRaw),
       }),
-      signal: AbortSignal.timeout(60000),
+      signal: AbortSignal.timeout(SIGNING_TIMEOUT_MS),
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {
@@ -353,6 +357,7 @@ async function signTronViaRest(
   }
 
   if (!resp.ok) {
+    if (resp.status === 423) throw Object.assign(new Error(VAULT_LOCKED_MESSAGE), { status: 423 });
     const text = await resp.text().catch(() => '');
     throw createProviderRpcError(-32603, `Vault Tron sign failed (${resp.status}): ${text}`);
   }
@@ -406,7 +411,7 @@ async function tronSignMessageViaRest(
         is_text: isText,
         show_display: true,
       }),
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.timeout(SIGNING_TIMEOUT_MS),
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {
@@ -415,6 +420,7 @@ async function tronSignMessageViaRest(
     throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
   }
   if (!resp.ok) {
+    if (resp.status === 423) throw Object.assign(new Error(VAULT_LOCKED_MESSAGE), { status: 423 });
     const text = await resp.text().catch(() => '');
     throw createProviderRpcError(-32603, `Vault Tron sign-message failed (${resp.status}): ${text}`);
   }
@@ -448,6 +454,7 @@ async function tronVerifyMessageViaRest(
     throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
   }
   if (!resp.ok) {
+    if (resp.status === 423) throw Object.assign(new Error(VAULT_LOCKED_MESSAGE), { status: 423 });
     const text = await resp.text().catch(() => '');
     throw createProviderRpcError(-32603, `Vault Tron verify failed (${resp.status}): ${text}`);
   }
@@ -481,7 +488,7 @@ async function tronSignTypedHashViaRest(
         domain_separator_hash: ds,
         ...(mh ? { message_hash: mh } : {}),
       }),
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.timeout(SIGNING_TIMEOUT_MS),
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {
@@ -490,6 +497,7 @@ async function tronSignTypedHashViaRest(
     throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
   }
   if (!resp.ok) {
+    if (resp.status === 423) throw Object.assign(new Error(VAULT_LOCKED_MESSAGE), { status: 423 });
     const text = await resp.text().catch(() => '');
     throw createProviderRpcError(-32603, `Vault Tron sign-typed-hash failed (${resp.status}): ${text}`);
   }
@@ -660,6 +668,7 @@ async function broadcastTron(signedTx: any): Promise<string> {
     throw createProviderRpcError(-32603, `TronGrid broadcast failed: ${e.message}`);
   }
   if (!resp.ok) {
+    if (resp.status === 423) throw Object.assign(new Error(VAULT_LOCKED_MESSAGE), { status: 423 });
     const text = await resp.text().catch(() => '');
     throw createProviderRpcError(-32603, `TronGrid broadcast failed (${resp.status}): ${text}`);
   }
@@ -691,7 +700,7 @@ export const handleTronRequest = async (
     case 'tron_requestAccounts':
     case 'tron_connect':
     case 'tron_getAccount': {
-      return await getTronAddress();
+      return await getTronAddress(true);
     }
 
     case 'request_pubkeys': {
@@ -711,7 +720,7 @@ export const handleTronRequest = async (
       }
 
       const decoded = await decodeTronTx(tx);
-      const sender = await getTronAddress();
+      const sender = await getTronAddress(true);
 
       if (decoded.ownerAddress && decoded.ownerAddress !== sender) {
         // dApps occasionally hard-code an owner address from a cached
@@ -871,7 +880,7 @@ export const handleTronRequest = async (
       if (!requestInfo.id) requestInfo.id = uuidv4();
       const event = buildEvent(requestInfo, method, params, {
         kind: 'sign-message',
-        from: await getTronAddress(),
+        from: await getTronAddress(true),
         message: raw,
         // Kept for the approval card so it can render hex vs text without
         // having to recompute the encoding decision.
@@ -991,7 +1000,7 @@ export const handleTronRequest = async (
       if (!requestInfo.id) requestInfo.id = uuidv4();
       const event = buildEvent(requestInfo, method, params, {
         kind: 'sign-typed-hash',
-        from: await getTronAddress(),
+        from: await getTronAddress(true),
         domainSeparatorHash: dsHash,
         messageHash: msgHash,
       });
@@ -1045,7 +1054,7 @@ export const handleTronRequest = async (
         throw createProviderRpcError(4000, 'Invalid amount');
       }
 
-      const sender = await getTronAddress();
+      const sender = await getTronAddress(true);
       const trc20Contract = parseTrc20Caip(caip);
 
       let unsignedGrid: any;

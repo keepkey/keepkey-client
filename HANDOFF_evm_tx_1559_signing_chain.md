@@ -10,16 +10,16 @@ EIP-712 typed-data signing (Permit2 etc.) through the same SDK works correctly. 
 
 ## Read these first, in order
 
-1. `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-client/RETRO_evm_tx_1559_signing_chain.md` — the comprehensive retro. Read the whole thing once before touching code.
-2. `/Users/highlander/.claude/projects/-Users-highlander-WebstormProjects-keepkey-stack-projects-keepkey-client/memory/feedback_eip712_diagnosis.md` — the durable rule that applies here: when recovered signer ≠ expected, instrument the signing chain. Don't blame derivation, don't blame the dApp, don't theorize about routing.
-3. `/Users/highlander/.claude/projects/-Users-highlander-WebstormProjects-keepkey-stack-projects-keepkey-client/memory/feedback_no_hardcoded_rpcs.md` — do not patch this with hardcoded RPC URLs. RPCs come from Pioneer.
+1. `keepkey-stack/projects/keepkey-client/RETRO_evm_tx_1559_signing_chain.md` — the comprehensive retro. Read the whole thing once before touching code.
+2. `~/.claude/projects/-Users-highlander-WebstormProjects-keepkey-stack-projects-keepkey-client/memory/feedback_eip712_diagnosis.md` — the durable rule that applies here: when recovered signer ≠ expected, instrument the signing chain. Don't blame derivation, don't blame the dApp, don't theorize about routing.
+3. `~/.claude/projects/-Users-highlander-WebstormProjects-keepkey-stack-projects-keepkey-client/memory/feedback_no_hardcoded_rpcs.md` — do not patch this with hardcoded RPC URLs. RPCs come from Pioneer.
 
 ## Reproduce the failure (no device needed)
 
 Pure offline run that exercises the captured fixture and prints which canonical pre-image it does *or doesn't* match:
 
 ```bash
-cd /Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk
+cd keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk
 node tests/evm-tx-1559/recover-fixture.js
 ```
 
@@ -28,7 +28,7 @@ Expected today: 1 of 3 sub-checks fails (`uniswap-link-to-usdt-1: serialized env
 ## Reproduce live on a paired device
 
 ```bash
-cd /Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk
+cd keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk
 KEEPKEY_API_KEY=$(...your paired bearer token...) node tests/evm-tx-1559/sign-and-recover.js
 ```
 
@@ -41,7 +41,7 @@ Bug is somewhere in this slice. Source order is fastest-to-bisect first.
 ### 1. SDK `eth.ethSignTransaction`
 
 ```
-/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/src/
+keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/src/
 ```
 
 Specifically grep for the EVM tx signing entry point. Add instrumentation to log:
@@ -55,7 +55,7 @@ The two hashes will differ. The diff names the bug.
 ### 2. Vault firmware EVM tx handler
 
 ```
-/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/  (firmware repo, traverse to the Rust EthereumSignTx handler)
+keepkey-stack/projects/keepkey-vault-v11/  (firmware repo, traverse to the Rust EthereumSignTx handler)
 ```
 
 Same instrumentation: log the message hash the firmware computes right before signing.
@@ -78,7 +78,7 @@ The EIP-712 SDK path (`sdk.eth.ethSignTypedData`) is verified to recover correct
 1. The fix lives in `keepkey-vault-sdk` and/or the firmware. **Not** in keepkey-client.
 2. Re-run the offline recovery — fixture should now pass:
    ```bash
-   cd /Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk
+   cd keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk
    node tests/evm-tx-1559/recover-fixture.js
    ```
 3. Re-run the live test — should also pass:

@@ -1,0 +1,49 @@
+{
+  "date": "2026-11-08",
+  "candidate": "local develop; not pushed",
+  "reviewedOpenPullRequests": 16,
+  "included": [
+    135,
+    140,
+    141,
+    143,
+    144,
+    152,
+    154,
+    155,
+    156,
+    157,
+    158,
+    160,
+    161,
+    162
+  ],
+  "held": [
+    {
+      "number": 150,
+      "reason": "@vitejs/plugin-react-swc 4.3.3 requires Node ^20.19 or >=22.12; .nvmrc is 18.19.1 and package engines still promise >=18.19.1."
+    },
+    {
+      "number": 159,
+      "reason": "Hooks 7 enables compiler lint rules that introduce 32 errors in the existing side panel. Its source change was reverted; hooks 4.6.2 retained."
+    }
+  ],
+  "integrationFixes": [
+    "Retain master EVM address preflight and signature identity verification while extending SDK signing deadlines.",
+    "Combine queued/on-screen approval clocks with listener-before-panel ordering, pending badge accounting, and one-use agent decisions.",
+    "Keep canonical Solana ClearSign validation and attach readable instruction summaries before approval.",
+    "Retain typed-data, SIWE origin, fee and P0 approval gates together. Agent decisions cannot bypass native P0 blocking or danger-level SIWE acknowledgment.",
+    "Adapt protected-fill masking to shared DOM snapshots, redact echoed names before clipping, and block both generic and wallet-UI screenshots during protected document use.",
+    "Regenerate the combined dependency lockfile and rebuild injected.js from source."
+  ],
+  "validation": {
+    "unitTests": 341,
+    "workspaceTypeChecks": 15,
+    "lintWorkspaces": 15,
+    "lintErrors": 0,
+    "lintWarnings": "existing warnings retained",
+    "buildTasks": 9,
+    "syntheticPasswordBrowserChecks": 11
+  },
+  "liveAccounts": "No real account credential, recovery phrase, PIN, token or password is included in this report."
+}

@@ -54,6 +54,17 @@ const Transaction = ({
   const NO_DEVICE_STEP_TYPES = new Set(['wallet_addEthereumChain']);
   const hasDeviceStep = !NO_DEVICE_STEP_TYPES.has(event?.type);
 
+  // Tell the background this card is on screen: its approval clock starts
+  // now, not when the dApp queued the request.
+  useEffect(() => {
+    if (!event?.id) return;
+    try {
+      chrome.runtime.sendMessage({ action: 'approval_shown', eventId: event.id }).catch?.(() => {});
+    } catch (e) {
+      console.warn('approval_shown not delivered:', e);
+    }
+  }, [event?.id]);
+
   // Fetch the assetContext on component mount
   useEffect(() => {
     requestAssetContext()
@@ -269,7 +280,17 @@ const Transaction = ({
     console.log('transactionType:', transactionType);
     switch (transactionType) {
       case 'evm':
-        return <EvmTransaction transaction={event} reloadEvents={reloadEvents} handleResponse={handleResponse} />;
+        // Keyed here, not on <Transaction>: per-request state (fee choice,
+        // sign-in ack) resets between queued requests, while this component's
+        // in-flight state (device prompt, TxidPage) survives a new request.
+        return (
+          <EvmTransaction
+            key={event.id}
+            transaction={event}
+            reloadEvents={reloadEvents}
+            handleResponse={handleResponse}
+          />
+        );
       case 'tendermint':
         return <TendermintTransaction transaction={event} handleResponse={handleResponse} />;
       case 'utxo':

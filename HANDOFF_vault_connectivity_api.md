@@ -1,14 +1,14 @@
 # HANDOFF → vault: REST contract changes for "always-on" connectivity
 
 **From:** keepkey-client (BEX) — branch `feat/connection-hardening`
-**To:** keepkey-vault (v11, `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault`)
+**To:** keepkey-vault (v11, `keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault`)
 **Companion to:** `HANDOFF_vault_pairing_persistence.md` (the internal storage/eviction
 fixes). This doc specifies the **exact REST contract** the BEX wants so the
 extension can stay connected without re-prompting.
 
 > Absolute paths throughout (multi-repo stack). Endpoints are on the local vault
 > REST server, base `http://localhost:1646`. Handlers live in
-> `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault/src/bun/rest-api.ts`
+> `keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault/src/bun/rest-api.ts`
 > and `…/src/bun/auth.ts`.
 
 ---

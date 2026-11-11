@@ -22,6 +22,8 @@ import RequestMethodCard from './RequestMethodCard';
 import ProjectInfoCard from './ProjectInfoCard';
 import FeeWarningBanner from './FeeWarningBanner';
 import NonceInfoRow from './NonceInfoRow';
+import ClearSignReportCard from '../ClearSignReportCard';
+import SiweCard from './SiweCard';
 
 export function EvmTransaction({ transaction, reloadEvents, handleResponse }: any) {
   // Block Approve until the user picks a fee strategy when a warning is
@@ -30,13 +32,23 @@ export function EvmTransaction({ transaction, reloadEvents, handleResponse }: an
   const feeWarning = transaction?.feeWarning ?? null;
   const initialChoice = transaction?.feeChoice ?? null;
   const [feeChoice, setFeeChoice] = useState<any>(initialChoice);
-  const approveBlocked = !!feeWarning && !feeChoice;
+  // Sign-In with Ethereum domain check, computed background-side from the
+  // Chrome-derived origin. A danger verdict needs an explicit acknowledgment.
+  // Transaction keys this component by event id, so this resets per request.
+  const siwe = transaction?.siwe ?? null;
+  const siweDanger = !!siwe?.warnings?.some((w: any) => w.level === 'danger');
+  const [siweAck, setSiweAck] = useState(false);
+  const feeBlocked = !!feeWarning && !feeChoice;
+  const siweBlocked = siweDanger && !siweAck;
+  const approveBlocked = feeBlocked || siweBlocked || transaction?.clearSignReport?.protectionLevel === 'P0';
 
   return (
     <Stack>
       <ProjectInfoCard transaction={transaction} />
 
       <Divider />
+      <ClearSignReportCard report={transaction?.clearSignReport} error={transaction?.clearSignReportError} />
+      {siwe && <SiweCard siwe={siwe} acknowledged={siweAck} onAcknowledge={setSiweAck} />}
       {feeWarning && (
         <FeeWarningBanner
           eventId={transaction.id}
@@ -52,7 +64,8 @@ export function EvmTransaction({ transaction, reloadEvents, handleResponse }: an
           chainId={transaction?.unsignedTx?.chainId}
         />
       )}
-      <RequestMethodCard transaction={transaction} />
+      {/* Its green "Safe Method" would contradict a sign-in for another site. */}
+      {!siweDanger && <RequestMethodCard transaction={transaction} />}
       <Divider />
       <Tabs defaultIndex={0}>
         <TabList>
@@ -77,6 +90,7 @@ export function EvmTransaction({ transaction, reloadEvents, handleResponse }: an
           <TabPanel>
             {transaction.type !== 'personal_sign' &&
               transaction.type !== 'eth_sign' &&
+              !String(transaction.type).startsWith('eth_signTypedData') &&
               transaction.type !== 'wallet_addEthereumChain' && (
                 <>
                   <RequestFeeCard transaction={transaction} />
@@ -106,7 +120,15 @@ export function EvmTransaction({ transaction, reloadEvents, handleResponse }: an
           onClick={() => handleResponse('accept')}
           mr={2}
           isDisabled={approveBlocked}
-          title={approveBlocked ? 'Pick a fee strategy in the warning banner above' : undefined}>
+          title={
+            transaction?.clearSignReport?.protectionLevel === 'P0'
+              ? 'Vault blocked this transaction'
+              : siweBlocked
+                ? 'Confirm the sign-in warning above'
+                : feeBlocked
+                  ? 'Pick a fee strategy in the warning banner above'
+                  : undefined
+          }>
           Approve
         </Button>
         <Button variant="keycapSecondary" onClick={() => handleResponse('reject')}>

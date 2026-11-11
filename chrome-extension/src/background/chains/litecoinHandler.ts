@@ -92,8 +92,10 @@ export const handleLitecoinRequest = async (
       if (!response) throw Error('Failed to load event for signing!');
 
       if (result.success && response.unsignedTx) {
-        const sdk = wallet.getSdk();
-        const signedTx = await sdk.btc.btcSignTransaction({ ...response.unsignedTx, coin: 'Litecoin' });
+        const signedTx = await wallet.signViaVault('/utxo/sign-transaction', {
+          ...response.unsignedTx,
+          coin: 'Litecoin',
+        });
         response.signedTx = signedTx;
         await requestStorage.updateEventById(requestInfo.id, response);
 

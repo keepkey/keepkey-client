@@ -1,7 +1,7 @@
 # HANDOFF → vault: pairing dedup, eviction, TTL & timeout (the "re-approve every time" bug)
 
 **From:** keepkey-client (BEX) — branch `feat/connection-hardening`
-**To:** keepkey-vault (v11, `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault`)
+**To:** keepkey-vault (v11, `keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault`)
 **Status of the client side:** the BEX-side connection hardening is done in this PR
 (single-flight init, retry-aware key validation, no reflexive key wipe). It removes
 the *client's* contribution to re-pairing. **The remaining re-approval churn is
@@ -10,7 +10,7 @@ the fixes.
 
 > All file paths are absolute because this stack spans repos. The running vault at
 > the time of writing is the dev build of
-> `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault`
+> `keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault`
 > (PID confirmed listening on `:1646`).
 
 ---
@@ -22,7 +22,7 @@ the fixes.
 | 1 | **Pairing is never deduplicated.** Every `POST /auth/pair` mints a brand-new UUID + new DB row for the *same* app identity. | `src/bun/auth.ts` `approvePairing()` L81–92, `pair()` L101–108; `src/bun/db.ts` `storePairing()` L898–908 | The paired-apps list grows without bound; a re-pair is always a *new* key, never a reuse. **Live proof:** `GET /auth/paired-apps` currently returns **5 identical "KeepKey Browser Extension" entries.** |
 | 2 | **Eviction is FIFO, not LRU, and `validate()` never refreshes recency.** | `src/bun/auth.ts` `MAX_KEYS=20` L30, `evictIfFull()` L160–168, `validate()` L121–141 | Once 20 pairings accumulate, each new pair evicts the **oldest by insertion order** — which can be the key the BEX is actively using → forced re-pair. |
 | 3 | **API-key TTL is measured from creation (`addedOn`) with no refresh-on-use; keys without `addedOn` are treated as expired.** `KEY_TTL_MS = 30 days`. | `src/bun/auth.ts` L32, L131–139 | An actively-used pairing hard-expires 30 days after it was *created*, regardless of use → periodic forced re-pair for daily users. |
-| 4 | **Pending-pair timeout mismatch.** Vault auto-rejects the pending request after **60 s**; the SDK's `POST /auth/pair` waits **600 s**. | vault `src/bun/auth.ts` L68–73; SDK `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/src/client.ts` `SIGNING_TIMEOUT_MS=600_000` L4, used at L135 | If the user takes >60 s to approve, the vault rejects while the client is still waiting → the approval the user *did* perform is discarded and they're prompted again. |
+| 4 | **Pending-pair timeout mismatch.** Vault auto-rejects the pending request after **60 s**; the SDK's `POST /auth/pair` waits **600 s**. | vault `src/bun/auth.ts` L68–73; SDK `keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/src/client.ts` `SIGNING_TIMEOUT_MS=600_000` L4, used at L135 | If the user takes >60 s to approve, the vault rejects while the client is still waiting → the approval the user *did* perform is discarded and they're prompted again. |
 
 Persistence itself is **not** broken: `paired_apps` is on-disk SQLite
 (`src/bun/db.ts` L113–120, `vault.db` under `Utils.paths.userData`), it is **not**
@@ -151,7 +151,7 @@ return new Promise((resolve, reject) => {
   }, 60000)
 })
 ```
-SDK `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/src/client.ts`:
+SDK `keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-sdk/src/client.ts`:
 `SIGNING_TIMEOUT_MS = 600_000` (L4), and `pair()` issues the POST with
 `signal: this.signal(this.signingTimeoutMs)` (L135). The published SDK the BEX ships
 (`…/keepkey-client/node_modules/keepkey-vault-sdk/lib/client.js`) is identical: 600 s.

@@ -12,6 +12,7 @@ import AddNetworkModal from './header/AddNetworkModal';
 
 const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
   keepkeyState,
+  deviceLocked,
   isRefreshing,
   onSettingsOpen,
   onRefresh,
@@ -332,7 +333,7 @@ const NetworkAccountHeader: React.FC<NetworkAccountHeaderProps> = ({
             v2 retires the gradient shield (KEEPKEY_STYLE.md §0) — an 8px LED
             plus a mono label says which device and what state in one line,
             and leaves the header room for the chain/account pills. */}
-        <DeviceReadout state={keepkeyState} onClick={onHome} />
+        <DeviceReadout state={keepkeyState} deviceLocked={deviceLocked} onClick={onHome} />
 
         {/* Spacer — the header is `minmax(0,1fr) auto` (readout | icons). The
             chain/account pills deliberately do NOT live here; see the sub-bar

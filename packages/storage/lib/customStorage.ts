@@ -105,6 +105,14 @@ export const agentModeStorage = createStorage<boolean>('keepkey-agent-mode', fal
   liveUpdate: true,
 });
 
+// Agent control: lets an agent approve/reject pending requests over MCP
+// (bex_approve / bex_reject). Default ON — it only matters once Agent mode
+// (default OFF) is enabled, and every signature still needs the device button.
+export const agentControlStorage = createStorage<boolean>('keepkey-agent-control', true, {
+  storageType: StorageType.Local,
+  liveUpdate: true,
+});
+
 // Create Event Storage
 const createEventStorage = (key: string): EventStorage => {
   const storage = createStorage<Event[]>(key, [], {

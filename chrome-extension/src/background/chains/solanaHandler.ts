@@ -1,9 +1,13 @@
+import { readFromVault, VAULT_LOCKED_MESSAGE } from '../vaultDeviceAccess';
+import { SIGNING_TIMEOUT_MS } from '../../signingTimeouts';
 import { requestStorage, accountsByNetworkStorage, assetContextStorage } from '@extension/storage';
 import { SOLANA_DEVNET } from '../testnetPresets';
 import { v4 as uuidv4 } from 'uuid';
 import * as wallet from '../wallet';
 import { createProviderRpcError, createTimeoutError } from '../utils';
+import { assertMatchingClearSignReport, getClearSignReport, type ClearSignReport } from '../clearSignReport';
 import { requireMessageSigningFirmware } from '../firmware';
+import { summarizeSolanaTx } from './solanaTxSummary';
 
 const TAG = ' | solanaHandler | ';
 
@@ -269,7 +273,7 @@ function resolveSolanaAccountIndex(params: any[], requestInfo: any): number {
   return 0;
 }
 
-async function getSolanaAddress(accountIndex = 0): Promise<string> {
+async function getSolanaAddress(accountIndex = 0, foreground = false): Promise<string> {
   const cached = cachedAddresses.get(accountIndex);
   if (cached) return cached;
 
@@ -284,7 +288,7 @@ async function getSolanaAddress(accountIndex = 0): Promise<string> {
   }
 
   // Not cached — need the device.
-  if (!wallet.isDeviceConnected()) {
+  if (!wallet.isDeviceConnected() && !foreground) {
     // Try one probe in case device was plugged in after start
     const reachable = await wallet.probeDevice();
     if (!reachable) {
@@ -297,7 +301,7 @@ async function getSolanaAddress(accountIndex = 0): Promise<string> {
 
   const sdk = wallet.getSdk();
   const address_n = solanaAddressN(accountIndex);
-  const result = await sdk.address.solanaGetAddress({ address_n });
+  const result = await readFromVault(sdk, '/addresses/solana', { address_n }, foreground);
 
   const address = result.address || result;
   if (!address || typeof address !== 'string') {
@@ -333,7 +337,7 @@ async function getSolanaAddress(accountIndex = 0): Promise<string> {
  * which both need to materialize account N's pubkey outside the batch xpub flow.
  */
 export async function deriveSolanaAccount(accountIndex: number): Promise<string> {
-  return getSolanaAddress(accountIndex);
+  return getSolanaAddress(accountIndex, true);
 }
 
 /** Build the event object for popup approval flow */
@@ -360,6 +364,22 @@ function buildEvent(requestInfo: any, method: string, params: any[]) {
     status: 'request',
     timestamp: new Date().toISOString(),
   };
+}
+
+/**
+ * Attach a decoded summary of a dApp transaction to its approval event, so the
+ * card shows what it does instead of "TO: N/A". A decode failure is surfaced
+ * as an error on the card rather than hidden — the device still signs only
+ * what the user approves there.
+ */
+async function withTxSummary(event: any, txArray: number[], params: any[], requestInfo: any) {
+  try {
+    const signer = await getSolanaAddress(resolveSolanaAccountIndex(params, requestInfo), true);
+    event.solanaTx = summarizeSolanaTx(Uint8Array.from(txArray), signer);
+  } catch (e: any) {
+    event.solanaTxError = e?.message || String(e);
+  }
+  return event;
 }
 
 /** Save event to storage + open popup + wait for user approval */
@@ -409,9 +429,67 @@ function getApiKey(): string {
  * The vault replaces the dummy 64-byte signature at bytes 1-64 in raw_tx
  * with the real Ed25519 signature from the device.
  */
+/**
+ * Ask the vault what a transaction DOES, before the user is asked to approve it.
+ *
+ * The vault runs this same decoder inside its signing gate, but that happens
+ * AFTER the extension has already collected the user's approval — so without
+ * this call the approval card has nothing to render and shows "N/A" over a real
+ * transfer. Decode-only: no device, no signing (see /solana/decode-transaction).
+ *
+ * Never throws: a decode failure must still reach the card, as an explicit
+ * error the user can see, never as a missing field that reads like "nothing is
+ * being moved".
+ */
+async function decodeTransactionViaRest(txBase64: string): Promise<{
+  solanaDecoded?: any;
+  solanaDecodeError?: string;
+  requiresBlindSigningConsent?: boolean;
+}> {
+  try {
+    const resp = await fetch(`${VAULT_URL}/solana/decode-transaction`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getApiKey()}` },
+      body: JSON.stringify({ raw_tx: txBase64 }),
+      // No device involved, so this is a plain RPC-speed call — but it does one
+      // ALT lookup for v0 messages. Short timeout: the approval card is waiting.
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!resp.ok) {
+      return { solanaDecodeError: `vault decode failed: HTTP ${resp.status}`, requiresBlindSigningConsent: true };
+    }
+    return await resp.json();
+  } catch (e: any) {
+    return {
+      solanaDecodeError: `${e?.name || 'Error'}: ${e?.message || String(e)}`,
+      requiresBlindSigningConsent: true,
+    };
+  }
+}
+
+/**
+ * Build an approval event for a dApp-supplied transaction, with the decode
+ * attached. Every tx approval must go through here: buildEvent() alone leaves
+ * unsignedTx undefined, and the card then renders an empty payment table.
+ */
+async function buildTxApprovalEvent(requestInfo: any, method: string, params: any[], txBase64: string, owner: string) {
+  const [decoded, reportResult] = await Promise.all([
+    decodeTransactionViaRest(txBase64),
+    getClearSignReport({ chain: 'solana', raw_tx: txBase64, owner })
+      .then(clearSignReport => ({ clearSignReport }))
+      .catch((e: any) => ({ clearSignReportError: e?.message || String(e) })),
+  ]);
+  const event: any = buildEvent(requestInfo, method, params);
+  event.unsignedTx = { kind: 'solana', txBase64, ...decoded };
+  Object.assign(event, reportResult);
+  return event;
+}
+
 async function signTransactionViaRest(
   txBase64: string,
   accountIndex = 0,
+  preflightReport?: ClearSignReport,
+  eventId?: string,
 ): Promise<{ signature: string; serializedTx: string }> {
   const apiKey = getApiKey();
   let resp: Response;
@@ -428,7 +506,7 @@ async function signTransactionViaRest(
       }),
       // Wait on the user holding the device button — see the matching
       // comment in signMessageViaRest for the rationale.
-      signal: AbortSignal.timeout(300_000),
+      signal: AbortSignal.timeout(SIGNING_TIMEOUT_MS),
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {
@@ -438,11 +516,19 @@ async function signTransactionViaRest(
   }
 
   if (!resp.ok) {
+    if (resp.status === 423) throw Object.assign(new Error(VAULT_LOCKED_MESSAGE), { status: 423 });
     const text = await resp.text().catch(() => '');
     throw createProviderRpcError(-32603, `Vault sign failed (${resp.status}): ${text}`);
   }
 
   const result = await resp.json();
+  const clearSignVerification = assertMatchingClearSignReport(preflightReport, result.clearSignReport);
+  if (eventId) {
+    await requestStorage.updateEventById(eventId, {
+      clearSignVerification,
+      ...(result.clearSignReport ? { clearSignReport: result.clearSignReport } : {}),
+    });
+  }
   const serializedTx = result.serializedTx || result.serialized || '';
   if (!serializedTx) {
     throw createProviderRpcError(-32603, 'Vault returned no signed transaction data');
@@ -482,7 +568,7 @@ async function signMessageViaRest(messageBase64: string, accountIndex = 0): Prom
       // (5 min) so we never time out *before* the user has a chance to
       // act. Aborting earlier produced a red "Vault sign-message timed
       // out" panel even though the device was still happily waiting.
-      signal: AbortSignal.timeout(300_000),
+      signal: AbortSignal.timeout(SIGNING_TIMEOUT_MS),
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {
@@ -492,6 +578,7 @@ async function signMessageViaRest(messageBase64: string, accountIndex = 0): Prom
   }
 
   if (!resp.ok) {
+    if (resp.status === 423) throw Object.assign(new Error(VAULT_LOCKED_MESSAGE), { status: 423 });
     const text = await resp.text().catch(() => '');
     throw createProviderRpcError(-32603, `Vault sign-message failed (${resp.status}): ${text}`);
   }
@@ -544,7 +631,7 @@ async function signOffchainMessageViaRest(
         message_format: messageFormat,
         show_display: true,
       }),
-      signal: AbortSignal.timeout(300_000),
+      signal: AbortSignal.timeout(SIGNING_TIMEOUT_MS),
     });
   } catch (e: any) {
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {
@@ -553,6 +640,7 @@ async function signOffchainMessageViaRest(
     throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
   }
   if (!resp.ok) {
+    if (resp.status === 423) throw Object.assign(new Error(VAULT_LOCKED_MESSAGE), { status: 423 });
     const text = await resp.text().catch(() => '');
     throw createProviderRpcError(-32603, `Vault Solana sign-offchain failed (${resp.status}): ${text}`);
   }
@@ -814,7 +902,7 @@ export const handleSolanaRequest = async (
   switch (method) {
     // ---- Connect ----
     case 'solana_connect': {
-      const address = await getSolanaAddress();
+      const address = await getSolanaAddress(0, true);
       console.log(tag, 'Connected with address:', address);
       return address;
     }
@@ -828,7 +916,7 @@ export const handleSolanaRequest = async (
 
     // ---- Get public key ----
     case 'solana_getPublicKey': {
-      return await getSolanaAddress();
+      return await getSolanaAddress(0, true);
     }
 
     // ---- Enumerate accounts (wallet-standard multi-account) ----
@@ -844,7 +932,7 @@ export const handleSolanaRequest = async (
           accountIndex: typeof pk.accountIndex === 'number' ? pk.accountIndex : 0,
         }));
       if (existing.length === 0) {
-        const addr = await getSolanaAddress(0);
+        const addr = await getSolanaAddress(0, true);
         return [{ address: addr, accountIndex: 0 }];
       }
       return existing.sort((a, b) => a.accountIndex - b.accountIndex);
@@ -876,11 +964,22 @@ export const handleSolanaRequest = async (
         throw createProviderRpcError(4000, 'Invalid params: expected transaction as number[]');
       }
 
-      const txEvent = buildEvent(requestInfo, method, params);
-      await requestUserApproval(txEvent, requestInfo, method, params, requireApproval);
-
       const txBase64 = toBase64(txArray);
-      const txSignResult = await signTransactionViaRest(txBase64, resolveSolanaAccountIndex(params, requestInfo));
+      const accountIndex = resolveSolanaAccountIndex(params, requestInfo);
+      const owner = await getSolanaAddress(accountIndex, true);
+      const txEvent = await withTxSummary(
+        await buildTxApprovalEvent(requestInfo, method, params, txBase64, owner),
+        txArray,
+        params,
+        requestInfo,
+      );
+      await requestUserApproval(txEvent, requestInfo, method, params, requireApproval);
+      const txSignResult = await signTransactionViaRest(
+        txBase64,
+        accountIndex,
+        txEvent.clearSignReport,
+        requestInfo.id,
+      );
 
       // Return the fully signed transaction (vault replaces dummy sig at bytes 1-64)
       const signedTxArray = fromBase64(txSignResult.serializedTx);
@@ -914,13 +1013,17 @@ export const handleSolanaRequest = async (
       // sender and signer MUST use the same account or the built tx won't
       // match the signature. Both derive from acctIdx.
       const acctIdx = typeof payload.accountIndex === 'number' ? payload.accountIndex : 0;
-      const sender = await getSolanaAddress(acctIdx);
+      const sender = await getSolanaAddress(acctIdx, true);
       const blockhash = await getLatestBlockhash();
       const txBytes = buildSolanaTransferTx(sender, recipient, lamports, blockhash);
       const txBase64 = toBase64(Array.from(txBytes));
 
+      const reportResult = await getClearSignReport({ chain: 'solana', raw_tx: txBase64, owner: sender })
+        .then(clearSignReport => ({ clearSignReport }))
+        .catch((e: any) => ({ clearSignReportError: e?.message || String(e) }));
+
       if (!requestInfo.id) requestInfo.id = uuidv4();
-      const event = {
+      const event: any = {
         id: requestInfo.id,
         networkId: SOLANA_NETWORK_ID,
         chain: 'solana',
@@ -942,12 +1045,12 @@ export const handleSolanaRequest = async (
           blockhash,
           txBase64,
         },
+        ...reportResult,
         type: 'transfer',
         request: params,
         status: 'request',
         timestamp: new Date().toISOString(),
       };
-      // @ts-expect-error
       const saved = await requestStorage.addEvent(event);
       if (!saved) throw createProviderRpcError(-32603, 'Failed to create approval event');
       chrome.runtime.sendMessage({ action: 'TRANSACTION_CONTEXT_UPDATED', id: event.id }).catch(() => {});
@@ -957,7 +1060,7 @@ export const handleSolanaRequest = async (
         throw createProviderRpcError(4001, 'User denied transaction');
       }
 
-      const signResult = await signTransactionViaRest(txBase64, acctIdx);
+      const signResult = await signTransactionViaRest(txBase64, acctIdx, event.clearSignReport, requestInfo.id);
       const txSignature = await broadcastTransaction(signResult.serializedTx);
 
       // Persist txid so the approval UI's success state can show it.
@@ -992,12 +1095,27 @@ export const handleSolanaRequest = async (
         throw createProviderRpcError(4000, 'Invalid params: expected transaction as number[]');
       }
 
-      const sendEvent = buildEvent(requestInfo, method, params);
+      // Decode BEFORE approval: this path broadcasts immediately after signing,
+      // so an unreviewable screen here is the most expensive one in the wallet.
+      const sendBase64 = toBase64(sendTxArray);
+      const accountIndex = resolveSolanaAccountIndex(params, requestInfo);
+      const owner = await getSolanaAddress(accountIndex, true);
+      const sendEvent = await withTxSummary(
+        await buildTxApprovalEvent(requestInfo, method, params, sendBase64, owner),
+        sendTxArray,
+        params,
+        requestInfo,
+      );
+
       await requestUserApproval(sendEvent, requestInfo, method, params, requireApproval);
 
       // Sign via direct REST call
-      const sendBase64 = toBase64(sendTxArray);
-      const signResult = await signTransactionViaRest(sendBase64, resolveSolanaAccountIndex(params, requestInfo));
+      const signResult = await signTransactionViaRest(
+        sendBase64,
+        accountIndex,
+        sendEvent.clearSignReport,
+        requestInfo.id,
+      );
 
       // Broadcast via Solana RPC (vault has no broadcast endpoint)
       const txSignature = await broadcastTransaction(signResult.serializedTx);

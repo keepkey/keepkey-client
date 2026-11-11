@@ -1,3 +1,6 @@
+import { VAULT_LOCKED_MESSAGE } from './vaultDeviceAccess';
+import { SIGNING_TIMEOUT_MS } from '../signingTimeouts';
+import { withServiceWorkerKeepAlive } from './keepAlive';
 /**
  * swapHandler — background bridge for the side-panel's native swap UI.
  *
@@ -73,11 +76,13 @@ async function vaultFetch(path: string, init: RequestInit, timeoutMs = 30_000): 
   }
   if (!resp.ok) {
     const error =
-      resp.status === 401
-        ? 'Pairing expired — reconnect your KeepKey.'
-        : resp.status === 404 || resp.status === 503
-          ? 'Swap endpoints are not available on this vault yet.'
-          : body?.error || `Vault error (${resp.status})`;
+      resp.status === 423
+        ? VAULT_LOCKED_MESSAGE
+        : resp.status === 401
+          ? 'Pairing expired — reconnect your KeepKey.'
+          : resp.status === 404 || resp.status === 503
+            ? 'Swap endpoints are not available on this vault yet.'
+            : body?.error || `Vault error (${resp.status})`;
     return { ok: false, status: resp.status, error };
   }
   // vault wraps payloads as { data: ... } on /api/v2/swap/* and { entries }/record on /api/v1/swaps
@@ -128,27 +133,33 @@ export async function handleSwapMessage(message: any, cachedBalances: any[]): Pr
           error: `No receive address for ${p.toCaip} — add that chain to your wallet first.`,
         };
       }
-      return vaultFetch('/api/v2/swap/quote', {
+      const foreground = message.foreground === true && p.isMax === true;
+      const quoteRequest: RequestInit = {
         method: 'POST',
+        headers: { 'X-KeepKey-Device-Access': foreground ? 'foreground' : 'cached' },
         body: JSON.stringify({
           fromCaip: p.fromCaip,
           toCaip: p.toCaip,
           amount: p.amount,
           slippageBps: p.slippageBps,
-          isMax: p.isMax,
+          ...(p.isMax === true ? { isMax: true } : {}),
           feeLevel: p.feeLevel,
           fromAddress,
           toAddress,
         }),
-      });
+      };
+      const request = () => vaultFetch('/api/v2/swap/quote', quoteRequest, foreground ? SIGNING_TIMEOUT_MS : 30_000);
+      return foreground ? withServiceWorkerKeepAlive(request) : request();
     }
 
     case 'execute':
       // Device-interactive — block on the physical button press.
-      return vaultFetch(
-        '/api/v2/swap/execute',
-        { method: 'POST', body: JSON.stringify(message.params || {}) },
-        300_000,
+      return withServiceWorkerKeepAlive(() =>
+        vaultFetch(
+          '/api/v2/swap/execute',
+          { method: 'POST', body: JSON.stringify(message.params || {}) },
+          SIGNING_TIMEOUT_MS,
+        ),
       );
 
     case 'status':

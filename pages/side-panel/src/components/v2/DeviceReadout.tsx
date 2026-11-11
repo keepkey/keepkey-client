@@ -20,6 +20,7 @@ export const KeepKeyState = {
   Busy: 3,
   Errored: 4,
   Paired: 5,
+  WalletAccessNeeded: 6,
 } as const;
 
 export interface DeviceReadoutModel {
@@ -46,7 +47,7 @@ export interface DeviceReadoutModel {
  * state alone can't tell them apart, so the readout names none of them as fact
  * and the hint covers all three.
  */
-export function deviceReadout(state: number | null, deviceLabel?: string): DeviceReadoutModel {
+export function deviceReadout(state: number | null, deviceLabel?: string, deviceLocked = false): DeviceReadoutModel {
   // The design shows a real device id ("KK-2A91 · ONLINE"). Until the
   // background reports one, prefixing every state with a constant "KEEPKEY ·"
   // adds width without adding information — and in a 400px header that width
@@ -58,7 +59,23 @@ export function deviceReadout(state: number | null, deviceLabel?: string): Devic
   const dim = { color: tokens.line3, glow: 'none', pulsing: false };
 
   switch (state) {
+    case KeepKeyState.WalletAccessNeeded:
+      return {
+        ...dim,
+        color: tokens.accent,
+        label: tag(deviceLocked ? 'LOCKED' : 'VAULT ONLINE'),
+        title: 'Vault is connected. Load your wallet when you need device access.',
+        ready: false,
+      };
     case KeepKeyState.Paired:
+      if (deviceLocked)
+        return {
+          ...dim,
+          color: tokens.accent,
+          label: tag('LOCKED'),
+          title: 'Vault is connected. Monitoring works; unlock when a device request needs it.',
+          ready: true,
+        };
       return {
         label: tag('ONLINE'),
         color: tokens.good,
@@ -89,12 +106,13 @@ export function deviceReadout(state: number | null, deviceLabel?: string): Devic
 
 interface DeviceReadoutProps {
   state: number | null;
+  deviceLocked?: boolean;
   deviceLabel?: string;
   onClick?: () => void;
 }
 
-export const DeviceReadout = ({ state, deviceLabel, onClick }: DeviceReadoutProps) => {
-  const m = deviceReadout(state, deviceLabel);
+export const DeviceReadout = ({ state, deviceLabel, deviceLocked, onClick }: DeviceReadoutProps) => {
+  const m = deviceReadout(state, deviceLabel, deviceLocked);
 
   return (
     <Button

@@ -89,7 +89,7 @@ export const handleCosmosRequest = async (
 
       if (result.success && response.unsignedTx) {
         const sdk = wallet.getSdk();
-        const signedTx = await sdk.cosmos.cosmosSignAmino(response.unsignedTx);
+        const signedTx = await wallet.signViaVault('/cosmos/sign-amino', response.unsignedTx);
         console.log(tag, 'signedTx: ', signedTx);
 
         response.signedTx = signedTx;

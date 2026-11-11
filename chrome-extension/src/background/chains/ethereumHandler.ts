@@ -3,7 +3,7 @@
 */
 
 import type { JsonRpcProvider } from 'ethers';
-import { parseEther, Transaction } from 'ethers';
+import { Contract, parseEther, Transaction } from 'ethers';
 import type { ProviderRpcError } from '../utils';
 import { reportActivityToVault } from '../activityReport';
 import { createProviderRpcError } from '../utils';
@@ -21,8 +21,21 @@ import { signEthereumMessage } from '../evmIdentity';
 import { buildFeeWarning, getFeeFloor, getPriorityFeeFloor, type FeeChoice, type FeeWarning } from './feeFloors';
 import { openSidePanel, setApprovalBadge } from '../popup';
 import { getChainInfo, makeStaticProvider } from './registry';
-import { isTransientRpcError } from './rpcFailover';
+import { isTransientRpcError, withRpcFailoverByNetworkId } from './rpcFailover';
 import { getLastResortRpcs } from './lastResortRpcs';
+import {
+  extractTypedData,
+  permitTokenAddresses,
+  summarizeTypedData,
+  toTokenMeta,
+  withTokenMetadata,
+  type TokenMeta,
+  type TypedDataSummary,
+} from './evmTypedData';
+import { assertDappChainMatchesProvider, assertProviderMatchesCaip } from './providerGuard';
+import { assertMatchingClearSignReport, getClearSignReport, type ClearSignReport } from '../clearSignReport';
+import { checkSiwe, eip191Text, type SiweCheck } from './siwe';
+import { methodNotAvailableMessage, walletGetCapabilities } from './eip5792';
 
 const TAG = ' | ethereumHandler | ';
 const DOMAIN_WHITE_LIST = [];
@@ -692,37 +705,8 @@ const handleWalletWatchAsset = async () => {
   return true;
 };
 
-const handleWalletPermissions = async () => {
-  const permissions = [{ parentCapability: 'eth_accounts' }];
-  return permissions;
-};
-
-const handleWalletGetCapabilities = async (params: any[]) => {
-  // wallet_getCapabilities is used by dApps to determine what features the wallet supports
-  // Uniswap uses this to check for things like atomic batch transactions
-  const address = params[0]?.toLowerCase();
-
-  // Return capabilities for the specified address or all addresses
-  const capabilities: Record<string, any> = {};
-
-  // Add base capabilities that KeepKey supports
-  const baseCapabilities = {
-    atomicBatch: {
-      supported: false, // KeepKey doesn't support atomic batch transactions yet
-    },
-    paymasterService: {
-      supported: false, // No paymaster service support
-    },
-  };
-
-  if (address) {
-    capabilities[address] = baseCapabilities;
-  } else {
-    // Return for all addresses if none specified
-    capabilities['0x0000000000000000000000000000000000000000'] = baseCapabilities;
-  }
-
-  return capabilities;
+const handleWalletPermissions = async (ADDRESS: string) => {
+  return [{ parentCapability: 'eth_accounts', caveats: [{ type: 'restrictReturnedAccounts', value: [ADDRESS] }] }];
 };
 
 const handleEthAccounts = async (ADDRESS: any) => {
@@ -733,6 +717,42 @@ const handleEthAccounts = async (ADDRESS: any) => {
 const handleEthRequestAccounts = async (ADDRESS: any) => {
   const requestAccounts = ADDRESS ? [ADDRESS] : [];
   return requestAccounts;
+};
+
+// Symbol/decimals for the tokens a permit names, read from the chain the
+// permit is bound to (via the active provider's URLs when that is the same
+// chain). Each token settles on its own against ONE shared deadline, so a slow
+// RPC delays the approval by at most ~8s and keeps whatever did resolve.
+// Anything unresolved stays unknown: the card shows raw units, never a guess.
+const TOKEN_META_LIMIT = 8;
+const TOKEN_META_DEADLINE_MS = 8000;
+const ERC20_META_ABI = ['function symbol() view returns (string)', 'function decimals() view returns (uint8)'];
+
+const resolveTokenMeta = async (
+  addresses: string[],
+  chainId: string | null,
+  activeChainId: number | null,
+): Promise<Record<string, TokenMeta | null>> => {
+  const onActiveChain = chainId === null || chainId === String(activeChainId);
+  const read = (address: string): Promise<TokenMeta | null> => {
+    const op = async (provider: JsonRpcProvider) => {
+      const token = new Contract(address, ERC20_META_ABI, provider);
+      // symbol() is optional (bytes32 symbols don't decode); decimals() is not.
+      const [symbol, decimals] = await Promise.all([token.symbol().catch(() => null), token.decimals()]);
+      return toTokenMeta(symbol, decimals);
+    };
+    return onActiveChain
+      ? withRpcFailover(op, { tag: TAG + ' permit token meta' })
+      : withRpcFailoverByNetworkId(`eip155:${chainId}`, op);
+  };
+  const wanted = addresses.slice(0, TOKEN_META_LIMIT);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<null>(resolve => {
+    timer = setTimeout(() => resolve(null), TOKEN_META_DEADLINE_MS);
+  });
+  const results = await Promise.all(wanted.map(a => Promise.race([read(a).catch(() => null), deadline])));
+  clearTimeout(timer);
+  return Object.fromEntries(wanted.map((a, i) => [a, results[i]]));
 };
 
 const handleSigningMethods = async (
@@ -754,6 +774,10 @@ const handleSigningMethods = async (
   if (!networkId) throw Error('Failed to set context before sending!');
   // Require user approval
   const unsignedTx = params[0];
+  if (method === 'eth_sendTransaction' || method === 'eth_signTransaction') {
+    // Refuse before the card opens: it would show the provider chain, not the dApp's.
+    assertDappChainMatchesProvider(unsignedTx?.chainId, currentProvider);
+  }
   requestInfo.id = uuidv4();
 
   // Compute the fee-floor warning ONCE up front so the side-panel can render
@@ -807,6 +831,64 @@ const handleSigningMethods = async (
     }
   }
 
+  // Typed data reaches the device as two hashes (EthereumSignTypedHash), so
+  // the approval card is the only readable view: decode it here, as the
+  // vault's hasher will read it (see evmTypedData.ts). A legacy-v1 or
+  // malformed payload is refused before any approval is shown.
+  let typedDataSummary: TypedDataSummary | null = null;
+  if (method.startsWith('eth_signTypedData')) {
+    const extracted = extractTypedData(params);
+    if (!extracted.ok) throw createProviderRpcError(extracted.code, extracted.message);
+    const activeChainId = parseChainId(currentProvider?.chainId);
+    const summary = summarizeTypedData(extracted.typedData, { activeChainId, nowSec: Date.now() / 1000 });
+    const meta = await resolveTokenMeta(permitTokenAddresses(summary), summary.chainId, activeChainId);
+    typedDataSummary = withTokenMetadata(summary, meta);
+  }
+
+  // Vault owns transaction meaning. Ask for its canonical report instead of
+  // duplicating protocol/ABI decoders in the extension. This endpoint is
+  // transaction-only; message and typed-data signing retain their dedicated UI.
+  let clearSignReport: ClearSignReport | undefined;
+  let clearSignReportError: string | undefined;
+  if ((method === 'eth_sendTransaction' || method === 'eth_signTransaction') && unsignedTx) {
+    try {
+      const rawChainId = unsignedTx.chainId ?? currentProvider?.chainId ?? String(networkId).split(':')[1];
+      const chainId =
+        typeof rawChainId === 'string' && rawChainId.startsWith('0x') ? parseInt(rawChainId, 16) : Number(rawChainId);
+      // The report fingerprint must describe the request that will actually be
+      // signed, including wallet-owned nonce, gas and fee fields.
+      unsignedTx.chainId = rawChainId;
+      unsignedTx.from = unsignedTx.from || ADDRESS;
+      await finalizeEvmTransactionFields(unsignedTx, tag);
+      clearSignReport = await getClearSignReport({
+        chain: 'evm',
+        chainId,
+        from: unsignedTx.from || ADDRESS,
+        ...(unsignedTx.to ? { to: unsignedTx.to } : {}),
+        ...(unsignedTx.data || unsignedTx.input ? { data: unsignedTx.data || unsignedTx.input } : {}),
+        ...(unsignedTx.value ? { value: unsignedTx.value } : {}),
+        ...(unsignedTx.nonce ? { nonce: unsignedTx.nonce } : {}),
+        ...(unsignedTx.gas || unsignedTx.gasLimit ? { gas: unsignedTx.gas || unsignedTx.gasLimit } : {}),
+        ...(unsignedTx.gasPrice ? { gasPrice: unsignedTx.gasPrice } : {}),
+        ...(unsignedTx.maxFeePerGas ? { maxFeePerGas: unsignedTx.maxFeePerGas } : {}),
+        ...(unsignedTx.maxPriorityFeePerGas ? { maxPriorityFeePerGas: unsignedTx.maxPriorityFeePerGas } : {}),
+      });
+    } catch (e: any) {
+      clearSignReportError = e?.message || String(e);
+      console.warn(tag, 'ClearSign report unavailable:', clearSignReportError);
+    }
+  }
+
+  // ERC-4361 domain binding (siwe.ts). Keep the param slot in sync with what
+  // processApprovedEvent signs: personal_sign params[0], eth_sign params[1].
+  // origin is the Chrome-derived one (senderSite.ts), never the page's claim.
+  let siwe: SiweCheck | null = null;
+  if (method === 'personal_sign' || method === 'eth_sign') {
+    siwe = checkSiwe(eip191Text(method === 'personal_sign' ? params[0] : params[1]), {
+      origin: requestInfo.origin ?? null,
+    });
+  }
+
   const event = {
     id: requestInfo.id,
     networkId,
@@ -824,6 +906,10 @@ const handleSigningMethods = async (
     unsignedTx,
     feeWarning, // null when fees are fine; otherwise side-panel renders the banner
     nonceInfo, // null on non-tx flows; { latest, pending, willReplace } otherwise
+    typedDataSummary, // null except eth_signTypedData*; the card renders it
+    clearSignReport,
+    clearSignReportError,
+    siwe, // null unless a personal_sign/eth_sign message is a Sign-In with Ethereum
     type: method,
     request: params,
     status: 'request',
@@ -834,6 +920,7 @@ const handleSigningMethods = async (
   //@ts-expect-error
   const eventSaved = await requestStorage.addEvent(event);
   console.log(tag, 'eventSaved:', eventSaved);
+  if (!eventSaved) throw Error('Failed to create event!');
 
   const result = await requireApproval(networkId, requestInfo, 'ethereum', method, params[0]);
   console.log(tag, 'requireApproval result:', result);
@@ -890,6 +977,34 @@ const walletChosenFees = async (
   return { gasPrice: '0x' + floored.toString(16) };
 };
 
+/** Fill every wallet-owned transaction field before ClearSign preview. */
+const finalizeEvmTransactionFields = async (transaction: any, tag: string): Promise<void> => {
+  if (!transaction.nonce) {
+    const nonce = await withRpcFailover(p => p.getTransactionCount(transaction.from, 'pending'), {
+      tag: tag + ' nonce',
+    });
+    transaction.nonce = '0x' + nonce.toString(16);
+  }
+  if (!transaction.gasLimit && transaction.gas) transaction.gasLimit = transaction.gas;
+  if (!transaction.gasLimit) {
+    const estimated = await withRpcFailover(
+      p =>
+        p.estimateGas({
+          from: transaction.from,
+          to: transaction.to,
+          data: transaction.data || transaction.input,
+          value: transaction.value || '0x0',
+        }),
+      { tag: tag + ' estimateGas' },
+    );
+    const buffered = BigInt(estimated) + BigInt(estimated) / 5n;
+    transaction.gasLimit = '0x' + (buffered > 10_000_000n ? 10_000_000n : buffered).toString(16);
+  }
+  if (!transaction.maxFeePerGas && !transaction.maxPriorityFeePerGas && !transaction.gasPrice) {
+    Object.assign(transaction, await walletChosenFees(transaction.chainId, tag));
+  }
+};
+
 // For 'transfer', build transaction info before calling requireApproval
 const handleTransfer = async (
   params: any,
@@ -904,6 +1019,9 @@ const handleTransfer = async (
   console.log(tag, 'requestInfo:', requestInfo);
 
   const currentProviderCtx = await web3ProviderStorage.getWeb3Provider();
+  // Everything below (chainId, nonce, gas, fees, broadcast RPCs) comes from
+  // the stored provider, so refuse unless it is the chain being sent on.
+  assertProviderMatchesCaip(params[0]?.caip, currentProviderCtx);
   const caip = currentProviderCtx?.caip || 'eip155:1/slip44:60';
   const networkId = currentProviderCtx?.networkId || caipToNetworkId(caip);
   console.log(tag, 'networkId:', networkId);
@@ -986,8 +1104,12 @@ const handleTransfer = async (
   if (result.success && response.unsignedTx) {
     console.log(tag, 'FINAL: unsignedTx: ', response.unsignedTx);
 
+    // The approval can sit open for minutes; if the provider was switched
+    // meanwhile, broadcast would go to another chain's RPCs. Re-check first.
+    assertProviderMatchesCaip(params[0]?.caip, await web3ProviderStorage.getWeb3Provider());
+
     // Sign using vault SDK directly
-    const signedTx = await signTransaction(response.unsignedTx, KEEPKEY_WALLET);
+    const signedTx = await signTransaction(response.unsignedTx, KEEPKEY_WALLET, requestInfo.id);
     console.log(tag, 'signedTx:', signedTx);
 
     // Update storage with signed transaction
@@ -1097,11 +1219,17 @@ export const handleEthereumRequest = async (
       return await handleWalletWatchAsset();
 
     case 'wallet_getPermissions':
+      return await handleWalletPermissions(ADDRESS);
+
     case 'wallet_requestPermissions':
-      return await handleWalletPermissions();
+      // dApp "switch account" (Uniswap et al.). ponytail: no in-request picker —
+      // open the side panel, whose account dropdown fires accountsChanged on a
+      // pick. Build a real picker if dApps need the answer in this response.
+      await openSidePanel(requestInfo);
+      return await handleWalletPermissions(ADDRESS);
 
     case 'wallet_getCapabilities':
-      return await handleWalletGetCapabilities(params);
+      return walletGetCapabilities(params);
 
     case 'request_accounts':
     case 'eth_accounts':
@@ -1125,6 +1253,12 @@ export const handleEthereumRequest = async (
     case 'eth_getEncryptionPublicKey':
       throw createProviderRpcError(4200, 'Method eth_getEncryptionPublicKey not supported');
 
+    // EIP-5792 batching is not implemented — see eip5792.ts for why the wording matters.
+    case 'wallet_sendCalls':
+    case 'wallet_getCallsStatus':
+    case 'wallet_showCallsStatus':
+      throw createProviderRpcError(4200, methodNotAvailableMessage(method));
+
     default:
       throw createProviderRpcError(4200, `Method ${method} not supported`);
   }
@@ -1139,6 +1273,8 @@ const processApprovedEvent = async (method: string, params: any, KEEPKEY_WALLET:
 
     let result;
     switch (method) {
+      // Keep these message slots in sync with the SIWE check in
+      // handleSigningMethods, or the panel checks one text and the device signs another.
       case 'personal_sign':
         // EIP-191 personal_sign: params = [message, address]. Prefer the dApp-supplied
         // address so multi-account wallets sign with the correct derivation path.
@@ -1163,10 +1299,12 @@ const processApprovedEvent = async (method: string, params: any, KEEPKEY_WALLET:
         // surfaced in PR #55 review).
         const tx = params[0];
         const currentProvider = await web3ProviderStorage.getWeb3Provider();
+        // Re-check: the provider can change while the approval card is open.
+        assertDappChainMatchesProvider(tx.chainId, currentProvider);
         if (currentProvider?.chainId) tx.chainId = currentProvider.chainId;
         tx.from = ADDRESS;
         await applyFeeChoiceFromStorage(tx, id, ' | eth_signTransaction | ');
-        result = await signTransaction(tx, KEEPKEY_WALLET);
+        result = await signTransaction(tx, KEEPKEY_WALLET, id);
         break;
       }
       default:
@@ -1223,7 +1361,7 @@ const signMessage = async (message: any, KEEPKEY_WALLET: any, ADDRESS: string, e
   }
 };
 
-const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
+const signTransaction = async (transaction: any, KEEPKEY_WALLET: any, eventId?: string) => {
   const tag = ' | signTransaction | ';
   try {
     console.log(tag, '**** transaction: ', transaction);
@@ -1265,14 +1403,18 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
           from: transaction.from,
           to: transaction.to,
           data: transaction.data,
+          value: transaction.value,
         });
 
+        // Include value: payable calls that check msg.value revert when
+        // estimated with 0 and would fall through to the blind 400k limit.
         let estimatedGas: any = await withRpcFailover(
           p =>
             p.estimateGas({
               from: transaction.from,
               to: transaction.to,
               data: transaction.data,
+              value: transaction.value,
             }),
           { tag: tag + ' estimateGas' },
         );
@@ -1334,7 +1476,15 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
 
     console.log(`${tag} Final input: `, input);
     const sdk = wallet.getSdk();
-    const output = await sdk.eth.ethSignTransaction(input);
+    const output = await wallet.signViaVault('/eth/sign-transaction', input);
+    if (eventId) {
+      const event = await requestStorage.getEventById(eventId);
+      const clearSignVerification = assertMatchingClearSignReport(event?.clearSignReport, output?.clearSignReport);
+      await requestStorage.updateEventById(eventId, {
+        clearSignVerification,
+        ...(output?.clearSignReport ? { clearSignReport: output.clearSignReport } : {}),
+      });
+    }
     console.log(`${tag} Transaction output: `, output);
 
     // Decode-friendly handoff log. Paste `serialized` into any EVM tx
@@ -1372,11 +1522,14 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
 
 const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string, eventId?: string) => {
   const tag = ' | signTypedData | ';
+  // The same extractor the approval summary used, so the device signs the
+  // payload the user was shown. Outside the try: its errors are already
+  // dApp-facing and must not be rewrapped as signing failures.
+  const extracted = extractTypedData(params);
+  if (!extracted.ok) throw createProviderRpcError(extracted.code, extracted.message);
   try {
     console.log(tag, '**** params: ', params);
-    const typedData = params[1];
-    const parsed = typeof typedData === 'string' ? JSON.parse(typedData) : typedData;
-    const { domain, types, message, primaryType } = parsed;
+    const { domain, types, message, primaryType } = extracted.typedData;
     const HDWalletPayload = {
       address: ADDRESS,
       addressNList: getAddressNListForAddress(ADDRESS),
@@ -1385,7 +1538,7 @@ const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string, 
     console.log(tag, '**** HDWalletPayload: ', HDWalletPayload);
     console.log(tag, '**** HDWalletPayload: ', JSON.stringify(HDWalletPayload));
     const sdk = wallet.getSdk();
-    const signedMessage = await sdk.eth.ethSignTypedData(HDWalletPayload);
+    const signedMessage = await wallet.signViaVault('/eth/sign-typed-data', HDWalletPayload);
     console.log('[HANDOFF] vault → BEX (eth_signTypedData_v4 raw):', JSON.stringify(signedMessage));
 
     // EIP-1193: eth_signTypedData_v4 must return hex signature string, not object.
@@ -1816,6 +1969,8 @@ const sendTransaction = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string
     const transaction = params[0];
     const currentProvider = await web3ProviderStorage.getWeb3Provider();
     if (!currentProvider) throw createProviderRpcError(4900, 'Provider not properly configured');
+    // Re-check: the provider can change while the approval card is open.
+    assertDappChainMatchesProvider(transaction.chainId, currentProvider);
     const chainId = currentProvider.chainId;
 
     transaction.chainId = chainId;
@@ -1823,7 +1978,7 @@ const sendTransaction = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string
 
     await applyFeeChoiceFromStorage(transaction, id, tag);
 
-    const signedTx = await signTransaction(transaction, KEEPKEY_WALLET);
+    const signedTx = await signTransaction(transaction, KEEPKEY_WALLET, id);
     console.log(tag, 'signedTx:', signedTx);
 
     const txHash = await broadcastTransaction(signedTx, transaction.from);
