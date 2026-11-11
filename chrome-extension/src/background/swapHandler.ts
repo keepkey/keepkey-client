@@ -1,3 +1,4 @@
+import { VAULT_LOCKED_MESSAGE } from './vaultDeviceAccess';
 import { SIGNING_TIMEOUT_MS } from '../signingTimeouts';
 import { withServiceWorkerKeepAlive } from './keepAlive';
 /**
@@ -75,7 +76,9 @@ async function vaultFetch(path: string, init: RequestInit, timeoutMs = 30_000): 
   }
   if (!resp.ok) {
     const error =
-      resp.status === 401
+      resp.status === 423
+        ? VAULT_LOCKED_MESSAGE
+        : resp.status === 401
         ? 'Pairing expired — reconnect your KeepKey.'
         : resp.status === 404 || resp.status === 503
           ? 'Swap endpoints are not available on this vault yet.'
@@ -130,19 +133,23 @@ export async function handleSwapMessage(message: any, cachedBalances: any[]): Pr
           error: `No receive address for ${p.toCaip} — add that chain to your wallet first.`,
         };
       }
-      return vaultFetch('/api/v2/swap/quote', {
+      const foreground = message.foreground === true && p.isMax === true;
+      const quoteRequest: RequestInit = {
         method: 'POST',
+        headers: { 'X-KeepKey-Device-Access': foreground ? 'foreground' : 'cached' },
         body: JSON.stringify({
           fromCaip: p.fromCaip,
           toCaip: p.toCaip,
           amount: p.amount,
           slippageBps: p.slippageBps,
-          isMax: p.isMax,
+          ...(p.isMax === true ? { isMax: true } : {}),
           feeLevel: p.feeLevel,
           fromAddress,
           toAddress,
         }),
-      });
+      };
+      const request = () => vaultFetch('/api/v2/swap/quote', quoteRequest, foreground ? SIGNING_TIMEOUT_MS : 30_000);
+      return foreground ? withServiceWorkerKeepAlive(request) : request();
     }
 
     case 'execute':

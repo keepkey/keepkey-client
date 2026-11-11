@@ -41,12 +41,12 @@ const Connect: React.FC<ConnectProps> = ({ setIsConnecting }) => {
     openBrowserTab(KEEPKEY_LAUNCH_URL);
   };
 
-  const connectKeepkey = () => {
+  const connectKeepkey = (foreground = false) => {
     console.log('connectKeepkey called');
     setIsConnecting(true);
     setLocalIsConnecting(true);
     try {
-      chrome.runtime.sendMessage({ type: 'ON_START' }, response => {
+      chrome.runtime.sendMessage({ type: 'ON_START', foreground }, response => {
         if (chrome.runtime.lastError) {
           console.error('chrome.runtime.lastError:', chrome.runtime.lastError.message);
         } else {
@@ -101,7 +101,7 @@ const Connect: React.FC<ConnectProps> = ({ setIsConnecting }) => {
           <Text fontSize="xs" color="kk.faint">
             Already running?
           </Text>
-          <Button variant="outline" onClick={connectKeepkey}>
+          <Button variant="outline" onClick={() => connectKeepkey(true)}>
             Retry Connection
           </Button>
         </Stack>

@@ -33,8 +33,8 @@ export async function fetchSwapAssets(): Promise<SwapAsset[]> {
   return (r.data as SwapAsset[]) || [];
 }
 
-export async function fetchSwapQuote(params: SwapQuoteParams): Promise<SwapQuote> {
-  const r = await send('quote', { params });
+export async function fetchSwapQuote(params: SwapQuoteParams, foreground = false): Promise<SwapQuote> {
+  const r = await send('quote', { params, foreground });
   if (!r.ok) throw new Error(r.error || 'Failed to get quote');
   return r.data as SwapQuote;
 }

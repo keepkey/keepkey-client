@@ -1,5 +1,6 @@
 import { getAddress, getBytes, hexlify, toUtf8Bytes, verifyMessage } from 'ethers';
 import { createProviderRpcError } from './utils';
+import { readFromVault } from './vaultDeviceAccess';
 
 const HARDENED = 0x80000000;
 const changed = () => createProviderRpcError(4100, 'KeepKey account changed. Refresh KeepKey and connect again.');
@@ -17,7 +18,7 @@ export function ethereumAccountPath(pubkeys: any[], address: string, requireKnow
 }
 
 export async function readEthereumAddress(sdk: any, path: number[]): Promise<string> {
-  const result = await sdk.address.ethGetAddress({ address_n: path, show_display: false });
+  const result = await readFromVault(sdk, '/addresses/eth', { address_n: path, show_display: false }, true);
   return getAddress(result.address);
 }
 

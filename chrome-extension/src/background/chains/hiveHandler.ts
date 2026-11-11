@@ -1,3 +1,4 @@
+import { readFromVault, VAULT_LOCKED_MESSAGE } from '../vaultDeviceAccess';
 import { SIGNING_TIMEOUT_MS } from '../../signingTimeouts';
 import { requestStorage } from '@extension/storage';
 import { v4 as uuidv4 } from 'uuid';
@@ -56,22 +57,16 @@ function getApiKey(): string {
 }
 
 /** Derive the active-role STM public key via the vault. */
-async function getHivePublicKey(): Promise<string> {
+async function getHivePublicKey(foreground = false): Promise<string> {
   if (cachedPubkey) return cachedPubkey;
-  const resp = await fetch(`${VAULT_URL}/addresses/hive`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getApiKey()}` },
-    body: JSON.stringify({ address_n: hiveAddressN('active', 0) }),
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => '');
-    if (resp.status === 403)
-      throw createProviderRpcError(4100, 'Hive is disabled in the vault — enable it in Vault settings');
-    if (resp.status === 501) throw createProviderRpcError(4100, `Hive requires firmware 7.15.0+: ${text}`);
-    throw createProviderRpcError(-32603, `Vault /addresses/hive failed (${resp.status}): ${text}`);
+  let address: string;
+  try {
+    ({ address } = await readFromVault(wallet.getSdk(), '/addresses/hive', { address_n: hiveAddressN('active', 0) }, foreground));
+  } catch (error) {
+    if ((error as any)?.status === 403) throw createProviderRpcError(4100, 'Hive is disabled in the vault — enable it in Vault settings');
+    if ((error as any)?.status === 501) throw createProviderRpcError(4100, `Hive requires firmware 7.15.0+: ${(error as Error).message}`);
+    throw error;
   }
-  const { address } = await resp.json();
   if (!address) throw createProviderRpcError(-32603, 'Vault returned no Hive public key');
   cachedPubkey = address;
   return address;
@@ -79,7 +74,7 @@ async function getHivePublicKey(): Promise<string> {
 
 /** Resolve the on-chain account name owning our active key (Pioneer lookup). */
 async function getHiveAccount(): Promise<{ name: string; pubkey: string }> {
-  const pubkey = await getHivePublicKey();
+  const pubkey = await getHivePublicKey(true);
   if (cachedAccountName) return { name: cachedAccountName, pubkey };
   const resp = await fetch(`${PIONEER_URL}/api/v1/hive/account/${encodeURIComponent(pubkey)}`, {
     signal: AbortSignal.timeout(20_000),
@@ -553,6 +548,7 @@ async function hiveSignBuffer(
     throw createProviderRpcError(-32603, `Vault connection failed: ${e.message}`);
   }
   if (!resp.ok) {
+    if (resp.status === 423) throw Object.assign(new Error(VAULT_LOCKED_MESSAGE), { status: 423 });
     const text = await resp.text().catch(() => '');
     throw createProviderRpcError(-32603, `Vault Hive sign-message failed (${resp.status}): ${text}`);
   }

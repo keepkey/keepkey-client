@@ -1,3 +1,5 @@
+import { isVaultLockedError, VAULT_LOCKED_MESSAGE } from './vaultDeviceAccess';
+
 /**
  * Categorical hint for the side panel — lets the UI key off a stable
  * field instead of regex-matching `message`. Add cases as we identify
@@ -75,6 +77,7 @@ export async function isVaultReachable(): Promise<boolean> {
  * All other errors pass through unchanged.
  */
 export async function formatUserError(err: unknown): Promise<string> {
+  if (isVaultLockedError(err)) return VAULT_LOCKED_MESSAGE;
   const msg = (err as Error)?.message ?? String(err);
   if (isVaultUnreachableError(msg) && !(await isVaultReachable())) {
     return VAULT_REQUIRED_MESSAGE;

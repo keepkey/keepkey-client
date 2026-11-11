@@ -32,6 +32,18 @@ describe('long-running signature bridge', () => {
       },
     };
     vi.stubGlobal('window', page);
+    // Node 18 (CI) has no global CustomEvent
+    vi.stubGlobal(
+      'CustomEvent',
+      class {
+        type: string;
+        detail: any;
+        constructor(type: string, init?: any) {
+          this.type = type;
+          this.detail = init?.detail;
+        }
+      },
+    );
     vi.stubGlobal('localStorage', { getItem: () => null, setItem() {} });
     vi.stubGlobal('document', {
       referrer: '',
