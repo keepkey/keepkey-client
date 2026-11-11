@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Wallet, getBytes, hexlify, toUtf8Bytes } from 'ethers';
 import { readFromVault } from './vaultDeviceAccess';
+import type * as VaultDeviceAccess from './vaultDeviceAccess';
 vi.mock('./vaultDeviceAccess', async importOriginal => ({
-  ...await importOriginal<typeof import('./vaultDeviceAccess')>(),
+  ...(await importOriginal<typeof VaultDeviceAccess>()),
   readFromVault: vi.fn(async (sdk, _path, body) => sdk.address.ethGetAddress(body)),
 }));
 import { ethereumAccountPath, signEthereumMessage, synchronizeEthereumAccount } from './evmIdentity';
@@ -45,9 +46,15 @@ describe('EVM wallet identity', () => {
   it('requests identity reads as foreground device access', async () => {
     const sdk = sdkFor();
     await synchronizeEthereumAccount(sdk, keys(), owner.address, async () => {});
-    expect(readFromVault).toHaveBeenLastCalledWith(sdk, '/addresses/eth', {
-      address_n: [2147483692, 2147483708, 2147483648, 0, 0], show_display: false,
-    }, true);
+    expect(readFromVault).toHaveBeenLastCalledWith(
+      sdk,
+      '/addresses/eth',
+      {
+        address_n: [2147483692, 2147483708, 2147483648, 0, 0],
+        show_display: false,
+      },
+      true,
+    );
   });
 
   it('preserves the selected account derivation path', () => {
