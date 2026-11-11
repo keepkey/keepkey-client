@@ -1,3 +1,5 @@
+import { isVaultLockedError, VAULT_LOCKED_MESSAGE } from './vaultDeviceAccess';
+
 /**
  * Categorical hint for the side panel — lets the UI key off a stable
  * field instead of regex-matching `message`. Add cases as we identify
@@ -75,6 +77,7 @@ export async function isVaultReachable(): Promise<boolean> {
  * All other errors pass through unchanged.
  */
 export async function formatUserError(err: unknown): Promise<string> {
+  if (isVaultLockedError(err)) return VAULT_LOCKED_MESSAGE;
   const msg = (err as Error)?.message ?? String(err);
   if (isVaultUnreachableError(msg) && !(await isVaultReachable())) {
     return VAULT_REQUIRED_MESSAGE;
@@ -83,4 +86,14 @@ export async function formatUserError(err: unknown): Promise<string> {
     return 'Please connect your KeepKey device and try again.';
   }
   return msg;
+}
+
+/**
+ * The EVM address dApps should see: the user's saved pick if it belongs to
+ * the connected device's pubkeys, else account 0. Matching against the live
+ * list is what stops another KeepKey's address leaking back in.
+ */
+export function pickEvmAddress(addresses: string[], saved?: string): string | undefined {
+  const match = saved && addresses.find(a => a.toLowerCase() === saved.toLowerCase());
+  return match || addresses[0];
 }

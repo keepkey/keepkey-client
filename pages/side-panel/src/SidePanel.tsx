@@ -41,8 +41,8 @@ import { colorForSymbol } from './styles/assetColor';
 import Transaction from './approval/Transaction';
 
 // Events older than this are dropped on load — an abandoned-tab pending
-// request shouldn't hijack the sidebar forever.
-const MAX_EVENT_AGE_MINUTES = 10;
+// Retain queued and visible requests through the full approval budget.
+const MAX_EVENT_AGE_MS = 40 * 60_000;
 
 // Drawers and modals open below the sticky header, which floats above them.
 // Its height isn't fixed (the chain/account sub-bar only shows once paired),
@@ -77,6 +77,7 @@ const SidePanel = () => {
   const [balances, setBalances] = useState<any[]>([]);
   const [totalUsdBalance, setTotalUsdBalance] = useState<number>(0);
   const [keepkeyState, setKeepkeyState] = useState<number | null>(null);
+  const [deviceLocked, setDeviceLocked] = useState(false);
   const [transactionContext, setTransactionContext] = useState<any>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -282,13 +283,12 @@ const SidePanel = () => {
   const refreshBalances = async () => {
     try {
       setIsRefreshing(true);
-      setKeepkeyState(null);
       chrome.runtime.sendMessage({ type: 'CLEAR_CACHE' }, response => {
         if (response?.success) {
           console.log('Cache cleared');
         }
       });
-      chrome.runtime.sendMessage({ type: 'ON_START' }, response => {
+      chrome.runtime.sendMessage({ type: 'ON_START', foreground: true }, response => {
         if (response?.success) {
           console.log('ON_START triggered');
         }
@@ -310,7 +310,7 @@ const SidePanel = () => {
       const fresh: any[] = [];
       for (const ev of events) {
         const ageMs = now - new Date(ev.timestamp).getTime();
-        if (ageMs <= MAX_EVENT_AGE_MINUTES * 60_000) {
+        if (ageMs <= MAX_EVENT_AGE_MS) {
           fresh.push(ev);
         } else {
           void requestStorage.removeEventById(ev.id);
@@ -340,6 +340,7 @@ const SidePanel = () => {
     const messageListener = (message: any) => {
       if (message.type === 'KEEPKEY_STATE_CHANGED' && message.state !== undefined) {
         setKeepkeyState(message.state);
+        if (message.connection) setDeviceLocked(!!message.connection.deviceLocked);
       }
       if (message.type === 'TRANSACTION_CONTEXT_UPDATED' && message.id) {
         setTransactionContext(message.id);
@@ -417,6 +418,14 @@ const SidePanel = () => {
         return <Loading setIsConnecting={setIsConnecting} keepkeyState={keepkeyState} />;
       case 4:
         return <Connect setIsConnecting={setIsConnecting} />;
+      case 6:
+        return (
+          <Flex direction="column" align="center" justify="center" minH="300px" gap={3} textAlign="center">
+            <Text fontSize="lg" fontWeight="semibold">Vault connected</Text>
+            <Text fontSize="sm" color="kk.dim">Load your wallet when you are ready. KeepKey will ask for your PIN if needed.</Text>
+            <Button onClick={refreshBalances} isLoading={isRefreshing}>Load wallet</Button>
+          </Flex>
+        );
       case 5:
         return (
           <Balances
@@ -463,7 +472,16 @@ const SidePanel = () => {
   if (pendingEvent) {
     return (
       <Flex direction="column" width="100%" height="100vh" bg="kk.bg" overflowY="auto" p={4}>
-        <Transaction event={pendingEvent} reloadEvents={fetchPendingEvent} onDismiss={fetchPendingEvent} />
+        {/* Each approval owns transient UI state (device prompt, error, txid page).
+            Force a fresh instance when the queue advances so a completed send's
+            txid screen cannot cover the next request (for example Uniswap's
+            Permit2 typed-data signature immediately after token approval). */}
+        <Transaction
+          key={pendingEvent.id}
+          event={pendingEvent}
+          reloadEvents={fetchPendingEvent}
+          onDismiss={fetchPendingEvent}
+        />
       </Flex>
     );
   }
@@ -486,6 +504,7 @@ const SidePanel = () => {
         overflow="visible">
         <NetworkAccountHeader
           keepkeyState={keepkeyState}
+          deviceLocked={deviceLocked}
           isRefreshing={isRefreshing}
           onSettingsOpen={onSettingsOpen}
           onHome={handleGoHome}

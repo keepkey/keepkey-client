@@ -5,7 +5,7 @@
 **For:** whoever owns `keepkey-vault`. This is a vault-side change; the client
 side needs nothing.
 
-**Repo:** `/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11`
+**Repo:** `keepkey-stack/projects/keepkey-vault-v11`
 **File:** `projects/keepkey-vault/src/bun/schemas.ts` **line 203**
 (the vault repo is `github.com/keepkey/keepkey-vault`; `src/bun` lives under
 `projects/keepkey-vault/` in the v11 checkout — a known foot-gun)
@@ -55,7 +55,7 @@ vault source returns exactly one hit, line 203. Nothing else needs touching.
 ## Reproduction
 
 Run against the vault's own installed Zod (from
-`/Users/highlander/WebstormProjects/keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault`):
+`keepkey-stack/projects/keepkey-vault-v11/projects/keepkey-vault`):
 
 ```js
 const ops = [['vote', { voter:'a', author:'b', permlink:'c', weight:10000 }]];

@@ -9,7 +9,9 @@ import { requestStorage } from '@extension/storage'; // Import the requestStorag
  */
 export default function RequestDataCard({ transaction }: any) {
   const [isOpen, setIsOpen] = useState(false);
-  const [fetchedTransaction, setFetchedTransaction] = useState<any>(transaction.unsignedTx);
+  // Fall back to the raw request: a dApp event may carry no unsignedTx at all,
+  // and showing the bytes it sent beats an empty panel under a blind approval.
+  const [fetchedTransaction, setFetchedTransaction] = useState<any>(transaction.unsignedTx ?? transaction.request);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,7 +29,7 @@ export default function RequestDataCard({ transaction }: any) {
       // Fetch the transaction from storage using its ID
       const response = await requestStorage.getEventById(transaction.id);
       if (response) {
-        setFetchedTransaction(response.unsignedTx); // Update the transaction data with the fetched data
+        setFetchedTransaction(response.unsignedTx ?? (response as any).request);
       } else {
         setError('Transaction not found in storage');
       }

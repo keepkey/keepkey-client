@@ -10,6 +10,8 @@ globalThis.Buffer = Buffer;
 
 import packageJson from '../../package.json';
 import * as wallet from './wallet';
+import { keepKeyConnectionCode, VAULT_LOCKED_MESSAGE, isForegroundDeviceRequest } from './vaultDeviceAccess';
+import { synchronizeEthereumAccount } from './evmIdentity';
 import { deriveUtxoAddress } from './utxoDerive';
 import { resetSolanaState, prefetchSolanaAccounts, deriveSolanaAccount } from './chains/solanaHandler';
 import { handleSwapMessage, resolveAddress } from './swapHandler';
@@ -53,7 +55,7 @@ import { getChainInfo, getColorForCaip } from './chains/registry';
 import { chainIdMatchesNetwork } from './chains/providerGuard';
 import { withRpcFailoverByNetworkId } from './chains/rpcFailover';
 import { EVM_TESTNETS, SOLANA_DEVNET, ALL_TESTNET_NETWORK_IDS } from './testnetPresets';
-import { formatUserError, createVaultRequiredError } from './utils';
+import { formatUserError, createVaultRequiredError, pickEvmAddress } from './utils';
 import { partitionSpamTokens, getTokenVisibilityMap, setTokenVisibility } from './spamFilter';
 
 const TAG = ' | background/index.js | ';
@@ -79,6 +81,7 @@ const KEEPKEY_STATES = {
   3: 'busy',
   4: 'errored',
   5: 'paired',
+  6: 'wallet access needed',
 };
 let KEEPKEY_STATE = 0;
 
@@ -99,7 +102,7 @@ let iconRetryPending = false;
 
 function currentIconPath(): string {
   // Show green/online icon when connected (state 2) or paired (state 5)
-  return KEEPKEY_STATE === 2 || KEEPKEY_STATE === 5 ? './icon-128-online.png' : './icon-128.png';
+  return KEEPKEY_STATE === 2 || KEEPKEY_STATE === 5 || KEEPKEY_STATE === 6 ? './icon-128-online.png' : './icon-128.png';
 }
 
 function updateIcon() {
@@ -129,6 +132,7 @@ function pushStateChangeEvent() {
     .sendMessage({
       type: 'KEEPKEY_STATE_CHANGED',
       state: KEEPKEY_STATE,
+      connection: wallet.getConnectionState(),
     })
     .catch(() => {
       // Ignore — no popup/sidebar listening
@@ -151,10 +155,24 @@ const DEVICE_VERIFY_INTERVAL_MS = 30_000;
  * KeepKey than the one we had cached. Clears every piece of state keyed
  * to the previous device and re-fetches from the new one.
  */
-async function handleDeviceSwitch(newDeviceInfo: any) {
+async function handleDeviceSwitch(newDeviceInfo: any, selectedEvmAddress?: string) {
   const tag = TAG + ' | handleDeviceSwitch | ';
   console.warn(tag, 'Device swap detected. Purging caches and re-fetching.');
 
+  // No provider call may keep observing the previous wallet during the refresh.
+  ADDRESS = '';
+  // Invalidate prior sessions without broadcasting the new wallet's address to
+  // every open origin. A dApp receives the new account when it reconnects.
+  void chrome.tabs
+    .query({})
+    .then(tabs =>
+      Promise.allSettled(
+        tabs
+          .filter(tab => tab.id != null)
+          .map(tab => chrome.tabs.sendMessage(tab.id!, { type: 'ACCOUNTS_CHANGED', accounts: [] })),
+      ),
+    )
+    .catch(e => console.warn(tag, 'Could not notify tabs of wallet change:', e));
   // In-memory + storage cache owned by wallet.ts
   await wallet.handleDeviceSwitch(newDeviceInfo);
 
@@ -178,6 +196,7 @@ async function handleDeviceSwitch(newDeviceInfo: any) {
   // a fresh pubkey batch, then updates state.initialized.
   try {
     await wallet.refreshPubkeys();
+    ADDRESS = selectedEvmAddress || wallet.getPubkeys(ChainToNetworkId[Chain.Ethereum])[0]?.address || '';
 
     // refreshPubkeys only hits getDefaultPaths() — the big batched
     // derivation. Solana, Tron, and TON addresses are *dynamically*
@@ -197,6 +216,7 @@ async function handleDeviceSwitch(newDeviceInfo: any) {
       prefetchTonAddress(),
       getHiveAccountInfo(), // warm the Hive cache before pushBalancesUpdated so the UI lists it on first paint
     ]);
+    await resolveEvmAddress();
 
     pushStateChangeEvent();
     pushBalancesUpdated();
@@ -210,6 +230,7 @@ async function handleDeviceSwitch(newDeviceInfo: any) {
   } catch (e) {
     console.error(tag, 'Failed to re-fetch pubkeys after device switch:', (e as Error)?.message || e);
     pushStateChangeEvent();
+    throw e;
   }
 }
 
@@ -225,11 +246,12 @@ async function checkKeepKey() {
   healthPollInflight = true;
   const prevState = KEEPKEY_STATE;
   try {
-    const response = await fetch('http://localhost:1646/docs', { signal: AbortSignal.timeout(3000) });
+    const response = await fetch('http://localhost:1646/api/health', { signal: AbortSignal.timeout(3000) });
     if (response.ok) {
-      if (KEEPKEY_STATE < 2) {
-        KEEPKEY_STATE = 2; // Set state to connected
-      }
+      const previousConnection = JSON.stringify(wallet.getConnectionState());
+      wallet.recordVaultHealth(await response.json().catch(() => ({})));
+      KEEPKEY_STATE = keepKeyConnectionCode(wallet.getConnectionState(), wallet.isInitialized());
+      if (JSON.stringify(wallet.getConnectionState()) !== previousConnection) pushStateChangeEvent();
       updateIcon();
       if (KEEPKEY_STATE !== prevState) pushStateChangeEvent();
       // If the wallet is initialized but in view-only mode, try to upgrade by
@@ -238,11 +260,22 @@ async function checkKeepKey() {
       const mayProbe = now - lastDeviceProbeAt >= DEVICE_PROBE_INTERVAL_MS;
       if (wallet.isInitialized() && !wallet.isDeviceConnected() && mayProbe) {
         lastDeviceProbeAt = now;
+        // View-only state came from the pubkey cache, which may belong to a
+        // different KeepKey than the one that just answered.
+        const cachedId = wallet.getDeviceId();
         wallet
           .refreshFromDevice()
-          .then(upgraded => {
+          .then(async upgraded => {
             if (upgraded) {
+              const probedId = wallet.getDeviceId();
+              if (cachedId && probedId && cachedId !== probedId) {
+                await handleDeviceSwitch(wallet.getDeviceInfo());
+                return;
+              }
               console.log(TAG, 'Device reconnected — refreshed pubkeys from device');
+              await resolveEvmAddress();
+              if (ADDRESS) KEEPKEY_STATE = 5;
+              updateIcon();
               pushStateChangeEvent();
             }
           })
@@ -287,7 +320,8 @@ async function checkKeepKey() {
       resetTonState();
       resetHiveState();
     }
-    KEEPKEY_STATE = 4; // Set state to errored
+    wallet.markVaultUnreachable();
+    KEEPKEY_STATE = 4; // API transport is unreachable, independently of the PIN.
     updateIcon();
     if (KEEPKEY_STATE !== prevState) pushStateChangeEvent();
   } finally {
@@ -302,6 +336,54 @@ updateIcon();
 console.log('Background loaded');
 
 let ADDRESS = '';
+let ethereumSyncInFlight: Promise<void> | null = null;
+
+function syncEthereumAccount(): Promise<void> {
+  if (!ethereumSyncInFlight) {
+    ethereumSyncInFlight = synchronizeEthereumAccount(wallet.getSdk(), wallet.getPubkeys(), ADDRESS, async address => {
+      await handleDeviceSwitch(wallet.getDeviceInfo(), address);
+    })
+      .then(address => {
+        ADDRESS = address;
+      })
+      .finally(() => {
+        ethereumSyncInFlight = null;
+      });
+  }
+  return ethereumSyncInFlight;
+}
+
+// The dApp-facing EVM address. The user's pick is saved so it survives MV3
+// service-worker restarts; resolveEvmAddress only restores it when it belongs
+// to the connected device's pubkeys.
+const EVM_ADDRESS_KEY = 'keepkey-evm-address';
+
+// Set ADDRESS and tell open tabs (EIP-1193 accountsChanged), the same way
+// a chain switch broadcasts chainChanged.
+async function setEvmAddress(address: string, persist: boolean) {
+  if (persist) await chrome.storage.local.set({ [EVM_ADDRESS_KEY]: address }).catch(() => {});
+  if (address.toLowerCase() === ADDRESS.toLowerCase()) return;
+  ADDRESS = address;
+  chrome.tabs.query({}, tabs => {
+    for (const tab of tabs) {
+      if (!tab.id) continue;
+      chrome.tabs.sendMessage(tab.id, { type: 'ACCOUNTS_CHANGED', accounts: [address] }).catch(() => {});
+    }
+  });
+}
+
+// Re-derive ADDRESS from the current pubkeys: the saved pick if it's on this
+// device, else account 0. Call after anything that replaces the pubkey set.
+async function resolveEvmAddress() {
+  const addresses = wallet
+    .getPubkeys()
+    .filter((pk: any) => pk.networks?.includes('eip155:1') || pk.networks?.includes('eip155:*'))
+    .map((pk: any) => pk.address)
+    .filter(Boolean);
+  const stored = await chrome.storage.local.get(EVM_ADDRESS_KEY).catch(() => ({}) as Record<string, any>);
+  const address = pickEvmAddress(addresses, stored[EVM_ADDRESS_KEY]);
+  if (address) await setEvmAddress(address, false);
+}
 
 // ---- Balance fetching via Pioneer API ----
 let cachedBalances: any[] = [];
@@ -961,10 +1043,10 @@ const onStart = async function () {
     console.log(tag, 'Wallet initialized');
 
     if (!wallet.isInitialized()) {
-      // No device + no cached pubkeys. Show errored icon but don't crash the
-      // service worker — a later device plug-in will trigger a refresh.
-      console.warn(tag, 'No pubkeys available (no device and no cache). Plug in KeepKey to initialize.');
-      KEEPKEY_STATE = 4;
+      // The API can be paired and reachable before any wallet data is cached.
+      // Keep that distinct from an outage; load on a deliberate user request.
+      console.info(tag, 'Vault connected; wallet data will load on demand.');
+      KEEPKEY_STATE = keepKeyConnectionCode(wallet.getConnectionState(), false);
       updateIcon();
       pushStateChangeEvent();
       return;
@@ -1048,10 +1130,9 @@ const onStart = async function () {
     const pubkeysEth = wallet.getPubkeys(ChainToNetworkId[Chain.Ethereum]);
     if (pubkeysEth.length > 0) {
       console.log(tag, 'Ethereum pubkeys:', pubkeysEth.length);
-      const address = pubkeysEth[0].address;
-      if (address) {
-        console.log(tag, 'Ethereum address:', address);
-        ADDRESS = address;
+      await resolveEvmAddress();
+      if (ADDRESS) {
+        console.log(tag, 'Ethereum address:', ADDRESS);
         KEEPKEY_STATE = 5;
         updateIcon();
         pushStateChangeEvent();
@@ -1115,7 +1196,7 @@ const onStart = async function () {
       console.error(tag, 'FAILED TO INIT, No Ethereum address found');
     }
   } catch (e) {
-    KEEPKEY_STATE = 4; // errored
+    KEEPKEY_STATE = keepKeyConnectionCode(wallet.getConnectionState(), wallet.isInitialized());
     updateIcon();
     pushStateChangeEvent();
     console.error(tag, 'Error:', e);
@@ -1138,6 +1219,17 @@ function ensureStarted(): Promise<void> {
   return onStartInFlight;
 }
 
+let foregroundInitInFlight: Promise<void> | null = null;
+async function ensureForegroundWallet(): Promise<void> {
+  if (wallet.isInitialized()) return;
+  if (!wallet.getConnectionState().vaultReachable || !wallet.getConnectionState().paired) return;
+  if (!foregroundInitInFlight) foregroundInitInFlight = (async () => {
+    await wallet.refreshPubkeys(true);
+    await ensureStarted();
+  })().finally(() => { foregroundInitInFlight = null; });
+  await foregroundInitInFlight;
+}
+
 setTimeout(() => {
   ensureStarted();
 }, 5000);
@@ -1149,13 +1241,15 @@ initMcpBridge({
   getKeepKeyState: () => KEEPKEY_STATE,
   walletRequest: async (chain: string, method: string, params: any[]) => {
     if (!wallet.isInitialized()) await ensureStarted();
+    if (!wallet.isInitialized() && isForegroundDeviceRequest(method)) await ensureForegroundWallet();
     // Same post-init check WALLET_REQUEST does, so an agent calling with the
     // vault closed gets the actionable "launch the Vault" error rather than a
     // bare handler failure.
     if (!wallet.isInitialized()) {
       if (KEEPKEY_STATE === 4) throw createVaultRequiredError();
-      throw Error('Wallet not initialized');
+      throw Error(wallet.getConnectionState().deviceLocked ? VAULT_LOCKED_MESSAGE : 'Vault is connected. Connect your KeepKey and load the wallet to continue.');
     }
+    if (chain === 'ethereum' && method === 'eth_requestAccounts') await syncEthereumAccount();
     const requestInfo = {
       id: crypto.randomUUID(),
       method,
@@ -1190,16 +1284,18 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             console.warn(tag, 'WALLET_REQUEST before wallet ready — initializing on demand');
             await ensureStarted();
           }
+          if (!wallet.isInitialized() && isForegroundDeviceRequest(message.requestInfo?.method)) await ensureForegroundWallet();
           if (!wallet.isInitialized()) {
             // Distinguish "vault is closed" (state 4) from a transient init race
             // so the dApp gets the actionable "launch the Vault" message instead
             // of a bare "Wallet not initialized". The side panel already shows
             // the Connect/Vault-Required card off the same state.
             if (KEEPKEY_STATE === 4) throw createVaultRequiredError();
-            throw Error('Wallet not initialized');
+            throw Error(wallet.getConnectionState().deviceLocked ? VAULT_LOCKED_MESSAGE : 'Vault is connected. Connect your KeepKey and load the wallet to continue.');
           }
           const { requestInfo } = message;
           const { method, params, chain } = requestInfo;
+          if (chain === 'ethereum' && method === 'eth_requestAccounts') await syncEthereumAccount();
 
           // Tag the request with the sender's browser tab/window so the
           // approval side panel opens in the SAME window the dApp lives
@@ -1251,7 +1347,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         }
 
         case 'GET_KEEPKEY_STATE': {
-          sendResponse({ state: KEEPKEY_STATE });
+          sendResponse({ state: KEEPKEY_STATE, connection: wallet.getConnectionState() });
           break;
         }
 
@@ -1295,10 +1391,13 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         }
 
         case 'ON_START': {
-          ensureStarted();
-          setTimeout(() => {
-            sendResponse({ state: KEEPKEY_STATE });
-          }, 15000);
+          try {
+            await ensureStarted();
+            if (message.foreground === true) await ensureForegroundWallet();
+            sendResponse({ success: true, state: KEEPKEY_STATE, connection: wallet.getConnectionState() });
+          } catch (error) {
+            sendResponse({ error: await formatUserError(error), state: KEEPKEY_STATE, connection: wallet.getConnectionState() });
+          }
           break;
         }
 
@@ -1518,7 +1617,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
 
               // Update global ADDRESS for EVM signing when account changes
               if (asset.networkId?.startsWith('eip155:') && asset.address) {
-                ADDRESS = asset.address;
+                await setEvmAddress(asset.address, true);
                 console.log(tag, 'Updated global ADDRESS to:', ADDRESS);
               }
 
@@ -1740,7 +1839,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           const { path } = message;
           try {
             wallet.addPath(path);
-            const pubkeys = await wallet.refreshPubkeys();
+            const pubkeys = await wallet.refreshPubkeys(true);
             sendResponse({ success: true, pubkeys });
           } catch (error) {
             console.error('Error adding account path:', error);
@@ -1781,7 +1880,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               accountIndex,
             };
             wallet.addPath(path);
-            const pubkeys = await wallet.refreshPubkeys();
+            const pubkeys = await wallet.refreshPubkeys(true);
             sendResponse({ success: true, accounts, pubkeys });
           } catch (error) {
             console.error('Error adding ETH account:', error);
@@ -1841,7 +1940,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
                 break;
               }
               for (const p of paths) wallet.addPath(p);
-              await wallet.refreshPubkeys();
+              await wallet.refreshPubkeys(true);
             }
             sendResponse({ success: true, accounts, pubkeys: wallet.getPubkeys() });
           } catch (error) {

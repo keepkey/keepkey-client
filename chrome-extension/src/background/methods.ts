@@ -1,3 +1,4 @@
+import { withServiceWorkerKeepAlive } from './keepAlive';
 import { caipToNetworkId, shortListNameToCaip } from './chainConfig';
 
 //@ts-ignore
@@ -20,7 +21,8 @@ import { handleHiveRequest } from './chains/hiveHandler';
 import type { ProviderRpcError } from './utils';
 import { createProviderRpcError, formatUserError } from './utils';
 import { openSidePanel, setApprovalBadge } from './popup';
-import { recordProviderCall, recordSite, registerPending, settlePending } from './providerLog';
+import { waitForApprovalDecision } from './approvalWait';
+import { getPendingRequests, recordProviderCall, recordSite, registerPending, settlePending } from './providerLog';
 
 const TAG = ' | METHODS | ';
 
@@ -32,8 +34,7 @@ const TAG = ' | METHODS | ';
 // opens, and its `requestStorage` subscription picks up the pending event.
 //
 // Hard timeout on the promise so nothing hangs forever if the user
-// ignores the request. Matches the sidebar's event-age eviction window.
-const APPROVAL_TIMEOUT_MS = 10 * 60_000;
+// ignores the request. The sidebar retains the event through Vault signing.
 
 /*
   "requestInfo": {
@@ -118,9 +119,6 @@ const requireApproval = async function (
     //   throw new Error('Event not saved');
     // }
 
-    setApprovalBadge(true);
-    await openSidePanel(requestInfo);
-
     // Mirror the in-memory approval queue for the MCP agent bridge
     // (bex_pending_requests). Settled again on resolve/timeout below.
     pendingKey = registerPending({
@@ -132,45 +130,43 @@ const requireApproval = async function (
       requestedAt: Date.now(),
     });
 
-    // Wait for user's decision. Resolves on ANY of:
-    //   - user approves/rejects in sidebar (eth_sign_response arrives)
-    //   - APPROVAL_TIMEOUT_MS elapses without a response (treated as reject)
-    return new Promise(resolve => {
-      let settled = false;
-      let timer: ReturnType<typeof setTimeout> | null = null;
+    setApprovalBadge(true);
 
-      const cleanup = () => {
-        chrome.runtime.onMessage.removeListener(listener);
-        if (timer != null) clearTimeout(timer);
-        setApprovalBadge(false);
+    // Register before opening the panel so immediate UI or agent decisions are observed.
+    const approval = waitForApprovalDecision(requestInfo.id, {
+      log: (...args) => console.log(tag, ...args),
+      onReady: decide => {
+        if (pendingKey) agentDecisions.set(pendingKey, decide);
+      },
+      onSettle: () => {
+        if (pendingKey) agentDecisions.delete(pendingKey);
         settlePending(pendingKey);
-      };
-
-      const listener = (message: any) => {
-        if (message?.action === 'eth_sign_response' && message?.response?.eventId === requestInfo.id) {
-          if (settled) return;
-          settled = true;
-          console.log(tag, 'Received eth_sign_response for event:', message.response.eventId);
-          cleanup();
-          resolve({ success: message.response.decision === 'accept' });
-        }
-      };
-      chrome.runtime.onMessage.addListener(listener);
-
-      timer = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        console.log(tag, 'Approval timed out, rejecting for event:', requestInfo.id);
-        cleanup();
-        resolve({ success: false });
-      }, APPROVAL_TIMEOUT_MS);
+        setApprovalBadge(getPendingRequests().length > 0);
+      },
     });
+
+    await openSidePanel(requestInfo);
+    return approval;
   } catch (e) {
     console.error(tag, e);
+    if (pendingKey) agentDecisions.delete(pendingKey);
     settlePending(pendingKey);
+    setApprovalBadge(getPendingRequests().length > 0);
     return { success: false }; // Return failure in case of error
   }
 };
+
+// Pending approvals the agent can decide (bex_approve / bex_reject), keyed by
+// the providerLog pending key — dApp request ids are per-page counters and
+// collide across tabs, so they can't be the handle.
+const agentDecisions = new Map<string, (accept: boolean) => void>();
+
+export function decidePendingApproval(key: string, accept: boolean): boolean {
+  const decide = agentDecisions.get(key);
+  if (!decide) return false;
+  decide(accept);
+  return true;
+}
 
 // Thin observability wrapper: every provider call (page- or agent-originated)
 // lands in the providerLog ring buffer with its result or error CODE — the
@@ -187,7 +183,9 @@ export const handleWalletRequest = async (
   const origin = requestInfo?.siteUrl || requestInfo?.href || '';
   recordSite(origin, chain);
   try {
-    const result = await routeWalletRequest(requestInfo, chain, method, params, __KEEPKEY_WALLET, ADDRESS);
+    const result = await withServiceWorkerKeepAlive(() =>
+      routeWalletRequest(requestInfo, chain, method, params, __KEEPKEY_WALLET, ADDRESS),
+    );
     recordProviderCall({ ts: Date.now(), origin, chain, method, params, result, durationMs: Date.now() - startedAt });
     return result;
   } catch (error: any) {

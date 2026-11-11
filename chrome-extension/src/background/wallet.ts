@@ -1,14 +1,19 @@
+import { SIGNING_TIMEOUT_MS } from '../signingTimeouts';
 /**
  * Direct keepkey-vault-sdk wallet wrapper.
  * Replaces Pioneer SDK for signing, address derivation, and pubkey management.
  */
 import { KeepKeySdk } from 'keepkey-vault-sdk';
 import { getDefaultPaths, type PathConfig } from './chainConfig';
+import { applyDeviceTimeouts } from './vaultTimeouts';
+import { normalizePubkeyRows } from './utxoDerive';
+import { readFromVault, isVaultLockedError, type VaultConnectionState } from './vaultDeviceAccess';
 import { keepKeyApiKeyStorage, pubkeyStorage } from '@extension/storage';
 
 const TAG = ' | wallet | ';
+const PROBE_TIMEOUT_MS = 5000;
 
-export interface WalletState {
+export interface WalletState extends VaultConnectionState {
   sdk: any; // KeepKeySdk instance
   pubkeys: any[];
   paths: PathConfig[];
@@ -24,6 +29,10 @@ const state: WalletState = {
   deviceInfo: null,
   initialized: false,
   deviceConnected: false,
+  vaultReachable: false,
+  paired: false,
+  devicePresent: false,
+  deviceLocked: false,
 };
 
 const VAULT_BASE_URL = 'http://localhost:1646';
@@ -66,6 +75,7 @@ async function probeVaultAuth(apiKey?: string): Promise<VaultAuthStatus> {
         signal: AbortSignal.timeout(4000),
       });
       if (resp.ok) {
+        recordVaultHealth(await resp.json().catch(() => ({})));
         reachable = true;
         break;
       }
@@ -75,12 +85,13 @@ async function probeVaultAuth(apiKey?: string): Promise<VaultAuthStatus> {
     await delay(400 * (i + 1));
   }
   if (!reachable) {
+    markVaultUnreachable();
     console.warn(tag, 'Vault not reachable after retries — staying view-only');
     return 'unreachable';
   }
 
   // Reachable but no saved key → must pair.
-  if (!apiKey) return 'invalid';
+  if (!apiKey) { state.paired = false; return 'invalid'; }
 
   // Validate the saved key. An explicit reject means re-pair; a transient error
   // means retry later — it must NOT escalate to a pairing prompt.
@@ -93,9 +104,10 @@ async function probeVaultAuth(apiKey?: string): Promise<VaultAuthStatus> {
       });
       if (resp.ok) {
         const data = await resp.json().catch(() => ({}) as any);
-        return data?.paired === true ? 'valid' : 'invalid';
+        state.paired = data?.paired === true;
+        return state.paired ? 'valid' : 'invalid';
       }
-      if (resp.status === 401 || resp.status === 403) return 'invalid';
+      if (resp.status === 401 || resp.status === 403) { state.paired = false; return 'invalid'; }
       // 5xx / other: transient — retry
     } catch {
       /* network blip — retry */
@@ -146,7 +158,10 @@ export async function probeDevice(): Promise<boolean> {
   const tag = TAG + ' | probeDevice | ';
   if (!state.sdk) return false;
   try {
-    const features = await state.sdk.system.info.getFeatures();
+    // Short timeout: the vault queues this behind any pending device prompt,
+    // and init blocks on it. On a miss we run view-only from cache and the
+    // health poll upgrades later — far better than the SDK's 30s default.
+    const features = await state.sdk.getClient().post('/system/info/get-features', {}, PROBE_TIMEOUT_MS);
     state.deviceInfo = {
       label: features.label || 'KeepKey',
       model: features.model || 'KeepKey',
@@ -154,10 +169,19 @@ export async function probeDevice(): Promise<boolean> {
       features,
     };
     state.deviceConnected = true;
+    state.devicePresent = true;
+    state.vaultReachable = true;
+    state.deviceLocked = !!(features.pin_protection ?? features.pinProtection) && !(features.pin_cached ?? features.pinCached);
     console.log(tag, 'Device present:', state.deviceInfo.label);
     return true;
   } catch (e) {
+    if (isVaultLockedError(e)) {
+      state.vaultReachable = true;
+      state.deviceLocked = true;
+      return state.deviceConnected;
+    }
     state.deviceConnected = false;
+    state.devicePresent = false;
     console.warn(tag, 'Device not reachable:', (e as Error)?.message || e);
     return false;
   }
@@ -231,7 +255,13 @@ async function doInit(): Promise<WalletState> {
       serviceImageUrl: 'https://pioneers.dev/coins/keepkey.png',
     });
 
+    // Sign routes default to the SDK's 30s deadline; give them device time.
+    if (!applyDeviceTimeouts(sdk)) {
+      console.warn(tag, 'Could not extend vault signing timeout; device signatures abort after 30s');
+    }
     state.sdk = sdk;
+    state.paired = true;
+    state.vaultReachable = true;
 
     // Save new API key if it changed
     const newApiKey = sdk.getClient?.()?.getApiKey?.() || savedApiKey;
@@ -324,12 +354,12 @@ async function loadCachedPubkeys(): Promise<any[]> {
  * Fetch pubkeys. Uses device if connected, falls back to cache otherwise.
  * Never throws on missing device — only throws if we have neither device nor cache.
  */
-async function fetchPubkeys(): Promise<void> {
+async function fetchPubkeys(foreground = false): Promise<void> {
   const tag = TAG + ' | fetchPubkeys | ';
-  const cachedPubkeys = await loadCachedPubkeys();
+  const cachedPubkeys = normalizePubkeyRows(await loadCachedPubkeys()); // caches written before the fix lack script_type
 
   // No device: use cache directly, no device call
-  if (!state.deviceConnected) {
+  if (!state.deviceConnected && !foreground) {
     if (cachedPubkeys.length > 0) {
       console.log(tag, 'No device — running view-only with', cachedPubkeys.length, 'cached pubkeys');
       state.pubkeys = cachedPubkeys;
@@ -352,8 +382,8 @@ async function fetchPubkeys(): Promise<void> {
 
   try {
     console.log(tag, 'Requesting', batchPaths.length, 'pubkeys from device...');
-    const result = await state.sdk.xpub.getPublicKeys(batchPaths);
-    console.log(tag, 'Got', result.pubkeys?.length, 'pubkeys from device');
+    const result = await readFromVault(state.sdk, '/api/pubkeys/batch', { paths: batchPaths }, foreground);
+    console.log(tag, 'Got', result.pubkeys?.length, 'pubkeys from Vault');
 
     if (result.pubkeys && result.pubkeys.length > 0) {
       // Enrich pubkeys with accountIndex from path configs (SDK may strip unknown fields)
@@ -367,7 +397,7 @@ async function fetchPubkeys(): Promise<void> {
       // Preserve dynamically-added pubkeys (e.g. Solana) that aren't part of the batch
       const batchNotes = new Set(state.paths.map(p => p.note));
       const dynamicPubkeys = state.pubkeys.filter(pk => !batchNotes.has(pk.note));
-      state.pubkeys = [...result.pubkeys, ...dynamicPubkeys];
+      state.pubkeys = [...normalizePubkeyRows(result.pubkeys), ...dynamicPubkeys];
 
       // Save to cache
       if (state.deviceInfo) {
@@ -383,6 +413,13 @@ async function fetchPubkeys(): Promise<void> {
       state.pubkeys = cachedPubkeys;
     }
   } catch (e) {
+    if (isVaultLockedError(e)) {
+      state.vaultReachable = true;
+      state.deviceLocked = true;
+      state.pubkeys = cachedPubkeys;
+      if (foreground) throw e;
+      return; // A cache miss while locked is still an online, paired Vault.
+    }
     console.error(tag, 'Error fetching pubkeys from device:', e);
     state.deviceConnected = false;
 
@@ -573,11 +610,11 @@ export async function addPubkey(pubkey: any): Promise<void> {
  * Re-fetch pubkeys (e.g., after adding a new path). Re-probes the device
  * first if we were in view-only mode, so hot-plugging transparently upgrades.
  */
-export async function refreshPubkeys(): Promise<any[]> {
+export async function refreshPubkeys(foreground = false): Promise<any[]> {
   if (!state.deviceConnected) {
     await probeDevice();
   }
-  await fetchPubkeys();
+  await fetchPubkeys(foreground);
   state.initialized = state.pubkeys.length > 0;
   return state.pubkeys;
 }
@@ -644,9 +681,7 @@ export function getDeviceId(): string | null {
  * Tear down everything keyed to the previously-connected device so the
  * next `refreshPubkeys()` / `fetchPubkeys()` starts clean:
  *   - in-memory pubkeys (cleared)
- *   - paths (rebuilt to defaults — refreshPubkeys does NOT repopulate
- *     them, so leaving paths empty would silently send an empty batch
- *     to the device and return zero pubkeys)
+ *   - paths retained as account configuration; defaults if none were loaded
  *   - persisted pubkey cache (wiped)
  *   - `deviceConnected` flag (forces re-probe on next call)
  *
@@ -660,7 +695,9 @@ export async function handleDeviceSwitch(newDeviceInfo: WalletState['deviceInfo'
   const tag = TAG + ' | handleDeviceSwitch | ';
   console.warn(tag, 'Device switch detected — clearing caches');
   state.pubkeys = [];
-  state.paths = getDefaultPaths();
+  // Derivation choices belong to the extension's account settings, not a seed.
+  // Preserve selected account indices while discarding every derived value.
+  if (state.paths.length === 0) state.paths = getDefaultPaths();
   state.deviceInfo = newDeviceInfo;
   state.deviceConnected = false;
   state.initialized = false;
@@ -676,4 +713,34 @@ export async function handleDeviceSwitch(newDeviceInfo: WalletState['deviceInfo'
  */
 export function getState(): WalletState {
   return state;
+}
+
+/** POST a signing request to the vault with the signing timeout (see SIGNING_TIMEOUT_MS). */
+export function signViaVault<T = any>(path: string, body: unknown): Promise<T> {
+  return state.sdk.getClient().post(path, body, SIGNING_TIMEOUT_MS);
+}
+
+/** No credentials or wallet addresses are exposed in connection status. */
+export function getConnectionState(): VaultConnectionState {
+  return { vaultReachable: state.vaultReachable, paired: state.paired, devicePresent: state.devicePresent, deviceLocked: state.deviceLocked };
+}
+
+export function recordVaultHealth(health: any): void {
+  state.vaultReachable = true;
+  if (typeof health?.device_connected === 'boolean') {
+    state.devicePresent = health.device_connected;
+    if (!health.device_connected) state.deviceConnected = false;
+  }
+  if (typeof health?.device_locked === 'boolean') state.deviceLocked = health.device_locked;
+  if (!state.devicePresent) state.deviceLocked = false;
+  // Presence alone does not verify wallet identity; only the features probe
+  // may promote deviceConnected after an outage or hot-swap.
+}
+
+export function markVaultUnreachable(): void {
+  state.vaultReachable = false;
+  state.devicePresent = false;
+  state.deviceConnected = false;
+  state.deviceLocked = false;
+  // Pairing is a persisted relationship; an outage does not revoke it.
 }

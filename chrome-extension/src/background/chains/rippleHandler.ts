@@ -88,8 +88,7 @@ export const handleRippleRequest = async (
       if (!response) throw Error('Failed to load event for signing!');
 
       if (result.success && response.unsignedTx) {
-        const sdk = wallet.getSdk();
-        const signedTx = await sdk.ripple.xrpSignTransaction(response.unsignedTx);
+        const signedTx = await wallet.signViaVault('/xrp/sign-transaction', response.unsignedTx);
         console.log(tag, 'signedTx: ', signedTx);
 
         response.signedTx = signedTx;

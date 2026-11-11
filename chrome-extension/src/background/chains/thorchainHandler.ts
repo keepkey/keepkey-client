@@ -92,7 +92,7 @@ export const handleThorchainRequest = async (
 
       if (result.success && response.unsignedTx) {
         const sdk = wallet.getSdk();
-        const signedTx = await sdk.thorchain.thorchainSignAminoTransfer(response.unsignedTx);
+        const signedTx = await wallet.signViaVault('/thorchain/sign-amino-transfer', response.unsignedTx);
         console.log(tag, 'signedTx: ', signedTx);
 
         response.signedTx = signedTx;

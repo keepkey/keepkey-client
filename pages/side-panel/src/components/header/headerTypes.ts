@@ -37,6 +37,7 @@ export interface CustomEvmNetwork {
 
 export interface NetworkAccountHeaderProps {
   keepkeyState: number | null;
+  deviceLocked?: boolean;
   isRefreshing: boolean;
   onSettingsOpen: () => void;
   onRefresh: () => void;

@@ -17,6 +17,7 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { ChainToNetworkId, caipToNetworkId, networkIdToIcon } from '../chainConfig';
 import * as wallet from '../wallet';
+import { signEthereumMessage } from '../evmIdentity';
 import { buildFeeWarning, getFeeFloor, getPriorityFeeFloor, type FeeChoice, type FeeWarning } from './feeFloors';
 import { openSidePanel, setApprovalBadge } from '../popup';
 import { getChainInfo, makeStaticProvider } from './registry';
@@ -32,6 +33,9 @@ import {
   type TypedDataSummary,
 } from './evmTypedData';
 import { assertDappChainMatchesProvider, assertProviderMatchesCaip } from './providerGuard';
+import { assertMatchingClearSignReport, getClearSignReport, type ClearSignReport } from '../clearSignReport';
+import { checkSiwe, eip191Text, type SiweCheck } from './siwe';
+import { methodNotAvailableMessage, walletGetCapabilities } from './eip5792';
 
 const TAG = ' | ethereumHandler | ';
 const DOMAIN_WHITE_LIST = [];
@@ -701,46 +705,17 @@ const handleWalletWatchAsset = async () => {
   return true;
 };
 
-const handleWalletPermissions = async () => {
-  const permissions = [{ parentCapability: 'eth_accounts' }];
-  return permissions;
-};
-
-const handleWalletGetCapabilities = async (params: any[]) => {
-  // wallet_getCapabilities is used by dApps to determine what features the wallet supports
-  // Uniswap uses this to check for things like atomic batch transactions
-  const address = params[0]?.toLowerCase();
-
-  // Return capabilities for the specified address or all addresses
-  const capabilities: Record<string, any> = {};
-
-  // Add base capabilities that KeepKey supports
-  const baseCapabilities = {
-    atomicBatch: {
-      supported: false, // KeepKey doesn't support atomic batch transactions yet
-    },
-    paymasterService: {
-      supported: false, // No paymaster service support
-    },
-  };
-
-  if (address) {
-    capabilities[address] = baseCapabilities;
-  } else {
-    // Return for all addresses if none specified
-    capabilities['0x0000000000000000000000000000000000000000'] = baseCapabilities;
-  }
-
-  return capabilities;
+const handleWalletPermissions = async (ADDRESS: string) => {
+  return [{ parentCapability: 'eth_accounts', caveats: [{ type: 'restrictReturnedAccounts', value: [ADDRESS] }] }];
 };
 
 const handleEthAccounts = async (ADDRESS: any) => {
-  const accounts = [ADDRESS];
+  const accounts = ADDRESS ? [ADDRESS] : [];
   return accounts;
 };
 
 const handleEthRequestAccounts = async (ADDRESS: any) => {
-  const requestAccounts = [ADDRESS];
+  const requestAccounts = ADDRESS ? [ADDRESS] : [];
   return requestAccounts;
 };
 
@@ -870,6 +845,50 @@ const handleSigningMethods = async (
     typedDataSummary = withTokenMetadata(summary, meta);
   }
 
+  // Vault owns transaction meaning. Ask for its canonical report instead of
+  // duplicating protocol/ABI decoders in the extension. This endpoint is
+  // transaction-only; message and typed-data signing retain their dedicated UI.
+  let clearSignReport: ClearSignReport | undefined;
+  let clearSignReportError: string | undefined;
+  if ((method === 'eth_sendTransaction' || method === 'eth_signTransaction') && unsignedTx) {
+    try {
+      const rawChainId = unsignedTx.chainId ?? currentProvider?.chainId ?? String(networkId).split(':')[1];
+      const chainId =
+        typeof rawChainId === 'string' && rawChainId.startsWith('0x') ? parseInt(rawChainId, 16) : Number(rawChainId);
+      // The report fingerprint must describe the request that will actually be
+      // signed, including wallet-owned nonce, gas and fee fields.
+      unsignedTx.chainId = rawChainId;
+      unsignedTx.from = unsignedTx.from || ADDRESS;
+      await finalizeEvmTransactionFields(unsignedTx, tag);
+      clearSignReport = await getClearSignReport({
+        chain: 'evm',
+        chainId,
+        from: unsignedTx.from || ADDRESS,
+        ...(unsignedTx.to ? { to: unsignedTx.to } : {}),
+        ...(unsignedTx.data || unsignedTx.input ? { data: unsignedTx.data || unsignedTx.input } : {}),
+        ...(unsignedTx.value ? { value: unsignedTx.value } : {}),
+        ...(unsignedTx.nonce ? { nonce: unsignedTx.nonce } : {}),
+        ...(unsignedTx.gas || unsignedTx.gasLimit ? { gas: unsignedTx.gas || unsignedTx.gasLimit } : {}),
+        ...(unsignedTx.gasPrice ? { gasPrice: unsignedTx.gasPrice } : {}),
+        ...(unsignedTx.maxFeePerGas ? { maxFeePerGas: unsignedTx.maxFeePerGas } : {}),
+        ...(unsignedTx.maxPriorityFeePerGas ? { maxPriorityFeePerGas: unsignedTx.maxPriorityFeePerGas } : {}),
+      });
+    } catch (e: any) {
+      clearSignReportError = e?.message || String(e);
+      console.warn(tag, 'ClearSign report unavailable:', clearSignReportError);
+    }
+  }
+
+  // ERC-4361 domain binding (siwe.ts). Keep the param slot in sync with what
+  // processApprovedEvent signs: personal_sign params[0], eth_sign params[1].
+  // origin is the Chrome-derived one (senderSite.ts), never the page's claim.
+  let siwe: SiweCheck | null = null;
+  if (method === 'personal_sign' || method === 'eth_sign') {
+    siwe = checkSiwe(eip191Text(method === 'personal_sign' ? params[0] : params[1]), {
+      origin: requestInfo.origin ?? null,
+    });
+  }
+
   const event = {
     id: requestInfo.id,
     networkId,
@@ -888,6 +907,9 @@ const handleSigningMethods = async (
     feeWarning, // null when fees are fine; otherwise side-panel renders the banner
     nonceInfo, // null on non-tx flows; { latest, pending, willReplace } otherwise
     typedDataSummary, // null except eth_signTypedData*; the card renders it
+    clearSignReport,
+    clearSignReportError,
+    siwe, // null unless a personal_sign/eth_sign message is a Sign-In with Ethereum
     type: method,
     request: params,
     status: 'request',
@@ -953,6 +975,34 @@ const walletChosenFees = async (
   const gasPrice = feeData.gasPrice ?? 0n;
   const floored = gasPrice > floor ? gasPrice : floor;
   return { gasPrice: '0x' + floored.toString(16) };
+};
+
+/** Fill every wallet-owned transaction field before ClearSign preview. */
+const finalizeEvmTransactionFields = async (transaction: any, tag: string): Promise<void> => {
+  if (!transaction.nonce) {
+    const nonce = await withRpcFailover(p => p.getTransactionCount(transaction.from, 'pending'), {
+      tag: tag + ' nonce',
+    });
+    transaction.nonce = '0x' + nonce.toString(16);
+  }
+  if (!transaction.gasLimit && transaction.gas) transaction.gasLimit = transaction.gas;
+  if (!transaction.gasLimit) {
+    const estimated = await withRpcFailover(
+      p =>
+        p.estimateGas({
+          from: transaction.from,
+          to: transaction.to,
+          data: transaction.data || transaction.input,
+          value: transaction.value || '0x0',
+        }),
+      { tag: tag + ' estimateGas' },
+    );
+    const buffered = BigInt(estimated) + BigInt(estimated) / 5n;
+    transaction.gasLimit = '0x' + (buffered > 10_000_000n ? 10_000_000n : buffered).toString(16);
+  }
+  if (!transaction.maxFeePerGas && !transaction.maxPriorityFeePerGas && !transaction.gasPrice) {
+    Object.assign(transaction, await walletChosenFees(transaction.chainId, tag));
+  }
 };
 
 // For 'transfer', build transaction info before calling requireApproval
@@ -1059,7 +1109,7 @@ const handleTransfer = async (
     assertProviderMatchesCaip(params[0]?.caip, await web3ProviderStorage.getWeb3Provider());
 
     // Sign using vault SDK directly
-    const signedTx = await signTransaction(response.unsignedTx, KEEPKEY_WALLET);
+    const signedTx = await signTransaction(response.unsignedTx, KEEPKEY_WALLET, requestInfo.id);
     console.log(tag, 'signedTx:', signedTx);
 
     // Update storage with signed transaction
@@ -1169,11 +1219,17 @@ export const handleEthereumRequest = async (
       return await handleWalletWatchAsset();
 
     case 'wallet_getPermissions':
+      return await handleWalletPermissions(ADDRESS);
+
     case 'wallet_requestPermissions':
-      return await handleWalletPermissions();
+      // dApp "switch account" (Uniswap et al.). ponytail: no in-request picker —
+      // open the side panel, whose account dropdown fires accountsChanged on a
+      // pick. Build a real picker if dApps need the answer in this response.
+      await openSidePanel(requestInfo);
+      return await handleWalletPermissions(ADDRESS);
 
     case 'wallet_getCapabilities':
-      return await handleWalletGetCapabilities(params);
+      return walletGetCapabilities(params);
 
     case 'request_accounts':
     case 'eth_accounts':
@@ -1197,6 +1253,12 @@ export const handleEthereumRequest = async (
     case 'eth_getEncryptionPublicKey':
       throw createProviderRpcError(4200, 'Method eth_getEncryptionPublicKey not supported');
 
+    // EIP-5792 batching is not implemented — see eip5792.ts for why the wording matters.
+    case 'wallet_sendCalls':
+    case 'wallet_getCallsStatus':
+    case 'wallet_showCallsStatus':
+      throw createProviderRpcError(4200, methodNotAvailableMessage(method));
+
     default:
       throw createProviderRpcError(4200, `Method ${method} not supported`);
   }
@@ -1211,6 +1273,8 @@ const processApprovedEvent = async (method: string, params: any, KEEPKEY_WALLET:
 
     let result;
     switch (method) {
+      // Keep these message slots in sync with the SIWE check in
+      // handleSigningMethods, or the panel checks one text and the device signs another.
       case 'personal_sign':
         // EIP-191 personal_sign: params = [message, address]. Prefer the dApp-supplied
         // address so multi-account wallets sign with the correct derivation path.
@@ -1240,7 +1304,7 @@ const processApprovedEvent = async (method: string, params: any, KEEPKEY_WALLET:
         if (currentProvider?.chainId) tx.chainId = currentProvider.chainId;
         tx.from = ADDRESS;
         await applyFeeChoiceFromStorage(tx, id, ' | eth_signTransaction | ');
-        result = await signTransaction(tx, KEEPKEY_WALLET);
+        result = await signTransaction(tx, KEEPKEY_WALLET, id);
         break;
       }
       default:
@@ -1262,24 +1326,8 @@ const signMessage = async (message: any, KEEPKEY_WALLET: any, ADDRESS: string, e
     console.log(tag, '**** message: ', message);
     console.log(tag, '**** ADDRESS: ', ADDRESS);
 
-    // Vault SDK requires hex-encoded message (0x...).
-    // personal_sign may pass plain UTF-8 text — convert if needed.
-    let hexMessage = message;
-    if (typeof message === 'string' && !message.startsWith('0x')) {
-      hexMessage = '0x' + Array.from(new TextEncoder().encode(message), b => b.toString(16).padStart(2, '0')).join('');
-    }
-
     const sdk = wallet.getSdk();
-    const output = await sdk.eth.ethSignMessage({
-      address: ADDRESS,
-      addressNList: getAddressNListForAddress(ADDRESS),
-      message: hexMessage,
-    });
-    console.log(`${tag} Transaction output: `, output);
-
-    // EIP-1193: personal_sign/eth_sign must return hex signature string, not object.
-    // Vault SDK returns { address, signature } — extract just the signature.
-    const signatureHex = output?.signature || output;
+    const signatureHex = await signEthereumMessage(sdk, wallet.getPubkeys(), ADDRESS, message);
 
     // Notify popup that signature is complete
     chrome.runtime.sendMessage({
@@ -1291,6 +1339,8 @@ const signMessage = async (message: any, KEEPKEY_WALLET: any, ADDRESS: string, e
     return signatureHex;
   } catch (e) {
     console.error(e);
+
+    if ((e as ProviderRpcError)?.code === 4100) throw e;
 
     // Extract meaningful error message
     const errorMessage = (e as any)?.message || JSON.stringify(e);
@@ -1311,7 +1361,7 @@ const signMessage = async (message: any, KEEPKEY_WALLET: any, ADDRESS: string, e
   }
 };
 
-const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
+const signTransaction = async (transaction: any, KEEPKEY_WALLET: any, eventId?: string) => {
   const tag = ' | signTransaction | ';
   try {
     console.log(tag, '**** transaction: ', transaction);
@@ -1353,14 +1403,18 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
           from: transaction.from,
           to: transaction.to,
           data: transaction.data,
+          value: transaction.value,
         });
 
+        // Include value: payable calls that check msg.value revert when
+        // estimated with 0 and would fall through to the blind 400k limit.
         let estimatedGas: any = await withRpcFailover(
           p =>
             p.estimateGas({
               from: transaction.from,
               to: transaction.to,
               data: transaction.data,
+              value: transaction.value,
             }),
           { tag: tag + ' estimateGas' },
         );
@@ -1422,7 +1476,15 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any) => {
 
     console.log(`${tag} Final input: `, input);
     const sdk = wallet.getSdk();
-    const output = await sdk.eth.ethSignTransaction(input);
+    const output = await wallet.signViaVault('/eth/sign-transaction', input);
+    if (eventId) {
+      const event = await requestStorage.getEventById(eventId);
+      const clearSignVerification = assertMatchingClearSignReport(event?.clearSignReport, output?.clearSignReport);
+      await requestStorage.updateEventById(eventId, {
+        clearSignVerification,
+        ...(output?.clearSignReport ? { clearSignReport: output.clearSignReport } : {}),
+      });
+    }
     console.log(`${tag} Transaction output: `, output);
 
     // Decode-friendly handoff log. Paste `serialized` into any EVM tx
@@ -1476,7 +1538,7 @@ const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string, 
     console.log(tag, '**** HDWalletPayload: ', HDWalletPayload);
     console.log(tag, '**** HDWalletPayload: ', JSON.stringify(HDWalletPayload));
     const sdk = wallet.getSdk();
-    const signedMessage = await sdk.eth.ethSignTypedData(HDWalletPayload);
+    const signedMessage = await wallet.signViaVault('/eth/sign-typed-data', HDWalletPayload);
     console.log('[HANDOFF] vault → BEX (eth_signTypedData_v4 raw):', JSON.stringify(signedMessage));
 
     // EIP-1193: eth_signTypedData_v4 must return hex signature string, not object.
@@ -1916,7 +1978,7 @@ const sendTransaction = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string
 
     await applyFeeChoiceFromStorage(transaction, id, tag);
 
-    const signedTx = await signTransaction(transaction, KEEPKEY_WALLET);
+    const signedTx = await signTransaction(transaction, KEEPKEY_WALLET, id);
     console.log(tag, 'signedTx:', signedTx);
 
     const txHash = await broadcastTransaction(signedTx, transaction.from);
