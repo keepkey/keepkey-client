@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { webcrypto } from 'node:crypto';
 import { ensureQueryKey, pioneerFetch } from './pioneerKey';
 
 const API = 'https://api.keepkey.info';
@@ -21,6 +22,8 @@ beforeEach(() => {
   store = {};
   fetchMock.mockReset();
   vi.stubGlobal('fetch', fetchMock);
+  // Chrome has a global `crypto`; CI's Node 18 (.nvmrc) does not.
+  if (!globalThis.crypto) vi.stubGlobal('crypto', webcrypto);
   vi.stubGlobal('chrome', {
     storage: {
       local: {
