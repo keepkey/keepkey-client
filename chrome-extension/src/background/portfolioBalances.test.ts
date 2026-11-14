@@ -153,6 +153,41 @@ describe('fetchPortfolioEntries: partial failure keeps last-known rows', () => {
     expect(r.error).toBeTruthy();
   });
 
+  // gateway container/src/portfolio.ts: when Zerion throws for an address (cache-only
+  // 409, provider budget 429/503) the native still comes from direct RPC, the token
+  // rows are missing, and each of that address's EVM caips gets this failure.
+  const TOKEN_DISCOVERY_DOWN = 'Token discovery unavailable; last known balances must be retained';
+
+  it('a 200 with meta.failures for eip155:1 carries that network’s last-known rows it did not return', async () => {
+    route(
+      () =>
+        json({
+          balances: [{ caip: 'eip155:1/slip44:60', balance: '2' }],
+          meta: { failures: [{ caip: ETH.caip, reason: TOKEN_DISCOVERY_DOWN }] },
+        }),
+      () => json({ balances: tronRows }, 200, 'green'),
+    );
+    const r = await fetchPortfolioEntries([ETH, BTC, TRX], false, 'automatic', previous);
+    expect(r.entries.map(b => b.caip)).toEqual(['eip155:1/slip44:60', ...tronRows.map(b => b.caip)]);
+    // The fresh native wins; only the ERC-20 row the response left out is carried.
+    expect(r.carried.map(b => b.caip)).toEqual(['eip155:1/erc20:0xusdc']);
+    expect(r.carried[0]).not.toBe(previous[1]);
+    expect(r.error).toBeNull();
+  });
+
+  it('a failure that still returned the row (Price unavailable) carries nothing', async () => {
+    route(
+      () =>
+        json({
+          balances: [{ caip: 'eip155:1/slip44:60', balance: '2' }],
+          meta: { failures: [{ caip: ETH.caip, reason: 'Price unavailable: timeout' }] },
+        }),
+      () => json({ balances: [] }),
+    );
+    const r = await fetchPortfolioEntries([ETH], false, 'automatic', previous);
+    expect(r.carried).toEqual([]);
+  });
+
   it('carried rows are copies, not the cached objects', async () => {
     route(
       () => json({ balances: gwRows }),

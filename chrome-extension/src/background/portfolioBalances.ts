@@ -24,12 +24,19 @@ export type PortfolioPubkey = { caip: string; pubkey: string };
 // Tron until the gateway returns TRC-20; then drop this split.
 const isLegacyTron = (p: PortfolioPubkey) => p.caip.startsWith('tron:');
 
-/** Gateway /portfolio/balances (keyed read). Per-chain problems arrive in meta.failures. */
+type SideResult = { rows: any[]; failedCaips: string[] };
+
+/**
+ * Gateway /portfolio/balances (keyed read). Per-chain problems arrive in
+ * meta.failures; their caips come back as `failedCaips` so the caller keeps
+ * those networks' last-known rows ("Token discovery unavailable; last known
+ * balances must be retained"). "Price unavailable" still returned the row.
+ */
 async function fetchGatewayEntries(
   pubkeys: PortfolioPubkey[],
   forceRefresh: boolean,
   refreshReason: RefreshReason,
-): Promise<any[]> {
+): Promise<SideResult> {
   const path = `/api/v1/portfolio/balances${forceRefresh ? '?forceRefresh=true' : ''}`;
   // 12s budget: cold token discovery is the slowest call we make.
   const res = await pioneerFetch(path, {
@@ -43,14 +50,16 @@ async function fetchGatewayEntries(
     throw new Error(`HTTP ${res.status} from ${path}: ${body}`);
   }
   const json = await res.json();
+  const failedCaips: string[] = [];
   for (const f of json?.meta?.failures || []) {
     console.warn('[fetchBalances] gateway dropped', f?.caip, f?.reason);
+    if (typeof f?.caip === 'string' && !String(f?.reason).startsWith('Price unavailable')) failedCaips.push(f.caip);
   }
-  return json?.balances || json?.data?.balances || [];
+  return { rows: json?.balances || json?.data?.balances || [], failedCaips };
 }
 
 /** Exactly the 0.0.39 request: unkeyed /api/v1/portfolio, answered by green. */
-async function fetchLegacyTronEntries(pubkeys: PortfolioPubkey[], forceRefresh: boolean): Promise<any[]> {
+async function fetchLegacyTronEntries(pubkeys: PortfolioPubkey[], forceRefresh: boolean): Promise<SideResult> {
   const json = await fetchJsonWithTimeout<any>(
     `${PIONEER_API}/api/v1/portfolio${forceRefresh ? '?forceRefresh=true' : ''}`,
     {
@@ -63,13 +72,14 @@ async function fetchLegacyTronEntries(pubkeys: PortfolioPubkey[], forceRefresh: 
     },
     { timeoutMs: 12000, retries: 1 },
   );
-  return json?.balances || json?.data?.balances || [];
+  return { rows: json?.balances || json?.data?.balances || [], failedCaips: [] };
 }
 
 /**
  * Raw portfolio rows for `pubkeys` (`entries`, pre-normalization), plus
  * `carried`: copies of the `previous` rows for the networks of any side whose
- * request failed. `error` is null only when every request succeeded.
+ * request failed, and of the `previous` rows a 200 left out for a network it
+ * listed in meta.failures. `error` is null only when every request succeeded.
  */
 export async function fetchPortfolioEntries(
   pubkeys: PortfolioPubkey[],
@@ -87,9 +97,11 @@ export async function fetchPortfolioEntries(
   const entries: any[] = [];
   const carried: any[] = [];
   const errors: string[] = [];
+  const failedNetworks = new Set<string>();
   results.forEach((r, i) => {
     if (r.status === 'fulfilled') {
-      entries.push(...r.value);
+      entries.push(...r.value.rows);
+      for (const caip of r.value.failedCaips) failedNetworks.add(caip.split('/')[0].toLowerCase());
       return;
     }
     const message = r.reason?.message || 'portfolio fetch failed';
@@ -98,5 +110,12 @@ export async function fetchPortfolioEntries(
     const networks = new Set(sides[i].pubkeys.map(p => p.caip.split('/')[0]));
     carried.push(...previous.filter(b => networks.has(b.networkId)).map(b => ({ ...b })));
   });
+  // Per-chain failures inside a 200: keep the rows the response didn't return.
+  const fresh = new Set(entries.map(e => String(e?.caip).toLowerCase()));
+  carried.push(
+    ...previous
+      .filter(b => failedNetworks.has(String(b.networkId).toLowerCase()) && !fresh.has(String(b.caip).toLowerCase()))
+      .map(b => ({ ...b })),
+  );
   return { entries, carried, error: errors.length ? errors.join('; ') : null };
 }
