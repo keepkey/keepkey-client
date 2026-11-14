@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { Chain, ChainToNetworkId, shortListSymbolToCaip, caipToNetworkId } from '../chainConfig';
 import * as wallet from '../wallet';
 import { createProviderRpcError } from '../utils';
-import { broadcastViaPioneer } from '../fetchUtils';
+import { broadcastViaPioneer, cosmosSignedSerialized } from '../fetchUtils';
 import { buildViaDesktop } from './buildViaDesktop';
 
 const TAG = ' | thorchainHandler | ';
@@ -74,7 +74,7 @@ export const handleThorchainRequest = async (
         await requestStorage.updateEventById(requestInfo.id, response);
 
         // Broadcast via Pioneer API.
-        const txHash: any = await broadcastViaPioneer(caip, signedTx.serializedTx || signedTx);
+        const txHash: any = await broadcastViaPioneer(caip, cosmosSignedSerialized(signedTx));
 
         response.txid = txHash;
         await requestStorage.updateEventById(requestInfo.id, response);

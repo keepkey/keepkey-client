@@ -19,6 +19,8 @@
  *     check, streaming, etc.).
  */
 
+import { ensureQueryKey } from './pioneerKey';
+
 export interface FetchOptions {
   /** Total per-attempt budget. Default 8000ms. */
   timeoutMs?: number;
@@ -53,6 +55,12 @@ export async function fetchWithTimeout(
         ...init,
         signal: init.signal ?? AbortSignal.timeout(timeoutMs),
       });
+      // Defect signal for the api.keepkey.info cutover: the gateway replays
+      // 401/404/405 to the old green Pioneer, so a keyed call answered by green
+      // means the key wasn't recognised (or the path isn't ported yet).
+      if (url.startsWith('https://api.keepkey.info/') && resp.headers?.get('x-kk-served-by') === 'green') {
+        console.warn('[pioneer] served by green:', url, resp.status);
+      }
       // Retry only on caller-classified transient statuses. Definitive
       // errors (4xx) are returned to the caller for normal handling.
       if (!resp.ok && retryOn(resp.status) && attempt < maxAttempts) {
@@ -95,30 +103,70 @@ export async function fetchJsonWithTimeout<T = unknown>(
 }
 
 /**
- * Broadcast a signed transaction through Pioneer — the source of truth
- * for every chain (no hardcoded RPC nodes/keys in the client).
+ * Broadcast a signed transaction through Pioneer (`POST /api/v1/broadcast`,
+ * keyed). Body `{ networkId, serialized }` (`caip` is ignored by the gateway):
+ * hex for UTXO, canonical base64 TxRaw for the Cosmos family, base64 blob for
+ * XRP. Rejections come back as HTTP 200 `{ success:false, txid?, error }`
+ * (Cosmos CheckTx, XRP tec*), so `success === false` is a failure even with a
+ * txid.
  *
- * `POST /api/v1/broadcast` branches on the networkId prefix
- * (bip122/eip155/cosmos:/ripple:/tron:/solana:) and returns
- * `{ success, txid }`. On failure it returns HTTP 200 with
- * `{ success:false, error }`, so a missing txid is the real error signal.
- *
- * `caip` is `<networkId>/slip44:N`; the controller keys on networkId.
- * `serialized` is the chain's serialized signed tx (hex for UTXO/Cosmos,
- * base64 for Solana — Solana has its own path with sig-recovery).
+ * This is a write: exactly one send. Nothing is re-sent, not on a timeout, a
+ * network drop or a 5xx: the first send may already have broadcast, and a
+ * resend comes back as a duplicate rejection (`success:false`). Those outcomes
+ * are reported as "unknown, check the explorer", not as a failure. A green
+ * non-ok means the key wasn't recognised: re-register and surface the error.
  */
 export async function broadcastViaPioneer(caip: string, serialized: string): Promise<string> {
+  if (typeof serialized !== 'string' || !serialized) {
+    throw new Error('Pioneer broadcast: signed tx has no serialized string');
+  }
   const networkId = caip.split('/')[0];
-  const data = await fetchJsonWithTimeout<any>(
-    'https://api.keepkey.info/api/v1/broadcast',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ networkId, caip, serialized }),
-    },
-    { timeoutMs: 15000, retries: 1 },
-  );
+  const url = 'https://api.keepkey.info/api/v1/broadcast';
+  const unknown = (why: string) =>
+    new Error(
+      `Pioneer broadcast result unknown (${why}): the transaction may have been sent. Check the explorer before signing again.`,
+    );
+  const Authorization = await ensureQueryKey();
+  let resp: Response;
+  try {
+    resp = await fetchWithTimeout(
+      url,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization },
+        body: JSON.stringify({ networkId, caip, serialized }),
+      },
+      { timeoutMs: 15000, retries: 0 },
+    );
+  } catch (e: any) {
+    throw unknown(e?.name === 'TimeoutError' ? 'no answer in 15 s' : e?.message || 'network error');
+  }
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '');
+    if (resp.headers.get('x-kk-served-by') === 'green') await ensureQueryKey(true).catch(() => {});
+    if (resp.status >= 500) throw unknown(`HTTP ${resp.status} from ${url}: ${body}`);
+    throw new Error(`HTTP ${resp.status} from ${url}: ${body}`);
+  }
+  const data: any = await resp.json().catch(() => {
+    throw unknown(`unreadable HTTP ${resp.status} answer`);
+  });
   const txid = data?.txid ?? data?.results?.txid;
-  if (!txid) throw new Error(`Pioneer broadcast failed: ${data?.error?.error ?? data?.error ?? JSON.stringify(data)}`);
+  if (data?.success === false || !txid)
+    throw new Error(
+      `Pioneer broadcast failed: ${data?.error?.message ?? data?.error?.error ?? data?.error ?? JSON.stringify(data)}`,
+    );
   return txid;
 }
+
+/**
+ * `serialized` from KeepKey Desktop's Cosmos-family amino sign routes
+ * (/cosmos|osmosis/sign-amino, /thorchain|mayachain/sign-amino-transfer):
+ * `{ signature, serialized, signed }`, serialized = base64 TxRaw.
+ */
+export const cosmosSignedSerialized = (signedTx: any): string => signedTx?.serialized;
+
+/**
+ * `serialized` from KeepKey Desktop's /xrp/sign-transaction (hdwallet
+ * rippleSignTx output): the StdTx with `value.signatures[0].serializedTx` (base64).
+ */
+export const rippleSignedSerialized = (signedTx: any): string => signedTx?.value?.signatures?.[0]?.serializedTx;

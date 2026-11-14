@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { Chain, ChainToNetworkId, shortListSymbolToCaip, caipToNetworkId } from '../chainConfig';
 import * as wallet from '../wallet';
 import { createProviderRpcError } from '../utils';
-import { broadcastViaPioneer } from '../fetchUtils';
+import { broadcastViaPioneer, rippleSignedSerialized } from '../fetchUtils';
 import { buildViaDesktop } from './buildViaDesktop';
 
 const TAG = ' | rippleHandler | ';
@@ -72,7 +72,7 @@ export const handleRippleRequest = async (
         response.signedTx = signedTx;
         await requestStorage.updateEventById(requestInfo.id, response);
 
-        const txHash: any = await broadcastViaPioneer(caip, signedTx.serializedTx || signedTx);
+        const txHash: any = await broadcastViaPioneer(caip, rippleSignedSerialized(signedTx));
 
         response.txid = txHash;
         await requestStorage.updateEventById(requestInfo.id, response);
