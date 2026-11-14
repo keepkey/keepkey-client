@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { Chain, ChainToNetworkId, shortListSymbolToCaip, caipToNetworkId } from '../chainConfig';
 import * as wallet from '../wallet';
 import { createProviderRpcError } from '../utils';
-import { fetchJsonWithTimeout, broadcastViaPioneer } from '../fetchUtils';
+import { fetchJsonWithTimeout, broadcastViaPioneer, cosmosSignedSerialized } from '../fetchUtils';
 
 const TAG = ' | mayaHandler | ';
 
@@ -95,7 +95,7 @@ export const handleMayaRequest = async (
         response.signedTx = signedTx;
         await requestStorage.updateEventById(requestInfo.id, response);
 
-        const txHash: any = await broadcastViaPioneer(caip, signedTx.serializedTx || signedTx);
+        const txHash: any = await broadcastViaPioneer(caip, cosmosSignedSerialized(signedTx));
 
         response.txid = txHash;
         await requestStorage.updateEventById(requestInfo.id, response);
