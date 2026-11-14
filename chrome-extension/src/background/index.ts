@@ -663,6 +663,10 @@ async function fetchBalancesFromPioneer(forceRefresh: boolean, refreshReason: Re
         cacheIsThisWallet ? [...cachedBalances, ...hiddenBalances] : [],
       );
       lastFetchError = portfolio.error;
+      // A side failed and there is no cache (e.g. fresh install, gateway 429,
+      // Tron ok): don't commit a one-sided wallet. Keep the cache and the error so the
+      // panel shows "Couldn't load balances" + Retry, as 0.0.39 did.
+      if (portfolio.lost) return cachedBalances;
       // Unwrap/classify: match vault's classification exactly: token if caip
       // path is not slip44:/native:, or type === 'token', or explicit
       // isNative===false + contract. Covers ERC-20 (erc20:), SPL
@@ -879,7 +883,8 @@ async function fetchBalancesFromPioneer(forceRefresh: boolean, refreshReason: Re
         // This commit is authoritative for the connected wallet — supersede any
         // hydrated last-good cache and persist the fresh set for next worker start.
         cacheFromHydrate = false;
-        lastFetchError = null;
+        // A partial failure that kept last-known rows is still a failure.
+        lastFetchError = portfolio.error;
         persistPortfolio(balances);
         // A forced fetch performs token discovery (ERC-20/SPL/TRC-20); record
         // that so the GET_APP_BALANCES backstop stops re-triggering. Not after

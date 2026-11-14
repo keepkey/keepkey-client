@@ -120,7 +120,7 @@ describe('fetchPortfolioEntries: partial failure keeps last-known rows', () => {
       () => json({ balances: tronRows }, 200, 'green'),
     );
     const r = await fetchPortfolioEntries([ETH, TRX], false, 'automatic', previous);
-    expect(r).toEqual({ entries: [...gwRows, ...tronRows], carried: [], error: null });
+    expect(r).toEqual({ entries: [...gwRows, ...tronRows], carried: [], error: null, lost: false });
   });
 
   it('gateway fails: Tron rows are fresh, gateway networks carry their last-known rows', async () => {
@@ -132,6 +132,42 @@ describe('fetchPortfolioEntries: partial failure keeps last-known rows', () => {
     expect(r.entries).toEqual(tronRows);
     expect(r.carried.map(b => b.caip)).toEqual(['eip155:1/slip44:60', 'eip155:1/erc20:0xusdc', BTC.caip]);
     expect(r.error).toMatch(/HTTP 503 from \/api\/v1\/portfolio\/balances/);
+  });
+
+  it('gateway 429 with an empty cache: the error is surfaced and the failed side is marked lost', async () => {
+    route(
+      () => json({ error: 'rate limited' }, 429),
+      () => json({ balances: tronRows }, 200, 'green'),
+    );
+    const r = await fetchPortfolioEntries([ETH, BTC, TRX], true, 'wallet-open', []);
+    expect(r.entries).toEqual(tronRows);
+    expect(r.carried).toEqual([]);
+    expect(r.error).toMatch(/HTTP 429/);
+    // No cache at all: committing Tron alone would show a Tron-only wallet with
+    // the error hidden, so the caller must not commit.
+    expect(r.lost).toBe(true);
+  });
+
+  it('a failed side with last-known rows to keep is not lost', async () => {
+    route(
+      () => json({ error: 'rate limited' }, 429),
+      () => json({ balances: tronRows }, 200, 'green'),
+    );
+    const r = await fetchPortfolioEntries([ETH, TRX], false, 'automatic', previous);
+    expect(r.error).toMatch(/HTTP 429/);
+    expect(r.lost).toBe(false);
+  });
+
+  it('with a cache, a failed side that had no rows is not lost (nothing of it to wipe)', async () => {
+    route(
+      () => json({ balances: gwRows }),
+      () => json({ error: 'nope' }, 502, 'green'),
+    );
+    const noTron = previous.filter(b => !b.networkId.startsWith('tron:'));
+    const r = await fetchPortfolioEntries([ETH, TRX], false, 'automatic', noTron);
+    expect(r.carried).toEqual([]);
+    expect(r.error).toMatch(/HTTP 502/);
+    expect(r.lost).toBe(false);
   });
 
   it('Tron fails: gateway rows are fresh, Tron carries its last-known TRX + TRC-20 rows', async () => {

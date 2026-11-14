@@ -80,13 +80,16 @@ async function fetchLegacyTronEntries(pubkeys: PortfolioPubkey[], forceRefresh: 
  * `carried`: copies of the `previous` rows for the networks of any side whose
  * request failed, and of the `previous` rows a 200 left out for a network it
  * listed in meta.failures. `error` is null only when every request succeeded.
+ * `lost` is true when a side failed and there is no last-known cache at all:
+ * the caller must not commit, or the wallet would show only the other side
+ * (with the error hidden behind it).
  */
 export async function fetchPortfolioEntries(
   pubkeys: PortfolioPubkey[],
   forceRefresh: boolean,
   refreshReason: RefreshReason,
   previous: any[],
-): Promise<{ entries: any[]; carried: any[]; error: string | null }> {
+): Promise<{ entries: any[]; carried: any[]; error: string | null; lost: boolean }> {
   const sides = [
     { pubkeys: pubkeys.filter(p => !isLegacyTron(p)), fetch: fetchGatewayEntries },
     { pubkeys: pubkeys.filter(isLegacyTron), fetch: fetchLegacyTronEntries },
@@ -117,5 +120,10 @@ export async function fetchPortfolioEntries(
       .filter(b => failedNetworks.has(String(b.networkId).toLowerCase()) && !fresh.has(String(b.caip).toLowerCase()))
       .map(b => ({ ...b })),
   );
-  return { entries, carried, error: errors.length ? errors.join('; ') : null };
+  return {
+    entries,
+    carried,
+    error: errors.length ? errors.join('; ') : null,
+    lost: errors.length > 0 && previous.length === 0,
+  };
 }
