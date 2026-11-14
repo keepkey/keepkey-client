@@ -35,6 +35,8 @@ export default function RequestDetailsCard({ transaction }: any) {
   const signDoc = transaction?.unsignedTx?.signDoc || {};
   const { fee, memo, msgs, account_number, chain_id, sequence } = signDoc;
   const message = msgs?.[0]?.value || {}; // Assuming single message for simplicity
+  // Display-unit amount and fee as built by KeepKey Desktop (decimals differ per chain).
+  const summary = transaction?.summary;
 
   return (
     <div>
@@ -106,17 +108,13 @@ export default function RequestDetailsCard({ transaction }: any) {
                 <Td>
                   <Badge>Amount:</Badge>
                 </Td>
+                <Td>{summary ? `${summary.amount} ${summary.symbol}` : 'N/A'}</Td>
+              </Tr>
+              <Tr>
                 <Td>
-                  {message.amount?.map((amt: any, index: number) => (
-                    <span key={index}>
-                      {(amt.amount / 100000000).toLocaleString('en', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 6,
-                      })}{' '}
-                      {amt.denom}
-                    </span>
-                  )) || 'N/A'}
+                  <Badge>Fee:</Badge>
                 </Td>
+                <Td>{summary ? `${summary.fee} ${summary.symbol}` : 'N/A'}</Td>
               </Tr>
               <Tr>
                 <Td>
