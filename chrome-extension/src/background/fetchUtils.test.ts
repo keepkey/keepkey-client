@@ -83,6 +83,21 @@ describe('fetchWithTimeout', () => {
     expect(r.status).toBe(429);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it('warns when an api.keepkey.info answer is served by green (and only then)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const served = (by: string) => new Response('{}', { status: 404, headers: { 'x-kk-served-by': by } });
+    fetchMock
+      .mockResolvedValueOnce(served('green'))
+      .mockResolvedValueOnce(served('gateway'))
+      .mockResolvedValueOnce(served('green'));
+    await run(fetchWithTimeout('https://api.keepkey.info/api/v1/buildTx'));
+    await run(fetchWithTimeout('https://api.keepkey.info/api/v1/broadcast'));
+    await run(fetchWithTimeout('https://other.test/x'));
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('[pioneer] served by green:', 'https://api.keepkey.info/api/v1/buildTx', 404);
+    warn.mockRestore();
+  });
 });
 
 describe('fetchJsonWithTimeout', () => {

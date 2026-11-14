@@ -13,14 +13,14 @@
  *     x-api-key: <registered queryKey>
  *     body: { addresses: [{address, networkId}], events: ['tx:incoming','tx:confirmed'] }
  *
- * SSE auth needs a queryKey that's been registered with Pioneer (the anonymous
- * `key:public-*` read scheme does not authorize the stream), so we mint + persist
- * + register one on first use. All of it is best-effort: if registration or the
- * stream fails, the poll still drives the UI.
+ * SSE auth needs a queryKey registered with the gateway (the shared one from
+ * pioneerKey.ts). All of it is best-effort: if registration or the stream fails,
+ * the poll still drives the UI.
  */
 
+import { ensureQueryKey } from './pioneerKey';
+
 const PIONEER_API = 'https://api.keepkey.info';
-const QUERY_KEY_STORAGE = 'keepkey-pioneer-query-key';
 
 export interface AddressEntry {
   address: string;
@@ -40,41 +40,6 @@ let currentAddresses: AddressEntry[] = [];
 let currentHandler: EventHandler | null = null;
 let reconnectDelay = 10_000;
 const RECONNECT_MAX_MS = 120_000;
-
-let cachedQueryKey: string | null = null;
-
-/** Mint (once) + register a Pioneer queryKey usable for SSE auth. Best-effort. */
-async function ensureQueryKey(): Promise<string> {
-  if (cachedQueryKey) return cachedQueryKey;
-  let key: string | undefined;
-  try {
-    const stored = await chrome.storage.local.get(QUERY_KEY_STORAGE);
-    key = stored?.[QUERY_KEY_STORAGE];
-  } catch {
-    /* ignore */
-  }
-  if (!key) {
-    key = `bex:${crypto.randomUUID()}`;
-    try {
-      await chrome.storage.local.set({ [QUERY_KEY_STORAGE]: key });
-    } catch {
-      /* ignore — we can still use it for this session */
-    }
-    // Register the new key so the SSE endpoint authorizes it. 409 = already there.
-    const username = key.slice(0, 32);
-    try {
-      await fetch(`${PIONEER_API}/api/v1/user/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, queryKey: key }),
-      });
-    } catch {
-      /* non-fatal — stream degrades to poll-only if unregistered */
-    }
-  }
-  cachedQueryKey = key;
-  return key;
-}
 
 /** Start watching `addresses` for incoming/confirmed txs. Replaces any prior watch. */
 export function startSwapEventStream(addresses: AddressEntry[], onEvent: EventHandler): void {
@@ -103,10 +68,10 @@ export function stopSwapEventStream(): void {
 async function connect(): Promise<void> {
   if (!controller || !currentHandler) return;
   const signal = controller.signal;
-  const queryKey = await ensureQueryKey();
-  if (signal.aborted) return;
 
   try {
+    const queryKey = await ensureQueryKey();
+    if (signal.aborted) return;
     const resp = await fetch(`${PIONEER_API}/api/v1/events/subscribe`, {
       method: 'POST',
       headers: {
@@ -119,6 +84,9 @@ async function connect(): Promise<void> {
     });
 
     if (!resp.ok || !resp.body) {
+      // The gateway replays an unknown-key 401 to green (which has no
+      // /events/subscribe, so: green 404). Re-register before retrying.
+      if (!resp.ok && resp.headers.get('x-kk-served-by') === 'green') await ensureQueryKey(true).catch(() => {});
       scheduleReconnect();
       return;
     }

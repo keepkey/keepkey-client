@@ -53,6 +53,12 @@ export async function fetchWithTimeout(
         ...init,
         signal: init.signal ?? AbortSignal.timeout(timeoutMs),
       });
+      // Defect signal for the api.keepkey.info cutover: the gateway replays
+      // 401/404/405 to the old green Pioneer, so a keyed call answered by green
+      // means the key wasn't recognised (or the path isn't ported yet).
+      if (url.startsWith('https://api.keepkey.info/') && resp.headers?.get('x-kk-served-by') === 'green') {
+        console.warn('[pioneer] served by green:', url, resp.status);
+      }
       // Retry only on caller-classified transient statuses. Definitive
       // errors (4xx) are returned to the caller for normal handling.
       if (!resp.ok && retryOn(resp.status) && attempt < maxAttempts) {

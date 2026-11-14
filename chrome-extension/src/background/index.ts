@@ -57,6 +57,7 @@ import { withRpcFailoverByNetworkId } from './chains/rpcFailover';
 import { EVM_TESTNETS, SOLANA_DEVNET, ALL_TESTNET_NETWORK_IDS } from './testnetPresets';
 import { formatUserError, createVaultRequiredError, pickEvmAddress } from './utils';
 import { partitionSpamTokens, getTokenVisibilityMap, setTokenVisibility } from './spamFilter';
+import { ensureQueryKey } from './pioneerKey';
 
 const TAG = ' | background/index.js | ';
 console.log('Background script loaded');
@@ -71,6 +72,15 @@ if (chrome.sidePanel?.setPanelBehavior) {
     .setPanelBehavior({ openPanelOnActionClick: true })
     .catch(e => console.warn(TAG, 'setPanelBehavior failed', e));
 }
+
+// Register the shared Pioneer query key on install/update, so an upgraded
+// 0.0.39 install (key only known to green) is registered with the gateway
+// before its first keyed call. Idempotent; the persisted flag stops repeats.
+chrome.runtime.onInstalled.addListener(({ reason }) => {
+  if (reason === 'install' || reason === 'update') {
+    ensureQueryKey().catch(e => console.warn(TAG, 'Pioneer key registration failed:', e?.message || e));
+  }
+});
 
 const PIONEER_API = 'https://api.keepkey.info';
 
