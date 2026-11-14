@@ -26,7 +26,6 @@ import { handleWalletRequest } from './methods';
 import { siteFromSender } from './senderSite';
 import { initMcpBridge } from './mcpBridge';
 import { setApprovalBadge } from './popup';
-import { fetchJsonWithTimeout } from './fetchUtils';
 import { JsonRpcProvider, formatEther } from 'ethers';
 import {
   ChainToNetworkId,
@@ -82,8 +81,6 @@ chrome.runtime.onInstalled.addListener(({ reason }) => {
     ensureQueryKey().catch(e => console.warn(TAG, 'Pioneer key registration failed:', e?.message || e));
   }
 });
-
-const PIONEER_API = 'https://api.keepkey.info';
 
 const KEEPKEY_STATES = {
   0: 'unknown',
@@ -1462,34 +1459,6 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           break;
         }
 
-        case 'GET_TX_INSIGHT': {
-          try {
-            const providerInfo = await web3ProviderStorage.getWeb3Provider();
-            if (!providerInfo) throw new Error('Invalid asset context. Missing provider.');
-            const { tx, source } = message;
-            tx.chainId = providerInfo.chainId;
-            console.log(tag, 'GET_TX_INSIGHT', tx, source);
-            if (!tx) throw new Error('Invalid request: missing tx');
-            if (!source) throw new Error('Invalid request: missing source');
-
-            const result = await fetchJsonWithTimeout<any>(
-              `${PIONEER_API}/api/v1/insight`,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ tx, source }),
-              },
-              { timeoutMs: 8000, retries: 1 },
-            );
-            console.log(tag, 'GET_TX_INSIGHT result:', result);
-            sendResponse(result);
-          } catch (error: any) {
-            console.error(tag, 'GET_TX_INSIGHT error:', error);
-            sendResponse({ error: error.message });
-          }
-          break;
-        }
-
         case 'GET_GAS_ESTIMATE': {
           try {
             const providerInfo = await web3ProviderStorage.getWeb3Provider();
@@ -2507,134 +2476,6 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           } catch (error: any) {
             console.error(tag, 'GET_CHARTS error:', error);
             sendResponse({ success: false, balances: cachedBalances, error: error.message });
-          }
-          break;
-        }
-
-        case 'LOOKUP_TOKEN_METADATA': {
-          try {
-            const { networkId, contractAddress, userAddress } = message;
-            if (!networkId || !contractAddress) {
-              throw new Error('networkId and contractAddress are required');
-            }
-
-            const payload: any = { networkId, contractAddress };
-            if (userAddress) payload.userAddress = userAddress;
-
-            const data = await fetchJsonWithTimeout<any>(
-              `${PIONEER_API}/api/v1/tokens/metadata`,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-              },
-              { timeoutMs: 8000, retries: 1 },
-            );
-            sendResponse({ success: true, data });
-          } catch (error: any) {
-            console.error('Error looking up token metadata:', error);
-            sendResponse({ success: false, error: error.message || 'Failed to lookup token metadata' });
-          }
-          break;
-        }
-
-        case 'ADD_CUSTOM_TOKEN': {
-          try {
-            const { userAddress, token } = message;
-            if (!userAddress || !token) {
-              throw new Error('userAddress and token are required');
-            }
-
-            const data = await fetchJsonWithTimeout<any>(
-              `${PIONEER_API}/api/v1/tokens/custom`,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  userAddress,
-                  token: {
-                    networkId: token.networkId,
-                    address: token.address,
-                    caip: token.caip,
-                    name: token.name,
-                    symbol: token.symbol,
-                    decimals: token.decimals,
-                    icon: token.icon,
-                    coingeckoId: token.coingeckoId,
-                  },
-                }),
-              },
-              { timeoutMs: 8000, retries: 1 },
-            );
-            sendResponse({ success: data?.success || false, data });
-          } catch (error: any) {
-            console.error('Error adding custom token:', error);
-            sendResponse({ success: false, error: error.message || 'Failed to add custom token' });
-          }
-          break;
-        }
-
-        case 'GET_CUSTOM_TOKENS': {
-          try {
-            const { userAddress, networkId } = message;
-            if (!userAddress) {
-              throw new Error('userAddress is required');
-            }
-
-            let url = `${PIONEER_API}/api/v1/tokens/custom?userAddress=${encodeURIComponent(userAddress)}`;
-            if (networkId) url += `&networkId=${encodeURIComponent(networkId)}`;
-
-            const data = await fetchJsonWithTimeout<any>(url, {}, { timeoutMs: 8000, retries: 1 });
-            const tokens = data?.data?.tokens || data?.tokens || [];
-            sendResponse({ success: true, tokens });
-          } catch (error: any) {
-            console.error('Error getting custom tokens:', error);
-            sendResponse({ success: false, error: error.message, tokens: [] });
-          }
-          break;
-        }
-
-        case 'GET_CUSTOM_TOKEN_BALANCES': {
-          try {
-            const { networkId, address } = message;
-            if (!networkId || !address) {
-              throw new Error('networkId and address are required');
-            }
-
-            const data = await fetchJsonWithTimeout<any>(
-              `${PIONEER_API}/api/v1/tokens/balances?networkId=${encodeURIComponent(networkId)}&address=${encodeURIComponent(address)}`,
-              {},
-              { timeoutMs: 8000, retries: 1 },
-            );
-            const tokens = data?.data?.tokens || data?.tokens || [];
-            sendResponse({ success: true, tokens });
-          } catch (error: any) {
-            console.error('Error getting custom token balances:', error);
-            sendResponse({ success: false, error: error.message, tokens: [] });
-          }
-          break;
-        }
-
-        case 'REMOVE_CUSTOM_TOKEN': {
-          try {
-            const { userAddress, networkId, tokenAddress } = message;
-            if (!userAddress || !networkId || !tokenAddress) {
-              throw new Error('userAddress, networkId, and tokenAddress are required');
-            }
-
-            const data = await fetchJsonWithTimeout<any>(
-              `${PIONEER_API}/api/v1/tokens/custom`,
-              {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userAddress, networkId, tokenAddress }),
-              },
-              { timeoutMs: 8000, retries: 1 },
-            );
-            sendResponse({ success: data?.success || false, data });
-          } catch (error: any) {
-            console.error('Error removing custom token:', error);
-            sendResponse({ success: false, error: error.message });
           }
           break;
         }
