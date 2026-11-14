@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { buildErrorMessage, toBuildError, toBuildRequest, TX_BUILD_PATH } from './buildViaDesktop';
+import {
+  btcBuildMismatch,
+  btcRowRefusal,
+  buildErrorMessage,
+  toBuildError,
+  toBuildRequest,
+  TX_BUILD_PATH,
+} from './buildViaDesktop';
 import { VAULT_LOCKED_MESSAGE } from '../vaultDeviceAccess';
 import { VAULT_REQUIRED_MESSAGE } from '../utils';
 import { shortListSymbolToCaip } from '../chainConfig';
@@ -35,7 +42,10 @@ describe('toBuildRequest', () => {
   });
 
   it('never carries pubkeys, xpubs or a fee level', () => {
-    const body = toBuildRequest(LTC, formParams({ pubkeys: [{ pubkey: 'xpub' }], feeLevel: 5, xpubOverride: 'x' }));
+    const body = toBuildRequest(
+      LTC,
+      formParams({ pubkeys: [{ pubkey: 'xpub' }], feeLevel: 5, xpubOverride: 'x', scriptType: 'p2pkh' }),
+    );
     expect(Object.keys(body).sort()).toEqual(['accountIndex', 'amount', 'caip', 'isMax', 'to']);
   });
 
@@ -115,5 +125,64 @@ describe('toBuildError', () => {
   it('a missing pairing key keeps its own message', () => {
     const msg = 'Vault pairing is unavailable. Reconnect the extension to Vault.';
     expect(toBuildError(new Error(msg), 'Litecoin').message).toBe(msg);
+  });
+});
+
+// Desktop v1 spends ONE BTC script type: the one selected in Desktop (default
+// Native SegWit). The extension lists a row per script type, so a row whose
+// coins Desktop would not spend must be refused, never silently substituted.
+const btcSignBody = (...scriptTypes: string[]) => ({
+  coin: 'Bitcoin',
+  inputs: scriptTypes.map((scriptType, vout) => ({
+    addressNList: [0x80000054, 0x80000000, 0x80000000, 0, 0],
+    scriptType,
+    amount: '10000',
+    vout,
+    txid: 'aa'.repeat(32),
+    hex: '00',
+  })),
+  outputs: [{ address: 'bc1qrecipient', amount: '5000', addressType: 'spend' }],
+  version: 1,
+  locktime: 0,
+});
+
+describe('btcRowRefusal', () => {
+  it('lets a Native SegWit row through', () => {
+    expect(btcRowRefusal('p2wpkh')).toBeUndefined();
+  });
+
+  it('lets a dApp transfer (no row picked) through: Desktop uses its own account', () => {
+    expect(btcRowRefusal(undefined)).toBeUndefined();
+  });
+
+  it.each([
+    ['p2pkh', 'Legacy'],
+    ['p2sh-p2wpkh', 'SegWit'],
+  ])('refuses a %s row by name', (scriptType, label) => {
+    const message = btcRowRefusal(scriptType);
+    expect(message).toContain(`${label} Bitcoin account`);
+    expect(message).toMatch(/Native SegWit/);
+  });
+});
+
+describe('btcBuildMismatch', () => {
+  it('accepts a build that spends only the selected row script type', () => {
+    expect(btcBuildMismatch('p2wpkh', btcSignBody('p2wpkh', 'p2wpkh'))).toBeUndefined();
+  });
+
+  it('refuses a build from another script type (Desktop set to Legacy)', () => {
+    const message = btcBuildMismatch('p2wpkh', btcSignBody('p2pkh'));
+    expect(message).toContain('from its Legacy Bitcoin account');
+    expect(message).toMatch(/Native SegWit/);
+  });
+
+  it('refuses a build that mixes in any other script type', () => {
+    expect(btcBuildMismatch('p2wpkh', btcSignBody('p2wpkh', 'p2sh-p2wpkh'))).toContain(
+      'from its SegWit Bitcoin account',
+    );
+  });
+
+  it('skips the check for a dApp transfer with no row', () => {
+    expect(btcBuildMismatch(undefined, btcSignBody('p2pkh'))).toBeUndefined();
   });
 });

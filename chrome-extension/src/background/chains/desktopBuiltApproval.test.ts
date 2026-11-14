@@ -21,3 +21,17 @@ describe('UTXO approval shows the fee Desktop built', () => {
     expect(source).toContain('summary.symbol');
   });
 });
+
+describe('BTC sends spend the row picked in the extension', () => {
+  it('the Transfer form sends the selected row script type', () => {
+    expect(read('../../../../pages/side-panel/src/components/Transfer.tsx')).toContain(
+      'scriptType: assetContext?.script_type',
+    );
+  });
+
+  it('the Bitcoin handler checks the row before and the build after', () => {
+    const source = read('./bitcoinHandler.ts');
+    expect(source).toContain('btcRowRefusal(params[0]?.scriptType)');
+    expect(source).toContain('btcBuildMismatch(params[0]?.scriptType, build.signBody)');
+  });
+});

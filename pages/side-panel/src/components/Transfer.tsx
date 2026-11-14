@@ -195,6 +195,10 @@ export function Transfer(): JSX.Element {
         // account 0 is possible.
         accountIndex: assetContext?.accountIndex,
         note: assetContext?.note,
+        // BTC: the row's script type. Desktop spends only its selected script
+        // type, so the background refuses a send from any other row. Stays in
+        // the extension (not part of the Desktop build request).
+        scriptType: assetContext?.script_type,
       };
 
       // Log token transaction info for debugging

@@ -5,7 +5,7 @@ import * as wallet from '../wallet';
 import { utxoAccountFromPubkeyRow } from '../utxoDerive';
 import { createProviderRpcError } from '../utils';
 import { broadcastViaPioneer } from '../fetchUtils';
-import { buildViaDesktop } from './buildViaDesktop';
+import { btcBuildMismatch, btcRowRefusal, buildViaDesktop } from './buildViaDesktop';
 
 const TAG = ' | bitcoinHandler | ';
 
@@ -57,7 +57,11 @@ export const handleBitcoinRequest = async (
 
       // KeepKey Desktop builds the tx locally (keys, UTXOs, change, fee) before the
       // approval event exists, so the event always carries what will be signed.
+      const rowRefusal = btcRowRefusal(params[0]?.scriptType);
+      if (rowRefusal) throw createProviderRpcError(4000, rowRefusal);
       const build = await buildViaDesktop(wallet.getSdk(), caip, params[0], 'Bitcoin');
+      const mismatch = btcBuildMismatch(params[0]?.scriptType, build.signBody);
+      if (mismatch) throw createProviderRpcError(4000, mismatch);
 
       const event = {
         id: requestInfo.id,

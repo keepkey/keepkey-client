@@ -15,13 +15,13 @@ Owner decision 2026-11-13: no server builds transactions. Servers only supply ch
     - Cosmos family: it becomes the tx memo.
     - XRP: a digits-only memo becomes the destination tag.
     - UTXO: Desktop refuses a memo with `MEMO_UNSUPPORTED` in v1.
-- **Approval UI:** the Tendermint card shows `summary.amount`/`summary.fee` plus the symbol. The old hard-coded ÷1e8 was wrong for ATOM/OSMO (6 decimals) and CACAO (10), and showed 0 fee for RUNE/CACAO. The UTXO and XRP cards read fields that are still in `signBody`, so they are unchanged.
+- **Approval UI:** the Tendermint card shows `summary.amount`/`summary.fee` plus the symbol. The old hard-coded ÷1e8 was wrong for ATOM/OSMO (6 decimals) and CACAO (10), and showed 0 fee for RUNE/CACAO. The UTXO card opens on Basic and shows `summary.fee` plus the symbol; its old Fees tab (a hard-coded sat/byte picker whose choice was never signed) is removed. The XRP card reads fields that are still in `signBody`, so it is unchanged.
 - **Removed:** `wallet.getSendPubkeys`/`getAccountPubkeys`. They had no other callers.
 
 ## Behaviour notes
 
 - **dApp transfers with no `accountIndex`:** Desktop uses account 0. BTC used to aggregate accounts 0-3. It never shipped, because the route was 404.
-  - BTC: account N is Desktop's BTC account N, using Desktop's selected script type.
+  - BTC: account N is Desktop's BTC account N, using Desktop's selected script type (default Native SegWit). Contract v1 has no script-type field, so from the side panel only a Native SegWit row can send: a Legacy or SegWit row is refused before the build, and a build whose inputs are not the row's script type (Desktop set to another type) is refused before approval. Owner decision pending: add `scriptType` to the contract, or have Desktop pool account N's script types.
   - Other chains: only account 0. A non-zero index gets a 400 `ACCOUNT_UNSUPPORTED`; Desktop never silently spends account 0.
 - **Fee level:** BEX has no fee picker, so Desktop uses its own "average" level.
 

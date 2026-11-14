@@ -53,6 +53,39 @@ export function toBuildRequest(caip: string, params: any): TxBuildRequest {
   return request;
 }
 
+const BTC_SCRIPT_LABELS: Record<string, string> = {
+  p2pkh: 'Legacy',
+  'p2sh-p2wpkh': 'SegWit',
+  p2wpkh: 'Native SegWit',
+};
+const btcLabel = (scriptType: string) => BTC_SCRIPT_LABELS[scriptType] || scriptType;
+
+/** Contract v1 has no script type: Desktop spends BTC account N from the one
+ * script type selected in Desktop (default Native SegWit). The extension shows a
+ * row per script type, so only a Native SegWit row can match. `scriptType` is
+ * the row the Transfer form picked; undefined (dApp transfer) skips the check. */
+export function btcRowRefusal(scriptType: unknown): string | undefined {
+  if (typeof scriptType !== 'string' || scriptType === 'p2wpkh') return undefined;
+  return (
+    `Sending from a ${btcLabel(scriptType)} Bitcoin account is not supported from the extension yet. ` +
+    'Select a Native SegWit account, or send from KeepKey Desktop.'
+  );
+}
+
+/** Refuse a build whose inputs are not all the selected row's script type
+ * (Desktop set to another address type), so the extension never signs coins
+ * from an account other than the one on screen. */
+export function btcBuildMismatch(scriptType: unknown, signBody: any): string | undefined {
+  if (typeof scriptType !== 'string') return undefined;
+  const other = (signBody?.inputs ?? []).find((input: any) => input?.scriptType !== scriptType);
+  if (!other) return undefined;
+  return (
+    `KeepKey Desktop built this send from its ${btcLabel(other.scriptType)} Bitcoin account, ` +
+    `not the ${btcLabel(scriptType)} account selected in the extension. Nothing was signed. ` +
+    `Select ${btcLabel(scriptType)} for Bitcoin in KeepKey Desktop, then try again.`
+  );
+}
+
 /** User-facing text for a failed build. `status` is undefined when Desktop
  * could not be reached at all. */
 export function buildErrorMessage(status: number | undefined, bodyText: string, chainName: string): string {
