@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Box, Divider, Flex, VStack, HStack, Text, Badge, Avatar, StackDivider } from '@chakra-ui/react';
+import { builtAccountLabel } from './builtAccount';
 
 export default function RequestDetailsCard({ transaction }: any) {
   const [isNative, setIsNative] = useState(true); // Toggle for hex/native
@@ -42,6 +43,8 @@ export default function RequestDetailsCard({ transaction }: any) {
   const fee = totalInput - totalOutput;
   // Fee as built by KeepKey Desktop (display units), the one that gets signed.
   const summary = transaction?.summary;
+  // The account Desktop spends, as built (a dApp may name one in its request).
+  const fromAccount = builtAccountLabel(summary);
 
   return (
     <VStack spacing={4} align="stretch" width="100%" maxW="300px" mx="auto" p={4} borderRadius="lg" boxShadow="md">
@@ -50,6 +53,17 @@ export default function RequestDetailsCard({ transaction }: any) {
         <Flex justify="center">
           <Avatar size="lg" src={assetContext?.assets?.icon} />
         </Flex>
+      )}
+
+      {fromAccount && (
+        <Box textAlign="center">
+          <Badge colorScheme="purple" variant="outline" fontSize="0.8em" mb={1}>
+            From
+          </Badge>
+          <Text fontSize="sm" fontWeight="medium">
+            {fromAccount}
+          </Text>
+        </Box>
       )}
 
       {/* Memo */}

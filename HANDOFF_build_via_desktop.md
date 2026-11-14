@@ -22,8 +22,9 @@ Owner decision 2026-11-13: no server builds transactions. Servers only supply ch
 ## Behaviour notes
 
 - **dApp transfers with no `accountIndex`:** Desktop uses account 0. BTC used to aggregate accounts 0-3. It never shipped, because the route was 404.
-  - Side-panel UTXO sends (BTC, LTC, DOGE, DASH, BCH): owner decision 2026-11-13, the extension's selected row decides what Desktop spends, not Desktop's selected BTC script type. Desktop answers `summary.scriptType` and `summary.accountIndex` as built. Before the approval exists, `buildViaDesktop` refuses (nothing signed) a build whose summary or inputs are not the requested row.
-  - A Desktop that predates the field ignores it and sends no `summary.scriptType`. Only an account-0 row whose inputs all match its script type is accepted. Any other row gets "Update KeepKey Desktop to send from this <Chain> account".
+  - Side-panel UTXO sends (BTC, LTC, DOGE, DASH, BCH): owner decision 2026-11-13, the extension's selected row decides what Desktop spends, not Desktop's selected BTC script type. Desktop answers `summary.scriptType` and `summary.accountIndex` as built. Before the approval exists, `buildViaDesktop` refuses (nothing signed) a build whose summary, inputs or change are not the requested row: every input and every output back to the wallet must have the row's script type and an `addressNList` at the row's purpose (44/49/84/86) and account. A dApp `transfer` that names `scriptType`/`accountIndex` gets the same check.
+  - The UTXO approval (Basic tab) shows "From: <Script type> · Account N", read from `summary.scriptType`/`summary.accountIndex` as built, never from the request. Nothing is shown when Desktop sends no `summary.scriptType`.
+  - A Desktop that predates the field ignores it and sends no `summary.scriptType`. Only an account-0 row whose inputs and change all match its script type and account 0 is accepted. Any other row gets "Update KeepKey Desktop to send from this <Chain> account".
   - Desktop answers 400 `SCRIPT_TYPE_UNSUPPORTED` / `ACCOUNT_NOT_FOUND` for a row it cannot spend; BEX shows that text as-is.
 - **Fee level:** BEX has no fee picker, so Desktop uses its own "average" level.
 
