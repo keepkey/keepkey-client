@@ -2185,13 +2185,20 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
         case 'GET_ASSETS_INFO': {
           try {
             const { networkId } = message;
-            const chainId = networkId.replace('eip155:', '');
-            const data = await fetchJsonWithTimeout<any>(
-              `${PIONEER_API}/api/v1/nodes?chainId=${encodeURIComponent(chainId)}`,
-              {},
-              { timeoutMs: 5000, retries: 1 },
-            );
-            sendResponse(data);
+            // Same discovery source as the rest of the extension (registry.ts);
+            // stored as the chain's blockchainData record.
+            const info = await getChainInfo(networkId);
+            if (!info) throw new Error(`No chain info for ${networkId}`);
+            sendResponse({
+              chainId: info.chainId,
+              caip: info.caip,
+              providerUrl: info.rpc,
+              providers: info.rpcs,
+              name: info.name,
+              symbol: info.symbol,
+              nativeCurrency: { symbol: info.symbol },
+              icon: info.icon,
+            });
           } catch (error) {
             console.error('Error fetching asset info:', error);
             sendResponse({ error: 'Failed to fetch asset info' });
