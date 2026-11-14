@@ -106,8 +106,13 @@ export function rowBuildMismatch(
 }
 
 /** User-facing text for a failed build. `status` is undefined when Desktop
- * could not be reached at all. */
-export function buildErrorMessage(status: number | undefined, bodyText: string, chainName: string): string {
+ * could not be reached at all. `accountIndex` is the requested account. */
+export function buildErrorMessage(
+  status: number | undefined,
+  bodyText: string,
+  chainName: string,
+  accountIndex = 0,
+): string {
   if (!status) return VAULT_REQUIRED_MESSAGE;
   if (status === 404) return `Update KeepKey Desktop to send ${chainName} from the extension`;
   if (status === 423) return VAULT_LOCKED_MESSAGE;
@@ -115,7 +120,13 @@ export function buildErrorMessage(status: number | undefined, bodyText: string, 
     return 'KeepKey Desktop rejected the extension pairing. Re-pair the extension with KeepKey Desktop, then try again.';
   }
   try {
-    const error = JSON.parse(bodyText)?.error;
+    const body = JSON.parse(bodyText);
+    // Desktop loads Bitcoin account 0 at startup and adds the rest only when
+    // the user asks, so the fix for a missing account is in Desktop.
+    if (body?.code === 'ACCOUNT_NOT_FOUND') {
+      return `Add ${chainName} account ${accountIndex} in KeepKey Desktop, then try again`;
+    }
+    const error = body?.error;
     if (typeof error === 'string' && error) return error;
   } catch {
     // not JSON: fall through to the raw text
@@ -124,12 +135,12 @@ export function buildErrorMessage(status: number | undefined, bodyText: string, 
 }
 
 /** Map whatever readFromVault threw to the provider error the dApp sees. */
-export function toBuildError(error: any, chainName: string): ProviderRpcError {
+export function toBuildError(error: any, chainName: string, accountIndex = 0): ProviderRpcError {
   if (error?.name === 'TimeoutError' || error?.name === 'AbortError') {
     return createTimeoutError(`KeepKey Desktop did not finish building the ${chainName} transaction in time`);
   }
   if (typeof error?.status === 'number') {
-    return createProviderRpcError(4000, buildErrorMessage(error.status, error.message ?? '', chainName));
+    return createProviderRpcError(4000, buildErrorMessage(error.status, error.message ?? '', chainName, accountIndex));
   }
   // fetch() itself rejects with a TypeError when nothing listens on :1646.
   if (error instanceof TypeError) return createProviderRpcError(4000, buildErrorMessage(undefined, '', chainName));
@@ -148,7 +159,7 @@ export async function buildViaDesktop(
     // Foreground: Desktop may derive the sender on the device (no button press).
     build = await readFromVault<TxBuildResponse>(sdk, TX_BUILD_PATH, request, true);
   } catch (error) {
-    throw toBuildError(error, chainName);
+    throw toBuildError(error, chainName, request.accountIndex);
   }
   if (!build?.signRoute || !build.signBody || !build.summary) {
     throw createProviderRpcError(4000, `KeepKey Desktop returned an incomplete ${chainName} transaction`);

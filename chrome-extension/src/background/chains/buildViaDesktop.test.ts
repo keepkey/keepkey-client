@@ -110,6 +110,18 @@ describe('buildErrorMessage', () => {
     expect(buildErrorMessage(status, JSON.stringify({ error, code }), 'Litecoin')).toBe(error);
   });
 
+  // Desktop loads Bitcoin account 0 at startup and adds further accounts only
+  // when the user asks, so an extension row for account N answers 400
+  // ACCOUNT_NOT_FOUND until the user adds it there.
+  it('ACCOUNT_NOT_FOUND tells the user to add the account in Desktop', () => {
+    const body = JSON.stringify({
+      error: 'KeepKey Desktop has no Bitcoin account 2',
+      code: 'ACCOUNT_NOT_FOUND',
+      details: { code: 'ACCOUNT_NOT_FOUND' },
+    });
+    expect(buildErrorMessage(400, body, 'Bitcoin', 2)).toBe('Add Bitcoin account 2 in KeepKey Desktop, then try again');
+  });
+
   it('falls back to the raw body when it is not JSON, then to a generic line', () => {
     expect(buildErrorMessage(500, 'boom', 'Litecoin')).toBe('boom');
     expect(buildErrorMessage(500, '', 'Litecoin')).toBe(
@@ -130,6 +142,16 @@ describe('toBuildError', () => {
     const err = toBuildError(httpError, 'Litecoin');
     expect(err.message).toBe('Insufficient funds');
     expect(err.code).toBe(4000);
+  });
+
+  it('names the requested account on ACCOUNT_NOT_FOUND', () => {
+    const httpError = Object.assign(
+      new Error(JSON.stringify({ error: 'KeepKey Desktop has no Bitcoin account 1', code: 'ACCOUNT_NOT_FOUND' })),
+      { status: 400 },
+    );
+    expect(toBuildError(httpError, 'Bitcoin', 1).message).toBe(
+      'Add Bitcoin account 1 in KeepKey Desktop, then try again',
+    );
   });
 
   it('a refused connection is "Desktop not running"', () => {
