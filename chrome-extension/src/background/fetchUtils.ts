@@ -110,9 +110,11 @@ export async function fetchJsonWithTimeout<T = unknown>(
  * (Cosmos CheckTx, XRP tec*), so `success === false` is a failure even with a
  * txid.
  *
- * This is a write: one send, never re-sent after a green answer (a green 2xx
- * may already have broadcast). A green non-ok means the key wasn't recognised:
- * re-register and surface the error so the user retries.
+ * This is a write: exactly one send. Nothing is re-sent, not on a timeout, a
+ * network drop or a 5xx: the first send may already have broadcast, and a
+ * resend comes back as a duplicate rejection (`success:false`). Those outcomes
+ * are reported as "unknown, check the explorer", not as a failure. A green
+ * non-ok means the key wasn't recognised: re-register and surface the error.
  */
 export async function broadcastViaPioneer(caip: string, serialized: string): Promise<string> {
   if (typeof serialized !== 'string' || !serialized) {
@@ -120,21 +122,34 @@ export async function broadcastViaPioneer(caip: string, serialized: string): Pro
   }
   const networkId = caip.split('/')[0];
   const url = 'https://api.keepkey.info/api/v1/broadcast';
-  const resp = await fetchWithTimeout(
-    url,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: await ensureQueryKey() },
-      body: JSON.stringify({ networkId, caip, serialized }),
-    },
-    { timeoutMs: 15000, retries: 1 },
-  );
+  const unknown = (why: string) =>
+    new Error(
+      `Pioneer broadcast result unknown (${why}): the transaction may have been sent. Check the explorer before signing again.`,
+    );
+  const Authorization = await ensureQueryKey();
+  let resp: Response;
+  try {
+    resp = await fetchWithTimeout(
+      url,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization },
+        body: JSON.stringify({ networkId, caip, serialized }),
+      },
+      { timeoutMs: 15000, retries: 0 },
+    );
+  } catch (e: any) {
+    throw unknown(e?.name === 'TimeoutError' ? 'no answer in 15 s' : e?.message || 'network error');
+  }
   if (!resp.ok) {
     const body = await resp.text().catch(() => '');
     if (resp.headers.get('x-kk-served-by') === 'green') await ensureQueryKey(true).catch(() => {});
+    if (resp.status >= 500) throw unknown(`HTTP ${resp.status} from ${url}: ${body}`);
     throw new Error(`HTTP ${resp.status} from ${url}: ${body}`);
   }
-  const data: any = await resp.json();
+  const data: any = await resp.json().catch(() => {
+    throw unknown(`unreadable HTTP ${resp.status} answer`);
+  });
   const txid = data?.txid ?? data?.results?.txid;
   if (data?.success === false || !txid)
     throw new Error(

@@ -258,6 +258,35 @@ describe('broadcastViaPioneer', () => {
     expect(ensureQueryKey).not.toHaveBeenCalledWith(true);
   });
 
+  // A write is never re-sent: the first send may already have broadcast, and a
+  // resend of the same bytes comes back as a duplicate rejection (Cosmos CheckTx
+  // 19 'tx already exists in cache', XRP tefPAST_SEQ, 'txn-already-in-mempool').
+  it.each([
+    ['gateway 502', () => served({ error: 'bad gateway' }, 502, 'gateway'), /HTTP 502/],
+    ['green 503', () => served({ error: 'down' }, 503, 'green'), /HTTP 503/],
+  ])('a %s is sent once and reported as unknown, not failed', async (_label, reply, status) => {
+    fetchMock.mockResolvedValueOnce(reply()).mockResolvedValueOnce(served({ success: false, txid: 'X' }));
+    const p = run(broadcastViaPioneer(COSMOS, 'AAAA'));
+    await expect(p).rejects.toThrow(/result unknown.*check the explorer/i);
+    await expect(p).rejects.toThrow(status);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['15 s timeout', () => new DOMException('The operation was aborted due to timeout', 'TimeoutError')],
+    ['network drop', () => new TypeError('Failed to fetch')],
+  ])('a %s is sent once and reported as unknown, not failed', async (_label, err) => {
+    fetchMock.mockRejectedValueOnce(err()).mockResolvedValueOnce(served({ success: false, txid: 'X' }));
+    await expect(run(broadcastViaPioneer(COSMOS, 'AAAA'))).rejects.toThrow(/result unknown.*check the explorer/i);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('an unreadable 2xx answer is reported as unknown', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('<html>ok</html>', { status: 200 }));
+    await expect(run(broadcastViaPioneer(COSMOS, 'AAAA'))).rejects.toThrow(/result unknown/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('refuses a non-string serialized before sending anything', async () => {
     await expect(run(broadcastViaPioneer(COSMOS, DESKTOP_COSMOS_AMINO_RESPONSE as any))).rejects.toThrow(
       /no serialized/,
