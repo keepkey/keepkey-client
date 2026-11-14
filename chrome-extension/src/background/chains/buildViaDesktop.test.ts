@@ -172,31 +172,62 @@ describe('toBuildError', () => {
 // The extension names the row (script type + account); Desktop builds from it.
 // The build is checked against the row before any approval exists, so the
 // extension never signs coins from an account other than the one on screen.
-const utxoBuild = (summary: Record<string, unknown>, ...scriptTypes: string[]) => ({
-  signRoute: '/utxo/sign-transaction' as const,
-  signBody: {
-    coin: 'Bitcoin',
-    inputs: scriptTypes.map((scriptType, vout) => ({
-      addressNList: [0x80000054, 0x80000000, 0x80000000, 0, 0],
-      scriptType,
-      amount: '10000',
-      vout,
-      txid: 'aa'.repeat(32),
-      hex: '00',
-    })),
-    outputs: [{ address: 'bc1qrecipient', amount: '5000', addressType: 'spend' }],
-    version: 1,
-    locktime: 0,
-  },
-  summary: { to: 'bc1qrecipient', amount: '0.00005', fee: '0.00000226', symbol: 'BTC', ...summary },
-});
+const H = 0x80000000;
+const PURPOSE: Record<string, number> = { p2pkh: 44, 'p2sh-p2wpkh': 49, p2wpkh: 84, p2tr: 86 };
+// Desktop's account path [purpose', coin', account'] + chain/index.
+const pathOf = (scriptType: string, account: number, chain = 0, index = 0) => [
+  H + PURPOSE[scriptType],
+  H,
+  H + account,
+  chain,
+  index,
+];
+// Inputs of the given script types, all at `summary.accountIndex` (0 if
+// absent), plus a change output back to the first input's account.
+const utxoBuild = (summary: Record<string, unknown>, ...scriptTypes: string[]) => {
+  const account = typeof summary.accountIndex === 'number' ? summary.accountIndex : 0;
+  return {
+    signRoute: '/utxo/sign-transaction' as const,
+    signBody: {
+      coin: 'Bitcoin',
+      inputs: scriptTypes.map((scriptType, vout) => ({
+        addressNList: pathOf(scriptType, account),
+        scriptType,
+        amount: '10000',
+        vout,
+        txid: 'aa'.repeat(32),
+        hex: '00',
+      })) as any[],
+      outputs: [
+        { address: 'bc1qrecipient', amount: '5000', addressType: 'spend' },
+        {
+          addressNList: pathOf(scriptTypes[0], account, 1, 3),
+          scriptType: scriptTypes[0],
+          isChange: true,
+          amount: '4774',
+          addressType: 'change',
+        },
+      ] as any[],
+      version: 1,
+      locktime: 0,
+    },
+    summary: { to: 'bc1qrecipient', amount: '0.00005', fee: '0.00000226', symbol: 'BTC', ...summary },
+  };
+};
 const row = (scriptType: string, accountIndex: number) => toBuildRequest(BTC, formParams({ scriptType, accountIndex }));
+const changeOf = (build: ReturnType<typeof utxoBuild>) => build.signBody.outputs[1];
 
 describe('rowBuildMismatch', () => {
   it('accepts a build of exactly the selected row', () => {
     expect(
       rowBuildMismatch(row('p2pkh', 2), utxoBuild({ scriptType: 'p2pkh', accountIndex: 2 }, 'p2pkh'), 'Bitcoin'),
     ).toBeUndefined();
+  });
+
+  it('accepts a max send (no change output)', () => {
+    const build = utxoBuild({ scriptType: 'p2wpkh', accountIndex: 1 }, 'p2wpkh');
+    build.signBody.outputs.pop();
+    expect(rowBuildMismatch(row('p2wpkh', 1), build, 'Bitcoin')).toBeUndefined();
   });
 
   it('skips the check for a dApp transfer with no row', () => {
@@ -221,6 +252,36 @@ describe('rowBuildMismatch', () => {
     expect(message).toContain('Nothing was signed');
   });
 
+  // The device signs whatever addressNList says, so the paths themselves must
+  // be the row: purpose of its script type and its account.
+  describe('derivation paths, whatever the summary and scriptType fields say', () => {
+    const good = () => utxoBuild({ scriptType: 'p2wpkh', accountIndex: 2 }, 'p2wpkh', 'p2wpkh');
+
+    it.each([
+      ['an input at another account', (b: any) => (b.signBody.inputs[1].addressNList = pathOf('p2wpkh', 0))],
+      ['an input at another purpose', (b: any) => (b.signBody.inputs[0].addressNList = pathOf('p2pkh', 2))],
+      ['an input with no path', (b: any) => delete b.signBody.inputs[0].addressNList],
+      ['an input with a short path', (b: any) => (b.signBody.inputs[0].addressNList = [H + 84, H])],
+      ['change to another account', (b: any) => (changeOf(b).addressNList = pathOf('p2wpkh', 0, 1, 3))],
+      ['change to another purpose', (b: any) => (changeOf(b).addressNList = pathOf('p2pkh', 2, 1, 3))],
+      ['change of another script type', (b: any) => (changeOf(b).scriptType = 'p2pkh')],
+      ['change with no path', (b: any) => delete changeOf(b).addressNList],
+      [
+        'a second owned output elsewhere',
+        (b: any) =>
+          b.signBody.outputs.push({ addressNList: pathOf('p2wpkh', 0, 1, 0), scriptType: 'p2wpkh', amount: '1' }),
+      ],
+    ])('refuses %s', (_, mutate) => {
+      const build = good();
+      mutate(build);
+      expect(rowBuildMismatch(row('p2wpkh', 2), build, 'Bitcoin')).toContain('Nothing was signed');
+    });
+
+    it('the unmodified build passes', () => {
+      expect(rowBuildMismatch(row('p2wpkh', 2), good(), 'Bitcoin')).toBeUndefined();
+    });
+  });
+
   describe('Desktop that predates the scriptType field (summary has none)', () => {
     it('allows account 0 when every input is the row script type', () => {
       expect(rowBuildMismatch(row('p2wpkh', 0), utxoBuild({}, 'p2wpkh'), 'Bitcoin')).toBeUndefined();
@@ -236,6 +297,18 @@ describe('rowBuildMismatch', () => {
       expect(rowBuildMismatch(row('p2pkh', 0), utxoBuild({}, 'p2wpkh'), 'Bitcoin')).toBe(
         'Update KeepKey Desktop to send from this Bitcoin account',
       );
+    });
+
+    it('asks to update Desktop when an input or the change is at another account', () => {
+      const input = utxoBuild({}, 'p2wpkh');
+      input.signBody.inputs[0].addressNList = pathOf('p2wpkh', 1);
+      const change = utxoBuild({}, 'p2wpkh');
+      changeOf(change).addressNList = pathOf('p2wpkh', 1, 1, 0);
+      for (const build of [input, change]) {
+        expect(rowBuildMismatch(row('p2wpkh', 0), build, 'Bitcoin')).toBe(
+          'Update KeepKey Desktop to send from this Bitcoin account',
+        );
+      }
     });
   });
 });

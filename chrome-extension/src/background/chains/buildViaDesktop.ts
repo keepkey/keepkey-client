@@ -76,9 +76,28 @@ const SCRIPT_LABELS: Record<string, string> = {
   p2tr: 'Taproot',
 };
 
+// BIP44/49/84/86 purpose Desktop derives each script type's account under.
+const PURPOSE: Record<TxBuildScriptType, number> = { p2pkh: 44, 'p2sh-p2wpkh': 49, p2wpkh: 84, p2tr: 86 };
+const HARDENED = 0x80000000;
+
+/** A leg (input, or output paying back to the wallet) is the row when its
+ * script type is the row's and its addressNList is [purpose', coin', account', ...]
+ * for the row's purpose and account. The device signs what addressNList says. */
+function legIsRow(leg: any, scriptType: TxBuildScriptType, accountIndex: number): boolean {
+  const path = leg?.addressNList;
+  return (
+    leg?.scriptType === scriptType &&
+    Array.isArray(path) &&
+    path.length >= 3 &&
+    path[0] === HARDENED + PURPOSE[scriptType] &&
+    path[2] === HARDENED + accountIndex
+  );
+}
+
 /** Refuse a build that is not the requested UTXO row, before the approval
  * exists, so the extension never signs coins from an account other than the
- * one on screen. No row (dApp transfer) skips the check. */
+ * one on screen. No row (dApp transfer) skips the check. Every input and every
+ * output back to the wallet (change) must be at the row's purpose and account. */
 export function rowBuildMismatch(
   request: TxBuildRequest,
   build: TxBuildResponse,
@@ -87,7 +106,10 @@ export function rowBuildMismatch(
   const { scriptType, accountIndex = 0 } = request;
   if (!scriptType) return undefined;
   const inputs: any[] = build.signBody?.inputs ?? [];
-  const inputsMatch = inputs.length > 0 && inputs.every(input => input?.scriptType === scriptType);
+  const owned = ((build.signBody?.outputs ?? []) as any[]).filter(
+    output => output?.addressNList !== undefined || output?.addressType === 'change' || output?.isChange,
+  );
+  const inputsMatch = inputs.length > 0 && [...inputs, ...owned].every(leg => legIsRow(leg, scriptType, accountIndex));
   // A Desktop without the field strips it and spends its own default account,
   // which is only provably the row for account 0 with matching inputs.
   if (build.summary.scriptType === undefined) {
