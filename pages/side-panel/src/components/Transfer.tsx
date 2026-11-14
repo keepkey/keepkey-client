@@ -195,9 +195,8 @@ export function Transfer(): JSX.Element {
         // account 0 is possible.
         accountIndex: assetContext?.accountIndex,
         note: assetContext?.note,
-        // BTC: the row's script type. Desktop spends only its selected script
-        // type, so the background refuses a send from any other row. Stays in
-        // the extension (not part of the Desktop build request).
+        // UTXO: the row's script type. With accountIndex it names the account
+        // KeepKey Desktop spends; the background refuses a build of any other.
         scriptType: assetContext?.script_type,
       };
 

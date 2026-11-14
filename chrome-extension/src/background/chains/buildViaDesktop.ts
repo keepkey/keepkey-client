@@ -10,6 +10,10 @@ import type { ProviderRpcError } from '../utils';
 
 export const TX_BUILD_PATH = '/api/v2/tx/build';
 
+/** Script types Desktop's UTXO builder spends (per chain, Desktop decides and
+ * answers 400 SCRIPT_TYPE_UNSUPPORTED for any other). */
+export type TxBuildScriptType = 'p2pkh' | 'p2sh-p2wpkh' | 'p2wpkh' | 'p2tr';
+
 export interface TxBuildRequest {
   caip: string;
   to: string;
@@ -17,6 +21,9 @@ export interface TxBuildRequest {
   isMax?: boolean;
   memo?: string;
   accountIndex?: number;
+  /** UTXO only: the selected row. Desktop spends exactly (accountIndex,
+   * scriptType), deriving every key itself on the device. */
+  scriptType?: TxBuildScriptType;
 }
 
 export type TxBuildSignRoute =
@@ -34,6 +41,10 @@ export interface TxBuildSummary {
   symbol: string;
   memo?: string;
   destinationTag?: string;
+  /** UTXO: the account Desktop built from. Absent on a Desktop that predates
+   * the scriptType field. */
+  scriptType?: string;
+  accountIndex?: number;
 }
 
 export interface TxBuildResponse {
@@ -42,47 +53,55 @@ export interface TxBuildResponse {
   summary: TxBuildSummary;
 }
 
-/** The Transfer form's params[0] → the six contract fields. Nothing else
- * (pubkeys, fee level, xpubs) is ever sent: Desktop derives the sender. */
+/** The Transfer form's params[0] → the contract fields. Nothing else
+ * (pubkeys, fee level, xpubs) is ever sent: Desktop derives the sender. A UTXO
+ * row also names its script type and account, so Desktop spends that row. */
 export function toBuildRequest(caip: string, params: any): TxBuildRequest {
   const isMax = params?.isMax === true;
   const request: TxBuildRequest = { caip, to: params?.recipient, isMax };
   if (!isMax) request.amount = String(params?.amount?.amount ?? '');
   if (typeof params?.memo === 'string' && params.memo.trim()) request.memo = params.memo;
   if (typeof params?.accountIndex === 'number') request.accountIndex = params.accountIndex;
+  if (caip.startsWith('bip122:') && typeof params?.scriptType === 'string') {
+    request.scriptType = params.scriptType as TxBuildScriptType;
+    request.accountIndex = request.accountIndex ?? 0;
+  }
   return request;
 }
 
-const BTC_SCRIPT_LABELS: Record<string, string> = {
+const SCRIPT_LABELS: Record<string, string> = {
   p2pkh: 'Legacy',
   'p2sh-p2wpkh': 'SegWit',
   p2wpkh: 'Native SegWit',
+  p2tr: 'Taproot',
 };
-const btcLabel = (scriptType: string) => BTC_SCRIPT_LABELS[scriptType] || scriptType;
 
-/** Contract v1 has no script type: Desktop spends BTC account N from the one
- * script type selected in Desktop (default Native SegWit). The extension shows a
- * row per script type, so only a Native SegWit row can match. `scriptType` is
- * the row the Transfer form picked; undefined (dApp transfer) skips the check. */
-export function btcRowRefusal(scriptType: unknown): string | undefined {
-  if (typeof scriptType !== 'string' || scriptType === 'p2wpkh') return undefined;
+/** Refuse a build that is not the requested UTXO row, before the approval
+ * exists, so the extension never signs coins from an account other than the
+ * one on screen. No row (dApp transfer) skips the check. */
+export function rowBuildMismatch(
+  request: TxBuildRequest,
+  build: TxBuildResponse,
+  chainName: string,
+): string | undefined {
+  const { scriptType, accountIndex = 0 } = request;
+  if (!scriptType) return undefined;
+  const inputs: any[] = build.signBody?.inputs ?? [];
+  const inputsMatch = inputs.length > 0 && inputs.every(input => input?.scriptType === scriptType);
+  // A Desktop without the field strips it and spends its own default account,
+  // which is only provably the row for account 0 with matching inputs.
+  if (build.summary.scriptType === undefined) {
+    return accountIndex === 0 && inputsMatch
+      ? undefined
+      : `Update KeepKey Desktop to send from this ${chainName} account`;
+  }
+  if (build.summary.scriptType === scriptType && build.summary.accountIndex === accountIndex && inputsMatch) {
+    return undefined;
+  }
   return (
-    `Sending from a ${btcLabel(scriptType)} Bitcoin account is not supported from the extension yet. ` +
-    'Select a Native SegWit account, or send from KeepKey Desktop.'
-  );
-}
-
-/** Refuse a build whose inputs are not all the selected row's script type
- * (Desktop set to another address type), so the extension never signs coins
- * from an account other than the one on screen. */
-export function btcBuildMismatch(scriptType: unknown, signBody: any): string | undefined {
-  if (typeof scriptType !== 'string') return undefined;
-  const other = (signBody?.inputs ?? []).find((input: any) => input?.scriptType !== scriptType);
-  if (!other) return undefined;
-  return (
-    `KeepKey Desktop built this send from its ${btcLabel(other.scriptType)} Bitcoin account, ` +
-    `not the ${btcLabel(scriptType)} account selected in the extension. Nothing was signed. ` +
-    `Select ${btcLabel(scriptType)} for Bitcoin in KeepKey Desktop, then try again.`
+    `KeepKey Desktop built this send from a different account than the ` +
+    `${SCRIPT_LABELS[scriptType] || scriptType} ${chainName} account ${accountIndex} selected in the extension. ` +
+    'Nothing was signed.'
   );
 }
 
@@ -123,15 +142,18 @@ export async function buildViaDesktop(
   params: any,
   chainName: string,
 ): Promise<TxBuildResponse> {
+  const request = toBuildRequest(caip, params);
   let build: TxBuildResponse;
   try {
     // Foreground: Desktop may derive the sender on the device (no button press).
-    build = await readFromVault<TxBuildResponse>(sdk, TX_BUILD_PATH, toBuildRequest(caip, params), true);
+    build = await readFromVault<TxBuildResponse>(sdk, TX_BUILD_PATH, request, true);
   } catch (error) {
     throw toBuildError(error, chainName);
   }
   if (!build?.signRoute || !build.signBody || !build.summary) {
     throw createProviderRpcError(4000, `KeepKey Desktop returned an incomplete ${chainName} transaction`);
   }
+  const mismatch = rowBuildMismatch(request, build, chainName);
+  if (mismatch) throw createProviderRpcError(4000, mismatch);
   return build;
 }

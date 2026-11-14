@@ -9,7 +9,8 @@ Owner decision 2026-11-13: no server builds transactions. Servers only supply ch
 - **Before (0.0.39):** 10 handlers POSTed `{caip,to,amount,feeLevel:5,isMax,pubkeys}` to `https://api.keepkey.info/api/v1/buildTx`. That route never existed on any server, so it returned 404 and BTC, BCH, LTC, DOGE, DASH, ATOM, OSMO, RUNE, CACAO and XRP sends were all broken.
 - **Now:** the 10 handlers make one call to `chains/buildViaDesktop.ts`.
   - It runs `POST http://localhost:1646/api/v2/tx/build` with the pairing key and `X-KeepKey-Device-Access: foreground`, through the existing `readFromVault` helper.
-  - The body is `{caip, to, amount?, isMax, memo?, accountIndex?}`. No pubkeys, xpubs or fee level are sent: Desktop picks the sender keys, UTXOs, change and fee itself.
+  - The body is `{caip, to, amount?, isMax, memo?, accountIndex?, scriptType?}`. No pubkeys, xpubs or fee level are sent: Desktop picks the sender keys, UTXOs, change and fee itself.
+  - UTXO sends from the side panel always carry the selected row's `scriptType` and `accountIndex` (0 when the row has none). Desktop spends exactly that account, deriving every key on the device.
   - Desktop answers `{signRoute, signBody, summary}`. The approval event stores `unsignedTx = signBody` and `summary`. After approval the handler calls `signViaVault(build.signRoute, build.signBody)` with exactly what Desktop built. The `{...unsignedTx, coin}` spreads are gone.
   - `memo` from the Send form is forwarded now. It used to be dropped.
     - Cosmos family: it becomes the tx memo.
@@ -21,8 +22,9 @@ Owner decision 2026-11-13: no server builds transactions. Servers only supply ch
 ## Behaviour notes
 
 - **dApp transfers with no `accountIndex`:** Desktop uses account 0. BTC used to aggregate accounts 0-3. It never shipped, because the route was 404.
-  - BTC: account N is Desktop's BTC account N, using Desktop's selected script type (default Native SegWit). Contract v1 has no script-type field, so from the side panel only a Native SegWit row can send: a Legacy or SegWit row is refused before the build, and a build whose inputs are not the row's script type (Desktop set to another type) is refused before approval. Owner decision pending: add `scriptType` to the contract, or have Desktop pool account N's script types.
-  - Other chains: only account 0. A non-zero index gets a 400 `ACCOUNT_UNSUPPORTED`; Desktop never silently spends account 0.
+  - Side-panel UTXO sends (BTC, LTC, DOGE, DASH, BCH): owner decision 2026-11-13, the extension's selected row decides what Desktop spends, not Desktop's selected BTC script type. Desktop answers `summary.scriptType` and `summary.accountIndex` as built. Before the approval exists, `buildViaDesktop` refuses (nothing signed) a build whose summary or inputs are not the requested row.
+  - A Desktop that predates the field ignores it and sends no `summary.scriptType`. Only an account-0 row whose inputs all match its script type is accepted. Any other row gets "Update KeepKey Desktop to send from this <Chain> account".
+  - Desktop answers 400 `SCRIPT_TYPE_UNSUPPORTED` / `ACCOUNT_NOT_FOUND` for a row it cannot spend; BEX shows that text as-is.
 - **Fee level:** BEX has no fee picker, so Desktop uses its own "average" level.
 
 ### Errors shown to the user
@@ -56,5 +58,6 @@ You need the first Desktop release that contains `POST /api/v2/tx/build`. It is 
    - Then `make type-check`, `make lint`, `make build`.
 2. Manual (owner, with Desktop built from `feat/rest-tx-build` running on :1646 and the extension paired):
    - From the side panel, send a small amount of LTC, then ATOM, then XRP with a destination-tag memo.
+   - Send BTC from a Legacy row and from a Native SegWit account 1 row; Desktop's sign card must show inputs and change on that row's path.
    - Check the approval card shows Desktop's amount and fee, and that the KeepKey Desktop sign card matches.
    - Against Desktop 1.6.12, a send should show "Update KeepKey Desktop to send Litecoin from the extension".

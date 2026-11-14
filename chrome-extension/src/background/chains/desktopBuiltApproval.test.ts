@@ -22,16 +22,20 @@ describe('UTXO approval shows the fee Desktop built', () => {
   });
 });
 
-describe('BTC sends spend the row picked in the extension', () => {
+describe('UTXO sends spend the row picked in the extension', () => {
   it('the Transfer form sends the selected row script type', () => {
     expect(read('../../../../pages/side-panel/src/components/Transfer.tsx')).toContain(
       'scriptType: assetContext?.script_type',
     );
   });
 
-  it('the Bitcoin handler checks the row before and the build after', () => {
+  it('every Desktop build is checked against the requested row before it is returned', () => {
+    expect(read('./buildViaDesktop.ts')).toMatch(/rowBuildMismatch\(request, build, chainName\)/);
+  });
+
+  it('the Bitcoin handler no longer refuses rows Desktop can now spend', () => {
     const source = read('./bitcoinHandler.ts');
-    expect(source).toContain('btcRowRefusal(params[0]?.scriptType)');
-    expect(source).toContain('btcBuildMismatch(params[0]?.scriptType, build.signBody)');
+    expect(source).not.toContain('btcRowRefusal');
+    expect(source).not.toContain('btcBuildMismatch');
   });
 });

@@ -1,17 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import {
-  btcBuildMismatch,
-  btcRowRefusal,
-  buildErrorMessage,
-  toBuildError,
-  toBuildRequest,
-  TX_BUILD_PATH,
-} from './buildViaDesktop';
+import { buildErrorMessage, rowBuildMismatch, toBuildError, toBuildRequest, TX_BUILD_PATH } from './buildViaDesktop';
 import { VAULT_LOCKED_MESSAGE } from '../vaultDeviceAccess';
 import { VAULT_REQUIRED_MESSAGE } from '../utils';
 import { shortListSymbolToCaip } from '../chainConfig';
 
 const LTC = shortListSymbolToCaip['LTC'];
+const BTC = shortListSymbolToCaip['BTC'];
 const ATOM = shortListSymbolToCaip['ATOM'];
 
 // The exact params[0] shape the side-panel Transfer form sends.
@@ -46,7 +40,32 @@ describe('toBuildRequest', () => {
       LTC,
       formParams({ pubkeys: [{ pubkey: 'xpub' }], feeLevel: 5, xpubOverride: 'x', scriptType: 'p2pkh' }),
     );
-    expect(Object.keys(body).sort()).toEqual(['accountIndex', 'amount', 'caip', 'isMax', 'to']);
+    expect(Object.keys(body).sort()).toEqual(['accountIndex', 'amount', 'caip', 'isMax', 'scriptType', 'to']);
+  });
+
+  it('names the selected UTXO row: its script type and account', () => {
+    expect(toBuildRequest(BTC, formParams({ scriptType: 'p2pkh', accountIndex: 2 }))).toMatchObject({
+      scriptType: 'p2pkh',
+      accountIndex: 2,
+    });
+    expect(toBuildRequest(LTC, formParams({ scriptType: 'p2wpkh', accountIndex: 1 }))).toMatchObject({
+      scriptType: 'p2wpkh',
+      accountIndex: 1,
+    });
+  });
+
+  it('a UTXO row with no parsed account is account 0, sent explicitly', () => {
+    expect(toBuildRequest(BTC, formParams({ scriptType: 'p2sh-p2wpkh', accountIndex: undefined })).accountIndex).toBe(
+      0,
+    );
+  });
+
+  it('never sends a non-UTXO row type (cosmos rows carry script_type "cosmos")', () => {
+    expect(toBuildRequest(ATOM, formParams({ scriptType: 'cosmos' }))).not.toHaveProperty('scriptType');
+  });
+
+  it('a dApp transfer with no row sends no script type', () => {
+    expect(toBuildRequest(BTC, formParams({ accountIndex: undefined }))).not.toHaveProperty('scriptType');
   });
 
   it('drops a blank or whitespace memo and forwards a real one', () => {
@@ -128,61 +147,73 @@ describe('toBuildError', () => {
   });
 });
 
-// Desktop v1 spends ONE BTC script type: the one selected in Desktop (default
-// Native SegWit). The extension lists a row per script type, so a row whose
-// coins Desktop would not spend must be refused, never silently substituted.
-const btcSignBody = (...scriptTypes: string[]) => ({
-  coin: 'Bitcoin',
-  inputs: scriptTypes.map((scriptType, vout) => ({
-    addressNList: [0x80000054, 0x80000000, 0x80000000, 0, 0],
-    scriptType,
-    amount: '10000',
-    vout,
-    txid: 'aa'.repeat(32),
-    hex: '00',
-  })),
-  outputs: [{ address: 'bc1qrecipient', amount: '5000', addressType: 'spend' }],
-  version: 1,
-  locktime: 0,
+// The extension names the row (script type + account); Desktop builds from it.
+// The build is checked against the row before any approval exists, so the
+// extension never signs coins from an account other than the one on screen.
+const utxoBuild = (summary: Record<string, unknown>, ...scriptTypes: string[]) => ({
+  signRoute: '/utxo/sign-transaction' as const,
+  signBody: {
+    coin: 'Bitcoin',
+    inputs: scriptTypes.map((scriptType, vout) => ({
+      addressNList: [0x80000054, 0x80000000, 0x80000000, 0, 0],
+      scriptType,
+      amount: '10000',
+      vout,
+      txid: 'aa'.repeat(32),
+      hex: '00',
+    })),
+    outputs: [{ address: 'bc1qrecipient', amount: '5000', addressType: 'spend' }],
+    version: 1,
+    locktime: 0,
+  },
+  summary: { to: 'bc1qrecipient', amount: '0.00005', fee: '0.00000226', symbol: 'BTC', ...summary },
 });
+const row = (scriptType: string, accountIndex: number) => toBuildRequest(BTC, formParams({ scriptType, accountIndex }));
 
-describe('btcRowRefusal', () => {
-  it('lets a Native SegWit row through', () => {
-    expect(btcRowRefusal('p2wpkh')).toBeUndefined();
-  });
-
-  it('lets a dApp transfer (no row picked) through: Desktop uses its own account', () => {
-    expect(btcRowRefusal(undefined)).toBeUndefined();
-  });
-
-  it.each([
-    ['p2pkh', 'Legacy'],
-    ['p2sh-p2wpkh', 'SegWit'],
-  ])('refuses a %s row by name', (scriptType, label) => {
-    const message = btcRowRefusal(scriptType);
-    expect(message).toContain(`${label} Bitcoin account`);
-    expect(message).toMatch(/Native SegWit/);
-  });
-});
-
-describe('btcBuildMismatch', () => {
-  it('accepts a build that spends only the selected row script type', () => {
-    expect(btcBuildMismatch('p2wpkh', btcSignBody('p2wpkh', 'p2wpkh'))).toBeUndefined();
-  });
-
-  it('refuses a build from another script type (Desktop set to Legacy)', () => {
-    const message = btcBuildMismatch('p2wpkh', btcSignBody('p2pkh'));
-    expect(message).toContain('from its Legacy Bitcoin account');
-    expect(message).toMatch(/Native SegWit/);
-  });
-
-  it('refuses a build that mixes in any other script type', () => {
-    expect(btcBuildMismatch('p2wpkh', btcSignBody('p2wpkh', 'p2sh-p2wpkh'))).toContain(
-      'from its SegWit Bitcoin account',
-    );
+describe('rowBuildMismatch', () => {
+  it('accepts a build of exactly the selected row', () => {
+    expect(
+      rowBuildMismatch(row('p2pkh', 2), utxoBuild({ scriptType: 'p2pkh', accountIndex: 2 }, 'p2pkh'), 'Bitcoin'),
+    ).toBeUndefined();
   });
 
   it('skips the check for a dApp transfer with no row', () => {
-    expect(btcBuildMismatch(undefined, btcSignBody('p2pkh'))).toBeUndefined();
+    expect(rowBuildMismatch(toBuildRequest(BTC, formParams()), utxoBuild({}, 'p2pkh'), 'Bitcoin')).toBeUndefined();
+  });
+
+  it.each([
+    ['another script type', { scriptType: 'p2wpkh', accountIndex: 2 }],
+    ['another account', { scriptType: 'p2pkh', accountIndex: 0 }],
+  ])('refuses a build Desktop says is from %s', (_, summary) => {
+    const message = rowBuildMismatch(row('p2pkh', 2), utxoBuild(summary, 'p2pkh'), 'Bitcoin');
+    expect(message).toContain('Legacy Bitcoin account 2');
+    expect(message).toContain('Nothing was signed');
+  });
+
+  it('refuses a build whose inputs are not the row script type, whatever the summary says', () => {
+    const message = rowBuildMismatch(
+      row('p2wpkh', 0),
+      utxoBuild({ scriptType: 'p2wpkh', accountIndex: 0 }, 'p2wpkh', 'p2pkh'),
+      'Bitcoin',
+    );
+    expect(message).toContain('Nothing was signed');
+  });
+
+  describe('Desktop that predates the scriptType field (summary has none)', () => {
+    it('allows account 0 when every input is the row script type', () => {
+      expect(rowBuildMismatch(row('p2wpkh', 0), utxoBuild({}, 'p2wpkh'), 'Bitcoin')).toBeUndefined();
+    });
+
+    it('asks to update Desktop for any other account', () => {
+      expect(rowBuildMismatch(row('p2wpkh', 1), utxoBuild({}, 'p2wpkh'), 'Litecoin')).toBe(
+        'Update KeepKey Desktop to send from this Litecoin account',
+      );
+    });
+
+    it('asks to update Desktop when it spent another script type', () => {
+      expect(rowBuildMismatch(row('p2pkh', 0), utxoBuild({}, 'p2wpkh'), 'Bitcoin')).toBe(
+        'Update KeepKey Desktop to send from this Bitcoin account',
+      );
+    });
   });
 });
