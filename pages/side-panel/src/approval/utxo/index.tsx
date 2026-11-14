@@ -22,7 +22,6 @@ import RequestDataCard from './RequestDataCard';
 //@ts-ignore
 import CoinControl from './CoinControlCard';
 import RequestMethodCard from './RequestMethodCard';
-import ProjectFeeCard from './ProjectFeeCard';
 import ProjectInfoCard from './ProjectInfoCard';
 
 const triggerTransactionContextUpdate = (transactionId: string) => {
@@ -127,19 +126,16 @@ export function UtxoTransaction({ transaction: initialTransaction, handleRespons
           <Divider />
           <RequestMethodCard transaction={transaction} />
           <Divider />
-          <Tabs defaultIndex={1}>
+          {/* KeepKey Desktop built this tx, fee included: Basic shows that fee. */}
+          <Tabs>
             <TabList>
               <Tab>Basic</Tab>
-              <Tab>Fees</Tab>
               <Tab>Raw</Tab>
             </TabList>
 
             <TabPanels>
               <TabPanel>
                 <RequestDetailsCard transaction={transaction} />
-              </TabPanel>
-              <TabPanel>
-                <ProjectFeeCard transaction={transaction} />
               </TabPanel>
               <TabPanel>
                 <RequestDataCard transaction={transaction} />

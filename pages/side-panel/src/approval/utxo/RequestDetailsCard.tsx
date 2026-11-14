@@ -40,6 +40,8 @@ export default function RequestDetailsCard({ transaction }: any) {
   const totalInput = inputs.reduce((sum: number, input: any) => sum + Number(input.amount), 0);
   const totalOutput = outputs.reduce((sum: number, output: any) => sum + Number(output.amount), 0);
   const fee = totalInput - totalOutput;
+  // Fee as built by KeepKey Desktop (display units), the one that gets signed.
+  const summary = transaction?.summary;
 
   return (
     <VStack spacing={4} align="stretch" width="100%" maxW="300px" mx="auto" p={4} borderRadius="lg" boxShadow="md">
@@ -144,10 +146,10 @@ export default function RequestDetailsCard({ transaction }: any) {
         </HStack>
         <HStack justify="space-between">
           <Text fontSize="sm" fontWeight="semibold">
-            Fee (Difference)
+            Fee
           </Text>
           <Text fontSize="sm" fontWeight="medium">
-            {fee / 100000000}
+            {summary ? `${summary.fee} ${summary.symbol}` : fee / 100000000}
           </Text>
         </HStack>
       </VStack>
