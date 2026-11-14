@@ -195,6 +195,9 @@ export function Transfer(): JSX.Element {
         // account 0 is possible.
         accountIndex: assetContext?.accountIndex,
         note: assetContext?.note,
+        // UTXO: the row's script type. With accountIndex it names the account
+        // KeepKey Desktop spends; the background refuses a build of any other.
+        scriptType: assetContext?.script_type,
       };
 
       // Log token transaction info for debugging

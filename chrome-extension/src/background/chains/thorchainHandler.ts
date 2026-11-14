@@ -3,7 +3,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { Chain, ChainToNetworkId, shortListSymbolToCaip, caipToNetworkId } from '../chainConfig';
 import * as wallet from '../wallet';
 import { createProviderRpcError } from '../utils';
-import { fetchJsonWithTimeout, broadcastViaPioneer } from '../fetchUtils';
+import { broadcastViaPioneer, cosmosSignedSerialized } from '../fetchUtils';
+import { buildViaDesktop } from './buildViaDesktop';
 
 const TAG = ' | thorchainHandler | ';
 
@@ -31,36 +32,9 @@ export const handleThorchainRequest = async (
       requestInfo.id = uuidv4();
       chrome.runtime.sendMessage({ action: 'TRANSACTION_CONTEXT_UPDATED', id: requestInfo.id });
 
-      const pubkeys = wallet.getSendPubkeys(ChainToNetworkId[Chain.THORChain], params[0]?.accountIndex);
-      if (!pubkeys || pubkeys.length === 0) throw Error('Failed to locate pubkeys for THORChain');
-
-      const sendPayload = {
-        caip,
-        to: params[0].recipient,
-        amount: params[0].amount.amount,
-        feeLevel: 5,
-        isMax: params[0].isMax,
-      };
-
-      // Build tx via Pioneer API. fetchJsonWithTimeout enforces an
-      // AbortSignal + response.ok check + retry on 5xx — without that,
-      // a transient Pioneer hiccup hangs the dApp.
-      let unsignedTx: any;
-      try {
-        unsignedTx = await fetchJsonWithTimeout<any>(
-          'https://api.keepkey.info/api/v1/buildTx',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...sendPayload, pubkeys }),
-          },
-          { timeoutMs: 15000, retries: 1 },
-        );
-        console.log(tag, 'unsignedTx: ', unsignedTx);
-      } catch (e) {
-        console.error(tag, 'buildTx failed:', e);
-        throw createProviderRpcError(4000, `Failed to build transaction: ${(e as Error)?.message || e}`);
-      }
+      // KeepKey Desktop builds the tx locally (keys, UTXOs, change, fee) before the
+      // approval event exists, so the event always carries what will be signed.
+      const build = await buildViaDesktop(wallet.getSdk(), caip, params[0], 'THORChain');
 
       const event = {
         id: requestInfo.id,
@@ -76,7 +50,8 @@ export const handleThorchainRequest = async (
         injectScriptVersion: requestInfo.version,
         chain: 'thorchain',
         requestInfo,
-        unsignedTx,
+        unsignedTx: build.signBody,
+        summary: build.summary,
         type: 'transfer',
         request: params,
         status: 'request',
@@ -90,16 +65,16 @@ export const handleThorchainRequest = async (
       const response = await requestStorage.getEventById(requestInfo.id);
       if (!response) throw Error('Failed to load event for signing!');
 
-      if (result.success && response.unsignedTx) {
+      if (result.success) {
         const sdk = wallet.getSdk();
-        const signedTx = await wallet.signViaVault('/thorchain/sign-amino-transfer', response.unsignedTx);
+        const signedTx = await wallet.signViaVault(build.signRoute, build.signBody);
         console.log(tag, 'signedTx: ', signedTx);
 
         response.signedTx = signedTx;
         await requestStorage.updateEventById(requestInfo.id, response);
 
         // Broadcast via Pioneer API.
-        const txHash: any = await broadcastViaPioneer(caip, signedTx.serializedTx || signedTx);
+        const txHash: any = await broadcastViaPioneer(caip, cosmosSignedSerialized(signedTx));
 
         response.txid = txHash;
         await requestStorage.updateEventById(requestInfo.id, response);

@@ -17,7 +17,6 @@ import React, { useEffect, useState } from 'react';
 import RequestFeeCard from './RequestFeeCard';
 import RequestDataCard from './RequestDataCard';
 import RequestDetailsCard from './RequestDetailsCard';
-import ContractDetailsCard from './ContractDetailsCard';
 import RequestMethodCard from './RequestMethodCard';
 import ProjectInfoCard from './ProjectInfoCard';
 import FeeWarningBanner from './FeeWarningBanner';
@@ -69,18 +68,12 @@ export function EvmTransaction({ transaction, reloadEvents, handleResponse }: an
       <Divider />
       <Tabs defaultIndex={0}>
         <TabList>
-          {/*<Tab>Insight</Tab>*/}
           <Tab>Details</Tab>
           <Tab>Fees</Tab>
           <Tab>Raw</Tab>
         </TabList>
 
         <TabPanels>
-          {/* Contract Tab */}
-          {/*<TabPanel>*/}
-          {/*  <ContractDetailsCard transaction={transaction} />*/}
-          {/*</TabPanel>*/}
-
           {/* Review Tab */}
           <TabPanel>
             <RequestDetailsCard transaction={transaction} />
