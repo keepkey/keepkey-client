@@ -58,6 +58,7 @@ import { EVM_TESTNETS, SOLANA_DEVNET, ALL_TESTNET_NETWORK_IDS } from './testnetP
 import { formatUserError, createVaultRequiredError, pickEvmAddress } from './utils';
 import { partitionSpamTokens, getTokenVisibilityMap, setTokenVisibility } from './spamFilter';
 import { ensureQueryKey } from './pioneerKey';
+import { fetchPortfolioEntries, type RefreshReason } from './portfolioBalances';
 
 const TAG = ' | background/index.js | ';
 console.log('Background script loaded');
@@ -236,7 +237,9 @@ async function handleDeviceSwitch(newDeviceInfo: any, selectedEvmAddress?: strin
     // Cached read (not forceRefresh): passive/background fetches use Pioneer's
     // cache to stay fast. A live full-refresh happens only on an explicit
     // refresh-button press, so one slow chain can't stall the dashboard.
-    fetchBalancesFromPioneer().catch(e => console.warn(tag, 'Post-switch balance fetch failed:', e));
+    fetchBalancesFromPioneer(false, 'wallet-open').catch(e =>
+      console.warn(tag, 'Post-switch balance fetch failed:', e),
+    );
   } catch (e) {
     console.error(tag, 'Failed to re-fetch pubkeys after device switch:', (e as Error)?.message || e);
     pushStateChangeEvent();
@@ -561,7 +564,7 @@ async function reconcileVisibility(): Promise<void> {
 // All EVM CAPIPs (deduplicated) — used to fan out EVM wildcard addresses
 const EVM_CAIPS = [...new Set(Object.values(shortListSymbolToCaip).filter(caip => caip.startsWith('eip155:')))];
 
-async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
+async function fetchBalancesFromPioneer(forceRefresh: boolean, refreshReason: RefreshReason): Promise<any[]> {
   // Deduplicate concurrent calls — but honor forceRefresh
   if (balancesFetchInProgress && !forceRefresh) return balancesFetchInProgress;
 
@@ -613,15 +616,9 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
       console.log(`[fetchBalances] Sending ${pioneerPubkeys.length} pubkeys to Pioneer API`);
       console.log(`[fetchBalances] Sample pubkeys:`, pioneerPubkeys.slice(0, 3));
 
-      // One call, one endpoint: /api/v1/portfolio (GetPortfolioBalances).
-      // Matches the vault's flow exactly — it's the only endpoint that
-      // runs Pioneer's token auto-discovery (ERC-20 via Unchained, SPL
-      // for Solana, TRC-20 for Tron). The older /charts/portfolio served
-      // natives from a pre-computed cache with Zapper-provided EVM tokens
-      // but dropped SPL/TRC-20 discovery; splitting traffic across both
-      // was the reason USDT-Tron showed $0 in the BEX while the vault
-      // dashboard had it. Slower per call (no pre-warm cache), but
-      // correctness > speed for balance display.
+      // Natives + token discovery (ERC-20, SPL, TRC-20) come from the
+      // portfolio endpoint; see portfolioBalances.ts for which request each
+      // pubkey goes to and how refreshReason gates paid discovery.
 
       // Normalize Pioneer's response networkIds to the canonical form
       // used throughout the codebase. Two distinct problems, same shape:
@@ -658,60 +655,32 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
         return entry;
       };
 
-      const fetchPortfolio = async (batch: typeof pioneerPubkeys) => {
-        if (batch.length === 0) return { balances: [] as any[], tokens: [] as any[] };
-        try {
-          const url = `${PIONEER_API}/api/v1/portfolio${forceRefresh ? '?forceRefresh=true' : ''}`;
-          // 12s budget: portfolio is the heaviest Pioneer endpoint
-          // (cold token discovery), so default 8s is too tight on first
-          // load. One retry on 5xx absorbs single transient failures.
-          const json = await fetchJsonWithTimeout<any>(
-            url,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                // Pioneer's api_key security reads the Authorization
-                // header verbatim (no Bearer prefix). Any unique
-                // `key:public-*` string works for anonymous reads; the
-                // timestamp is just a cache-busting nonce.
-                Authorization: `key:public-${Date.now()}`,
-              },
-              body: JSON.stringify({ pubkeys: batch }),
-            },
-            { timeoutMs: 12000, retries: 1 },
-          );
-          // Unwrap: /portfolio returns { balances: [...] } at the top
-          // level; some deployments wrap in { data: { balances } } via
-          // middleware, so handle both.
-          const allEntries: any[] = json?.balances || json?.data?.balances || [];
-          const natives: any[] = [];
-          const tokens: any[] = [];
-          for (const raw of allEntries) {
-            const entry = normalizeCasing({ ...raw });
-            // Match vault's classification exactly: token if caip path
-            // is not slip44:/native:, or type === 'token', or explicit
-            // isNative===false + contract. Covers ERC-20 (erc20:),
-            // SPL (spl:/token:), TRC-20 (trc20:/token:) uniformly.
-            const caipPath = (entry.caip || '').split('/')[1] || '';
-            const isTokenByCaip = caipPath && !caipPath.startsWith('slip44:') && !caipPath.startsWith('native:');
-            const isTokenByType = entry.type === 'token' || (entry.isNative === false && entry.contract);
-            if (isTokenByCaip || isTokenByType) tokens.push(entry);
-            else natives.push(entry);
-          }
-          console.log(`[fetchBalances] portfolio: ${natives.length} natives, ${tokens.length} tokens`);
-          lastFetchError = null; // a parsed response (even empty) is a success, not an error
-          return { balances: natives, tokens };
-        } catch (e: any) {
-          console.warn('[fetchBalances] portfolio error:', e.message);
-          lastFetchError = e?.message || 'portfolio fetch failed';
-          return { balances: [] as any[], tokens: [] as any[] };
-        }
-      };
-
-      const portfolioResult = await fetchPortfolio(pioneerPubkeys);
-      const rawBalances: any[] = [...portfolioResult.balances];
-      const rawTokens: any[] = [...portfolioResult.tokens];
+      // Gateway /portfolio/balances (Tron excepted, see portfolioBalances.ts).
+      // A side whose request fails carries its last-known rows instead of
+      // wiping them — but only from a cache that belongs to this wallet.
+      const cacheIsThisWallet = !cacheFromHydrate || hydratedFingerprint === walletFingerprint();
+      const portfolio = await fetchPortfolioEntries(
+        pioneerPubkeys,
+        forceRefresh,
+        refreshReason,
+        cacheIsThisWallet ? [...cachedBalances, ...hiddenBalances] : [],
+      );
+      lastFetchError = portfolio.error;
+      // Unwrap/classify: match vault's classification exactly: token if caip
+      // path is not slip44:/native:, or type === 'token', or explicit
+      // isNative===false + contract. Covers ERC-20 (erc20:), SPL
+      // (spl:/token:), TRC-20 (trc20:/token:) uniformly.
+      const rawBalances: any[] = [];
+      const rawTokens: any[] = [];
+      for (const raw of portfolio.entries) {
+        const entry = normalizeCasing({ ...raw });
+        const caipPath = (entry.caip || '').split('/')[1] || '';
+        const isTokenByCaip = caipPath && !caipPath.startsWith('slip44:') && !caipPath.startsWith('native:');
+        const isTokenByType = entry.type === 'token' || (entry.isNative === false && entry.contract);
+        if (isTokenByCaip || isTokenByType) rawTokens.push(entry);
+        else rawBalances.push(entry);
+      }
+      console.log(`[fetchBalances] portfolio: ${rawBalances.length} natives, ${rawTokens.length} tokens`);
 
       if (rawBalances.length === 0 && rawTokens.length === 0) {
         console.warn('[fetchBalances] Pioneer returned 0 balances for', pioneerPubkeys.length, 'pubkeys');
@@ -765,6 +734,12 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
           address: t.pubkey || t.address || '',
           contractAddress: contractMatch ? contractMatch[1] : t.contract || t.contractAddress || '',
         });
+      }
+
+      // Last-known rows for the side whose request failed (already in this shape).
+      if (portfolio.carried.length) {
+        console.warn(`[fetchBalances] keeping ${portfolio.carried.length} last-known rows after a failed request`);
+        balances.push(...portfolio.carried);
       }
 
       // Enrich with direct RPC balances for custom EVM chains Pioneer doesn't know about
@@ -910,8 +885,9 @@ async function fetchBalancesFromPioneer(forceRefresh = false): Promise<any[]> {
         lastFetchError = null;
         persistPortfolio(balances);
         // A forced fetch performs token discovery (ERC-20/SPL/TRC-20); record
-        // that so the GET_APP_BALANCES backstop stops re-triggering.
-        if (forceRefresh) tokenDiscoveryDone = true;
+        // that so the GET_APP_BALANCES backstop stops re-triggering. Not after
+        // a partial failure: that side's discovery didn't happen.
+        if (forceRefresh && !portfolio.error) tokenDiscoveryDone = true;
         // Native-row summary keyed by networkId — makes it easy to spot
         // a chain that got dropped silently between fetches. One line
         // per fetch commit; if a balance looks missing on the dashboard,
@@ -1179,7 +1155,7 @@ const onStart = async function () {
       // Fetch balances in background (non-blocking). First pass covers EVM/UTXO
       // quickly — on first run the Solana / Tron / TON pubkeys haven't been
       // derived yet, so they won't be in this request.
-      fetchBalancesFromPioneer().catch(e => console.warn(tag, 'Initial balance fetch failed:', e));
+      fetchBalancesFromPioneer(false, 'wallet-open').catch(e => console.warn(tag, 'Initial balance fetch failed:', e));
 
       // Solana / Tron / TON addresses are derived outside the batch xpub
       // flow (firmware message type is separate). Each prefetch internally
@@ -1200,7 +1176,7 @@ const onStart = async function () {
       // Discover button (which by coincidence runs after the slowest
       // prefetch finally lands).
       Promise.allSettled([prefetchSolanaAccounts(), prefetchTronPubkey(), prefetchTonAddress(), getHiveAccountInfo()])
-        .then(() => fetchBalancesFromPioneer(true))
+        .then(() => fetchBalancesFromPioneer(true, 'wallet-open'))
         .catch(e => console.warn(tag, 'Post-prefetch balance fetch failed:', e));
     } else {
       console.error(tag, 'FAILED TO INIT, No Ethereum address found');
@@ -1399,7 +1375,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               sendResponse({ balances: cached });
             } else if (wallet.isInitialized()) {
               // Trigger full balance fetch if not cached
-              const balances = await fetchBalancesFromPioneer();
+              const balances = await fetchBalancesFromPioneer(false, 'wallet-open');
               const filtered = balances.filter((b: any) => b.networkId === networkId);
               sendResponse({ balances: filtered });
             } else {
@@ -2328,13 +2304,15 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               if (discovering && !balancesFetchInProgress) {
                 // Cached: passive discovery no longer forces a live refresh
                 // (that only happens on the refresh button now).
-                fetchBalancesFromPioneer().catch(e => console.warn(tag, 'auto token-discovery failed:', e));
+                fetchBalancesFromPioneer(false, 'automatic').catch(e =>
+                  console.warn(tag, 'auto token-discovery failed:', e),
+                );
               }
             } else if (wallet.isInitialized()) {
               // Empty cache (fresh worker): cached read so first load is fast
               // and can't time out. Fresh balances + token discovery come from
               // the refresh button (forceRefresh), not this passive path.
-              const balances = await fetchBalancesFromPioneer();
+              const balances = await fetchBalancesFromPioneer(false, 'wallet-open');
               sendResponse({
                 balances: withHive(balances),
                 error: balances.length === 0 ? lastFetchError || undefined : undefined,
@@ -2369,7 +2347,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               sendResponse({ balances: mergeHive([]), error: 'Wallet not initialized' });
               break;
             }
-            const balances = await fetchBalancesFromPioneer(true);
+            const balances = await fetchBalancesFromPioneer(true, 'manual');
             sendResponse({
               balances: mergeHive(balances),
               error: balances.length === 0 ? lastFetchError || undefined : undefined,
@@ -2406,7 +2384,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             await reconcileVisibility();
             sendResponse({ success: true });
             // Freshness only — the override is already applied + persisted above.
-            fetchBalancesFromPioneer().catch(e => console.warn(tag, 'visibility refresh failed:', e));
+            fetchBalancesFromPioneer(false, 'automatic').catch(e => console.warn(tag, 'visibility refresh failed:', e));
           } catch (error: any) {
             console.error(tag, 'SET_TOKEN_VISIBILITY error:', error);
             sendResponse({ success: false, error: error.message });
@@ -2503,7 +2481,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             const { networkIds } = message;
             let balances = cachedBalances;
             if (balances.length === 0 && wallet.isInitialized()) {
-              balances = await fetchBalancesFromPioneer();
+              balances = await fetchBalancesFromPioneer(false, 'wallet-open');
             }
             // Honor the networkIds filter the UI hooks send. Previously this
             // parameter was ignored and "discover tokens for this network"
