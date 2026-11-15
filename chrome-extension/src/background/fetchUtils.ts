@@ -19,6 +19,7 @@
  *     check, streaming, etc.).
  */
 
+import { AccountTxError, confirmAccountTx } from './accountTxConfirmation';
 import { ensureQueryKey } from './pioneerKey';
 
 export interface FetchOptions {
@@ -123,8 +124,9 @@ export async function broadcastViaPioneer(caip: string, serialized: string): Pro
   const networkId = caip.split('/')[0];
   const url = 'https://api.keepkey.info/api/v1/broadcast';
   const unknown = (why: string) =>
-    new Error(
+    new AccountTxError(
       `Pioneer broadcast result unknown (${why}): the transaction may have been sent. Check the explorer before signing again.`,
+      'broadcast_unknown',
     );
   const Authorization = await ensureQueryKey();
   let resp: Response;
@@ -155,6 +157,9 @@ export async function broadcastViaPioneer(caip: string, serialized: string): Pro
     throw new Error(
       `Pioneer broadcast failed: ${data?.error?.message ?? data?.error?.error ?? data?.error ?? JSON.stringify(data)}`,
     );
+  // CheckTx / submit success only acknowledges admission. Do not emit
+  // transaction_complete until the included chain result is successful.
+  await confirmAccountTx(networkId, txid);
   return txid;
 }
 

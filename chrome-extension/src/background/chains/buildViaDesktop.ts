@@ -7,6 +7,7 @@
 import { readFromVault, VAULT_LOCKED_MESSAGE } from '../vaultDeviceAccess';
 import { createProviderRpcError, createTimeoutError, VAULT_REQUIRED_MESSAGE } from '../utils';
 import type { ProviderRpcError } from '../utils';
+import { assertAffordableDesktopBuild } from '../accountTxSafety';
 
 export const TX_BUILD_PATH = '/api/v2/tx/build';
 
@@ -188,5 +189,6 @@ export async function buildViaDesktop(
   }
   const mismatch = rowBuildMismatch(request, build, chainName);
   if (mismatch) throw createProviderRpcError(4000, mismatch);
+  await assertAffordableDesktopBuild(caip.split('/')[0], build);
   return build;
 }
