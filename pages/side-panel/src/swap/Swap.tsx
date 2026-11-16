@@ -67,9 +67,12 @@ export function Swap({ onClose, initialFromCaip }: { onClose: () => void; initia
   const [submittedFrom, setSubmittedFrom] = useState<UiAsset | null>(null);
   const [submittedTo, setSubmittedTo] = useState<UiAsset | null>(null);
   const [submittedAmount, setSubmittedAmount] = useState('');
+  const [submittedAt, setSubmittedAt] = useState<number | undefined>();
   const [status, setStatus] = useState<SwapHistoryRecord | null>(null);
   const [statusChecking, setStatusChecking] = useState(false);
   const [statusCheckedAt, setStatusCheckedAt] = useState<number | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const statusGeneration = useRef(0);
   const [sseLive, setSseLive] = useState(false);
 
   const quoteSeq = useRef(0);
@@ -277,6 +280,7 @@ export function Swap({ onClose, initialFromCaip }: { onClose: () => void; initia
     const params = swapExecutionParams(from, to, amount, quote);
     try {
       const result = await executeSwap(params);
+      setSubmittedAt(Date.now());
       setTxid(result.txid);
       setStatus(null);
       setScreen('submitted');
@@ -292,17 +296,40 @@ export function Swap({ onClose, initialFromCaip }: { onClose: () => void; initia
   const isTerminal = (s?: SwapTrackingStatus) =>
     s === 'completed' || s === 'failed' || s === 'refunded' || s === 'output_confirmed';
 
-  const checkStatus = useCallback(async () => {
-    if (!txid) return;
-    setStatusChecking(true);
-    try {
-      const rec = await fetchSwapStatus(txid);
-      if (rec) setStatus(rec);
-    } finally {
-      setStatusChecking(false);
-      setStatusCheckedAt(Date.now());
-    }
+  useEffect(() => {
+    statusGeneration.current++;
+    setStatusChecking(false);
+    setStatusError(null);
   }, [txid]);
+
+  const checkStatus = useCallback(
+    async (rescan = false) => {
+      if (!txid) return;
+      const generation = statusGeneration.current;
+      setStatusChecking(true);
+      try {
+        const rec = await fetchSwapStatus(txid, rescan);
+        if (generation !== statusGeneration.current) return;
+        if (rec) {
+          setStatus(rec);
+          if (rec.statusCheck && !rec.statusCheck.error) {
+            setStatusCheckedAt(rec.statusCheck.checkedAt);
+            setStatusError(null);
+          } else if (!isTerminal(rec.status)) {
+            setStatusError('Live status is unavailable; showing the last saved status.');
+          }
+        } else {
+          setStatusError('Waiting for Desktop to register this swap.');
+        }
+      } catch (e) {
+        if (generation === statusGeneration.current)
+          setStatusError(e instanceof Error ? e.message : 'Could not refresh swap status.');
+      } finally {
+        if (generation === statusGeneration.current) setStatusChecking(false);
+      }
+    },
+    [txid],
+  );
 
   // Poll status on the submitted screen. The interval itself only depends on
   // screen+txid; terminal state is read from statusRef so it never restarts.
@@ -355,9 +382,11 @@ export function Swap({ onClose, initialFromCaip }: { onClose: () => void; initia
   }, [screen, txid, submittedFrom, submittedTo, checkStatus]);
 
   const newSwap = () => {
+    statusGeneration.current++;
     setTxid('');
     setStatus(null);
     setStatusCheckedAt(null);
+    setStatusError(null);
     setStatusChecking(false);
     setSseLive(false);
     setAmount('');
@@ -551,10 +580,12 @@ export function Swap({ onClose, initialFromCaip }: { onClose: () => void; initia
           txid={txid}
           status={status}
           estimatedTime={quote?.estimatedTime}
+          submittedAt={submittedAt}
+          statusError={statusError}
           checking={statusChecking}
           checkedAt={statusCheckedAt}
           live={sseLive}
-          onRefresh={checkStatus}
+          onRefresh={() => void checkStatus(true)}
           onNewSwap={newSwap}
           onClose={onClose}
         />

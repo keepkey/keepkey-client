@@ -165,7 +165,10 @@ export async function handleSwapMessage(message: any, cachedBalances: any[]): Pr
       );
 
     case 'status':
-      return vaultFetch(`/api/v1/swaps/${encodeURIComponent(message.txid)}`, { method: 'GET' });
+      return vaultFetch(
+        `/api/v1/swaps/${encodeURIComponent(message.txid)}?refresh=true${message.rescan === true ? '&rescan=true' : ''}`,
+        { method: 'GET', cache: 'no-store' },
+      );
 
     case 'history': {
       // Swap history from vault's tracker DB (per device+wallet scope).
