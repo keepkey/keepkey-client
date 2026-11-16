@@ -1,7 +1,8 @@
 // SwapProgress — the "Swap Submitted!" view. Faithful port of the design, but
 // the timeline/status are driven by the real txid + polled SwapHistoryRecord
 // instead of the mock interval.
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import confetti from 'canvas-confetti';
 import type { SwapTheme } from './theme';
 import type { UiAsset, SwapHistoryRecord, SwapTrackingStatus } from './types';
 import { Icon, I } from './icons';
@@ -39,6 +40,42 @@ function agoLabel(checkedAt: number | null): string {
   if (s < 5) return 'just now';
   if (s < 60) return `${s}s ago`;
   return `${Math.floor(s / 60)}m ago`;
+}
+
+function CopyTransactionId({ txid, label, T }: { txid: string; label: string; T: SwapTheme }) {
+  const [feedback, setFeedback] = useState<'idle' | 'copied' | 'failed'>('idle');
+  useEffect(() => {
+    if (feedback === 'idle') return;
+    const timer = setTimeout(() => setFeedback('idle'), 1500);
+    return () => clearTimeout(timer);
+  }, [feedback, txid]);
+
+  return (
+    <button
+      type="button"
+      aria-label={feedback === 'copied' ? `${label} copied` : `Copy ${label}`}
+      title={feedback === 'failed' ? 'Copy failed. Try again.' : `Copy ${label}`}
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(txid);
+          setFeedback('copied');
+        } catch {
+          setFeedback('failed');
+        }
+      }}
+      className="mono"
+      style={{
+        background: 'transparent',
+        border: 'none',
+        color: T.accent,
+        cursor: 'pointer',
+        fontSize: 11,
+        fontWeight: 600,
+        flexShrink: 0,
+      }}>
+      {feedback === 'copied' ? 'Copied' : feedback === 'failed' ? 'Retry' : 'Copy'}
+    </button>
+  );
 }
 
 export function SwapProgress({
@@ -82,9 +119,22 @@ export function SwapProgress({
   const prog = st ? PROG[st] : 0.04;
   const done = st === 'completed' || st === 'output_confirmed';
   const failed = st === 'failed' || st === 'refunded';
-  const [copied, setCopied] = useState(false);
+  const celebratedTxid = useRef<string | null>(null);
   const [mountedAt] = useState(Date.now);
   const [now, setNow] = useState(Date.now);
+
+  useEffect(() => {
+    if (!done || !txid || celebratedTxid.current === txid) return;
+    celebratedTxid.current = txid;
+    void confetti({
+      particleCount: 90,
+      spread: 75,
+      origin: { y: 0.35 },
+      colors: [T.good, T.accent, '#ffffff'],
+      disableForReducedMotion: true,
+      zIndex: 10000,
+    });
+  }, [done, txid, T.good, T.accent]);
 
   useEffect(() => {
     setNow(Date.now());
@@ -290,8 +340,10 @@ export function SwapProgress({
           </span>
           <span
             className="mono"
+            title={txid}
             style={{
               flex: 1,
+              minWidth: 0,
               fontSize: 11,
               color: T.dim,
               overflow: 'hidden',
@@ -300,23 +352,7 @@ export function SwapProgress({
             }}>
             {txid}
           </span>
-          <button
-            onClick={() => {
-              if (navigator.clipboard) navigator.clipboard.writeText(txid);
-              setCopied(true);
-              setTimeout(() => setCopied(false), 1500);
-            }}
-            className="mono"
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: T.accent,
-              cursor: 'pointer',
-              fontSize: 11,
-              fontWeight: 600,
-            }}>
-            {copied ? 'Copied' : 'Copy'}
-          </button>
+          <CopyTransactionId key={txid} txid={txid} label="input transaction ID" T={T} />
         </div>
         {status?.outboundTxid && (
           <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -325,8 +361,10 @@ export function SwapProgress({
             </span>
             <span
               className="mono"
+              title={status.outboundTxid}
               style={{
                 flex: 1,
+                minWidth: 0,
                 fontSize: 11,
                 color: T.dim,
                 overflow: 'hidden',
@@ -335,6 +373,12 @@ export function SwapProgress({
               }}>
               {status.outboundTxid}
             </span>
+            <CopyTransactionId
+              key={status.outboundTxid}
+              txid={status.outboundTxid}
+              label="output transaction ID"
+              T={T}
+            />
           </div>
         )}
       </div>

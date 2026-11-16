@@ -264,13 +264,14 @@ export function SwapEmblem({ T, from, to }: { T: SwapTheme; from: UiAsset; to: U
 }
 
 export function SwapTimeline({ T, prog }: { T: SwapTheme; prog: number }) {
-  const seg1 = Math.min(1, prog / 0.5);
+  const progress = Math.max(0, Math.min(1, prog));
+  const complete = progress === 1;
   const protocolActive = prog >= 0.48;
   const outputActive = prog >= 0.98;
   const nodes = [
     { d: I.up, label: ['Input', 'Transaction'], done: true, active: false },
     { d: I.bolt, label: ['Protocol', 'Processing'], done: outputActive, active: protocolActive && !outputActive },
-    { d: I.recv, label: ['Output', 'Transaction'], done: false, active: outputActive },
+    { d: I.recv, label: ['Output', 'Transaction'], done: complete, active: outputActive && !complete },
   ];
   const Node = ({ n }: { n: (typeof nodes)[number] }) => {
     const filled = n.done;
@@ -316,7 +317,7 @@ export function SwapTimeline({ T, prog }: { T: SwapTheme; prog: number }) {
           height: 4,
           borderRadius: 2,
           background: T.good,
-          width: `calc((100% - 76px) * ${(0.5 * seg1).toFixed(3)})`,
+          width: `calc((100% - 76px) * ${progress.toFixed(3)})`,
           transition: 'width .2s linear',
           boxShadow: `0 0 10px ${T.good}`,
         }}
