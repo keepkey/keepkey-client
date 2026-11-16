@@ -5,7 +5,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Spinner } from '@chakra-ui/react';
 import { T, SWAP_KEYFRAMES, colorForSymbol } from './theme';
-import type { SwapAsset, UiAsset, SwapQuote, SwapHistoryRecord, SwapTrackingStatus, ExecuteSwapParams } from './types';
+import type { SwapAsset, UiAsset, SwapQuote, SwapHistoryRecord, SwapTrackingStatus } from './types';
+import { swapExecutionParams } from './swapExecution';
 import { fetchSwapAssets, fetchSwapQuote, executeSwap, fetchSwapStatus } from './swapApi';
 import { SwapScreen } from './SwapScreen';
 import { SwapReview } from './SwapReview';
@@ -273,32 +274,7 @@ export function Swap({ onClose, initialFromCaip }: { onClose: () => void; initia
     setSubmittedTo(to);
     setSubmittedAmount(amount);
     setScreen('submitting');
-    const params: ExecuteSwapParams = {
-      fromChainId: from.chainId,
-      toChainId: to.chainId,
-      fromCaip: from.caip || from.asset,
-      toCaip: to.caip || to.asset,
-      amount,
-      memo: quote.memo,
-      inboundAddress: quote.inboundAddress,
-      router: quote.router,
-      expiry: quote.expiry,
-      expectedOutput: quote.expectedOutput,
-      slippageBps: quote.slippageBps,
-      integration: quote.integration,
-      swapper: quote.swapper,
-      tokenDecimals: from.decimals,
-      // Full-quote pass-through → vault /execute is stateless (doesn't rely on its
-      // in-process quote cache). relayTx drives relay/0x/chainflip EVM routes;
-      // netFromAmount is the NEAR-Intents sendMax correctness field.
-      relayTx: quote.relayTx,
-      netFromAmount: quote.netFromAmount,
-      minimumOutput: quote.minimumOutput,
-      fees: quote.fees,
-      estimatedTime: quote.estimatedTime,
-      nearIntentsDepositAddress: quote.nearIntentsDepositAddress,
-      minAmountIn: quote.minAmountIn,
-    };
+    const params = swapExecutionParams(from, to, amount, quote);
     try {
       const result = await executeSwap(params);
       setTxid(result.txid);

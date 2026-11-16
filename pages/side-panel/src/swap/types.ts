@@ -28,6 +28,7 @@ export interface RelayTxParams {
 }
 
 export interface SwapQuote {
+  quoteId?: string;
   expectedOutput: string;
   minimumOutput: string;
   inboundAddress: string;
@@ -58,6 +59,7 @@ export interface SwapQuoteParams {
 }
 
 export interface ExecuteSwapParams {
+  quoteId?: string;
   fromChainId: string;
   toChainId: string;
   fromCaip: string;
@@ -74,8 +76,8 @@ export interface ExecuteSwapParams {
   swapper?: string;
   slippageBps?: number;
   tokenDecimals?: number;
-  // Full-quote pass-through so vault /execute is stateless (no dependency on its
-  // in-process quote cache). relayTx is REQUIRED for relay/0x/chainflip EVM routes;
+  // Preserve the reviewed route alongside Desktop's quote lease identity.
+  // relayTx is REQUIRED for relay/0x/chainflip EVM routes;
   // netFromAmount is the NEAR-Intents sendMax correctness field; the rest feed the tracker.
   relayTx?: RelayTxParams;
   netFromAmount?: string;
