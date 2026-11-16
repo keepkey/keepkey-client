@@ -24,6 +24,6 @@
   "devDependencies": {
     "@extension/tsconfig": "workspace:*",
     "@extension/vite-config": "workspace:*",
-    "cross-env": "^7.0.3"
+    "cross-env": "^10.1.0"
   }
 }
