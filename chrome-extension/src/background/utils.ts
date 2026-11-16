@@ -5,7 +5,7 @@ import { isVaultLockedError, VAULT_LOCKED_MESSAGE } from './vaultDeviceAccess';
  * field instead of regex-matching `message`. Add cases as we identify
  * other error categories worth distinct UI treatment.
  */
-export type ProviderErrorKind = 'timeout';
+export type ProviderErrorKind = 'timeout' | 'broadcast_unknown' | 'chain_execution_failed';
 
 export interface ProviderRpcError extends Error {
   code: number;

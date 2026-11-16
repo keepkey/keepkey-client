@@ -5,7 +5,7 @@ type Event = {
   id: string;
   type: string;
   request: any;
-  status: 'request' | 'approval' | 'completed' | 'broadcasted';
+  status: 'request' | 'approval' | 'completed' | 'broadcasted' | 'failed' | 'confirmation_unknown';
   timestamp: string;
   unsignedTx: any;
   [key: string]: any; // Allow additional properties

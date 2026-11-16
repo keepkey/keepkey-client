@@ -6,6 +6,11 @@ import {
   cosmosSignedSerialized,
   rippleSignedSerialized,
 } from './fetchUtils';
+import { confirmAccountTx } from './accountTxConfirmation';
+vi.mock('./accountTxConfirmation', async importOriginal => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  confirmAccountTx: vi.fn(async () => {}),
+}));
 import { ensureQueryKey } from './pioneerKey';
 
 vi.mock('./pioneerKey', () => ({ ensureQueryKey: vi.fn(async () => 'bex:0b6c1f2e-4d7a-4c1e-9f0a-2a3b4c5d6e7f') }));
@@ -24,6 +29,7 @@ const fetchMock = vi.fn();
 beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock);
   fetchMock.mockReset();
+  vi.mocked(confirmAccountTx).mockReset().mockResolvedValue(undefined);
   // Fake timers so retry backoff sleeps are deterministic and instant.
   vi.useFakeTimers();
 });
@@ -200,6 +206,7 @@ describe('broadcastViaPioneer', () => {
     fetchMock.mockResolvedValueOnce(served({ success: true, txid: 'ABC123' }));
     const txid = await run(broadcastViaPioneer(COSMOS, DESKTOP_COSMOS_AMINO_RESPONSE.serialized));
     expect(txid).toBe('ABC123');
+    expect(confirmAccountTx).toHaveBeenCalledWith('cosmos:mayachain-mainnet-v1', 'ABC123');
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe('https://api.keepkey.info/api/v1/broadcast');
@@ -210,6 +217,15 @@ describe('broadcastViaPioneer', () => {
       serialized: DESKTOP_COSMOS_AMINO_RESPONSE.serialized,
     });
     expect(ensureQueryKey).toHaveBeenCalledWith();
+  });
+
+  it('an included failure or unknown confirmation cannot return a completed send, and never rebroadcasts', async () => {
+    for (const error of ['failed on chain: code 5; fee charged', 'confirmation is unknown']) {
+      fetchMock.mockReset().mockResolvedValueOnce(served({ success: true, txid: 'A'.repeat(64) }));
+      vi.mocked(confirmAccountTx).mockRejectedValueOnce(new Error(error));
+      await expect(run(broadcastViaPioneer(COSMOS, 'AAAA'))).rejects.toThrow(error);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    }
   });
 
   it('Cosmos CheckTx rejection: 200 { success:false, txid } is a failure', async () => {

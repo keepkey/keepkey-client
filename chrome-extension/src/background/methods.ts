@@ -1,4 +1,6 @@
 import { withServiceWorkerKeepAlive } from './keepAlive';
+import { requestStorage } from '@extension/storage';
+import { AccountTxError } from './accountTxConfirmation';
 import { caipToNetworkId, shortListNameToCaip } from './chainConfig';
 
 //@ts-ignore
@@ -314,6 +316,18 @@ const routeWalletRequest = async (
     // (e.g. friendly retry card for timeouts) without regex-matching
     // the message.
     const kind = (error as ProviderRpcError).kind;
+    if (error instanceof AccountTxError && requestInfo?.id) {
+      // Preserve the submitted hash and outcome across worker/panel restarts.
+      // A stored signed send must never reopen as a fresh approval.
+      await requestStorage
+        .updateEventById(requestInfo.id, {
+          txid: error.txid,
+          status: error.kind === 'broadcast_unknown' ? 'confirmation_unknown' : 'failed',
+          error: errorMessage,
+          errorKind: error.kind,
+        })
+        .catch(e => console.error(tag, 'Could not persist transaction outcome', e));
+    }
     chrome.runtime.sendMessage({
       action: 'transaction_error',
       eventId: requestInfo?.id,

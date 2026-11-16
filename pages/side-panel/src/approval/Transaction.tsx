@@ -36,10 +36,10 @@ const Transaction = ({
   const [txHash, setTxHash] = useState<string | null>(null);
   const [awaitingDeviceApproval, setAwaitingDeviceApproval] = useState<boolean>(false);
   const [transactionInProgress, setTransactionInProgress] = useState<boolean>(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(event?.error || null);
   // Categorical hint forwarded from the background so we can render
   // category-specific UI (e.g. timeout) without regex-matching `message`.
-  const [errorKind, setErrorKind] = useState<string | null>(null);
+  const [errorKind, setErrorKind] = useState<string | null>(event?.errorKind || null);
   const [showTxidPage, setShowTxidPage] = useState<boolean>(false);
   const [assetContext, setAssetContext] = useState<any>(null); // Local state for asset context
   const [explorerUrl, setExplorerUrl] = useState<string | null>(null);
@@ -176,7 +176,7 @@ const Transaction = ({
           });
       } else if (message.action === 'transaction_error') {
         const errorDetails = message.error || message.e?.message || JSON.stringify(message.e);
-        const errorText = 'Transaction failed: ' + errorDetails;
+        const errorText = message.kind === 'broadcast_unknown' ? errorDetails : 'Transaction failed: ' + errorDetails;
 
         // If user denied the transaction, just close the popup
         if (
@@ -201,6 +201,7 @@ const Transaction = ({
           // Show error for other types of failures
           setErrorMessage(errorText);
           setErrorKind(typeof message.kind === 'string' ? message.kind : null);
+          setAwaitingDeviceApproval(false);
           setTransactionInProgress(false);
         }
       }
@@ -320,9 +321,10 @@ const Transaction = ({
     // background. A regex on `errorMessage` is the legacy fallback and
     // exists only so older builds in the wild (or paths that haven't
     // adopted createTimeoutError yet) still show the friendlier card.
-    const isTimeout = errorKind === 'timeout' || /timed out|timeout/i.test(errorMessage);
-    const status = isTimeout ? 'warning' : 'error';
-    const heading = isTimeout ? 'Took too long' : 'Error Occurred';
+    const isUnknown = errorKind === 'broadcast_unknown';
+    const isTimeout = errorKind === 'timeout' || (!errorKind && /timed out|timeout/i.test(errorMessage));
+    const status = isTimeout || isUnknown ? 'warning' : 'error';
+    const heading = isUnknown ? 'Confirmation unknown' : isTimeout ? 'Took too long' : 'Error Occurred';
     const body = isTimeout
       ? 'No response from your KeepKey in time. Reject the request in the dApp, then try again.'
       : errorMessage;
