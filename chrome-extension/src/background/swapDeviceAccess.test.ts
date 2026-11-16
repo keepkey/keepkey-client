@@ -8,6 +8,15 @@ import type { UiAsset, SwapQuote } from '../../../pages/side-panel/src/swap/type
 
 afterEach(() => vi.unstubAllGlobals());
 describe('swap quote device access', () => {
+  it.each([false, true])('status reads explicitly refresh Desktop tracking (manual rescan=%s)', async rescan => {
+    const fetcher = vi.fn(async (_url: string, _options: RequestInit) => Response.json({ status: 'pending' }));
+    vi.stubGlobal('fetch', fetcher);
+    await handleSwapMessage({ action: 'status', txid: '0xtest', rescan }, []);
+    expect(fetcher.mock.calls[0][0]).toBe(
+      `http://localhost:1646/api/v1/swaps/0xtest?refresh=true${rescan ? '&rescan=true' : ''}`,
+    );
+    expect(fetcher.mock.calls[0][1].cache).toBe('no-store');
+  });
   it('carries the Desktop-issued quote identity and reviewed transaction through execute', async () => {
     const from: UiAsset = {
       asset: 'BASE.ETH',
