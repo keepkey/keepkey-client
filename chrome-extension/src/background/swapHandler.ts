@@ -82,7 +82,9 @@ async function vaultFetch(path: string, init: RequestInit, timeoutMs = 30_000): 
           ? 'Pairing expired — reconnect your KeepKey.'
           : resp.status === 404 || resp.status === 503
             ? 'Swap endpoints are not available on this vault yet.'
-            : body?.error || `Vault error (${resp.status})`;
+            : body?.error === 'Swap API error' && typeof body?.details === 'string' && body.details.trim()
+              ? body.details
+              : body?.error || `Vault error (${resp.status})`;
     return { ok: false, status: resp.status, error };
   }
   // vault wraps payloads as { data: ... } on /api/v2/swap/* and { entries }/record on /api/v1/swaps
@@ -163,7 +165,10 @@ export async function handleSwapMessage(message: any, cachedBalances: any[]): Pr
       );
 
     case 'status':
-      return vaultFetch(`/api/v1/swaps/${encodeURIComponent(message.txid)}`, { method: 'GET' });
+      return vaultFetch(
+        `/api/v1/swaps/${encodeURIComponent(message.txid)}?refresh=true${message.rescan === true ? '&rescan=true' : ''}`,
+        { method: 'GET', cache: 'no-store' },
+      );
 
     case 'history': {
       // Swap history from vault's tracker DB (per device+wallet scope).

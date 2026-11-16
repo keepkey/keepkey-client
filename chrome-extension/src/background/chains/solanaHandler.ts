@@ -8,6 +8,7 @@ import { createProviderRpcError, createTimeoutError } from '../utils';
 import { assertMatchingClearSignReport, getClearSignReport, type ClearSignReport } from '../clearSignReport';
 import { requireMessageSigningFirmware } from '../firmware';
 import { summarizeSolanaTx } from './solanaTxSummary';
+import { ensureQueryKey } from '../pioneerKey';
 
 const TAG = ' | solanaHandler | ';
 
@@ -762,13 +763,18 @@ async function broadcastTransaction(signedTxBase64: string): Promise<string> {
 
   let data: any;
   try {
+    // Keyed write: one send. A green non-ok means the key wasn't recognised;
+    // re-register, then fall through to the idempotent direct-RPC path below.
     const resp = await fetch(PIONEER_BROADCAST_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: await ensureQueryKey() },
       body: JSON.stringify({ networkId: SOLANA_NETWORK_ID, serialized: signedTxBase64 }),
       signal: AbortSignal.timeout(30000),
     });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    if (!resp.ok) {
+      if (resp.headers.get('x-kk-served-by') === 'green') await ensureQueryKey(true).catch(() => {});
+      throw new Error(`HTTP ${resp.status}`);
+    }
     data = await resp.json();
   } catch (e: any) {
     // Pioneer transport failed (timeout / 5xx) — we don't know if the tx

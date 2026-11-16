@@ -4,7 +4,8 @@ import { Chain, ChainToNetworkId, shortListSymbolToCaip, caipToNetworkId } from 
 import * as wallet from '../wallet';
 import { utxoAccountFromPubkeyRow } from '../utxoDerive';
 import { createProviderRpcError } from '../utils';
-import { fetchJsonWithTimeout, broadcastViaPioneer } from '../fetchUtils';
+import { broadcastViaPioneer } from '../fetchUtils';
+import { buildViaDesktop } from './buildViaDesktop';
 
 const TAG = ' | bitcoinHandler | ';
 
@@ -54,40 +55,9 @@ export const handleBitcoinRequest = async (
         id: requestInfo.id,
       });
 
-      const pubkeys = wallet.getSendPubkeys(ChainToNetworkId[Chain.Bitcoin], params[0]?.accountIndex);
-      console.log(tag, 'pubkeys: ', pubkeys);
-      if (!pubkeys || pubkeys.length === 0) throw Error('Failed to locate pubkeys for Bitcoin');
-
-      const sendPayload = {
-        caip,
-        to: params[0].recipient,
-        amount: params[0].amount.amount,
-        feeLevel: 5,
-        isMax: params[0].isMax,
-      };
-      console.log(tag, 'Send Payload: ', sendPayload);
-
-      // Build the unsigned tx BEFORE creating the approval event so the
-      // event always carries an unsignedTx the moment the user sees it.
-      // The previous fire-and-forget pattern raced: if the user approved
-      // before buildTx resolved, response.unsignedTx was undefined; if
-      // buildTx finished before addEvent, getEventById returned null.
-      let unsignedTx: any;
-      try {
-        unsignedTx = await fetchJsonWithTimeout<any>(
-          'https://api.keepkey.info/api/v1/buildTx',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...sendPayload, pubkeys }),
-          },
-          { timeoutMs: 15000, retries: 1 },
-        );
-        console.log(tag, 'unsignedTx: ', unsignedTx);
-      } catch (e) {
-        console.error(tag, 'buildTx failed:', e);
-        throw createProviderRpcError(4000, `Failed to build transaction: ${(e as Error)?.message || e}`);
-      }
+      // KeepKey Desktop builds the tx locally (keys, UTXOs, change, fee) before the
+      // approval event exists, so the event always carries what will be signed.
+      const build = await buildViaDesktop(wallet.getSdk(), caip, params[0], 'Bitcoin');
 
       const event = {
         id: requestInfo.id,
@@ -103,7 +73,8 @@ export const handleBitcoinRequest = async (
         injectScriptVersion: requestInfo.version,
         chain: 'bitcoin',
         requestInfo,
-        unsignedTx,
+        unsignedTx: build.signBody,
+        summary: build.summary,
         type: 'transfer',
         request: params,
         status: 'request',
@@ -120,9 +91,9 @@ export const handleBitcoinRequest = async (
       const response = await requestStorage.getEventById(requestInfo.id);
       if (!response) throw Error('Failed to load event for signing!');
 
-      if (result.success && response.unsignedTx) {
+      if (result.success) {
         // Use the explicit signing budget (SDK 3.0.1 wrappers default to 30s).
-        const signedTx = await wallet.signViaVault('/utxo/sign-transaction', response.unsignedTx);
+        const signedTx = await wallet.signViaVault(build.signRoute, build.signBody);
         console.log(tag, 'signedTx: ', signedTx);
 
         response.signedTx = signedTx;

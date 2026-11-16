@@ -6,6 +6,7 @@ import * as wallet from '../wallet';
 import { createProviderRpcError, createTimeoutError } from '../utils';
 import { requireHiveFirmware } from '../firmware';
 import { SUPPORTED_OPS, opSummary } from './hiveOps';
+import { pioneerFetch } from '../pioneerKey';
 
 const TAG = ' | hiveHandler | ';
 
@@ -127,19 +128,20 @@ export type HiveAccountInfo =
 /**
  * HIVE price in USD from Pioneer. Pioneer's market map is keyed by the FULL
  * CAIP-19 (`hive:beeab0de/slip44:1275`) — the networkId or 'HIVE' ticker both
- * return 0 — so we must ask by HIVE_CAIP. Response: `{ data: [price], success }`.
+ * return 0 — so we must ask by HIVE_CAIP. Keyed read. The gateway returns a
+ * bare `[price]`; green returned `{ data: [price], success }`.
  * Returns '0' on any failure (price simply unavailable that render).
  */
 async function fetchHivePriceUsd(): Promise<string> {
   try {
-    const resp = await fetch(`${PIONEER_URL}/api/v1/market/info`, {
+    const resp = await pioneerFetch('/api/v1/market/info', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify([HIVE_CAIP]),
       signal: AbortSignal.timeout(15_000),
     });
     const data = await resp.json();
-    const price = data?.data?.[0];
+    const price = Array.isArray(data) ? data[0] : data?.data?.[0];
     return Number.isFinite(Number(price)) && Number(price) > 0 ? String(price) : '0';
   } catch {
     return '0';
@@ -458,7 +460,7 @@ async function hiveTransfer(
   if (!bData.success || !bData.txid) {
     throw createProviderRpcError(
       -32603,
-      `Hive broadcast failed: ${bData.error || JSON.stringify(bData).slice(0, 200)}`,
+      `Hive broadcast failed: ${bData.error?.message || bData.error || JSON.stringify(bData).slice(0, 200)}`,
     );
   }
 
@@ -685,7 +687,7 @@ async function hiveSignAndBroadcastOps(
   if (!bData.success || !bData.txid) {
     throw createProviderRpcError(
       -32603,
-      `Hive broadcast failed: ${bData.error || `HTTP ${bResp.status} — is /hive/broadcast-ops deployed?`}`,
+      `Hive broadcast failed: ${bData.error?.message || bData.error || `HTTP ${bResp.status} — is /hive/broadcast-ops deployed?`}`,
     );
   }
 
