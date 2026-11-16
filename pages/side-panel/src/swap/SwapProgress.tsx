@@ -1,11 +1,13 @@
 // SwapProgress — the "Swap Submitted!" view. Faithful port of the design, but
 // the timeline/status are driven by the real txid + polled SwapHistoryRecord
 // instead of the mock interval.
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import confetti from 'canvas-confetti';
 import type { SwapTheme } from './theme';
 import type { UiAsset, SwapHistoryRecord, SwapTrackingStatus } from './types';
 import { Icon, I } from './icons';
 import { PrimaryBtn, TokenGlyph, SwapEmblem, SwapTimeline, networkLabelFor } from './ui';
+import { swapTiming } from './swapTiming';
 
 const PROG: Record<SwapTrackingStatus, number> = {
   signing: 0.04,
@@ -40,6 +42,42 @@ function agoLabel(checkedAt: number | null): string {
   return `${Math.floor(s / 60)}m ago`;
 }
 
+function CopyTransactionId({ txid, label, T }: { txid: string; label: string; T: SwapTheme }) {
+  const [feedback, setFeedback] = useState<'idle' | 'copied' | 'failed'>('idle');
+  useEffect(() => {
+    if (feedback === 'idle') return;
+    const timer = setTimeout(() => setFeedback('idle'), 1500);
+    return () => clearTimeout(timer);
+  }, [feedback, txid]);
+
+  return (
+    <button
+      type="button"
+      aria-label={feedback === 'copied' ? `${label} copied` : `Copy ${label}`}
+      title={feedback === 'failed' ? 'Copy failed. Try again.' : `Copy ${label}`}
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(txid);
+          setFeedback('copied');
+        } catch {
+          setFeedback('failed');
+        }
+      }}
+      className="mono"
+      style={{
+        background: 'transparent',
+        border: 'none',
+        color: T.accent,
+        cursor: 'pointer',
+        fontSize: 11,
+        fontWeight: 600,
+        flexShrink: 0,
+      }}>
+      {feedback === 'copied' ? 'Copied' : feedback === 'failed' ? 'Retry' : 'Copy'}
+    </button>
+  );
+}
+
 export function SwapProgress({
   T,
   from,
@@ -50,6 +88,8 @@ export function SwapProgress({
   txid,
   status,
   estimatedTime,
+  submittedAt,
+  statusError,
   checking,
   checkedAt,
   live,
@@ -66,6 +106,8 @@ export function SwapProgress({
   txid: string;
   status: SwapHistoryRecord | null;
   estimatedTime?: number;
+  submittedAt?: number;
+  statusError?: string | null;
   checking?: boolean;
   checkedAt?: number | null;
   live?: boolean;
@@ -77,17 +119,31 @@ export function SwapProgress({
   const prog = st ? PROG[st] : 0.04;
   const done = st === 'completed' || st === 'output_confirmed';
   const failed = st === 'failed' || st === 'refunded';
-  const [copied, setCopied] = useState(false);
-  const [secs, setSecs] = useState(estimatedTime && estimatedTime > 0 ? estimatedTime : 540);
+  const celebratedTxid = useRef<string | null>(null);
+  const [mountedAt] = useState(Date.now);
+  const [now, setNow] = useState(Date.now);
 
   useEffect(() => {
-    if (done || failed) return;
-    const t = setInterval(() => setSecs(s => (s > 0 ? s - 1 : 0)), 1000);
-    return () => clearInterval(t);
-  }, [done, failed]);
+    if (!done || !txid || celebratedTxid.current === txid) return;
+    celebratedTxid.current = txid;
+    void confetti({
+      particleCount: 90,
+      spread: 75,
+      origin: { y: 0.35 },
+      colors: [T.good, T.accent, '#ffffff'],
+      disableForReducedMotion: true,
+      zIndex: 10000,
+    });
+  }, [done, txid, T.good, T.accent]);
 
-  const mm = String(Math.floor(secs / 60)).padStart(2, '0');
-  const ss = String(secs % 60).padStart(2, '0');
+  useEffect(() => {
+    setNow(Date.now());
+    if (done || failed) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [txid, done, failed]);
+
+  const timing = swapTiming(status?.createdAt ?? submittedAt ?? mountedAt, now, estimatedTime, status?.completedAt);
   const outNum = parseFloat(expectedOutput) || 0;
 
   const headline = failed
@@ -158,13 +214,15 @@ export function SwapProgress({
               width: 7,
               height: 7,
               borderRadius: '50%',
-              background: checking || live ? T.accent : T.good,
+              background: statusError ? T.warn : checking || live ? T.accent : T.good,
               flexShrink: 0,
               animation: checking || live ? 'kk-pulse 1.2s infinite' : undefined,
             }}
           />
           <span style={{ fontSize: 11, color: T.faint, flex: 1, minWidth: 0 }}>
-            {checking ? 'Checking status…' : `${live ? 'Live · ' : ''}Last checked ${agoLabel(checkedAt ?? null)}`}
+            {checking
+              ? 'Checking status…'
+              : statusError || `${live ? 'Live · ' : ''}Last checked ${agoLabel(checkedAt ?? null)}`}
           </span>
           <button
             onClick={onRefresh}
@@ -221,11 +279,12 @@ export function SwapProgress({
           }}>
           <Icon d={I.refresh} size={14} style={{ color: T.good }} />
           <span className="mono" style={{ fontSize: 16, fontWeight: 700, color: T.good }}>
-            {mm}:{ss}
+            {timing.elapsed}
           </span>
           <span className="mono" style={{ fontSize: 11, color: T.faint }}>
-            Est. time
+            Elapsed{timing.estimate ? ` · Est. ${timing.estimate}` : ''}
           </span>
+          {timing.overdue && <span style={{ fontSize: 11, color: T.warn }}>Taking longer than estimated</span>}
         </div>
       )}
 
@@ -281,8 +340,10 @@ export function SwapProgress({
           </span>
           <span
             className="mono"
+            title={txid}
             style={{
               flex: 1,
+              minWidth: 0,
               fontSize: 11,
               color: T.dim,
               overflow: 'hidden',
@@ -291,23 +352,7 @@ export function SwapProgress({
             }}>
             {txid}
           </span>
-          <button
-            onClick={() => {
-              if (navigator.clipboard) navigator.clipboard.writeText(txid);
-              setCopied(true);
-              setTimeout(() => setCopied(false), 1500);
-            }}
-            className="mono"
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: T.accent,
-              cursor: 'pointer',
-              fontSize: 11,
-              fontWeight: 600,
-            }}>
-            {copied ? 'Copied' : 'Copy'}
-          </button>
+          <CopyTransactionId key={txid} txid={txid} label="input transaction ID" T={T} />
         </div>
         {status?.outboundTxid && (
           <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -316,8 +361,10 @@ export function SwapProgress({
             </span>
             <span
               className="mono"
+              title={status.outboundTxid}
               style={{
                 flex: 1,
+                minWidth: 0,
                 fontSize: 11,
                 color: T.dim,
                 overflow: 'hidden',
@@ -326,6 +373,12 @@ export function SwapProgress({
               }}>
               {status.outboundTxid}
             </span>
+            <CopyTransactionId
+              key={status.outboundTxid}
+              txid={status.outboundTxid}
+              label="output transaction ID"
+              T={T}
+            />
           </div>
         )}
       </div>

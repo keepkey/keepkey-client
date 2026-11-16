@@ -45,10 +45,22 @@ export async function executeSwap(params: ExecuteSwapParams): Promise<SwapResult
   return r.data as SwapResult;
 }
 
-export async function fetchSwapStatus(txid: string): Promise<SwapHistoryRecord | null> {
-  const r = await send('status', { txid });
-  if (!r.ok) return null; // 404 until the record is written / passphrase session
-  return r.data as SwapHistoryRecord;
+const statusReads = new Map<string, Promise<SwapHistoryRecord | null>>();
+export function fetchSwapStatus(txid: string, rescan = false): Promise<SwapHistoryRecord | null> {
+  const running = statusReads.get(txid);
+  if (running) return running;
+  const request = (async () => {
+    try {
+      const r = await send('status', { txid, rescan });
+      if (r.status === 404) return null;
+      if (!r.ok) throw new Error(r.error || 'Could not refresh swap status.');
+      return r.data as SwapHistoryRecord;
+    } finally {
+      statusReads.delete(txid);
+    }
+  })();
+  statusReads.set(txid, request);
+  return request;
 }
 
 export interface SwapHistoryQuery {

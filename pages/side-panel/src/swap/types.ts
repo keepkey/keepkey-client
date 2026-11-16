@@ -109,6 +109,7 @@ export type SwapTrackingStatus =
   | 'refunded';
 
 export interface SwapHistoryRecord {
+  statusCheck?: { checkedAt: number; error?: 'unavailable' | 'not_found' };
   txid: string;
   status: SwapTrackingStatus;
   outboundTxid?: string;
