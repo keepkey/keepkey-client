@@ -58,6 +58,7 @@ import { formatUserError, createVaultRequiredError, pickEvmAddress } from './uti
 import { partitionSpamTokens, getTokenVisibilityMap, setTokenVisibility } from './spamFilter';
 import { ensureQueryKey } from './pioneerKey';
 import { fetchPortfolioEntries, type RefreshReason } from './portfolioBalances';
+import { walletOpenReason } from './walletOpenOnce';
 
 const TAG = ' | background/index.js | ';
 console.log('Background script loaded');
@@ -234,7 +235,7 @@ async function handleDeviceSwitch(newDeviceInfo: any, selectedEvmAddress?: strin
     // Cached read (not forceRefresh): passive/background fetches use Pioneer's
     // cache to stay fast. A live full-refresh happens only on an explicit
     // refresh-button press, so one slow chain can't stall the dashboard.
-    fetchBalancesFromPioneer(false, 'wallet-open').catch(e =>
+    fetchBalancesFromPioneer(false, await walletOpenReason(ADDRESS)).catch(e =>
       console.warn(tag, 'Post-switch balance fetch failed:', e),
     );
   } catch (e) {
@@ -1157,7 +1158,9 @@ const onStart = async function () {
       // Fetch balances in background (non-blocking). First pass covers EVM/UTXO
       // quickly — on first run the Solana / Tron / TON pubkeys haven't been
       // derived yet, so they won't be in this request.
-      fetchBalancesFromPioneer(false, 'wallet-open').catch(e => console.warn(tag, 'Initial balance fetch failed:', e));
+      // Paid discovery only on the first open this browser session; reruns are automatic.
+      const openReason = await walletOpenReason(ADDRESS);
+      fetchBalancesFromPioneer(false, openReason).catch(e => console.warn(tag, 'Initial balance fetch failed:', e));
 
       // Solana / Tron / TON addresses are derived outside the batch xpub
       // flow (firmware message type is separate). Each prefetch internally
@@ -1178,7 +1181,7 @@ const onStart = async function () {
       // Discover button (which by coincidence runs after the slowest
       // prefetch finally lands).
       Promise.allSettled([prefetchSolanaAccounts(), prefetchTronPubkey(), prefetchTonAddress(), getHiveAccountInfo()])
-        .then(() => fetchBalancesFromPioneer(true, 'wallet-open'))
+        .then(() => fetchBalancesFromPioneer(true, openReason))
         .catch(e => console.warn(tag, 'Post-prefetch balance fetch failed:', e));
     } else {
       console.error(tag, 'FAILED TO INIT, No Ethereum address found');
@@ -1377,7 +1380,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               sendResponse({ balances: cached });
             } else if (wallet.isInitialized()) {
               // Trigger full balance fetch if not cached
-              const balances = await fetchBalancesFromPioneer(false, 'wallet-open');
+              const balances = await fetchBalancesFromPioneer(false, 'automatic');
               const filtered = balances.filter((b: any) => b.networkId === networkId);
               sendResponse({ balances: filtered });
             } else {
@@ -2293,7 +2296,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               // Empty cache (fresh worker): cached read so first load is fast
               // and can't time out. Fresh balances + token discovery come from
               // the refresh button (forceRefresh), not this passive path.
-              const balances = await fetchBalancesFromPioneer(false, 'wallet-open');
+              const balances = await fetchBalancesFromPioneer(false, 'automatic');
               sendResponse({
                 balances: withHive(balances),
                 error: balances.length === 0 ? lastFetchError || undefined : undefined,
@@ -2462,7 +2465,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             const { networkIds } = message;
             let balances = cachedBalances;
             if (balances.length === 0 && wallet.isInitialized()) {
-              balances = await fetchBalancesFromPioneer(false, 'wallet-open');
+              balances = await fetchBalancesFromPioneer(false, 'automatic');
             }
             // Honor the networkIds filter the UI hooks send. Previously this
             // parameter was ignored and "discover tokens for this network"
