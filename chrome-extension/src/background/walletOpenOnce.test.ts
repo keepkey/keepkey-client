@@ -38,6 +38,14 @@ describe('walletOpenReason', () => {
     expect(reasons.filter(r => r === 'wallet-open')).toHaveLength(1);
   });
 
+  it.each(['get', 'set'] as const)('storage %s failure never authorizes discovery', async operation => {
+    const store = sessionStore();
+    store[operation] = async () => {
+      throw Error('session unavailable');
+    };
+    expect(await walletOpenReason('wallet-' + operation, store)).toBe('automatic');
+  });
+
   it('no wallet identity is never paid', async () => {
     expect(await walletOpenReason('', sessionStore())).toBe('automatic');
   });

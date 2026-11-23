@@ -26,7 +26,8 @@ export async function walletOpenReason(
     if ((await store.get(key))[key]) return 'automatic';
     await store.set({ [key]: Date.now() });
   } catch {
-    /* No session storage: the in-memory guard still limits it to once per worker. */
+    // A worker restart would forget an in-memory claim. Manual refresh stays available.
+    return 'automatic';
   }
   return 'wallet-open';
 }
