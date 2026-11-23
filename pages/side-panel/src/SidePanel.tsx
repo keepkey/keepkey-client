@@ -283,20 +283,13 @@ const SidePanel = () => {
   const refreshBalances = async () => {
     try {
       setIsRefreshing(true);
-      chrome.runtime.sendMessage({ type: 'CLEAR_CACHE' }, response => {
-        if (response?.success) {
-          console.log('Cache cleared');
-        }
-      });
-      chrome.runtime.sendMessage({ type: 'ON_START', foreground: true }, response => {
-        if (response?.success) {
-          console.log('ON_START triggered');
-        }
-      });
+      const message = keepkeyState === 5 ? { type: 'REFRESH_ALL_BALANCES' } : { type: 'ON_START', foreground: true };
+      const response = await chrome.runtime.sendMessage(message);
+      if (response?.error) toast({ title: response.error, status: 'error', isClosable: true });
     } catch (e) {
       console.error(e);
     } finally {
-      setTimeout(() => setIsRefreshing(false), 12000);
+      setIsRefreshing(false);
     }
   };
 
