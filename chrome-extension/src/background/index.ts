@@ -58,6 +58,7 @@ import { formatUserError, createVaultRequiredError, pickEvmAddress } from './uti
 import { partitionSpamTokens, getTokenVisibilityMap, setTokenVisibility } from './spamFilter';
 import { ensureQueryKey } from './pioneerKey';
 import { fetchPortfolioEntries, type RefreshReason } from './portfolioBalances';
+import { walletOpenReason } from './walletOpenOnce';
 
 const TAG = ' | background/index.js | ';
 console.log('Background script loaded');
@@ -182,7 +183,8 @@ async function handleDeviceSwitch(newDeviceInfo: any, selectedEvmAddress?: strin
     )
     .catch(e => console.warn(tag, 'Could not notify tabs of wallet change:', e));
   // In-memory + storage cache owned by wallet.ts
-  await wallet.handleDeviceSwitch(newDeviceInfo);
+  const walletGeneration = ++balanceWalletGeneration;
+  ++latestFetchId;
 
   // Balance caches — pubkey-keyed, so they're poisoned by the old device
   cachedBalances = [];
@@ -191,7 +193,8 @@ async function handleDeviceSwitch(newDeviceInfo: any, selectedEvmAddress?: strin
   lastFetchError = null;
   cacheFromHydrate = false;
   hydratedFingerprint = null;
-  tokenDiscoveryDone = false;
+  balanceSnapshotFingerprint = null;
+  openingPortfolioFingerprint = '';
 
   // Per-chain address caches (Solana/Tron/TON each keep their own lookup
   // cache above the pubkey layer)
@@ -199,6 +202,9 @@ async function handleDeviceSwitch(newDeviceInfo: any, selectedEvmAddress?: strin
   resetTronState();
   resetTonState();
   resetHiveState();
+
+  await wallet.handleDeviceSwitch(newDeviceInfo);
+  if (walletGeneration !== balanceWalletGeneration) return;
 
   // Re-fetch against the new device. refreshPubkeys re-probes and pulls
   // a fresh pubkey batch, then updates state.initialized.
@@ -231,12 +237,7 @@ async function handleDeviceSwitch(newDeviceInfo: any, selectedEvmAddress?: strin
     // Kick a fresh balance fetch in the background so the dashboard
     // swaps to the new device's balances without waiting for the next
     // user-triggered refresh.
-    // Cached read (not forceRefresh): passive/background fetches use Pioneer's
-    // cache to stay fast. A live full-refresh happens only on an explicit
-    // refresh-button press, so one slow chain can't stall the dashboard.
-    fetchBalancesFromPioneer(false, 'wallet-open').catch(e =>
-      console.warn(tag, 'Post-switch balance fetch failed:', e),
-    );
+    refreshOpeningPortfolio(walletGeneration).catch(e => console.warn(tag, 'Post-switch balance fetch failed:', e));
   } catch (e) {
     console.error(tag, 'Failed to re-fetch pubkeys after device switch:', (e as Error)?.message || e);
     pushStateChangeEvent();
@@ -397,11 +398,11 @@ async function resolveEvmAddress() {
 
 // ---- Balance fetching via Pioneer API ----
 let cachedBalances: any[] = [];
-let balancesFetchInProgress: Promise<any[]> | null = null;
-// Set once a forced (discovery) fetch commits. Guards the GET_APP_BALANCES
-// auto-discovery backstop so we don't re-poll Pioneer when a wallet genuinely
-// holds no tokens.
-let tokenDiscoveryDone = false;
+let balancesFetchInProgress: { fingerprint: string; reason: RefreshReason; promise: Promise<any[]> } | null = null;
+// An authoritative empty portfolio is also a cache hit for passive reads.
+let balanceSnapshotFingerprint: string | null = null;
+let openingPortfolioFingerprint = '';
+let balanceWalletGeneration = 0;
 // Monotonic sequence so an earlier, slower fetch can't clobber a later fetch's
 // result when they overlap. Bumped each time a new fetch actually starts work
 // (not for calls that return the in-flight dedup promise).
@@ -431,7 +432,7 @@ function walletFingerprint(): string {
   const pks = wallet.getPubkeys();
   if (!pks.length) return '';
   const addrs = pks
-    .map((p: any) => p.address || p.master || p.pubkey || '')
+    .map((p: any) => p.address || p.master || p.xpub || p.pubkey || '')
     .filter(Boolean)
     .sort();
   // Direct content fingerprint of the wallet's address set — no hashing, so no
@@ -561,9 +562,27 @@ async function reconcileVisibility(): Promise<void> {
 // All EVM CAPIPs (deduplicated) — used to fan out EVM wildcard addresses
 const EVM_CAIPS = [...new Set(Object.values(shortListSymbolToCaip).filter(caip => caip.startsWith('eip155:')))];
 
-async function fetchBalancesFromPioneer(forceRefresh: boolean, refreshReason: RefreshReason): Promise<any[]> {
-  // Deduplicate concurrent calls — but honor forceRefresh
-  if (balancesFetchInProgress && !forceRefresh) return balancesFetchInProgress;
+async function refreshOpeningPortfolio(generation: number) {
+  if (generation !== balanceWalletGeneration) return;
+  const fingerprint = walletFingerprint();
+  if (!fingerprint || fingerprint === openingPortfolioFingerprint) return;
+  openingPortfolioFingerprint = fingerprint;
+  // Use the wallet's first ETH account even when the user selects another account.
+  const reason = await walletOpenReason(wallet.getAddressForNetwork(ChainToNetworkId[Chain.Ethereum]) || '');
+  if (generation !== balanceWalletGeneration || openingPortfolioFingerprint !== fingerprint) return;
+  // A passive panel read may still be fetching an incomplete pre-prefetch snapshot.
+  await fetchBalancesFromPioneer(reason);
+}
+
+async function fetchBalancesFromPioneer(refreshReason: RefreshReason): Promise<any[]> {
+  const fingerprint = walletFingerprint();
+  const pending = balancesFetchInProgress;
+  if (
+    pending?.fingerprint === fingerprint &&
+    (refreshReason === 'automatic' || pending.reason === 'manual' || pending.reason === refreshReason)
+  ) {
+    return pending.promise;
+  }
 
   const myFetchId = ++latestFetchId;
   const thisPromise = (async () => {
@@ -658,11 +677,11 @@ async function fetchBalancesFromPioneer(forceRefresh: boolean, refreshReason: Re
       const cacheIsThisWallet = !cacheFromHydrate || hydratedFingerprint === walletFingerprint();
       const portfolio = await fetchPortfolioEntries(
         pioneerPubkeys,
-        forceRefresh,
+        refreshReason === 'manual',
         refreshReason,
         cacheIsThisWallet ? [...cachedBalances, ...hiddenBalances] : [],
       );
-      lastFetchError = portfolio.error;
+      if (myFetchId === latestFetchId) lastFetchError = portfolio.error;
       // A side failed and there is no cache (e.g. fresh install, gateway 429,
       // Tron ok): don't commit a one-sided wallet. Keep the cache and the error so the
       // panel shows "Couldn't load balances" + Retry, as 0.0.39 did.
@@ -684,6 +703,8 @@ async function fetchBalancesFromPioneer(forceRefresh: boolean, refreshReason: Re
       console.log(`[fetchBalances] portfolio: ${rawBalances.length} natives, ${rawTokens.length} tokens`);
 
       if (rawBalances.length === 0 && rawTokens.length === 0) {
+        if (myFetchId === latestFetchId && fingerprint === walletFingerprint() && !portfolio.error)
+          balanceSnapshotFingerprint = fingerprint;
         console.warn('[fetchBalances] Pioneer returned 0 balances for', pioneerPubkeys.length, 'pubkeys');
         return cachedBalances;
       }
@@ -861,20 +882,8 @@ async function fetchBalancesFromPioneer(forceRefresh: boolean, refreshReason: Re
       console.log(
         `[fetchBalances] Got ${balances.length} balance entries (${balances.filter((b: any) => b.isNative).length} native, ${balances.filter((b: any) => !b.isNative).length} tokens)`,
       );
-      // Only commit if we are still the most recent fetch AND our pubkey
-      // snapshot hasn't been invalidated by a subsequent addPubkey. The
-      // id check alone is not enough: concurrent prefetches all bump
-      // latestFetchId at start, so a fetch that *started last* (highest
-      // id) wins the id check even if its snapshot was taken *before*
-      // prefetchTonAddress / prefetchSolanaPubkey / prefetchTronPubkey
-      // landed their dynamic pubkey. That's exactly how a
-      // post-prefetch "committed" snapshot can be missing TON — the
-      // fetch that came in latest was also the one that missed the
-      // add. Compare pubkey counts now vs at snapshot; if the set has
-      // grown, supersede ourselves so the next (already queued)
-      // force-refetch that DID see the new pubkey can commit cleanly.
-      const currentPubkeyCount = wallet.getPubkeys().length;
-      const snapshotStale = currentPubkeyCount > allPubkeys.length;
+      // Ignore superseded responses and snapshots taken before a device or pubkey change.
+      const snapshotStale = fingerprint !== walletFingerprint();
       if (myFetchId === latestFetchId && !snapshotStale) {
         cachedBalances = balances;
         // Adopt the Hidden bucket only on the winning commit (mirrors cachedBalances)
@@ -886,10 +895,7 @@ async function fetchBalancesFromPioneer(forceRefresh: boolean, refreshReason: Re
         // A partial failure that kept last-known rows is still a failure.
         lastFetchError = portfolio.error;
         persistPortfolio(balances);
-        // A forced fetch performs token discovery (ERC-20/SPL/TRC-20); record
-        // that so the GET_APP_BALANCES backstop stops re-triggering. Not after
-        // a partial failure: that side's discovery didn't happen.
-        if (forceRefresh && !portfolio.error) tokenDiscoveryDone = true;
+        balanceSnapshotFingerprint = fingerprint;
         // Native-row summary keyed by networkId — makes it easy to spot
         // a chain that got dropped silently between fetches. One line
         // per fetch commit; if a balance looks missing on the dashboard,
@@ -902,33 +908,25 @@ async function fetchBalancesFromPioneer(forceRefresh: boolean, refreshReason: Re
         console.log(`[fetchBalances] #${myFetchId} committed. natives: ${nativeSummary}`);
         pushBalancesUpdated();
       } else if (snapshotStale) {
-        console.log(
-          `[fetchBalances] discarding #${myFetchId} — pubkey set grew from ${allPubkeys.length} to ${currentPubkeyCount} since snapshot`,
-        );
+        console.log(`[fetchBalances] discarding #${myFetchId} after a pubkey change`);
       } else {
         console.log(
           `[fetchBalances] discarding result from superseded fetch #${myFetchId} (latest: #${latestFetchId})`,
         );
       }
-      return balances;
+      return cachedBalances;
     } catch (e: any) {
       console.error('[fetchBalances] Error:', e.message || e);
       // Only the winning fetch may record an error — a superseded/late failure
       // must not clobber a newer fetch's cleared state.
       if (myFetchId === latestFetchId) lastFetchError = e?.message || 'balance fetch failed';
       return cachedBalances;
-    } finally {
-      // Only clear the in-flight ref if WE are still the active fetch — a newer
-      // forceRefresh bumps latestFetchId (and replaces balancesFetchInProgress)
-      // while we run. Comparing fetch ids avoids referencing thisPromise from
-      // inside its own initializer (which would force a `let` + self-reference).
-      if (myFetchId === latestFetchId) {
-        balancesFetchInProgress = null;
-      }
     }
-  })();
+  })().finally(() => {
+    if (myFetchId === latestFetchId) balancesFetchInProgress = null;
+  });
 
-  balancesFetchInProgress = thisPromise;
+  balancesFetchInProgress = { fingerprint, reason: refreshReason, promise: thisPromise };
   return thisPromise;
 }
 
@@ -1018,6 +1016,7 @@ void clearOrphanedApprovalEvents();
 
 const onStart = async function () {
   const tag = TAG + ' | onStart | ';
+  const generation = balanceWalletGeneration;
   try {
     console.log(tag, 'Starting...');
     // Orphan cleanup runs at module-load time (above) so the side
@@ -1154,31 +1153,10 @@ const onStart = async function () {
         }
       }
 
-      // Fetch balances in background (non-blocking). First pass covers EVM/UTXO
-      // quickly — on first run the Solana / Tron / TON pubkeys haven't been
-      // derived yet, so they won't be in this request.
-      fetchBalancesFromPioneer(false, 'wallet-open').catch(e => console.warn(tag, 'Initial balance fetch failed:', e));
-
-      // Solana / Tron / TON addresses are derived outside the batch xpub
-      // flow (firmware message type is separate). Each prefetch internally
-      // calls wallet.addPubkey, so once they all settle the wallet has the
-      // complete pubkey set. We then fire ONE force-refresh against Pioneer
-      // /portfolio with everyone present — that's the request whose
-      // snapshot won't be invalidated mid-flight, so its commit actually
-      // lands.
-      //
-      // Why not chain a force-fetch after each individual prefetch (the
-      // old shape)? Because they ran in parallel: each fetch's snapshot
-      // misses the pubkeys still being added by the other two prefetches,
-      // and the staleness guard at fetchBalancesFromPioneer's commit step
-      // discards them. With three parallel prefetches, only the last one
-      // to commit could survive — and if that one was Tron/TON without
-      // Solana having fully landed yet, SPL tokens never made it into
-      // cachedBalances. Users saw "No tokens" until they hit the manual
-      // Discover button (which by coincidence runs after the slowest
-      // prefetch finally lands).
+      // Passive reads can paint cached balances immediately. Run opening discovery
+      // once the dynamic chain addresses are ready so one request covers every chain.
       Promise.allSettled([prefetchSolanaAccounts(), prefetchTronPubkey(), prefetchTonAddress(), getHiveAccountInfo()])
-        .then(() => fetchBalancesFromPioneer(true, 'wallet-open'))
+        .then(() => refreshOpeningPortfolio(generation))
         .catch(e => console.warn(tag, 'Post-prefetch balance fetch failed:', e));
     } else {
       console.error(tag, 'FAILED TO INIT, No Ethereum address found');
@@ -1373,11 +1351,11 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             const { networkId } = message;
             // Try cached balances first
             const cached = cachedBalances.filter((b: any) => b.networkId === networkId);
-            if (cached.length > 0) {
+            if (cached.length > 0 || balanceSnapshotFingerprint === walletFingerprint()) {
               sendResponse({ balances: cached });
             } else if (wallet.isInitialized()) {
               // Trigger full balance fetch if not cached
-              const balances = await fetchBalancesFromPioneer(false, 'wallet-open');
+              const balances = await fetchBalancesFromPioneer('automatic');
               const filtered = balances.filter((b: any) => b.networkId === networkId);
               sendResponse({ balances: filtered });
             } else {
@@ -1412,7 +1390,10 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           lastFetchError = null;
           cacheFromHydrate = false;
           hydratedFingerprint = null;
-          tokenDiscoveryDone = false;
+          balanceSnapshotFingerprint = null;
+          openingPortfolioFingerprint = '';
+          ++balanceWalletGeneration;
+          ++latestFetchId;
           // Also drop the persisted portfolio so a worker restart can't re-hydrate
           // the stale set we just cleared.
           chrome.storage.local.remove(PORTFOLIO_CACHE_KEY).catch(() => {});
@@ -2264,36 +2245,19 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               hydratedFingerprint = null;
               lastFetchError = null;
             }
-            if (cachedBalances.length > 0) {
-              // Backstop for the "empty tokens until manual Refresh" bug: a
-              // non-empty cache that holds only natives (no token rows) means
-              // token discovery hasn't run for this worker yet.
-              //
-              // `discovering` reports that a discovery is warranted REGARDLESS of
-              // whether one is already in flight — so a page opened during the
-              // cold-start / post-prefetch force refresh shows "Discovering…"
-              // instead of a premature "No Tokens Found". We only START a new
-              // force-refresh when one isn't already running, and stop entirely
-              // once a discovery has committed (tokenDiscoveryDone).
-              const discovering = !tokenDiscoveryDone && !cachedBalances.some((b: any) => b.token === true);
+            if (cachedBalances.length > 0 || balanceSnapshotFingerprint === walletFingerprint()) {
+              // BALANCES_UPDATED listeners read this snapshot again. A read of a
+              // tokenless wallet must never start another fetch-and-notify cycle.
               sendResponse({
                 balances: withHive(cachedBalances),
-                discovering,
                 updatedAt: portfolioUpdatedAt,
                 error: lastFetchError || undefined,
               });
-              if (discovering && !balancesFetchInProgress) {
-                // Cached: passive discovery no longer forces a live refresh
-                // (that only happens on the refresh button now).
-                fetchBalancesFromPioneer(false, 'automatic').catch(e =>
-                  console.warn(tag, 'auto token-discovery failed:', e),
-                );
-              }
             } else if (wallet.isInitialized()) {
               // Empty cache (fresh worker): cached read so first load is fast
               // and can't time out. Fresh balances + token discovery come from
               // the refresh button (forceRefresh), not this passive path.
-              const balances = await fetchBalancesFromPioneer(false, 'wallet-open');
+              const balances = await fetchBalancesFromPioneer('automatic');
               sendResponse({
                 balances: withHive(balances),
                 error: balances.length === 0 ? lastFetchError || undefined : undefined,
@@ -2328,7 +2292,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
               sendResponse({ balances: mergeHive([]), error: 'Wallet not initialized' });
               break;
             }
-            const balances = await fetchBalancesFromPioneer(true, 'manual');
+            const balances = await fetchBalancesFromPioneer('manual');
             sendResponse({
               balances: mergeHive(balances),
               error: balances.length === 0 ? lastFetchError || undefined : undefined,
@@ -2365,7 +2329,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             await reconcileVisibility();
             sendResponse({ success: true });
             // Freshness only — the override is already applied + persisted above.
-            fetchBalancesFromPioneer(false, 'automatic').catch(e => console.warn(tag, 'visibility refresh failed:', e));
+            fetchBalancesFromPioneer('automatic').catch(e => console.warn(tag, 'visibility refresh failed:', e));
           } catch (error: any) {
             console.error(tag, 'SET_TOKEN_VISIBILITY error:', error);
             sendResponse({ success: false, error: error.message });
@@ -2461,8 +2425,8 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           try {
             const { networkIds } = message;
             let balances = cachedBalances;
-            if (balances.length === 0 && wallet.isInitialized()) {
-              balances = await fetchBalancesFromPioneer(false, 'wallet-open');
+            if (balanceSnapshotFingerprint !== walletFingerprint() && balances.length === 0 && wallet.isInitialized()) {
+              balances = await fetchBalancesFromPioneer('automatic');
             }
             // Honor the networkIds filter the UI hooks send. Previously this
             // parameter was ignored and "discover tokens for this network"
