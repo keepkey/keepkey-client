@@ -1,19 +1,5 @@
-import {
-  Avatar,
-  Button,
-  Card,
-  CardHeader,
-  Flex,
-  Spinner,
-  Stack,
-  Tabs,
-  TabList,
-  TabPanels,
-  Tab,
-  TabPanel,
-  Divider,
-} from '@chakra-ui/react';
-import React, { useEffect, useState } from 'react';
+import { Box, Button, Grid, Stack, Tabs, TabList, TabPanels, Tab, TabPanel, Text } from '@chakra-ui/react';
+import React, { useState } from 'react';
 import RequestFeeCard from './RequestFeeCard';
 import RequestDataCard from './RequestDataCard';
 import RequestDetailsCard from './RequestDetailsCard';
@@ -23,6 +9,24 @@ import FeeWarningBanner from './FeeWarningBanner';
 import NonceInfoRow from './NonceInfoRow';
 import ClearSignReportCard from '../ClearSignReportCard';
 import SiweCard from './SiweCard';
+import { tokens, fonts } from '../../styles/tokens';
+import { Surface } from '../ui';
+
+// Underline tabs in the v2 micro-label style: mono, uppercase, the active tab
+// in full text colour over a 1px rule. No blue, no gold — gold is Approve's.
+const tabStyle = {
+  fontFamily: fonts.mono,
+  fontSize: '10.5px',
+  letterSpacing: '0.16em',
+  textTransform: 'uppercase' as const,
+  color: tokens.faint,
+  padding: '10px 2px',
+  marginRight: '20px',
+  borderBottom: '1px solid transparent',
+  marginBottom: '-1px',
+  _selected: { color: tokens.text, borderBottomColor: tokens.text },
+  _hover: { color: tokens.dim },
+};
 
 export function EvmTransaction({ transaction, reloadEvents, handleResponse }: any) {
   // Block Approve until the user picks a fee strategy when a warning is
@@ -39,96 +43,112 @@ export function EvmTransaction({ transaction, reloadEvents, handleResponse }: an
   const [siweAck, setSiweAck] = useState(false);
   const feeBlocked = !!feeWarning && !feeChoice;
   const siweBlocked = siweDanger && !siweAck;
-  const approveBlocked = feeBlocked || siweBlocked || transaction?.clearSignReport?.protectionLevel === 'P0';
+  const vaultBlocked = transaction?.clearSignReport?.protectionLevel === 'P0';
+  const approveBlocked = feeBlocked || siweBlocked || vaultBlocked;
+  const blockReason = vaultBlocked
+    ? 'Vault blocked this transaction'
+    : siweBlocked
+      ? 'Confirm the sign-in warning above'
+      : feeBlocked
+        ? 'Pick a fee strategy in the warning above'
+        : undefined;
+
+  const isMessage =
+    transaction.type === 'personal_sign' ||
+    transaction.type === 'eth_sign' ||
+    String(transaction.type).startsWith('eth_signTypedData');
+  const isAddChain = transaction.type === 'wallet_addEthereumChain';
 
   return (
-    <Stack>
-      <ProjectInfoCard transaction={transaction} />
+    <Box>
+      <Stack spacing="12px" paddingBottom="16px">
+        <ProjectInfoCard transaction={transaction} />
 
-      <Divider />
-      <ClearSignReportCard report={transaction?.clearSignReport} error={transaction?.clearSignReportError} />
-      {siwe && <SiweCard siwe={siwe} acknowledged={siweAck} onAcknowledge={setSiweAck} />}
-      {feeWarning && (
-        <FeeWarningBanner
-          eventId={transaction.id}
-          warning={feeWarning}
-          choice={feeChoice}
-          onChoiceChange={setFeeChoice}
-        />
-      )}
-      {transaction?.nonceInfo && (
-        <NonceInfoRow
-          nonceInfo={transaction.nonceInfo}
-          address={transaction?.unsignedTx?.from}
-          chainId={transaction?.unsignedTx?.chainId}
-        />
-      )}
-      {/* Its green "Safe Method" would contradict a sign-in for another site. */}
-      {!siweDanger && <RequestMethodCard transaction={transaction} />}
-      <Divider />
-      <Tabs defaultIndex={0}>
-        <TabList>
-          <Tab>Details</Tab>
-          <Tab>Fees</Tab>
-          <Tab>Raw</Tab>
-        </TabList>
+        <ClearSignReportCard report={transaction?.clearSignReport} error={transaction?.clearSignReportError} />
+        {siwe && <SiweCard siwe={siwe} acknowledged={siweAck} onAcknowledge={setSiweAck} />}
+        {feeWarning && (
+          <FeeWarningBanner
+            eventId={transaction.id}
+            warning={feeWarning}
+            choice={feeChoice}
+            onChoiceChange={setFeeChoice}
+          />
+        )}
+        {/* Its green "Message signature" would contradict a sign-in for another site. */}
+        {!siweDanger && <RequestMethodCard transaction={transaction} />}
+        {transaction?.nonceInfo && (
+          <NonceInfoRow
+            nonceInfo={transaction.nonceInfo}
+            address={transaction?.unsignedTx?.from}
+            chainId={transaction?.unsignedTx?.chainId}
+          />
+        )}
 
-        <TabPanels>
-          {/* Review Tab */}
-          <TabPanel>
-            <RequestDetailsCard transaction={transaction} />
-          </TabPanel>
+        <Surface padding="4px 16px 16px">
+          <Tabs defaultIndex={0} variant="unstyled" isLazy>
+            <TabList borderBottom={`1px solid ${tokens.line}`}>
+              <Tab {...tabStyle}>Details</Tab>
+              {!isMessage && <Tab {...tabStyle}>Fees</Tab>}
+              <Tab {...tabStyle}>Raw</Tab>
+            </TabList>
 
-          {/* Fees Tab — skip for methods that don't produce an on-chain tx */}
-          <TabPanel>
-            {transaction.type !== 'personal_sign' &&
-              transaction.type !== 'eth_sign' &&
-              !String(transaction.type).startsWith('eth_signTypedData') &&
-              transaction.type !== 'wallet_addEthereumChain' && (
-                <>
-                  <RequestFeeCard transaction={transaction} />
-                </>
+            <TabPanels>
+              <TabPanel padding="8px 0 0">
+                <RequestDetailsCard transaction={transaction} />
+              </TabPanel>
+
+              {/* Message signatures produce no on-chain tx, so no fees tab. */}
+              {!isMessage && (
+                <TabPanel padding="12px 0 0">
+                  {isAddChain ? (
+                    <Text fontSize="12.5px" color={tokens.dim} textAlign="center" padding="16px 0">
+                      No fees. This only saves the RPC configuration locally.
+                    </Text>
+                  ) : (
+                    <RequestFeeCard transaction={transaction} />
+                  )}
+                </TabPanel>
               )}
-            {transaction.type === 'wallet_addEthereumChain' && (
-              <Flex justify="center" p={6}>
-                <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 14, textAlign: 'center' }}>
-                  No transaction fees — this flow only stores the RPC configuration locally.
-                </div>
-              </Flex>
-            )}
-          </TabPanel>
 
-          {/* Raw Data Tab */}
-          <TabPanel>
-            <RequestDataCard transaction={transaction} />
-          </TabPanel>
-        </TabPanels>
-      </Tabs>
+              <TabPanel padding="12px 0 0">
+                <RequestDataCard transaction={transaction} />
+              </TabPanel>
+            </TabPanels>
+          </Tabs>
+        </Surface>
+      </Stack>
 
-      <Divider />
-
-      <Flex justifyContent="center" alignItems="center">
-        <Button
-          variant="solid"
-          onClick={() => handleResponse('accept')}
-          mr={2}
-          isDisabled={approveBlocked}
-          title={
-            transaction?.clearSignReport?.protectionLevel === 'P0'
-              ? 'Vault blocked this transaction'
-              : siweBlocked
-                ? 'Confirm the sign-in warning above'
-                : feeBlocked
-                  ? 'Pick a fee strategy in the warning banner above'
-                  : undefined
-          }>
-          Approve
-        </Button>
-        <Button variant="keycapSecondary" onClick={() => handleResponse('reject')}>
-          Reject
-        </Button>
-      </Flex>
-    </Stack>
+      {/* Sticky action bar: the decision is always one glance away, however long
+          the request. Reject left, the single gold action right. */}
+      <Box
+        position="sticky"
+        bottom={0}
+        marginX="-16px"
+        marginBottom="-16px"
+        padding="16px 16px 18px"
+        background={`linear-gradient(180deg, rgba(10,10,11,0) 0%, ${tokens.bg} 28%)`}
+        zIndex={2}>
+        {approveBlocked && blockReason && (
+          <Text fontSize="12px" color={tokens.dim} textAlign="center" marginBottom="10px">
+            {blockReason}
+          </Text>
+        )}
+        <Grid templateColumns="1fr 1.4fr" gap="10px">
+          <Button variant="keycapSecondary" height="46px" fontSize="12px" onClick={() => handleResponse('reject')}>
+            Reject
+          </Button>
+          <Button
+            variant="solid"
+            height="46px"
+            fontSize="12px"
+            onClick={() => handleResponse('accept')}
+            isDisabled={approveBlocked}
+            title={blockReason}>
+            Approve
+          </Button>
+        </Grid>
+      </Box>
+    </Box>
   );
 }
 
