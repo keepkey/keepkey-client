@@ -1,6 +1,21 @@
-import { Button, Card, Box, Flex, Stack, Tabs, TabList, TabPanels, Tab, TabPanel, Divider } from '@chakra-ui/react';
-import React, { useEffect, useState } from 'react';
+import {
+  Button,
+  Card,
+  Box,
+  Flex,
+  Stack,
+  Tabs,
+  TabList,
+  TabPanels,
+  Tab,
+  TabPanel,
+  Divider,
+  Text,
+} from '@chakra-ui/react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { requestStorage } from '@extension/storage';
+import { buildHiveApprovalView } from '@extension/shared';
+import { HiveChecks, HiveDetails, HiveRequestSummary, hiveBlockReasonFor } from '../hive/HiveApproval';
 import RequestMethodCard from './RequestMethodCard';
 import ProjectInfoCard from './ProjectInfoCard';
 import RequestDetailsCard from './RequestDetailsCard';
@@ -51,6 +66,14 @@ export function OtherTransaction({ transaction: initialTransaction, handleRespon
     }
   }, [transaction?.id]);
 
+  // Hive gets a per-method view (never "Unknown Method") and device checks
+  // that can block Approve before the KeepKey would refuse the request.
+  const isHive = transaction?.chain === 'hive' || String(transaction?.networkId ?? '').startsWith('hive:');
+  const hiveView = useMemo(() => (isHive ? buildHiveApprovalView(transaction) : null), [isHive, transaction]);
+  const vaultBlocked = transaction?.clearSignReport?.protectionLevel === 'P0';
+  const blockReason = vaultBlocked ? 'Vault blocked this transaction' : hiveBlockReasonFor(hiveView, 'keepkey');
+  const approve = () => handleResponse('accept');
+
   const handleReload = () => {
     console.log('Reloading transaction with id:', transaction.id);
     fetchTransactionData(transaction.id);
@@ -64,7 +87,14 @@ export function OtherTransaction({ transaction: initialTransaction, handleRespon
           <ProjectInfoCard transaction={transaction} />
           <Divider />
           <ClearSignReportCard report={transaction?.clearSignReport} error={transaction?.clearSignReportError} />
-          <RequestMethodCard transaction={transaction} />
+          {hiveView ? (
+            <>
+              <HiveRequestSummary view={hiveView} />
+              <HiveChecks view={hiveView} />
+            </>
+          ) : (
+            <RequestMethodCard transaction={transaction} />
+          )}
           <Divider />
 
           {/* Basic first: Raw opens to a collapsed data section, so defaulting
@@ -78,7 +108,11 @@ export function OtherTransaction({ transaction: initialTransaction, handleRespon
 
             <TabPanels>
               <TabPanel>
-                <RequestDetailsCard transaction={transaction}></RequestDetailsCard>
+                {hiveView ? (
+                  <HiveDetails view={hiveView} />
+                ) : (
+                  <RequestDetailsCard transaction={transaction}></RequestDetailsCard>
+                )}
               </TabPanel>
               {/*<TabPanel></TabPanel>*/}
               <TabPanel>
@@ -87,15 +121,13 @@ export function OtherTransaction({ transaction: initialTransaction, handleRespon
             </TabPanels>
           </Tabs>
           <Divider />
+          {blockReason && (
+            <Text fontSize="12px" color="red.300" textAlign="center" data-approve-blocked>
+              {blockReason}
+            </Text>
+          )}
           <Flex justifyContent="center" alignItems="center">
-            <Button
-              variant="solid"
-              onClick={() => handleResponse('accept')}
-              mr={2}
-              isDisabled={transaction?.clearSignReport?.protectionLevel === 'P0'}
-              title={
-                transaction?.clearSignReport?.protectionLevel === 'P0' ? 'Vault blocked this transaction' : undefined
-              }>
+            <Button variant="solid" onClick={() => approve()} mr={2} isDisabled={!!blockReason} title={blockReason}>
               Approve
             </Button>
             <Button variant="keycapSecondary" onClick={() => handleResponse('reject')}>

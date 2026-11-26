@@ -4,6 +4,28 @@ import { withServiceWorkerKeepAlive } from './keepAlive';
 export const VAULT_LOCKED_MESSAGE = 'Your KeepKey is locked. Unlock it in KeepKey Vault, then try again.';
 export const isVaultLockedError = (error: unknown): boolean => (error as any)?.status === 423;
 
+/**
+ * A cached-only read 423s with DEVICE_ACCESS_REQUIRED when Vault's REST cache
+ * has no entry for the path. If Vault reports the device present and UNLOCKED,
+ * one foreground retry is safe: nothing to unlock, so no PIN prompt, and the
+ * caller sends show_display:false so no button press. A genuinely locked
+ * device (or any other error) never retries.
+ */
+export function shouldRetryWithForeground(
+  error: unknown,
+  connection: { devicePresent: boolean; deviceLocked: boolean },
+  alreadyTried: boolean,
+): boolean {
+  const e = error as any;
+  return (
+    !alreadyTried &&
+    e?.status === 423 &&
+    e?.code === 'DEVICE_ACCESS_REQUIRED' &&
+    connection.devicePresent &&
+    !connection.deviceLocked
+  );
+}
+
 /** Cached reads never open a PIN prompt. Only a deliberate user request opts
  * into device access; Vault keeps that same HTTP request pending while unlocking. */
 export async function readFromVault<T = any>(sdk: any, path: string, body: unknown, foreground = false): Promise<T> {
@@ -26,7 +48,17 @@ export async function readFromVault<T = any>(sdk: any, path: string, body: unkno
     const error = new Error(
       response.status === 423 ? VAULT_LOCKED_MESSAGE : text || `Vault error (${response.status})`,
     );
-    Object.assign(error, { status: response.status });
+    // Keep Vault's machine-readable code (e.g. DEVICE_ACCESS_REQUIRED, a
+    // cached-only read that missed Vault's cache, vs. a genuinely locked
+    // device): both are 423 and share the user-facing message above.
+    let code: string | undefined;
+    try {
+      const parsed = JSON.parse(text);
+      if (typeof parsed?.code === 'string') code = parsed.code;
+    } catch {
+      /* non-JSON body */
+    }
+    Object.assign(error, { status: response.status, ...(code ? { code } : {}) });
     throw error;
   }
   return response.json() as Promise<T>;

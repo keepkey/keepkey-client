@@ -1,5 +1,8 @@
-import { Box, HStack, Link, Text } from '@chakra-ui/react';
+import { Flex, Link, Text } from '@chakra-ui/react';
 import React from 'react';
+import { tokens, fonts } from '../../styles/tokens';
+import { MicroLabel } from '../../components/v2/primitives';
+import { ToneDot } from '../ui';
 
 type NonceInfo = { latest: number; pending: number; willReplace: boolean };
 
@@ -12,10 +15,9 @@ interface Props {
 }
 
 /**
- * Read-only nonce visibility. Shows the next-available nonce, plus a yellow
- * warning when there's already a pending tx that this one would queue behind
- * (or replace). No edit affordance in this round — manual nonce override is
- * deferred to a follow-up.
+ * Read-only nonce visibility: the nonce this tx will use, plus a status dot
+ * when a pending tx sits ahead of it (or would be replaced). No edit
+ * affordance yet — manual nonce override is a follow-up.
  */
 export default function NonceInfoRow({ nonceInfo, address, chainId }: Props) {
   const { latest, pending, willReplace } = nonceInfo;
@@ -26,27 +28,37 @@ export default function NonceInfoRow({ nonceInfo, address, chainId }: Props) {
       ? `https://etherscan.io/address/${address}`
       : null;
 
-  const tone = willReplace ? 'red.300' : inFlight > 0 ? 'orange.300' : 'rgba(255,255,255,0.65)';
-
-  let label: string;
-  if (willReplace) {
-    label = `Replaces a pending tx at nonce ${latest}. Needs +10% on both fees to evict.`;
-  } else if (inFlight > 0) {
-    label = `Nonce ${pending} (you have ${inFlight} pending tx${inFlight > 1 ? 's' : ''} ahead of this).`;
-  } else {
-    label = `Nonce ${pending} (next available).`;
-  }
+  const tone = willReplace ? 'bad' : inFlight > 0 ? 'warn' : null;
+  const note = willReplace
+    ? `Replaces the pending tx at nonce ${latest}. Needs +10% on both fees.`
+    : inFlight > 0
+      ? `${inFlight} pending tx${inFlight > 1 ? 's' : ''} ahead of this one`
+      : 'next available';
 
   return (
-    <Box px={3} py={2} borderRadius="md" bg="rgba(255,255,255,0.04)" mb={2}>
-      <HStack spacing={2} fontSize="xs">
-        <Text color={tone}>{label}</Text>
-        {explorerHref && (
-          <Link href={explorerHref} isExternal color="blue.300" fontSize="xs">
-            view on etherscan ↗
-          </Link>
-        )}
-      </HStack>
-    </Box>
+    <Flex alignItems="center" justifyContent="space-between" gap="12px" padding="2px 2px">
+      <Flex alignItems="center" gap="8px" minWidth={0}>
+        <MicroLabel>Nonce</MicroLabel>
+        <Text fontFamily={fonts.mono} fontSize="12.5px" color={tokens.text}>
+          {willReplace ? latest : pending}
+        </Text>
+        {tone && <ToneDot tone={tone} />}
+        <Text fontSize="12px" color={tone ? tokens.dim : tokens.faint} noOfLines={2}>
+          {note}
+        </Text>
+      </Flex>
+      {explorerHref && (
+        <Link
+          href={explorerHref}
+          isExternal
+          fontFamily={fonts.mono}
+          fontSize="11px"
+          color={tokens.faint}
+          flexShrink={0}
+          _hover={{ color: tokens.text }}>
+          Etherscan ↗
+        </Link>
+      )}
+    </Flex>
   );
 }

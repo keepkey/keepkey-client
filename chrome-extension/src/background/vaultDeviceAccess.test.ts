@@ -4,8 +4,47 @@ import {
   readFromVault,
   keepKeyConnectionCode,
   isForegroundDeviceRequest,
+  shouldRetryWithForeground,
   VAULT_LOCKED_MESSAGE,
 } from './vaultDeviceAccess';
+
+describe('cached-read miss → one foreground retry', () => {
+  const unlocked = { devicePresent: true, deviceLocked: false };
+  const cacheMiss = Object.assign(new Error(VAULT_LOCKED_MESSAGE), { status: 423, code: 'DEVICE_ACCESS_REQUIRED' });
+
+  it('keeps Vault’s 423 code on the thrown error', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({ error: 'Device access is required', code: 'DEVICE_ACCESS_REQUIRED' }, { status: 423 }),
+      ),
+    );
+    await expect(readFromVault(sdk, '/addresses/hive', {})).rejects.toMatchObject({
+      status: 423,
+      code: 'DEVICE_ACCESS_REQUIRED',
+      message: VAULT_LOCKED_MESSAGE,
+    });
+  });
+
+  it('retries a cache miss when the device is present and unlocked', () => {
+    expect(shouldRetryWithForeground(cacheMiss, unlocked, false)).toBe(true);
+  });
+
+  it('never retries a locked or absent device', () => {
+    expect(shouldRetryWithForeground(cacheMiss, { devicePresent: true, deviceLocked: true }, false)).toBe(false);
+    expect(shouldRetryWithForeground(cacheMiss, { devicePresent: false, deviceLocked: false }, false)).toBe(false);
+  });
+
+  it('retries only once', () => {
+    expect(shouldRetryWithForeground(cacheMiss, unlocked, true)).toBe(false);
+  });
+
+  it('ignores other errors, including a plain locked 423', () => {
+    expect(shouldRetryWithForeground(Object.assign(new Error('x'), { status: 423 }), unlocked, false)).toBe(false);
+    expect(shouldRetryWithForeground(Object.assign(new Error('x'), { status: 403 }), unlocked, false)).toBe(false);
+    expect(shouldRetryWithForeground(new Error('network'), unlocked, false)).toBe(false);
+  });
+});
 
 const sdk = { getClient: () => ({ getApiKey: () => 'synthetic-pairing-key' }) };
 afterEach(() => vi.unstubAllGlobals());

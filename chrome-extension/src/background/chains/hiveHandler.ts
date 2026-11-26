@@ -1,4 +1,4 @@
-import { readFromVault, VAULT_LOCKED_MESSAGE } from '../vaultDeviceAccess';
+import { readFromVault, shouldRetryWithForeground, VAULT_LOCKED_MESSAGE } from '../vaultDeviceAccess';
 import { SIGNING_TIMEOUT_MS } from '../../signingTimeouts';
 import { requestStorage } from '@extension/storage';
 import { v4 as uuidv4 } from 'uuid';
@@ -7,6 +7,12 @@ import { createProviderRpcError, createTimeoutError } from '../utils';
 import { requireHiveFirmware } from '../firmware';
 import { SUPPORTED_OPS, opSummary } from './hiveOps';
 import { pioneerFetch } from '../pioneerKey';
+import { createHiveSitePermissions } from './hiveSitePermissions';
+
+const hiveSites = createHiveSitePermissions({
+  get: async (k: string) => (await chrome.storage.local.get(k))?.[k],
+  set: async (k: string, v: any) => chrome.storage.local.set({ [k]: v }),
+});
 
 const TAG = ' | hiveHandler | ';
 
@@ -39,12 +45,22 @@ let cachedInfo: HiveAccountInfo | null = null;
 let cachedInfoAt = 0;
 let inflightInfo: Promise<HiveAccountInfo> | null = null;
 
+let lastFailureReason: string | null = null;
+let hiveResolvedListener: (() => void) | null = null;
+
+/** Register a callback fired when Hive account info newly resolves or changes (index.ts → pushBalancesUpdated). */
+export function onHiveResolved(listener: () => void) {
+  hiveResolvedListener = listener;
+}
+
 export function resetHiveState() {
+  cachedIdentity = null;
   cachedPubkey = null;
   cachedAccountName = null;
   cachedInfo = null;
   cachedInfoAt = 0;
   inflightInfo = null;
+  lastFailureReason = null;
 }
 
 /** Get the Bearer API key from the SDK for direct REST calls */
@@ -57,17 +73,107 @@ function getApiKey(): string {
   return key;
 }
 
+// The STM key is public (it is what Pioneer resolves to an account name), so it
+// is safe to persist — but only under the WALLET identity, not the device's.
+// A KeepKey's deviceId survives a wipe and a new seed (KEEPKEY-191: after an
+// alpha flash the same deviceId kept serving the old seed's key, which owns no
+// account, so the Hive row never appeared). The identity pairs the deviceId
+// with the account-0 ETH address the vault's pubkey batch already returns
+// without a prompt; a new seed or passphrase changes it.
+const HIVE_PUBKEY_STORAGE_PREFIX = 'hivePubkey:';
+
+/** `deviceId:0xeth` (lowercased), or null while either half is unknown. */
+export function hiveWalletIdentity(
+  deviceId: string | null | undefined,
+  ethAddress: string | null | undefined,
+): string | null {
+  if (!deviceId || !ethAddress) return null;
+  return `${deviceId}:${ethAddress.toLowerCase()}`;
+}
+
+function currentWalletIdentity(): string | null {
+  return hiveWalletIdentity(wallet.getDeviceId(), wallet.getAddressForNetwork('eip155:1'));
+}
+
+// Identity the in-memory caches below belong to. A change (new seed, passphrase,
+// device swap) drops cachedPubkey / cachedAccountName / cachedInfo.
+let cachedIdentity: string | null = null;
+
+function syncWalletIdentity(): string | null {
+  const identity = currentWalletIdentity();
+  if (identity !== cachedIdentity) {
+    const hadState = cachedIdentity !== null || cachedPubkey !== null || cachedInfo !== null;
+    resetHiveState();
+    cachedIdentity = identity;
+    if (hadState) console.info(TAG, 'Wallet identity changed; Hive caches cleared');
+  }
+  return identity;
+}
+// Devices for which the one-shot foreground fallback already ran this worker
+// lifetime, so a persistent failure cannot turn every poll into a device read.
+const foregroundFallbackTried = new Set<string>();
+
+async function loadStoredHivePubkey(identity: string | null): Promise<string | null> {
+  if (!identity) return null;
+  try {
+    const key = HIVE_PUBKEY_STORAGE_PREFIX + identity;
+    const stored = await chrome.storage.local.get(key);
+    const value = stored?.[key];
+    return typeof value === 'string' && value.startsWith('STM') ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+async function storeHivePubkey(identity: string | null, deviceId: string | null, pubkey: string): Promise<void> {
+  if (!identity) return;
+  try {
+    await chrome.storage.local.set({ [HIVE_PUBKEY_STORAGE_PREFIX + identity]: pubkey });
+    // Drop the device-only key earlier builds wrote: it can hold a wiped seed's key.
+    if (deviceId) await chrome.storage.local.remove(HIVE_PUBKEY_STORAGE_PREFIX + deviceId);
+  } catch (e) {
+    console.warn(TAG, 'Could not persist Hive pubkey:', e);
+  }
+}
+
+async function readHivePubkeyFromVault(foreground: boolean): Promise<string> {
+  const { address } = await readFromVault(
+    wallet.getSdk(),
+    '/addresses/hive',
+    // show_display stays off: this is a background read, never a device prompt.
+    { address_n: hiveAddressN('active', 0), show_display: false },
+    foreground,
+  );
+  return address;
+}
+
 /** Derive the active-role STM public key via the vault. */
 async function getHivePublicKey(foreground = false): Promise<string> {
+  const identity = syncWalletIdentity();
   if (cachedPubkey) return cachedPubkey;
+  const deviceId = wallet.getDeviceId();
+  const stored = await loadStoredHivePubkey(identity);
+  if (stored) {
+    cachedPubkey = stored;
+    return stored;
+  }
   let address: string;
   try {
-    ({ address } = await readFromVault(
-      wallet.getSdk(),
-      '/addresses/hive',
-      { address_n: hiveAddressN('active', 0) },
-      foreground,
-    ));
+    try {
+      address = await readHivePubkeyFromVault(foreground);
+    } catch (error) {
+      // Vault's own UI derives Hive keys outside its REST address cache, so a
+      // cached-only read can miss forever; one foreground read fixes it.
+      const triedKey = deviceId ?? 'unknown';
+      if (
+        foreground ||
+        !shouldRetryWithForeground(error, wallet.getConnectionState(), foregroundFallbackTried.has(triedKey))
+      )
+        throw error;
+      foregroundFallbackTried.add(triedKey);
+      console.info(TAG, 'Vault cache has no Hive key; retrying once with foreground device access');
+      address = await readHivePubkeyFromVault(true);
+    }
   } catch (error) {
     if ((error as any)?.status === 403)
       throw createProviderRpcError(4100, 'Hive is disabled in the vault — enable it in Vault settings');
@@ -76,7 +182,10 @@ async function getHivePublicKey(foreground = false): Promise<string> {
     throw error;
   }
   if (!address) throw createProviderRpcError(-32603, 'Vault returned no Hive public key');
+  // The wallet may have changed while the vault read was in flight.
+  if (syncWalletIdentity() !== identity) return address;
   cachedPubkey = address;
+  await storeHivePubkey(identity, deviceId, address);
   return address;
 }
 
@@ -94,7 +203,7 @@ async function getHiveAccount(): Promise<{ name: string; pubkey: string }> {
       'No Hive account exists for this KeepKey yet — create one in the KeepKey Vault (Hive onboarding)',
     );
   }
-  cachedAccountName = data.account.name;
+  if (cachedPubkey === pubkey) cachedAccountName = data.account.name;
   return { name: data.account.name, pubkey };
 }
 
@@ -158,7 +267,7 @@ async function fetchHiveAccountInfo(): Promise<HiveAccountInfo> {
     if (!data.success || data.noAccount || !data.account?.name) {
       return { ok: false, reason: 'no-account' };
     }
-    cachedAccountName = data.account.name;
+    if (cachedPubkey === pubkey) cachedAccountName = data.account.name;
     const a = data.account;
     const priceUsd = await fetchHivePriceUsd();
     return {
@@ -186,21 +295,37 @@ async function fetchHiveAccountInfo(): Promise<HiveAccountInfo> {
 }
 
 export async function getHiveAccountInfo(): Promise<HiveAccountInfo> {
+  syncWalletIdentity();
   if (cachedInfo && Date.now() - cachedInfoAt < HIVE_INFO_TTL_MS) return cachedInfo;
   if (inflightInfo) return inflightInfo;
-  inflightInfo = fetchHiveAccountInfo()
+  const startedFor = cachedIdentity;
+  const request: Promise<HiveAccountInfo> = fetchHiveAccountInfo()
     .then(result => {
+      // A wallet change mid-flight: this answer belongs to the old seed.
+      if (cachedIdentity !== startedFor) return result;
       // Cache successes; leave a failure uncached so the next call retries.
       if (result.ok) {
+        const changed =
+          !cachedInfo || !cachedInfo.ok || cachedInfo.name !== result.name || cachedInfo.hive !== result.hive;
         cachedInfo = result;
         cachedInfoAt = Date.now();
+        lastFailureReason = null;
+        // A cold worker's first GET_APP_BALANCES returns before Hive resolves;
+        // tell the UI to re-read once it lands (only on change, so the 60s
+        // TTL refresh doesn't spam pushes).
+        if (changed) hiveResolvedListener?.();
+      } else if (result.reason !== lastFailureReason) {
+        // Log each distinct failure once instead of failing silently.
+        lastFailureReason = result.reason;
+        console.warn(TAG, 'Hive account unavailable:', result.reason);
       }
       return result;
     })
     .finally(() => {
-      inflightInfo = null;
+      if (inflightInfo === request) inflightInfo = null;
     });
-  return inflightInfo;
+  inflightInfo = request;
+  return request;
 }
 
 /**
@@ -210,6 +335,7 @@ export async function getHiveAccountInfo(): Promise<HiveAccountInfo> {
  * that render); the async fetch fills it for the next.
  */
 export function getCachedHiveInfo(): HiveAccountInfo | null {
+  syncWalletIdentity();
   if (!cachedInfo || Date.now() - cachedInfoAt >= HIVE_INFO_TTL_MS) {
     getHiveAccountInfo().catch(() => {});
   }
@@ -566,8 +692,9 @@ async function hiveSignBuffer(
 
   chrome.runtime.sendMessage({ action: 'signature_complete', eventId: requestInfo.id }).catch(() => {});
 
-  // Keychain shape: result = signature hex, publicKey beside it.
-  return { result: signature, publicKey: public_key };
+  // Keychain shape: result = signature hex, publicKey beside it. data.username
+  // names the signing account (a dApp may have sent an empty username).
+  return { result: signature, publicKey: public_key, data: { ...(params[0] || {}), username: from.name } };
 }
 
 /** Strict "x.xxx" normalization — same no-parseFloat rule as hiveTransfer. */
@@ -705,6 +832,12 @@ async function hiveSignAndBroadcastOps(
   return { id: bData.txid, tx_id: bData.txid, confirmed: Boolean(bData.blockNum ?? bData.block_num) };
 }
 
+/** Side panel: list / revoke sites allowed to read the Hive account name. */
+export async function handleHiveSitesMessage(msg: any): Promise<any> {
+  if (msg?.action === 'revoke') await hiveSites.revoke(msg.origin);
+  return { sites: await hiveSites.list() };
+}
+
 export const handleHiveRequest = async (
   method: string,
   params: any[],
@@ -719,8 +852,30 @@ export const handleHiveRequest = async (
       // Keychain-compat presence check — succeed without touching the device
       return true;
     }
+    case 'hive_requestAccount': {
+      // Keychain-style "which account?" — the name is shared only with a site
+      // the user approved once (per origin, per account; revocable).
+      const origin = hiveSites.normalizeOrigin(requestInfo?.origin);
+      if (!origin) throw createProviderRpcError(4100, 'Unknown site');
+      const { name } = await getHiveAccount();
+      if (await hiveSites.isGranted(origin, name)) return name;
+      const event = buildEvent(requestInfo, 'requestAccount', params);
+      (event as any).unsignedTx = { from: name, origin };
+      await requestUserApproval(event, requestInfo, 'requestAccount', params, requireApproval);
+      await hiveSites.grant(origin, name);
+      chrome.runtime.sendMessage({ action: 'signature_complete', eventId: requestInfo.id }).catch(() => {});
+      return name;
+    }
     case 'hive_getAccount': {
+      // Same per-origin grant as requestAccount: without it any page could
+      // read the account (and its active key) by posting the raw request.
       const account = await getHiveAccount();
+      if (!(await hiveSites.isGranted(requestInfo?.origin, account.name))) {
+        throw createProviderRpcError(
+          4100,
+          'This site is not connected to your Hive account — call requestAccount first',
+        );
+      }
       return account;
     }
     case 'hive_transfer': {

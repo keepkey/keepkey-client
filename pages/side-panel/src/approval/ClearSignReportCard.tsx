@@ -1,21 +1,22 @@
 import React from 'react';
-import { Badge, Box, Button, Collapse, Flex, Grid, Stack, Text, useDisclosure } from '@chakra-ui/react';
-import { decodedRows, isRiskFinding, tidy } from './clearSignFormat';
+import { Box, Collapse, Flex, Stack, Text, useDisclosure } from '@chakra-ui/react';
+import { decodedRows, isRiskFinding, shortAddresses, tidy } from './clearSignFormat';
+import { tokens, fonts } from '../styles/tokens';
+import { Chip, KvRow, Muted, SectionLabel, Surface, ToneDot, type Tone } from './ui';
 
-const LEVEL_COLORS: Record<string, string> = {
-  P0: 'red',
-  P1: 'orange',
-  P2: 'yellow',
-  P3: 'blue',
-  P4: 'purple',
-  P5: 'green',
+// Protection level → status tone. P0 is a Vault block; P4/P5 are
+// authenticated descriptions.
+const LEVEL_TONE: Record<string, Tone> = {
+  P0: 'bad',
+  P1: 'warn',
+  P2: 'warn',
+  P3: 'neutral',
+  P4: 'good',
+  P5: 'good',
 };
 
-const severityColor = (severity: string) =>
-  severity === 'danger' ? 'red.300' : severity === 'warning' ? 'orange.300' : 'gray.300';
-
-const severityScheme = (severity: string) =>
-  severity === 'danger' ? 'red' : severity === 'warning' ? 'orange' : 'blue';
+const severityTone = (severity: string): Tone =>
+  severity === 'danger' ? 'bad' : severity === 'warning' ? 'warn' : 'neutral';
 
 function signedAmount(delta: string, decimals?: number): string {
   if (!/^-?\d+$/.test(delta)) return delta;
@@ -34,19 +35,17 @@ export default function ClearSignReportCard({ report, error }: { report?: any; e
   if (!report && !error) return null;
   if (!report) {
     return (
-      <Box borderWidth="1px" borderColor="orange.400" borderRadius="md" p={3}>
-        <Text fontWeight="bold" color="orange.300">
+      <Surface edge="warn">
+        <Text fontSize="13.5px" fontWeight={600} color={tokens.text}>
           Human-readable review unavailable
         </Text>
-        <Text fontSize="xs" mt={1}>
-          Vault could not produce its ClearSign report. Review the raw request carefully.
-        </Text>
+        <Muted marginTop="2px">Vault could not produce its ClearSign report. Review the raw request carefully.</Muted>
         {error && (
-          <Text fontSize="xs" mt={1} color="gray.400" wordBreak="break-word">
+          <Text fontFamily={fonts.mono} fontSize="11px" color={tokens.faint} marginTop="6px" wordBreak="break-word">
             {error}
           </Text>
         )}
-      </Box>
+      </Surface>
     );
   }
 
@@ -60,154 +59,179 @@ export default function ClearSignReportCard({ report, error }: { report?: any; e
   const authenticated = !!report.descriptor?.authenticated;
   const deviceStatus = report.deviceVerification?.status || 'not-attempted';
   const deviceConfirmed = deviceStatus === 'verified';
+  const level = report.protectionLevel;
+  const blocked = level === 'P0';
+
+  const verification =
+    level === 'P4' || level === 'P5'
+      ? deviceConfirmed
+        ? { tone: 'good' as Tone, text: 'Verified on device' }
+        : authenticated
+          ? { tone: 'neutral' as Tone, text: 'Authenticated description · device check pending' }
+          : { tone: 'neutral' as Tone, text: 'ClearSign expected · device check pending' }
+      : null;
 
   return (
-    <Box
-      borderWidth="1px"
-      borderColor={report.protectionLevel === 'P0' ? 'red.500' : 'whiteAlpha.300'}
-      borderRadius="md"
-      p={3}>
-      <Flex justify="space-between" align="start" gap={3}>
-        <Box>
-          <Text fontWeight="bold" fontSize="md">
+    <Surface edge={blocked ? 'bad' : undefined} padding="16px">
+      <Flex justifyContent="space-between" alignItems="flex-start" gap="12px">
+        <Box minWidth={0}>
+          <Text fontSize="15px" fontWeight={600} color={tokens.text} letterSpacing="-0.01em">
             {report.descriptor?.label || report.headline}
           </Text>
-          {report.descriptor?.label && (
-            <Text fontSize="xs" color="gray.400">
-              {report.headline}
-            </Text>
-          )}
+          {report.descriptor?.label && <Muted marginTop="2px">{report.headline}</Muted>}
         </Box>
-        <Badge colorScheme={LEVEL_COLORS[report.protectionLevel] || 'gray'} title={report.headline}>
-          {report.protectionLevel}
-        </Badge>
+        <Chip tone={LEVEL_TONE[level] || 'neutral'} title={report.headline}>
+          {level}
+        </Chip>
       </Flex>
 
+      {verification && (
+        <Flex alignItems="center" gap="8px" marginTop="10px">
+          <ToneDot tone={verification.tone} />
+          <Text fontFamily={fonts.mono} fontSize="11px" color={tokens.faint} letterSpacing="0.02em">
+            {verification.text}
+          </Text>
+        </Flex>
+      )}
+
       {action && (
-        <Text fontSize="lg" fontWeight="semibold" mt={3} title={action.value}>
+        <Text fontSize="16px" fontWeight={600} color={tokens.text} marginTop="14px" title={action.value}>
           {tidy(action.value)}
         </Text>
       )}
 
       {rows.length > 0 && (
-        <Grid templateColumns="auto 1fr" columnGap={3} rowGap={1} mt={3} fontSize="sm">
-          {rows.map(row => (
-            <React.Fragment key={row.key}>
-              <Text color="gray.400">{row.key}</Text>
-              <Text title={row.value} wordBreak="break-word">
-                {tidy(row.value)}
-                {row.isSigner && (
-                  <Badge ml={2} colorScheme="green" fontSize="0.65em">
-                    you
-                  </Badge>
-                )}
-              </Text>
-            </React.Fragment>
+        <Box marginTop="10px">
+          {rows.map((row, i) => (
+            <KvRow key={row.key} label={row.key} title={row.value} last={i === rows.length - 1}>
+              {tidy(row.value)}
+              {row.isSigner && (
+                <Text as="span" marginLeft="6px" color={tokens.good}>
+                  (you)
+                </Text>
+              )}
+            </KvRow>
           ))}
-        </Grid>
+        </Box>
       )}
 
-      {risks.map((finding: any, index: number) => (
-        <Box
-          key={`${finding.code}-${index}`}
-          mt={3}
-          p={2}
-          borderLeftWidth="3px"
-          borderColor={`${severityScheme(finding.severity)}.400`}
-          bg={`${severityScheme(finding.severity)}.900`}
-          borderRadius="sm">
-          <Text fontSize="sm" color={severityColor(finding.severity)} title={finding.message}>
-            {tidy(finding.message)}
-          </Text>
-        </Box>
-      ))}
-
-      {(report.protectionLevel === 'P4' || report.protectionLevel === 'P5') && (
-        <Text fontSize="xs" color={deviceConfirmed ? 'green.300' : 'orange.300'} mt={2}>
-          {deviceConfirmed
-            ? 'Description verified by the device.'
-            : authenticated
-              ? 'Authenticated description found; device verification has not happened yet.'
-              : 'Expected ClearSign capability; not yet confirmed by the device.'}
-        </Text>
+      {risks.length > 0 && (
+        <Stack spacing="8px" marginTop="14px">
+          {risks.map((finding: any, index: number) => {
+            const tone = severityTone(finding.severity);
+            return (
+              <Flex
+                key={`${finding.code}-${index}`}
+                gap="10px"
+                alignItems="flex-start"
+                padding="10px 12px"
+                borderRadius="8px"
+                background={tokens.bg}
+                border={`1px solid ${tokens.line}`}>
+                <Box paddingTop="6px">
+                  <ToneDot tone={tone} />
+                </Box>
+                <Text fontSize="12.5px" color={tokens.text} lineHeight="1.5" title={finding.message}>
+                  {tidy(finding.message)}
+                </Text>
+              </Flex>
+            );
+          })}
+        </Stack>
       )}
 
       {Array.isArray(simulation.assetChanges) && simulation.assetChanges.length > 0 && (
-        <Stack spacing={2} mt={3}>
-          <Text fontSize="xs" fontWeight="bold" color="gray.400">
-            Predicted balance changes
-          </Text>
-          {simulation.assetChanges.map((change: any, index: number) => (
-            <Box key={`${change.account}-${change.asset?.id}-${index}`} fontSize="sm">
-              <Text fontWeight="semibold">
-                {signedAmount(String(change.delta), change.asset?.decimals)}{' '}
-                {change.asset?.symbol || change.asset?.kind || 'asset'}
-              </Text>
-              <Text fontSize="xs" color="gray.400" wordBreak="break-all">
-                {change.asset?.id}
-              </Text>
-              <Text fontSize="xs" color="gray.400" wordBreak="break-all">
-                Account: {change.account}
-              </Text>
-            </Box>
-          ))}
-        </Stack>
+        <Box marginTop="16px">
+          <SectionLabel>Predicted balance changes</SectionLabel>
+          {simulation.assetChanges.map((change: any, index: number) => {
+            const amount = signedAmount(String(change.delta), change.asset?.decimals);
+            return (
+              <KvRow
+                key={`${change.account}-${change.asset?.id}-${index}`}
+                label={change.asset?.symbol || change.asset?.kind || 'asset'}
+                title={`${change.asset?.id ?? ''}\nAccount: ${change.account}`}
+                last={index === simulation.assetChanges.length - 1}>
+                <Text as="span" color={amount.startsWith('-') ? tokens.bad : tokens.good}>
+                  {amount}
+                </Text>
+              </KvRow>
+            );
+          })}
+        </Box>
       )}
 
       {Array.isArray(simulation.authorityChanges) && simulation.authorityChanges.length > 0 && (
-        <Stack spacing={2} mt={3}>
-          <Text fontSize="xs" fontWeight="bold" color="gray.400">
-            Permissions
-          </Text>
+        <Box marginTop="16px">
+          <SectionLabel>Permissions</SectionLabel>
           {simulation.authorityChanges.map((change: any, index: number) => (
-            <Box key={`${change.authority}-${index}`} fontSize="sm">
-              <Text color={change.unlimited ? 'red.300' : undefined}>
-                {change.revoked ? 'Revoke' : 'Grant'} {change.kind}
-                {change.unlimited ? ' — unlimited' : ''}
-              </Text>
-              <Text fontSize="xs" color="gray.400" wordBreak="break-all">
-                Authority: {change.authority}
-              </Text>
-              <Text fontSize="xs" color="gray.400" wordBreak="break-all">
-                Asset/account: {change.assetOrAccount}
-              </Text>
+            <Box key={`${change.authority}-${index}`} marginTop={index ? '10px' : 0}>
+              <Flex alignItems="center" gap="8px">
+                {change.unlimited && <ToneDot tone="bad" />}
+                <Text fontSize="13.5px" fontWeight={500} color={change.unlimited ? tokens.bad : tokens.text}>
+                  {change.revoked ? 'Revoke' : 'Grant'} {change.kind}
+                  {change.unlimited ? ' · unlimited' : ''}
+                </Text>
+              </Flex>
+              <KvRow label="Spender" title={change.authority}>
+                {shortAddresses(String(change.authority ?? ''))}
+              </KvRow>
+              <KvRow label="Token" title={change.assetOrAccount} last>
+                {shortAddresses(String(change.assetOrAccount ?? ''))}
+              </KvRow>
             </Box>
           ))}
-        </Stack>
+        </Box>
       )}
 
       {simulation.fee && (
-        <Text fontSize="sm" mt={3}>
-          Estimated fee: {simulation.fee.amount} {simulation.fee.asset}
-        </Text>
+        <Box marginTop="12px">
+          <KvRow label="Estimated fee" last>
+            {simulation.fee.amount} {simulation.fee.asset}
+          </KvRow>
+        </Box>
       )}
 
-      <Button size="xs" variant="link" mt={3} color="gray.400" onClick={details.onToggle}>
-        {details.isOpen ? 'Hide technical details' : 'Technical details'}
-      </Button>
+      <Box
+        as="button"
+        marginTop="12px"
+        fontFamily={fonts.mono}
+        fontSize="10.5px"
+        letterSpacing="0.16em"
+        textTransform="uppercase"
+        color={tokens.faint}
+        background="transparent"
+        border={0}
+        padding={0}
+        cursor="pointer"
+        _hover={{ color: tokens.text }}
+        onClick={details.onToggle}>
+        {details.isOpen ? '− Technical details' : '+ Technical details'}
+      </Box>
       <Collapse in={details.isOpen} animateOpacity>
-        <Box mt={2} pt={2} borderTopWidth="1px" borderColor="whiteAlpha.200">
+        <Stack
+          spacing="6px"
+          marginTop="10px"
+          paddingTop="10px"
+          borderTop={`1px solid ${tokens.line}`}
+          fontFamily={fonts.mono}
+          fontSize="11px"
+          color={tokens.faint}
+          wordBreak="break-word">
           {[...otherFindings, ...(report.limitations || [])].map((finding: any, index: number) => (
-            <Text key={`${finding.code}-${index}`} fontSize="xs" color="gray.400" mt={1} wordBreak="break-word">
-              {finding.message}
-            </Text>
+            <Text key={`${finding.code}-${index}`}>{finding.message}</Text>
           ))}
-          <Text fontSize="xs" color="gray.400" mt={2}>
+          <Text>
             {simulation.status === 'success'
               ? 'Effects are predictions from Vault simulation.'
               : `Simulation: ${simulation.status}.`}{' '}
             Device confirmation: {deviceStatus}.
           </Text>
           {(report.claims || []).map((claim: any, index: number) => (
-            <Text key={index} fontSize="xs" color="gray.400" mt={1}>
-              {claim.statement}
-            </Text>
+            <Text key={index}>{claim.statement}</Text>
           ))}
-          <Text fontSize="xs" color="gray.500" mt={1} wordBreak="break-all">
-            Fingerprint: {report.transactionFingerprint}
-          </Text>
-        </Box>
+          <Text wordBreak="break-all">Fingerprint: {report.transactionFingerprint}</Text>
+        </Stack>
       </Collapse>
-    </Box>
+    </Surface>
   );
 }

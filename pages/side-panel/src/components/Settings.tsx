@@ -170,6 +170,8 @@ const Settings = () => {
         blockchainStorage.set(() => []),
         blockchainDataStorage.set(() => ({})),
         dappStorage.set(() => []),
+        // Sites allowed to read the Hive account name (Keychain requestAccount).
+        chrome.storage.local.remove('hiveConnectedOrigins'),
         web3ProviderStorage.clearWeb3Provider(),
         // User-added EVM networks. The header dropdown reads this directly,
         // so omitting it from the clear meant "reset everything" left the

@@ -18,7 +18,15 @@ import { handleSwapMessage, resolveAddress } from './swapHandler';
 import { startSwapEventStream, stopSwapEventStream } from './swapEventStream';
 import { resetTonState, prefetchTonAddress } from './chains/tonHandler';
 import { resetTronState, prefetchTronPubkey } from './chains/tronHandler';
-import { resetHiveState, getHiveAccountInfo, getCachedHiveInfo, buildHiveUiRows, HBD_CAIP } from './chains/hiveHandler';
+import {
+  resetHiveState,
+  getHiveAccountInfo,
+  handleHiveSitesMessage,
+  getCachedHiveInfo,
+  buildHiveUiRows,
+  HBD_CAIP,
+  onHiveResolved,
+} from './chains/hiveHandler';
 import { getCachedFirmwareVersion } from './firmware';
 
 const HIVE_NETWORK_ID = 'hive:beeab0de';
@@ -480,6 +488,10 @@ function pushBalancesUpdated() {
     // No popup/sidebar listening — ignore.
   });
 }
+
+// Hive resolves off the hot path (vault + Pioneer); re-push once it lands so a
+// panel that already painted without it picks the row up.
+onHiveResolved(pushBalancesUpdated);
 
 // Borrow USD prices already present in a fetched balances array to fill held
 // natives Pioneer returned at $0 (custom-RPC chains, some L2s). No network calls
@@ -2202,6 +2214,15 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
           } catch (error) {
             console.error('Error fetching assets:', error);
             sendResponse({ error: 'Failed to fetch assets' });
+          }
+          break;
+        }
+
+        case 'HIVE_CONNECTED_SITES': {
+          try {
+            sendResponse({ ok: true, ...(await handleHiveSitesMessage(message)) });
+          } catch (e: any) {
+            sendResponse({ ok: false, error: e?.message || String(e) });
           }
           break;
         }
