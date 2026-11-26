@@ -358,7 +358,9 @@ const Transaction = ({
   if (showTxidPage && txHash) {
     // Show the txid page if the transaction is complete
     // explorerUrl is optional - TxidPage can handle it being undefined
-    return <TxidPage txHash={txHash} explorerUrl={explorerUrl || ''} onClose={handleCloseTab} />;
+    return (
+      <TxidPage txHash={txHash} explorerUrl={explorerUrl || ''} networkId={event?.networkId} onClose={handleCloseTab} />
+    );
   }
 
   // No-device config flow that's been accepted: hide the review form

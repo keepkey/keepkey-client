@@ -15,6 +15,7 @@ export {
   getChainEnumValue,
   networkIdToIcon,
   caipToIcon,
+  nativeTicker,
 } from '@extension/shared';
 
 // shortListSymbolToCaip and shortListNameToCaip are background-only (not needed by side-panel)

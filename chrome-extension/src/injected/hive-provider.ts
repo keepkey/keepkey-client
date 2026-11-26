@@ -74,6 +74,34 @@ export function createHiveKeychainShim(walletRequest: WalletRequestFn) {
 
   const shim: Record<string, any> = {
     current_id: 1,
+    /** Lets dApps (skatehive.app) tell KeepKey's shim from Hive Keychain and offer KeepKey login. */
+    isKeepKey: true,
+
+    /**
+     * Which Hive account is this? Resolves the KeepKey's account name after
+     * the user approves this site once (per origin; revocable in the side
+     * panel). Rejected → { success: false, error: 'user_rejected' }.
+     */
+    requestAccount: function (callback: KeychainCallback, rpc?: string) {
+      const requestId = currentId++;
+      const data = { type: 'requestAccount', rpc };
+      walletRequest('hive_requestAccount', [data], 'hive', (error, result) => {
+        if (typeof callback !== 'function') return;
+        if (error) {
+          const message = error?.message || String(error);
+          callback({
+            success: false,
+            error: error?.code === 4001 ? 'user_rejected' : message,
+            message,
+            request_id: requestId,
+            result: null,
+            data,
+          });
+          return;
+        }
+        callback({ success: true, error: null, message: null, request_id: requestId, result, data });
+      });
+    },
 
     /** dApp presence check — Keychain calls back with no arguments. */
     requestHandshake: function (callback: () => void) {

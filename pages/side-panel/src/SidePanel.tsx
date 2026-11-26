@@ -38,6 +38,8 @@ import NetworkAccountHeader from './components/NetworkAccountHeader';
 import RollingBalance from './components/v2/RollingBalance';
 import AllocationBar, { type AllocationSegment } from './components/v2/AllocationBar';
 import { colorForSymbol } from './styles/assetColor';
+import { groupAllocationByAsset } from '@extension/shared';
+import { getNetworkName } from './components/header/headerConstants';
 import Transaction from './approval/Transaction';
 
 // Events older than this are dropped on load — an abandoned-tab pending
@@ -170,18 +172,16 @@ const SidePanel = () => {
   // Balances carry one row per pubkey, so a caip repeats (BTC script types,
   // extra accounts); sum per caip or the bar gets duplicate keys and the legend
   // splits one asset in two.
-  const allocationSegments: AllocationSegment[] = React.useMemo(() => {
-    const byId = new Map<string, AllocationSegment>();
-    for (const b of balances) {
-      const label = b.symbol || b.ticker || '?';
-      const id = b.caip || `${b.networkId}:${label}`;
-      const value = parseFloat(b.valueUsd || '0');
-      const seg = byId.get(id);
-      if (seg) seg.value += value;
-      else byId.set(id, { id, label, color: b.color || colorForSymbol(label), value });
-    }
-    return [...byId.values()].filter(s => s.value > 0);
-  }, [balances]);
+  // Grouped by ASSET (ETH on Ethereum + Base = one ETH segment), coloured from
+  // each asset's official logo; the legend shows the per-network breakdown.
+  const allocationSegments: AllocationSegment[] = React.useMemo(
+    () =>
+      groupAllocationByAsset(balances, colorForSymbol).map(a => ({
+        ...a,
+        parts: a.parts.map(p => ({ label: getNetworkName(p.networkId) || p.networkId, value: p.value })),
+      })),
+    [balances],
+  );
 
   // Segments grow from scaleX(0); flipping this a frame after the balances land
   // is what gives the transition somewhere to travel from.
