@@ -30,6 +30,7 @@ vi.mock('./chains/hiveHandler', () => ({
   getHiveAccountInfo: vi.fn(),
   getCachedHiveInfo: vi.fn(),
   buildHiveUiRows: vi.fn(),
+  onHiveResolved: vi.fn(),
 }));
 vi.mock('./mcpBridge', () => ({ initMcpBridge: vi.fn() }));
 vi.mock('./methods', () => ({}));

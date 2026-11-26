@@ -10,6 +10,7 @@ import { WarningIcon } from '@chakra-ui/icons';
 import AwaitingApproval from './AwaitingApproval';
 import TxidPage from './TxidPage';
 import sendSoundFile from '../assets/sounds/send.mp3';
+import { initialApprovalView } from '@extension/shared';
 
 // Function to request asset context from background script
 const requestAssetContext = () => {
@@ -32,17 +33,24 @@ const Transaction = ({
   reloadEvents: () => void;
   onDismiss: () => void;
 }) => {
+  // Start from the stored state, not a blank card: a reopened panel must show
+  // an approved request as in progress and a sent one as sent (KEEPKEY-192).
+  const [initialView] = useState(() => initialApprovalView(event ?? { id: '' }));
   const [transactionType, setTransactionType] = useState<string | null>(null);
-  const [txHash, setTxHash] = useState<string | null>(null);
-  const [awaitingDeviceApproval, setAwaitingDeviceApproval] = useState<boolean>(false);
+  const [txHash, setTxHash] = useState<string | null>(initialView.mode === 'txid' ? initialView.txHash : null);
+  const [awaitingDeviceApproval, setAwaitingDeviceApproval] = useState<boolean>(initialView.mode === 'in_progress');
   const [transactionInProgress, setTransactionInProgress] = useState<boolean>(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(event?.error || null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(
+    initialView.mode === 'failed' ? initialView.error : event?.error || null,
+  );
   // Categorical hint forwarded from the background so we can render
   // category-specific UI (e.g. timeout) without regex-matching `message`.
   const [errorKind, setErrorKind] = useState<string | null>(event?.errorKind || null);
-  const [showTxidPage, setShowTxidPage] = useState<boolean>(false);
+  const [showTxidPage, setShowTxidPage] = useState<boolean>(initialView.mode === 'txid');
   const [assetContext, setAssetContext] = useState<any>(null); // Local state for asset context
-  const [explorerUrl, setExplorerUrl] = useState<string | null>(null);
+  const [explorerUrl, setExplorerUrl] = useState<string | null>(
+    initialView.mode === 'txid' && event?.explorerTxLink ? event.explorerTxLink + initialView.txHash : null,
+  );
   const [showRefreshWarning, setShowRefreshWarning] = useState<boolean>(false);
 
   // Some approved requests don't touch the device at all (config-only
@@ -324,7 +332,15 @@ const Transaction = ({
     const isUnknown = errorKind === 'broadcast_unknown';
     const isTimeout = errorKind === 'timeout' || (!errorKind && /timed out|timeout/i.test(errorMessage));
     const status = isTimeout || isUnknown ? 'warning' : 'error';
-    const heading = isUnknown ? 'Confirmation unknown' : isTimeout ? 'Took too long' : 'Error Occurred';
+    const heading = isUnknown
+      ? 'Confirmation unknown'
+      : isTimeout
+        ? 'Took too long'
+        : errorKind === 'reverted'
+          ? 'This transaction would fail'
+          : errorKind === 'interrupted'
+            ? 'Request interrupted'
+            : 'Error Occurred';
     const body = isTimeout
       ? 'No response from your KeepKey in time. Reject the request in the dApp, then try again.'
       : errorMessage;
@@ -358,7 +374,9 @@ const Transaction = ({
   if (showTxidPage && txHash) {
     // Show the txid page if the transaction is complete
     // explorerUrl is optional - TxidPage can handle it being undefined
-    return <TxidPage txHash={txHash} explorerUrl={explorerUrl || ''} onClose={handleCloseTab} />;
+    return (
+      <TxidPage txHash={txHash} explorerUrl={explorerUrl || ''} networkId={event?.networkId} onClose={handleCloseTab} />
+    );
   }
 
   // No-device config flow that's been accepted: hide the review form

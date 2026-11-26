@@ -44,8 +44,17 @@ const INTERACTIVE_METHODS = new Set([
   'transfer',
 ]);
 
+// Hive Keychain requests (hive_post, hive_vote, hive_customJson, hive_broadcast…)
+// all wait on the approval card, where the user may also import or unlock a
+// browser posting key first; only the presence/lookup calls are instant.
+const HIVE_INSTANT = new Set(['hive_handshake', 'hive_getAccount']);
+
 export const isInteractiveMethod = (method: unknown): boolean =>
-  typeof method === 'string' && (INTERACTIVE_METHODS.has(method) || /sign/i.test(method) || /^send/i.test(method));
+  typeof method === 'string' &&
+  (INTERACTIVE_METHODS.has(method) ||
+    /sign/i.test(method) ||
+    /^send/i.test(method) ||
+    (method.startsWith('hive_') && !HIVE_INSTANT.has(method)));
 
 export const requestTimeoutFor = (method: unknown): number =>
   isInteractiveMethod(method) ? INTERACTIVE_REQUEST_TIMEOUT_MS : DEFAULT_REQUEST_TIMEOUT_MS;

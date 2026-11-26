@@ -4,6 +4,7 @@ import { FaEyeSlash, FaEye } from 'react-icons/fa';
 import { customTokensStorageApi, type CustomToken } from '@extension/storage';
 import { CustomTokenDialog } from './CustomTokenDialog';
 import { AssetIcon } from './AssetIcon';
+import { badgeNetworkFor } from '@extension/shared';
 
 interface TokensProps {
   asset: any;
@@ -391,7 +392,16 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
                           <Spinner size="xs" color="kk.accent" />
                         </Flex>
                       ) : (
-                        <AssetIcon src={token.icon} symbol={token.symbol} size={28} />
+                        <AssetIcon
+                          src={token.icon}
+                          symbol={token.symbol}
+                          size={28}
+                          badgeNetworkId={badgeNetworkFor({
+                            networkId: token.networkId || networkId || asset?.networkId,
+                            caip: token.caip,
+                            isNative: false,
+                          })}
+                        />
                       )}
                       <VStack align="flex-start" gap={0} spacing={0}>
                         <Text fontSize="xs" fontWeight="semibold" color="kk.text" lineHeight="1.3">
@@ -508,7 +518,16 @@ export const Tokens = ({ asset, networkId }: TokensProps) => {
                     transition="opacity 0.15s">
                     <Flex justify="space-between" align="center">
                       <HStack gap={2}>
-                        <AssetIcon src={token.icon} symbol={token.symbol} size={28} />
+                        <AssetIcon
+                          src={token.icon}
+                          symbol={token.symbol}
+                          size={28}
+                          badgeNetworkId={badgeNetworkFor({
+                            networkId: token.networkId || networkId || asset?.networkId,
+                            caip: token.caip,
+                            isNative: false,
+                          })}
+                        />
                         <VStack align="flex-start" gap={0} spacing={0}>
                           <Text fontSize="xs" fontWeight="semibold" color="kk.text" lineHeight="1.3">
                             {token.symbol || 'Unknown'}

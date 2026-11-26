@@ -29,7 +29,6 @@ import { AssetIcon } from './AssetIcon';
 import React, { useCallback, useEffect, useState } from 'react';
 import { NetworkIdToChain, COIN_MAP_LONG } from '@extension/shared';
 //@ts-ignore
-import confetti from 'canvas-confetti';
 
 const TAG = ' | Transfer | ';
 
@@ -234,7 +233,7 @@ export function Transfer(): JSX.Element {
 
       chrome.runtime.sendMessage({ type: 'WALLET_REQUEST', requestInfo }, response => {
         if (response.txHash) {
-          confetti();
+          // The approval card's TxidPage plays the success moment for this tx.
           toast({
             title: 'Transaction Successful',
             description: `Transaction ID: ${response.txHash}`,

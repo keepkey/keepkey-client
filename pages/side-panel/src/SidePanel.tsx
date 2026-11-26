@@ -22,7 +22,7 @@ import {
 } from '@chakra-ui/react';
 import { ArrowUpIcon, ArrowDownIcon, ChevronLeftIcon, RepeatIcon } from '@chakra-ui/icons';
 import { withErrorBoundary, withSuspense } from '@extension/shared';
-import { requestStorage } from '@extension/storage';
+import { approvalStorage, requestStorage } from '@extension/storage';
 
 import Connect from './components/Connect';
 import Loading from './components/Loading';
@@ -38,6 +38,8 @@ import NetworkAccountHeader from './components/NetworkAccountHeader';
 import RollingBalance from './components/v2/RollingBalance';
 import AllocationBar, { type AllocationSegment } from './components/v2/AllocationBar';
 import { colorForSymbol } from './styles/assetColor';
+import { groupAllocationByAsset, pickPendingEvent } from '@extension/shared';
+import { getNetworkName } from './components/header/headerConstants';
 import Transaction from './approval/Transaction';
 
 // Events older than this are dropped on load — an abandoned-tab pending
@@ -170,18 +172,16 @@ const SidePanel = () => {
   // Balances carry one row per pubkey, so a caip repeats (BTC script types,
   // extra accounts); sum per caip or the bar gets duplicate keys and the legend
   // splits one asset in two.
-  const allocationSegments: AllocationSegment[] = React.useMemo(() => {
-    const byId = new Map<string, AllocationSegment>();
-    for (const b of balances) {
-      const label = b.symbol || b.ticker || '?';
-      const id = b.caip || `${b.networkId}:${label}`;
-      const value = parseFloat(b.valueUsd || '0');
-      const seg = byId.get(id);
-      if (seg) seg.value += value;
-      else byId.set(id, { id, label, color: b.color || colorForSymbol(label), value });
-    }
-    return [...byId.values()].filter(s => s.value > 0);
-  }, [balances]);
+  // Grouped by ASSET (ETH on Ethereum + Base = one ETH segment), coloured from
+  // each asset's official logo; the legend shows the per-network breakdown.
+  const allocationSegments: AllocationSegment[] = React.useMemo(
+    () =>
+      groupAllocationByAsset(balances, colorForSymbol).map(a => ({
+        ...a,
+        parts: a.parts.map(p => ({ label: getNetworkName(p.networkId) || p.networkId, value: p.value })),
+      })),
+    [balances],
+  );
 
   // Segments grow from scaleX(0); flipping this a frame after the balances land
   // is what gives the transition somewhere to travel from.
@@ -299,19 +299,19 @@ const SidePanel = () => {
   const fetchPendingEvent = useCallback(async () => {
     try {
       const events = (await requestStorage.getEvents()) || [];
-      const now = Date.now();
-      const fresh: any[] = [];
-      for (const ev of events) {
-        const ageMs = now - new Date(ev.timestamp).getTime();
-        if (ageMs <= MAX_EVENT_AGE_MS) {
-          fresh.push(ev);
-        } else {
-          void requestStorage.removeEventById(ev.id);
-        }
+      // Stored state decides what shows (KEEPKEY-192): a request waiting for a
+      // decision wins; an approved one shows as in progress; a finished one
+      // (txid / failure) only until a newer request arrives — then it moves to
+      // history instead of coming back later as a "new" card.
+      const pick = pickPendingEvent(events as any[], Date.now(), MAX_EVENT_AGE_MS);
+      for (const ev of pick.expired) void requestStorage.removeEventById(ev.id);
+      for (const ev of pick.superseded) {
+        void (async () => {
+          await requestStorage.removeEventById(ev.id);
+          if (ev.txid || ev.txHash) await approvalStorage.addEvent({ ...ev, status: 'approval' } as any);
+        })().catch(e => console.warn('SidePanel: could not archive finished event', e));
       }
-      // Newest-first — matches popup behavior; user sees the freshest request.
-      fresh.reverse();
-      setPendingEvent(fresh[0] ?? null);
+      setPendingEvent(pick.show ?? null);
     } catch (e) {
       console.error('SidePanel: fetchPendingEvent failed', e);
       setPendingEvent(null);
