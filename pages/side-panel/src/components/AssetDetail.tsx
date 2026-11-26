@@ -24,6 +24,8 @@ import { getExplorerAddressUrl, getExplorerTxUrl } from '@extension/shared';
 import { Tokens } from './Tokens';
 import { requestStorage } from '@extension/storage';
 import { formatDistanceToNow } from 'date-fns';
+import { HivePostingKeyCard } from './HivePostingKeyCard';
+import { HiveConnectedSites } from './HiveConnectedSites';
 
 interface AssetDetailProps {
   asset: any;
@@ -330,6 +332,14 @@ const AssetDetail = ({ asset, balances, onSend, onReceive, onSwap }: AssetDetail
           </>
         ) : null}
       </Box>
+
+      {/* Browser posting key: long posts the KeepKey cannot fit (owner/active stay on the KeepKey). */}
+      {asset.networkId === 'hive:beeab0de' && (
+        <Box px={2} pb={2} flexShrink={0}>
+          <HivePostingKeyCard />
+          <HiveConnectedSites />
+        </Box>
+      )}
 
       {/* Hive account breakdown — HP, savings, rewards, delegation, RC. HP is
           staked HIVE (not a receive target), so it lives here, not in Receive. */}

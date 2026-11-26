@@ -7,7 +7,7 @@
 //
 // Chain brand colours are used here and in the legend dots only — never for
 // text or buttons (§2).
-import React from 'react';
+import React, { useState } from 'react';
 import { Box, Flex, Text } from '@chakra-ui/react';
 import { tokens, fonts, motion } from '../../styles/tokens';
 
@@ -19,6 +19,8 @@ export interface AllocationSegment {
   color: string;
   /** Fiat value; shares are computed from the total of all segments. */
   value: number;
+  /** Per-network breakdown when one asset spans networks (ETH on Ethereum + Base). */
+  parts?: { label: string; value: number }[];
 }
 
 interface AllocationBarProps {
@@ -30,6 +32,7 @@ interface AllocationBarProps {
 }
 
 export const AllocationBar = ({ segments, grown, legendCount = 3 }: AllocationBarProps) => {
+  const [open, setOpen] = useState<string | null>(null);
   const ranked = [...segments].filter(s => s.value > 0).sort((a, b) => b.value - a.value);
   const total = ranked.reduce((sum, s) => sum + s.value, 0);
   if (!ranked.length || total <= 0) return null;
@@ -37,6 +40,10 @@ export const AllocationBar = ({ segments, grown, legendCount = 3 }: AllocationBa
   const pct = (v: number) => (v / total) * 100;
   const legend = ranked.slice(0, legendCount);
   const more = ranked.length - legend.length;
+  // Hover shows the network split; a tap opens it (touch has no hover).
+  const split = (s: AllocationSegment) =>
+    (s.parts ?? []).map(p => `${p.label} ${((p.value / s.value) * 100).toFixed(1)}%`).join(' · ');
+  const opened = legend.find(s => s.id === open && (s.parts?.length ?? 0) > 1);
 
   return (
     <>
@@ -52,25 +59,45 @@ export const AllocationBar = ({ segments, grown, legendCount = 3 }: AllocationBa
           />
         ))}
       </Flex>
-      <Flex
-        gap="14px"
-        marginTop="10px"
-        fontFamily={fonts.mono}
-        fontSize="11px"
-        color={tokens.faint}
-        flexWrap="wrap"
-        aria-hidden>
-        {legend.map(s => (
-          <Flex key={s.id} alignItems="center" gap="6px">
-            <Box width="6px" height="6px" borderRadius="50%" background={s.color} />
-            <Text as="span" color={tokens.dim}>
-              {s.label}
-            </Text>
-            <Text as="span">{pct(s.value).toFixed(1)}%</Text>
-          </Flex>
-        ))}
+      <Flex gap="14px" marginTop="10px" fontFamily={fonts.mono} fontSize="11px" color={tokens.faint} flexWrap="wrap">
+        {legend.map(s => {
+          const multi = (s.parts?.length ?? 0) > 1;
+          return (
+            <Flex
+              key={s.id}
+              alignItems="center"
+              gap="6px"
+              data-allocation-asset={s.id}
+              title={multi ? `${s.label}: ${split(s)}` : undefined}
+              as={multi ? 'button' : 'span'}
+              cursor={multi ? 'pointer' : 'default'}
+              onClick={multi ? () => setOpen(o => (o === s.id ? null : s.id)) : undefined}
+              aria-expanded={multi ? open === s.id : undefined}>
+              <Box width="6px" height="6px" borderRadius="50%" background={s.color} />
+              <Text as="span" color={tokens.dim}>
+                {s.label}
+              </Text>
+              <Text as="span">{pct(s.value).toFixed(1)}%</Text>
+              {multi && (
+                <Text as="span" color={tokens.faint} fontSize="9px">
+                  {open === s.id ? '▴' : '▾'}
+                </Text>
+              )}
+            </Flex>
+          );
+        })}
         {more > 0 && <Text as="span">{`+${more} MORE`}</Text>}
       </Flex>
+      {opened && (
+        <Text
+          fontFamily={fonts.mono}
+          fontSize="11px"
+          color={tokens.dim}
+          marginTop="6px"
+          data-allocation-split={opened.id}>
+          {opened.label}: {split(opened)}
+        </Text>
+      )}
     </>
   );
 };

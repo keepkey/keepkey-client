@@ -72,9 +72,10 @@ const getMethodInfo = (txType: string, kind?: string) => {
         color: 'red.400',
       };
     default:
+      // Name the method: a bare "Unknown Method" gives the user nothing to check.
       return {
-        title: 'Unknown Method',
-        description: 'Verify before proceeding',
+        title: txType ? `Unrecognized request: ${txType}` : 'Unrecognized request',
+        description: 'Check the Raw tab before proceeding.',
         icon: <QuestionIcon boxSize={8} />,
         color: 'yellow.500',
       };

@@ -78,6 +78,26 @@ describe('waitForApprovalDecision', () => {
     expect(p.value).toEqual({ success: false });
   });
 
+  it('approval_activity (working on the card, e.g. importing a Hive key) restarts the on-screen clock', async () => {
+    const p = settledState(waitForApprovalDecision('a'));
+    send({ action: 'approval_shown', eventId: 'a' });
+    await vi.advanceTimersByTimeAsync(APPROVAL_TIMEOUT_MS - 60_000);
+    send({ action: 'approval_activity', eventId: 'a' });
+    send({ action: 'approval_activity', eventId: 'other' });
+    await vi.advanceTimersByTimeAsync(APPROVAL_TIMEOUT_MS - 1);
+    expect(p.value).toBeUndefined();
+    send({ action: 'eth_sign_response', response: { eventId: 'a', decision: 'accept' } });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(p.value).toEqual({ success: true });
+  });
+
+  it('approval_activity before the card is shown does not shorten the queue wait', async () => {
+    const p = settledState(waitForApprovalDecision('a'));
+    send({ action: 'approval_activity', eventId: 'a' });
+    await vi.advanceTimersByTimeAsync(APPROVAL_TIMEOUT_MS + 1);
+    expect(p.value).toBeUndefined();
+  });
+
   it('rejects after APPROVAL_QUEUE_TIMEOUT_MS when never shown', async () => {
     const p = settledState(waitForApprovalDecision('a'));
     await vi.advanceTimersByTimeAsync(APPROVAL_QUEUE_TIMEOUT_MS - 1);

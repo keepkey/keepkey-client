@@ -60,6 +60,29 @@ export const ChainToNetworkId: Record<string, string> = {
   HIVE: 'hive:beeab0de',
 };
 
+// ---- Native asset ticker per chain key ----
+// The ChainToNetworkId keys above are Pioneer *chain* ids, not tickers: ARB,
+// BASE and OP are networks whose gas token is ETH (ARB/OP are governance
+// tokens), GAIA is the Cosmos Hub (ticker ATOM), THOR is THORChain (RUNE),
+// MATIC was renamed POL, BSC pays gas in BNB, MAYA in CACAO. Anything that
+// labels a chain's native balance must go through nativeTicker().
+export const NATIVE_TICKER: Record<string, string> = {
+  ARB: 'ETH',
+  BASE: 'ETH',
+  OP: 'ETH',
+  RHD: 'ETH',
+  MATIC: 'POL',
+  BSC: 'BNB',
+  GAIA: 'ATOM',
+  THOR: 'RUNE',
+  MAYA: 'CACAO',
+};
+
+/** Native asset ticker for a ChainToNetworkId key (identity when the key already is the ticker). */
+export function nativeTicker(chainKey: string): string {
+  return NATIVE_TICKER[chainKey] ?? chainKey;
+}
+
 // ---- NetworkIdToChain (reverse map) ----
 export const NetworkIdToChain: Record<string, string> = Object.fromEntries(
   Object.entries(ChainToNetworkId).map(([k, v]) => [v, k]),
