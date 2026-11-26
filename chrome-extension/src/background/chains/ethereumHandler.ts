@@ -36,6 +36,7 @@ import { assertDappChainMatchesProvider, assertProviderMatchesCaip } from './pro
 import { assertMatchingClearSignReport, getClearSignReport, type ClearSignReport } from '../clearSignReport';
 import { checkSiwe, eip191Text, type SiweCheck } from './siwe';
 import { methodNotAvailableMessage, walletGetCapabilities } from './eip5792';
+import { isRevertError, revertCardMessage, revertMessage, revertReason } from '@extension/shared';
 
 const TAG = ' | ethereumHandler | ';
 const DOMAIN_WHITE_LIST = [];
@@ -850,6 +851,7 @@ const handleSigningMethods = async (
   // transaction-only; message and typed-data signing retain their dedicated UI.
   let clearSignReport: ClearSignReport | undefined;
   let clearSignReportError: string | undefined;
+  let revertWarning: string | undefined;
   if ((method === 'eth_sendTransaction' || method === 'eth_signTransaction') && unsignedTx) {
     try {
       const rawChainId = unsignedTx.chainId ?? currentProvider?.chainId ?? String(networkId).split(':')[1];
@@ -859,7 +861,15 @@ const handleSigningMethods = async (
       // signed, including wallet-owned nonce, gas and fee fields.
       unsignedTx.chainId = rawChainId;
       unsignedTx.from = unsignedTx.from || ADDRESS;
-      await finalizeEvmTransactionFields(unsignedTx, tag);
+      try {
+        await finalizeEvmTransactionFields(unsignedTx, tag);
+      } catch (e) {
+        // Gas estimation reverted: tell the user on the card, plainly,
+        // instead of burying it in the report error.
+        if (!isRevertError(e)) throw e;
+        revertWarning = revertCardMessage(e);
+        console.warn(tag, 'simulation reverted:', (e as any)?.message || e);
+      }
       clearSignReport = await getClearSignReport({
         chain: 'evm',
         chainId,
@@ -909,6 +919,7 @@ const handleSigningMethods = async (
     typedDataSummary, // null except eth_signTypedData*; the card renders it
     clearSignReport,
     clearSignReportError,
+    revertWarning, // set when the chain says this tx would revert (gas estimate)
     siwe, // null unless a personal_sign/eth_sign message is a Sign-In with Ethereum
     type: method,
     request: params,
@@ -1444,6 +1455,9 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any, eventId?: 
         console.log(tag, `Final gas limit: ${estimatedGas.toString()}`);
       } catch (e) {
         console.error(tag, 'Gas estimation failed:', e);
+        // A revert is the chain saying this call fails: signing it with a
+        // blind 400k limit would only burn gas. Refuse with the reason.
+        if (isRevertError(e)) throw createProviderRpcError(4000, revertMessage(e), undefined, 'reverted');
         // Use a reasonable fallback for complex transactions (with 20% buffer already included)
         const fallbackGas = BigInt(400000); // 400k should handle most complex swaps
         console.warn(tag, `Using fallback gas limit: ${fallbackGas.toString()}`);
@@ -1498,6 +1512,7 @@ const signTransaction = async (transaction: any, KEEPKEY_WALLET: any, eventId?: 
     return output.serialized;
   } catch (e) {
     console.error(`${tag} Error: `, e);
+    if ((e as ProviderRpcError)?.kind === 'reverted') throw e;
 
     // Extract meaningful error message
     const errorMessage = (e as any)?.message || JSON.stringify(e);
@@ -1560,6 +1575,7 @@ const signTypedData = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string, 
     return signatureHex;
   } catch (e) {
     console.error(`${tag} Error: `, e);
+    if ((e as ProviderRpcError)?.kind === 'reverted') throw e;
 
     // Extract meaningful error message
     const errorMessage = (e as any)?.message || JSON.stringify(e);
@@ -1691,6 +1707,15 @@ const mapDefinitiveError = (msg: string): ProviderRpcError => {
   }
   if (m.includes('gas required exceeds') || m.includes('exceeds block gas limit')) {
     return createProviderRpcError(4000, 'Transaction requires more gas than available.');
+  }
+  if (isRevertError({ message: msg })) {
+    const reason = revertReason({ message: msg });
+    return createProviderRpcError(
+      4000,
+      `The network refused this transaction: it would fail on-chain (execution reverted${reason ? `: ${reason}` : ''}). Nothing was sent.`,
+      undefined,
+      'reverted',
+    );
   }
   return createProviderRpcError(4000, `Error broadcasting transaction: ${msg}`);
 };
@@ -1989,6 +2014,8 @@ const sendTransaction = async (params: any, KEEPKEY_WALLET: any, ADDRESS: string
     if (!response) throw Error('Failed to load event for broadcast!');
 
     response.txid = txHash;
+    // Kept with the txid so a reopened panel can still link the explorer.
+    response.explorerTxLink = currentProvider.explorerTxLink;
     await requestStorage.updateEventById(id, response);
 
     //push event

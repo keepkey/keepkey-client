@@ -67,6 +67,7 @@ import { partitionSpamTokens, getTokenVisibilityMap, setTokenVisibility } from '
 import { ensureQueryKey } from './pioneerKey';
 import { fetchPortfolioEntries, type RefreshReason } from './portfolioBalances';
 import { walletOpenReason } from './walletOpenOnce';
+import { interruptedEventPatch } from '@extension/shared';
 
 const TAG = ' | background/index.js | ';
 console.log('Background script loaded');
@@ -982,6 +983,13 @@ async function clearOrphanedApprovalEvents() {
   try {
     const events = (await requestStorage.getEvents()) || [];
     if (events.length === 0) return;
+    // Approved but unfinished: the signing/broadcast flow died with the old
+    // worker. Record that on the event so the panel shows why, instead of an
+    // endless "confirm on your KeepKey" or a fresh Approve button.
+    for (const ev of events) {
+      const patch = interruptedEventPatch(ev as any);
+      if (patch) await requestStorage.updateEventById(ev.id, patch as any).catch(() => {});
+    }
     const orphans = events.filter(isOrphanedPendingEvent);
     if (orphans.length === 0) {
       console.log(tag, `${events.length} event(s) in storage; all post-broadcast — preserving for UI completion`);

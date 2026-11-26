@@ -25,6 +25,11 @@ import { createProviderRpcError, formatUserError } from './utils';
 import { openSidePanel, setApprovalBadge } from './popup';
 import { waitForApprovalDecision } from './approvalWait';
 import { getPendingRequests, recordProviderCall, recordSite, registerPending, settlePending } from './providerLog';
+import { createInflightRequests, requestKey, shouldDedupe } from './inflightRequests';
+import { failedEventPatch } from '@extension/shared';
+
+// Identical in-flight approval requests share one card (KEEPKEY-192).
+const inflightRequests = createInflightRequests((...a) => console.warn(' | METHODS | ', ...a));
 
 const TAG = ' | METHODS | ';
 
@@ -148,7 +153,15 @@ const requireApproval = async function (
     });
 
     await openSidePanel(requestInfo);
-    return approval;
+    const decision = await approval;
+    // Persist the decision: a reopened/reloaded side panel must show this
+    // request as in progress, never as a fresh card to approve again.
+    if (decision?.success && requestInfo?.id) {
+      await requestStorage
+        .updateEventById(requestInfo.id, { status: 'approved', approvedAt: new Date().toISOString() } as any)
+        .catch(e => console.warn(tag, 'could not persist approval', e));
+    }
+    return decision;
   } catch (e) {
     console.error(tag, e);
     if (pendingKey) agentDecisions.delete(pendingKey);
@@ -185,9 +198,14 @@ export const handleWalletRequest = async (
   const origin = requestInfo?.siteUrl || requestInfo?.href || '';
   recordSite(origin, chain);
   try {
-    const result = await withServiceWorkerKeepAlive(() =>
-      routeWalletRequest(requestInfo, chain, method, params, __KEEPKEY_WALLET, ADDRESS),
-    );
+    const route = () =>
+      withServiceWorkerKeepAlive(() =>
+        routeWalletRequest(requestInfo, chain, method, params, __KEEPKEY_WALLET, ADDRESS),
+      );
+    // Key computed before routing: handlers fill nonce/gas into params.
+    const result = shouldDedupe(method)
+      ? await inflightRequests.run(requestKey(requestInfo?.origin || origin, chain, method, params), route)
+      : await route();
     recordProviderCall({ ts: Date.now(), origin, chain, method, params, result, durationMs: Date.now() - startedAt });
     return result;
   } catch (error: any) {
@@ -316,6 +334,15 @@ const routeWalletRequest = async (
     // (e.g. friendly retry card for timeouts) without regex-matching
     // the message.
     const kind = (error as ProviderRpcError).kind;
+    if (!(error instanceof AccountTxError) && requestInfo?.id) {
+      // An approved request that failed (revert, RPC refusal, device error)
+      // stays as a failed card with its reason — it must not reopen as a
+      // fresh approval after a panel reload. Rejected/never-approved events
+      // are left alone (the reject path removes them).
+      const ev: any = await requestStorage.getEventById(requestInfo.id).catch(() => null);
+      const patch = failedEventPatch(ev, errorMessage, kind);
+      if (patch) await requestStorage.updateEventById(requestInfo.id, patch as any).catch(() => {});
+    }
     if (error instanceof AccountTxError && requestInfo?.id) {
       // Preserve the submitted hash and outcome across worker/panel restarts.
       // A stored signed send must never reopen as a fresh approval.

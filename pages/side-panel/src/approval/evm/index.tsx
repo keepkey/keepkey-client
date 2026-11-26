@@ -64,6 +64,16 @@ export function EvmTransaction({ transaction, reloadEvents, handleResponse }: an
       <Stack spacing="12px" paddingBottom="16px">
         <ProjectInfoCard transaction={transaction} />
 
+        {transaction?.revertWarning && (
+          <Surface padding="12px 14px" edge="bad" data-revert-warning>
+            <Text fontSize="13px" fontWeight={600} color={tokens.bad}>
+              This transaction would fail on-chain
+            </Text>
+            <Text fontSize="12px" color={tokens.dim} marginTop="4px">
+              {transaction.revertWarning}
+            </Text>
+          </Surface>
+        )}
         <ClearSignReportCard report={transaction?.clearSignReport} error={transaction?.clearSignReportError} />
         {siwe && <SiweCard siwe={siwe} acknowledged={siweAck} onAcknowledge={setSiweAck} />}
         {feeWarning && (
