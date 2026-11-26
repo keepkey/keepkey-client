@@ -21,6 +21,7 @@ import { resetTronState, prefetchTronPubkey } from './chains/tronHandler';
 import {
   resetHiveState,
   getHiveAccountInfo,
+  handleHiveBrowserKeyMessage,
   handleHiveSitesMessage,
   getCachedHiveInfo,
   buildHiveUiRows,
@@ -2222,6 +2223,17 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             sendResponse({ ok: true, ...(await handleHiveSitesMessage(message)) });
           } catch (e: any) {
             sendResponse({ ok: false, error: e?.message || String(e) });
+          }
+          break;
+        }
+
+        case 'HIVE_BROWSER_KEY': {
+          // Browser posting key management (side panel). Errors go back as
+          // { error } — never with key material in them.
+          try {
+            sendResponse({ ok: true, ...(await handleHiveBrowserKeyMessage(message)) });
+          } catch (e: any) {
+            sendResponse({ ok: false, error: e?.message || String(e), details: e?.details });
           }
           break;
         }

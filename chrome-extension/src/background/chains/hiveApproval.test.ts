@@ -173,6 +173,22 @@ describe('device checks before Approve', () => {
     ).toContain("KeepKey can't sign account_witness_vote");
   });
 
+  it('the panel browser-key table matches the signer table, and flags posting-only batches', async () => {
+    const { CLIENT_POSTING_OPS } = await import('./hiveTx');
+    expect([...HIVE_CLIENT_POSTING_OPS].sort()).toEqual([...CLIENT_POSTING_OPS].sort());
+    expect(buildHiveApprovalView(opsEvent('post', [POST, OPTIONS])).clientSignable).toBe(true);
+    const powerUp = buildHiveApprovalView(
+      opsEvent('powerUp', [['transfer_to_vesting', { from: 'a', to: 'a', amount: '1.000 HIVE' }]]),
+    );
+    expect(powerUp.clientSignable).toBe(false);
+    const heJson = buildHiveApprovalView(
+      opsEvent('custom_json', [
+        ['custom_json', { required_auths: ['a'], required_posting_auths: [], id: 'ssc-mainnet-hive', json: '{}' }],
+      ]),
+    );
+    expect(heJson.clientSignable).toBe(false);
+  });
+
   it('the panel table matches the background clear-sign table', () => {
     expect([...HIVE_CLEAR_SIGN_OPS].sort()).toEqual([...SUPPORTED_OPS].sort());
   });

@@ -6,6 +6,7 @@ import { APPROVAL_QUEUE_TIMEOUT_MS, APPROVAL_TIMEOUT_MS } from '../injected/requ
  * Resolves on ANY of:
  *   - eth_sign_response for this event (approve or reject in the side panel)
  *   - APPROVAL_TIMEOUT_MS after the side panel first reports `approval_shown`
+ *     (restarted by `approval_activity` while the user works on the card)
  *   - APPROVAL_QUEUE_TIMEOUT_MS from enqueue when the card is never shown
  * Both timeouts resolve as a reject.
  *
@@ -51,6 +52,12 @@ export function waitForApprovalDecision(
         if (shown) return;
         shown = true;
         arm(APPROVAL_TIMEOUT_MS, 'not answered after being shown');
+        return;
+      }
+      // The user is working on the card itself (e.g. importing or unlocking a
+      // Hive browser posting key before approving): restart the on-screen clock.
+      if (message?.action === 'approval_activity' && message?.eventId === eventId) {
+        if (shown) arm(APPROVAL_TIMEOUT_MS, 'not answered after the last activity');
         return;
       }
       if (message?.action === 'eth_sign_response' && message?.response?.eventId === eventId) {

@@ -12,10 +12,19 @@ import {
   Divider,
   Text,
 } from '@chakra-ui/react';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { requestStorage } from '@extension/storage';
 import { buildHiveApprovalView } from '@extension/shared';
-import { HiveChecks, HiveDetails, HiveRequestSummary, hiveBlockReasonFor } from '../hive/HiveApproval';
+import {
+  HiveChecks,
+  HiveDetails,
+  HiveRequestSummary,
+  HiveSignerChoice,
+  hiveBlockReasonFor,
+  type HiveSignerPick,
+} from '../hive/HiveApproval';
+import { BrowserKeyInline } from '../hive/BrowserKeyInline';
+import type { BrowserKeyStage } from '../../components/hiveBrowserKeyUi';
 import RequestMethodCard from './RequestMethodCard';
 import ProjectInfoCard from './ProjectInfoCard';
 import RequestDetailsCard from './RequestDetailsCard';
@@ -71,8 +80,35 @@ export function OtherTransaction({ transaction: initialTransaction, handleRespon
   const isHive = transaction?.chain === 'hive' || String(transaction?.networkId ?? '').startsWith('hive:');
   const hiveView = useMemo(() => (isHive ? buildHiveApprovalView(transaction) : null), [isHive, transaction]);
   const vaultBlocked = transaction?.clearSignReport?.protectionLevel === 'P0';
-  const blockReason = vaultBlocked ? 'Vault blocked this transaction' : hiveBlockReasonFor(hiveView, 'keepkey');
-  const approve = () => handleResponse('accept');
+  // Browser posting key, live: the inline block on this card reports where
+  // the user is (none → import/create, unauthorized → authorize, locked →
+  // unlock, ready). Only a ready key unlocks "Sign with: Browser posting key".
+  const clientSignable = !!hiveView?.clientSignable;
+  const deviceBlocked = !!hiveView?.checks.some(c => c.status === 'block' && c.deviceOnly);
+  const [keyState, setKeyState] = useState<{ stage: BrowserKeyStage; mode?: string }>({ stage: 'loading' });
+  const onKeyState = useCallback((s: { stage: BrowserKeyStage; mode?: string }) => setKeyState(s), []);
+  const browserKey = clientSignable && keyState.stage === 'ready';
+  const [signer, setSigner] = useState<HiveSignerPick>('keepkey');
+  useEffect(() => {
+    if (browserKey && (deviceBlocked || keyState.mode === 'client')) setSigner('client');
+  }, [browserKey, deviceBlocked, keyState.mode]);
+  const effectiveSigner: HiveSignerPick = browserKey ? signer : 'keepkey';
+  const blockReason = vaultBlocked ? 'Vault blocked this transaction' : hiveBlockReasonFor(hiveView, effectiveSigner);
+
+  // Record the pick on the event before approving; the background reads it.
+  const approve = async (forceSigner?: HiveSignerPick) => {
+    const pick = forceSigner ?? effectiveSigner;
+    if (browserKey || forceSigner) {
+      try {
+        const current = (await requestStorage.getEventById(transaction.id)) ?? transaction;
+        await requestStorage.updateEventById(transaction.id, { ...current, hiveSigner: pick } as any);
+      } catch (e) {
+        console.error('Could not record the Hive signer choice', e);
+        return;
+      }
+    }
+    handleResponse('accept');
+  };
 
   const handleReload = () => {
     console.log('Reloading transaction with id:', transaction.id);
@@ -91,6 +127,20 @@ export function OtherTransaction({ transaction: initialTransaction, handleRespon
             <>
               <HiveRequestSummary view={hiveView} />
               <HiveChecks view={hiveView} />
+              {clientSignable && (
+                <BrowserKeyInline
+                  eventId={transaction.id}
+                  deviceBlocked={deviceBlocked}
+                  onState={onKeyState}
+                  // The user asked for this post to go out via the browser key:
+                  // publish it as soon as the key can sign, no second click.
+                  onEnabled={() => {
+                    setSigner('client');
+                    approve('client');
+                  }}
+                />
+              )}
+              {browserKey && <HiveSignerChoice view={hiveView} value={signer} onChange={setSigner} />}
             </>
           ) : (
             <RequestMethodCard transaction={transaction} />

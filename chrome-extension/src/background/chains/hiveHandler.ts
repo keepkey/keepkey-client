@@ -7,6 +7,16 @@ import { createProviderRpcError, createTimeoutError } from '../utils';
 import { requireHiveFirmware } from '../firmware';
 import { SUPPORTED_OPS, opSummary } from './hiveOps';
 import { pioneerFetch } from '../pioneerKey';
+import { hiveOpsChecks } from '@extension/shared';
+import { CLIENT_POSTING_OPS, signHiveTxWithClientKey } from './hiveTx';
+import { chooseHiveSigner, isPostingOnly, type HiveSigner } from './hiveSignerRouting';
+import {
+  browserKeys,
+  vaultAccountAuthorities,
+  vaultAccountAuthoritiesFull,
+  vaultPostingAuthority,
+} from './hiveBrowserKeyService';
+import type { SignWith } from './hiveBrowserKey';
 import { createHiveSitePermissions } from './hiveSitePermissions';
 
 const hiveSites = createHiveSitePermissions({
@@ -54,6 +64,10 @@ export function onHiveResolved(listener: () => void) {
 }
 
 export function resetHiveState() {
+  // Device swap, disconnect, wallet change, worker start: the browser posting
+  // key goes back to locked (memory wiped) — unlocking needs the KeepKey again.
+  browserKeys.lock();
+  pendingImport = null;
   cachedIdentity = null;
   cachedPubkey = null;
   cachedAccountName = null;
@@ -751,20 +765,29 @@ async function hiveSignAndBroadcastOps(
   requestInfo: any,
   requireApproval: (networkId: string, requestInfo: any, chain: any, method: string, params: any) => Promise<any>,
 ) {
+  await requireHiveFirmware('Hive operations');
+  const from = await getHiveAccount();
+  if (username && username !== from.name) {
+    throw createProviderRpcError(4100, `This KeepKey controls @${from.name}, not @${username}`);
+  }
+  const keyStatus = await browserKeys.status(from.name).catch(() => null);
+  const browserKeyStored = !!keyStatus?.stored;
+
   for (const op of operations) {
-    if (!Array.isArray(op) || op.length !== 2 || !SUPPORTED_OPS.has(op[0])) {
+    // Ops outside the KeepKey table are allowed only when the browser posting
+    // key exists and can sign them (posting tier) — e.g. delete_comment.
+    const known =
+      Array.isArray(op) &&
+      op.length === 2 &&
+      (SUPPORTED_OPS.has(op[0]) || (browserKeyStored && CLIENT_POSTING_OPS.has(op[0])));
+    if (!known) {
       throw createProviderRpcError(
         4200,
         `Operation not in the KeepKey clear-sign table (got ${Array.isArray(op) ? op[0] : typeof op})`,
       );
     }
   }
-
-  await requireHiveFirmware('Hive operations');
-  const from = await getHiveAccount();
-  if (username && username !== from.name) {
-    throw createProviderRpcError(4100, `This KeepKey controls @${from.name}, not @${username}`);
-  }
+  const postingOnly = isPostingOnly(operations);
 
   const event = buildEvent(requestInfo, displayType, params);
   (event as any).unsignedTx = {
@@ -774,8 +797,33 @@ async function hiveSignAndBroadcastOps(
     // controls), and a value no view can recover is a value the user cannot
     // check against the device screen.
     operations: operations.map(([name, p]) => ({ op: name, summary: opSummary(name, p), params: p })),
+    // The approval card offers the browser posting key for posting-only
+    // batches (always when the KeepKey cannot fit the tx).
+    browserKey: browserKeyStored
+      ? { stored: true, pubkey: keyStatus?.pubkey, mode: keyStatus?.mode, postingOnly }
+      : null,
   };
   await requestUserApproval(event, requestInfo, displayType, params, requireApproval);
+
+  // The card may have recorded the user's signer pick on the stored event.
+  const stored: any = await requestStorage.getEventById(event.id).catch(() => null);
+  const choice: HiveSigner | undefined =
+    stored?.hiveSigner === 'client' || stored?.hiveSigner === 'keepkey' ? stored.hiveSigner : undefined;
+  const deviceBlocked = hiveOpsChecks(operations).some(c => c.status === 'block' && c.deviceOnly);
+  // Live state: the user may have imported, created or unlocked the browser
+  // key on the approval card while this request was pending.
+  const keyNow = await browserKeys.status(from.name).catch(() => keyStatus);
+  const decision = chooseHiveSigner({
+    ops: operations,
+    mode: (keyNow?.mode ?? 'ask') as SignWith,
+    browserKeyStored: !!keyNow?.stored,
+    deviceBlocked,
+    choice,
+  });
+  if ('error' in decision) throw createProviderRpcError(4200, decision.error);
+  if (decision.signer === 'client') {
+    return await hiveSignWithBrowserKey(event, from.name, operations, requestInfo);
+  }
 
   // Sign — the vault serializes, the device parses + clear-signs
   let signResp: Response;
@@ -832,10 +880,219 @@ async function hiveSignAndBroadcastOps(
   return { id: bData.txid, tx_id: bData.txid, confirmed: Boolean(bData.blockNum ?? bData.block_num) };
 }
 
+/**
+ * Sign posting operations with the browser posting key and broadcast. The
+ * signer (hiveTx) refuses anything that needs active/owner or acts for another
+ * account; unlocking a locked key asks the KeepKey (one button press).
+ */
+async function hiveSignWithBrowserKey(
+  event: any,
+  account: string,
+  operations: [string, Record<string, any>][],
+  requestInfo: any,
+) {
+  let priv = browserKeys.signingKey(account);
+  if (!priv) {
+    await browserKeys.unlock(account);
+    priv = browserKeys.signingKey(account);
+  }
+  if (!priv) throw createProviderRpcError(4100, 'Browser posting key is locked');
+  // Signing with a key the chain does not accept would only fail at broadcast.
+  const status = await browserKeys.status(account);
+  const chain = await vaultAccountAuthorities(account).catch(() => null);
+  if (chain && !chain.posting?.key_auths?.some(([k]: [string, number]) => k === status.pubkey)) {
+    throw createProviderRpcError(
+      4100,
+      `The browser posting key is not authorized on @${account} yet — authorize it on the approval card`,
+    );
+  }
+  const txParams = await fetch(`${PIONEER_URL}/api/v1/hive/tx-params`, { signal: AbortSignal.timeout(20_000) }).then(
+    r => r.json(),
+  );
+  if (!txParams?.success)
+    throw createProviderRpcError(-32603, `Hive tx-params failed: ${txParams?.error || 'unknown'}`);
+  let signed;
+  try {
+    signed = signHiveTxWithClientKey(
+      {
+        refBlockNum: txParams.refBlockNum,
+        refBlockPrefix: txParams.refBlockPrefix,
+        expirationUnix: txParams.expirationUnix,
+      },
+      operations,
+      account,
+      priv,
+      txParams.chainId,
+    );
+  } catch (e: any) {
+    throw createProviderRpcError(4200, e?.message || 'Browser key could not sign');
+  }
+  const bResp = await fetch(`${PIONEER_URL}/api/v1/hive/broadcast-ops`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ref_block_num: signed.refBlockNum,
+      ref_block_prefix: signed.refBlockPrefix,
+      expiration: signed.expiration,
+      operations: signed.operations,
+      signature: signed.signature,
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const bData = await bResp.json().catch(() => ({}));
+  if (!bData.success || !bData.txid) {
+    throw createProviderRpcError(
+      -32603,
+      `Hive broadcast failed: ${bData.error?.message || bData.error || `HTTP ${bResp.status}`}`,
+    );
+  }
+  await requestStorage.updateEventById(event.id, {
+    ...event,
+    txid: bData.txid,
+    status: 'broadcasted',
+    signedWith: 'browser-key',
+  } as any);
+  chrome.runtime
+    .sendMessage({
+      action: 'transaction_complete',
+      eventId: requestInfo.id,
+      txHash: bData.txid,
+      explorerTxLink: 'https://hivehub.dev/tx/',
+      networkId: HIVE_NETWORK_ID,
+    })
+    .catch(() => {});
+  return { id: bData.txid, tx_id: bData.txid, confirmed: Boolean(bData.blockNum ?? bData.block_num) };
+}
+
+// An imported WIF that is not on the posting authority yet waits here (memory
+// only, 10 minutes) for the user to authorize it; then it is stored encrypted.
+let pendingImport: { account: string; wif: string; pubkey: string; at: number } | null = null;
+const PENDING_IMPORT_MS = 10 * 60_000;
+const livePending = (account: string) =>
+  pendingImport && pendingImport.account === account && Date.now() - pendingImport.at < PENDING_IMPORT_MS
+    ? pendingImport
+    : null;
+
+/**
+ * Side-panel management of the browser posting key (HIVE_BROWSER_KEY message).
+ * The account is always the one this KeepKey controls — never taken from the UI.
+ */
 /** Side panel: list / revoke sites allowed to read the Hive account name. */
 export async function handleHiveSitesMessage(msg: any): Promise<any> {
   if (msg?.action === 'revoke') await hiveSites.revoke(msg.origin);
   return { sites: await hiveSites.list() };
+}
+
+export async function handleHiveBrowserKeyMessage(msg: any): Promise<any> {
+  // The account this KeepKey controls. Before one exists (a new account, or one
+  // being brought over from another wallet) the user names it: that only labels
+  // the encrypted key; signing stays bound to that account and authorizing
+  // still needs this KeepKey's active key on it.
+  let account: string;
+  let keepkeyActive: string | null = null;
+  try {
+    const linked = await getHiveAccount();
+    account = linked.name;
+    keepkeyActive = linked.pubkey;
+  } catch (e) {
+    const named = String(msg?.account ?? '')
+      .trim()
+      .replace(/^@/, '')
+      .toLowerCase();
+    if (!/^[a-z][a-z0-9.-]{2,15}$/.test(named)) {
+      const err: any = new Error('This KeepKey has no Hive account yet. Enter the account name the key is for.');
+      err.details = { needsAccountName: true };
+      throw err;
+    }
+    account = named;
+  }
+  const action = String(msg?.action || '');
+  switch (action) {
+    case 'status': {
+      const status = await browserKeys.status(account);
+      const pending = livePending(account);
+      return { account, ...status, pendingPubkey: pending?.pubkey ?? null };
+    }
+    case 'create':
+      return { account, ...(await browserKeys.create(account)) };
+    case 'import': {
+      const { pubkey } = browserKeys.inspectWif(String(msg.wif || ''));
+      const chain = await vaultAccountAuthorities(account);
+      const onPosting = !!chain?.posting?.key_auths?.some(([k]: [string, number]) => k === pubkey);
+      if (onPosting) {
+        await browserKeys.importWif(account, String(msg.wif));
+        pendingImport = null;
+        return { account, stored: true, pubkey };
+      }
+      pendingImport = { account, wif: String(msg.wif), pubkey, at: Date.now() };
+      return {
+        account,
+        stored: false,
+        pubkey,
+        needsAuthorization: true,
+        reason: `This key is not on @${account}'s posting authority yet.`,
+      };
+    }
+    case 'unlock':
+      return { account, ...(await browserKeys.unlock(account)) };
+    case 'lock':
+      browserKeys.lock(account);
+      return { account, locked: true };
+    case 'setMode':
+      await browserKeys.setMode(account, msg.mode);
+      return { account, mode: msg.mode };
+    case 'authorizePreview': {
+      const status = await browserKeys.status(account);
+      const candidate = status.pubkey ?? livePending(account)?.pubkey ?? null;
+      const { account: chain, capabilities } = await vaultAccountAuthoritiesFull(account);
+      if (!chain) throw new Error(`@${account} not found`);
+      const active = chain.active;
+      return {
+        account,
+        candidate,
+        before: chain.posting,
+        after: candidate ? { weight_threshold: 1, account_auths: [], key_auths: [[candidate, 1]] } : null,
+        droppedApps: (chain.posting?.account_auths ?? []).map(([n]: [string, number]) => n),
+        alreadyAuthorized: !!candidate && chain.posting.key_auths.some(([k]: [string, number]) => k === candidate),
+        // Firmware ≤ 378cf30 cannot authorize an external posting key (see vault).
+        dedicateSupported: capabilities.dedicatePosting,
+        // A dedicate needs owner/active/memo to be exactly this KeepKey (the vault re-checks owner and memo).
+        activeIsKeepKey:
+          active?.weight_threshold === 1 &&
+          active?.account_auths?.length === 0 &&
+          active?.key_auths?.length === 1 &&
+          active.key_auths[0][0] === keepkeyActive,
+      };
+    }
+    case 'authorize': {
+      const status = await browserKeys.status(account);
+      const pending = livePending(account);
+      const candidate = status.pubkey ?? pending?.pubkey;
+      if (!candidate) throw new Error('Create or import a browser posting key first');
+      const result = await vaultPostingAuthority({
+        account,
+        change: 'dedicate',
+        posting_key: candidate,
+        allow_drop_apps: msg.allowDropApps === true,
+      });
+      if (!status.stored && pending) {
+        await browserKeys.importWif(account, pending.wif);
+        pendingImport = null;
+      }
+      return { account, ...result };
+    }
+    case 'revoke': {
+      const result = await vaultPostingAuthority({ account, change: 'revoke' });
+      await browserKeys.forget(account);
+      return { account, ...result };
+    }
+    case 'forget':
+      await browserKeys.forget(account);
+      pendingImport = null;
+      return { account, forgotten: true };
+    default:
+      throw new Error(`Unknown browser key action "${action}"`);
+  }
 }
 
 export const handleHiveRequest = async (
