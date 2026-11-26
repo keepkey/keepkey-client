@@ -4,6 +4,7 @@ import { AddIcon } from '@chakra-ui/icons';
 import { AssetIcon } from './AssetIcon';
 import { HairlineRow, SkeletonRows } from './v2/primitives';
 import { getChainDisplayName } from './chainDisplay';
+import { badgeNetworkFor, formatQuantity, formatUsdAmount } from '@extension/shared';
 import { SpinningDevice } from './SpinningDevice';
 import AssetSelect from './AssetSelect';
 
@@ -19,17 +20,6 @@ const Balances = ({ onSelectAsset, showAddBlockchain, setShowAddBlockchain }: Ba
   const [assets, setAssets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
-
-  const formatBalance = (balance: string) => {
-    const numericBalance = parseFloat(balance);
-    const safeBalance = isNaN(numericBalance) ? '0' : balance;
-    const [integer, decimal] = safeBalance.split('.');
-    const largePart = decimal?.slice(0, 4) || '0000';
-    const smallPart = decimal?.slice(4, 6) || '00';
-    return { integer, largePart, smallPart };
-  };
-
-  const formatUsd = (value: string) => parseFloat(value).toFixed(2);
 
   // Fetch assets once; refresh balances on mount and on background BALANCES_UPDATED push
   useEffect(() => {
@@ -168,35 +158,48 @@ const Balances = ({ onSelectAsset, showAddBlockchain, setShowAddBlockchain }: Ba
               const chainBalances = balances.filter(b => b.networkId === asset.networkId);
               const totalUsdValue = chainBalances.reduce((sum, b) => sum + parseFloat(b.valueUsd || '0'), 0);
 
-              const nativeBalances = chainBalances.filter(b => b.isNative === true || b.caip === asset.caip);
-              let totalBalance = '0';
-              if (nativeBalances.length > 0) {
-                totalBalance = nativeBalances.reduce((acc, b) => acc + parseFloat(b.balance || '0'), 0).toString();
-              } else {
-                const balance = balances.find(b => b.caip === asset.caip);
-                totalBalance = balance?.balance || '0';
-              }
+              const isNativeEntry = (b: any) => b.isNative === true || b.caip === asset.caip;
+              const nativeQty = chainBalances
+                .filter(isNativeEntry)
+                .reduce((acc, b) => acc + (parseFloat(b.balance || '0') || 0), 0);
+              // The row's fiat is the chain total (native + tokens), matching
+              // the Vault's per-chain balanceUsd; the quantity is native only.
+              // Say so when tokens contribute — otherwise "0 POL" next to
+              // "$2.41" reads as a bug.
+              const tokenCount = chainBalances.filter(
+                b => !isNativeEntry(b) && parseFloat(b.balance ?? b.amount ?? '0') > 0,
+              ).length;
 
-              const { integer, largePart, smallPart } = formatBalance(totalBalance);
               const chainName = getChainDisplayName(asset.networkId);
 
               // v2 rows (KEEPKEY_STYLE.md §0): 60px, 28px logo, hairline
               // divider, no card. The chain name only earns a place in the
               // sub-line when it differs from the asset name — on an L2 the
-              // shared "ETH" ticker is otherwise ambiguous (§5).
-              const qty = `${integer}.${largePart}${largePart === '0000' ? smallPart : ''}`;
-              const subtitle =
-                chainName && chainName !== asset.name
-                  ? `${qty} ${asset.symbol} · ${chainName}`
-                  : `${qty} ${asset.symbol}`;
+              // shared "ETH" ticker is otherwise ambiguous (§5). Compared
+              // case-insensitively: "THORChain" and "Thorchain" are one chain.
+              // The asset is the protagonist where a ticker spans networks: ETH on
+              // Ethereum and on Base both read "ETH", the network goes first in the
+              // sub-line, and an L2 gets its official logo as a badge on the icon.
+              const badgeNetworkId = badgeNetworkFor({ networkId: asset.networkId, caip: asset.caip, isNative: true });
+              const assetFirst = String(asset.symbol).toUpperCase() === 'ETH';
+              const qty = `${formatQuantity(nativeQty)} ${asset.symbol}`;
+              const tokens = tokenCount > 0 ? `+${tokenCount} ${tokenCount === 1 ? 'token' : 'tokens'}` : null;
+              const parts = assetFirst
+                ? [chainName || asset.name, qty, tokens]
+                : [
+                    qty,
+                    tokens,
+                    chainName && chainName.toLowerCase() !== String(asset.name ?? '').toLowerCase() ? chainName : null,
+                  ];
+              const subtitle = parts.filter(Boolean).join(' · ');
 
               return (
                 <HairlineRow
                   key={asset.caip || asset.networkId || index}
-                  icon={<AssetIcon src={asset.icon} symbol={asset.symbol} size={28} />}
-                  title={asset.name}
+                  icon={<AssetIcon src={asset.icon} symbol={asset.symbol} size={28} badgeNetworkId={badgeNetworkId} />}
+                  title={assetFirst ? asset.symbol : asset.name}
                   subtitle={subtitle}
-                  value={`$${formatUsd(totalUsdValue.toString())}`}
+                  value={`$${formatUsdAmount(totalUsdValue)}`}
                   delayMs={index * 50}
                   onClick={() => onSelectAsset(asset)}
                 />

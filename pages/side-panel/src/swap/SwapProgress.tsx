@@ -1,8 +1,8 @@
 // SwapProgress — the "Swap Submitted!" view. Faithful port of the design, but
 // the timeline/status are driven by the real txid + polled SwapHistoryRecord
 // instead of the mock interval.
-import React, { useEffect, useRef, useState } from 'react';
-import confetti from 'canvas-confetti';
+import React, { useEffect, useState } from 'react';
+import { SuccessMoment } from '../components/SuccessMoment';
 import type { SwapTheme } from './theme';
 import type { UiAsset, SwapHistoryRecord, SwapTrackingStatus } from './types';
 import { Icon, I } from './icons';
@@ -119,22 +119,8 @@ export function SwapProgress({
   const prog = st ? PROG[st] : 0.04;
   const done = st === 'completed' || st === 'output_confirmed';
   const failed = st === 'failed' || st === 'refunded';
-  const celebratedTxid = useRef<string | null>(null);
   const [mountedAt] = useState(Date.now);
   const [now, setNow] = useState(Date.now);
-
-  useEffect(() => {
-    if (!done || !txid || celebratedTxid.current === txid) return;
-    celebratedTxid.current = txid;
-    void confetti({
-      particleCount: 90,
-      spread: 75,
-      origin: { y: 0.35 },
-      colors: [T.good, T.accent, '#ffffff'],
-      disableForReducedMotion: true,
-      zIndex: 10000,
-    });
-  }, [done, txid, T.good, T.accent]);
 
   useEffect(() => {
     setNow(Date.now());
@@ -186,6 +172,12 @@ export function SwapProgress({
               fontWeight: 600,
             }}>
             <Icon d={I.bolt} size={11} /> {provider}
+          </div>
+        )}
+        {done && (
+          // Plays once on arrival (keyed by txid); the funds landed on `to`'s network.
+          <div style={{ marginTop: 10, marginBottom: 6 }}>
+            <SuccessMoment key={txid} networkId={to.caip?.split('/')[0]} size={72} />
           </div>
         )}
         <div className="mono" style={{ fontSize: 20, fontWeight: 700, marginTop: 6 }}>

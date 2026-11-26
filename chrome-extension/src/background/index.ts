@@ -34,11 +34,11 @@ import { handleWalletRequest } from './methods';
 import { siteFromSender } from './senderSite';
 import { initMcpBridge } from './mcpBridge';
 import { setApprovalBadge } from './popup';
+import { staticChainAsset } from './chainAssets';
 import { JsonRpcProvider, formatEther } from 'ethers';
 import {
   ChainToNetworkId,
   Chain,
-  COIN_MAP_LONG,
   shortListSymbolToCaip,
   NetworkIdToChain,
   buildAccountPaths,
@@ -2179,17 +2179,8 @@ chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: a
             const assetMap = new Map<string, any>();
 
             // Static chains
-            for (const [symbol, networkId] of Object.entries(ChainToNetworkId)) {
-              const name = COIN_MAP_LONG[symbol] || symbol.toLowerCase();
-              const caip = shortListSymbolToCaip[symbol] || networkId;
-              assetMap.set(networkId, {
-                symbol,
-                networkId,
-                name: name.charAt(0).toUpperCase() + name.slice(1),
-                caip,
-                icon: `https://api.keepkey.info/coins/${btoa(caip).replace(/=+$/, '')}.png`,
-                chain: symbol,
-              });
+            for (const [chainKey, networkId] of Object.entries(ChainToNetworkId)) {
+              assetMap.set(networkId, staticChainAsset(chainKey, networkId));
             }
 
             // Custom chains from storage (dApp-added via wallet_addEthereumChain)

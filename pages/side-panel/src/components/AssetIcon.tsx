@@ -3,6 +3,7 @@
 // missing icon reads as an intentional branded glyph, never a gray circle.
 // Generalizes the swap UI's TokenGlyph for the Chakra side of the app.
 import React, { useState, useEffect } from 'react';
+import { networkLogo } from '../styles/networkLogos';
 import { colorForSymbol } from '../styles/assetColor';
 
 /** Normalize an icon source: drop empties and non-http values; some providers
@@ -19,7 +20,52 @@ const normalizeIconUrl = (src?: string | null): string | null => {
   return /^https?:\/\//.test(src) ? src : null;
 };
 
-export function AssetIcon({
+/**
+ * Asset icon with an optional network badge: the asset is the protagonist,
+ * the network a small official logo in the corner (ETH on Base). No badge when
+ * the network has no official logo here, or below 24px where it can't read.
+ */
+export function AssetIcon(props: {
+  src?: string | null;
+  symbol?: string;
+  size?: number;
+  style?: React.CSSProperties;
+  /** Network to badge (e.g. 'eip155:8453'); omit at the asset's home network. */
+  badgeNetworkId?: string;
+}) {
+  const size = props.size ?? 32;
+  const badge = props.badgeNetworkId && size >= 24 ? networkLogo(props.badgeNetworkId) : undefined;
+  if (!badge) return <AssetIconCore {...props} />;
+  const b = Math.round(size * 0.44);
+  return (
+    <span
+      data-network-badge={props.badgeNetworkId}
+      style={{ position: 'relative', display: 'inline-flex', width: size, height: size, flexShrink: 0 }}>
+      <AssetIconCore {...props} />
+      <img
+        src={badge}
+        alt=""
+        aria-hidden
+        width={b}
+        height={b}
+        style={{
+          position: 'absolute',
+          right: -Math.round(b * 0.18),
+          bottom: -Math.round(b * 0.18),
+          width: b,
+          height: b,
+          objectFit: 'contain',
+          // A cut-out ring in the panel colour separates the badge from the icon.
+          borderRadius: Math.round(b * 0.28),
+          boxShadow: '0 0 0 2px #0a0a0b',
+          background: 'transparent',
+        }}
+      />
+    </span>
+  );
+}
+
+function AssetIconCore({
   src,
   symbol,
   size = 32,
